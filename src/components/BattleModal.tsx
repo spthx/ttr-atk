@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import {
+  Activity,
   Building2,
   CheckCircle2,
   CircleHelp,
   Coins,
   HandCoins,
+  Layers3,
   ScrollText,
   ShieldAlert,
   Sparkles,
@@ -26,6 +28,7 @@ import {
 import { soundFx } from '../utils/audio';
 import { FANKIT_ART, getFankitJobArt } from '../data/fankitAssets';
 import '../battle-buyout.css';
+import '../battle-balance.css';
 
 interface BattleModalProps {
   targetProperty: Property;
@@ -203,6 +206,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const commandReady = commandProgress >= 100;
   const selectedCost = getInvestmentCost(targetProperty.marketPrice, selectedLevel);
   const capitalGap = totalPlayerInvested - enemyInvested;
+  const pressureRatio = capitalGap / Math.max(targetProperty.marketPrice, 1);
+  const pressureMultiplier = 1 + Math.min(2.4, Math.abs(pressureRatio) * 3.2);
+  const ownershipRate = Math.abs(gaugeSpeed) / 2;
+  const expectedSeconds = gaugeSpeed < -0.08
+    ? Math.ceil((gauge + 100) / Math.abs(gaugeSpeed))
+    : gaugeSpeed > 0.08
+      ? Math.ceil((100 - gauge) / gaugeSpeed)
+      : null;
+  const dangerousSubs = battleSubs.filter((property) => property.loyaltyRisk >= 60).length;
+  const battleDirection = gaugeSpeed < -0.08 ? 'player' : gaugeSpeed > 0.08 ? 'enemy' : 'even';
 
   const groups = useMemo(() => {
     const grouped = new Map<string, Property[]>();
@@ -275,6 +288,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     enemyReserveRef.current -= actual;
     setEnemyReserve(enemyReserveRef.current);
     setEnemyInvested((value) => value + actual);
+    const counterShock = Math.min(7, 1.5 + (actual / Math.max(targetProperty.marketPrice, 1)) * 18);
+    setGauge((value) => Math.min(99, value + counterShock));
     setStatusText(`競合が${formatCurrency(actual)}を対抗投入`);
     setAiText(enemyReserveRef.current > 0 ? '対抗資金を再準備中' : '防衛資金なし――反撃不能');
     showFloater(`+${formatCurrency(actual)}`, 'enemy');
@@ -311,7 +326,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         const next = value + step;
         if (next < 100) return next;
         const pressure = totalPlayerInvested - enemyInvested;
-        const ratio = pressure > targetProperty.marketPrice * 0.25 ? 0.2 : pressure < 0 ? 0.08 : 0.13;
+        const ratio = pressure > targetProperty.marketPrice * 0.25 ? 0.1 : pressure < 0 ? 0.055 : 0.075;
         commitEnemyFunds(targetProperty.marketPrice * ratio, pressure > 0 ? '競合の緊急防衛' : '競合の追撃');
         return 0;
       });
@@ -324,15 +339,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const tick = (now: number) => {
       const dt = Math.min(0.1, (now - lastTickRef.current) / 1000);
       lastTickRef.current = now;
-      const velocity = calculateGaugeVelocity(
+      const baseVelocity = calculateGaugeVelocity(
         totalPlayerInvested,
         enemyInvested,
         targetProperty.marketPrice,
         pushMultiplier * (1 + influenceBonus)
       );
+      const gapRatio = Math.abs(totalPlayerInvested - enemyInvested) / Math.max(targetProperty.marketPrice, 1);
+      const leverage = 1 + Math.min(2.4, gapRatio * 3.2);
+      const deadZone = gapRatio < 0.025 ? 0.32 : 1;
+      const velocity = baseVelocity * 8.5 * leverage * deadZone;
       setGaugeSpeed(velocity);
       setGauge((value) => {
-        const next = value + velocity * dt * 5.2;
+        const next = value + velocity * dt;
         if (next <= -100) {
           finishBattle('player');
           return -100;
@@ -361,6 +380,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     }
     setCash((value) => value - selectedCost);
     setCompanyInvested((value) => value + selectedCost);
+    const impact = Math.min(10, 1.2 + (selectedCost / Math.max(targetProperty.marketPrice, 1)) * 20);
+    setGauge((value) => Math.max(-99, value - impact));
     setStatusText(`自社資金から${formatCurrency(selectedCost)}を積み増し`);
     showFloater(`+${formatCurrency(selectedCost)}`, 'player');
     playMotion('player');
@@ -391,6 +412,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setBattleSubs((current) => current.map((item) => item.id === property.id ? { ...item, loyaltyRisk: nextRisk } : item));
     setSubContributions((current) => ({ ...current, [property.id]: (current[property.id] || 0) + amount }));
     setDemandInvested((value) => value + amount);
+    const impact = Math.min(4.5, 1 + (amount / Math.max(targetProperty.marketPrice, 1)) * 8);
+    setGauge((value) => Math.max(-99, value - impact));
     setStatusText(`${property.name}から${formatCurrency(amount)}を調達。独立危険度${nextRisk}%`);
     showFloater(`+${formatCurrency(amount)}`, 'player');
     playMotion('player');
@@ -430,6 +453,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       leaving.forEach((member) => delete next[member.id]);
       return next;
     });
+    const groupImpact = Math.min(9, 2 + (amount / Math.max(targetProperty.marketPrice, 1)) * 7);
+    setGauge((value) => Math.max(-99, value - groupImpact));
     showFloater(`連携 +${formatCurrency(amount)}`, 'player');
     playMotion(leaving.length ? 'rebel' : 'player');
     soundFx.playBigCash();
@@ -540,9 +565,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             </span>
             <b>競合 {(100 - ownership).toFixed(1)}%</b>
           </div>
-          <div className="ownership-track" aria-label={`自社所有率${ownership.toFixed(1)}%`}>
+          <div
+            className={`ownership-track ownership-track--${battleDirection} ${motion !== 'idle' ? 'ownership-track--impact' : ''}`}
+            aria-label={`自社所有率${ownership.toFixed(1)}%`}
+            style={{ '--flow-duration': `${Math.max(.32, 1.4 - Math.min(1, ownershipRate / 4))}s` } as React.CSSProperties}
+          >
             <div className="ownership-track__player" style={{ width: `${ownership}%` }} />
-            <div className="ownership-track__marker" style={{ left: `${ownership}%` }} />
+            <div className="ownership-track__enemy-flow" style={{ left: `${ownership}%` }} />
+            <div className="ownership-track__tension" style={{ left: `${ownership}%` }} />
+            <div className="ownership-track__ticks">{Array.from({ length: 9 }).map((_, index) => <i key={index} />)}</div>
+            <div className="ownership-track__marker" style={{ left: `${ownership}%` }}><i /><i /><i /></div>
             <img className={`ownership-avatar ownership-avatar--player ${motion === 'player' ? 'avatar-attack' : ''}`} src={FANKIT_ART.tataru.windUp} alt="タタル" />
             <img className={`ownership-avatar ownership-avatar--enemy ${motion === 'enemy' ? 'avatar-hit' : ''}`} src={getFankitJobArt(targetProperty.industry)} alt="競合代表" />
           </div>
@@ -554,19 +586,50 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <span>自社の競り値</span>
             <GilTower amount={totalPlayerInvested} marketPrice={targetProperty.marketPrice} side="player" motion={motion} />
             <small>自社 {formatCurrency(companyInvested)} / 支援 {formatCurrency(demandInvested)}</small>
+            <div className="capital-source-bar"><i style={{ width: `${totalPlayerInvested > 0 ? companyInvested / totalPlayerInvested * 100 : 0}%` }} /><span /></div>
           </div>
           <div className="capital-arena__center">
+            <div className={`capital-clash capital-clash--${battleDirection}`}><i /><i /><i /></div>
             <Swords />
             <strong>{capitalGap >= 0 ? '自社優勢' : '競合優勢'}</strong>
             <b>{formatCurrency(Math.abs(capitalGap))}差</b>
+            <span className="pressure-multiplier">押込 ×{pressureMultiplier.toFixed(2)}</span>
             {enemyReserve <= 0 && <em>敵の追加予算なし</em>}
           </div>
           <div className="capital-arena__side">
             <span>競合の競り値</span>
             <GilTower amount={enemyInvested} marketPrice={targetProperty.marketPrice} side="enemy" motion={motion} />
             <small>残り防衛予算 {formatCurrency(enemyReserve)}</small>
+            <div className="enemy-reserve-bar"><i style={{ width: `${enemyBudget > 0 ? enemyReserve / enemyBudget * 100 : 0}%` }} /></div>
           </div>
           {floaters.map((item) => <i key={item.id} className={`gil-floater gil-floater--${item.side}`}>{item.text}</i>)}
+        </section>
+
+        <section className="battle-readouts">
+          <div className={battleDirection === 'player' ? 'readout-hot' : ''}>
+            <Activity />
+            <span><small>所有率速度</small><b>{ownershipRate < .01 ? '停止' : `${ownershipRate.toFixed(2)}% / 秒`}</b></span>
+          </div>
+          <div className={Math.abs(pressureRatio) >= .25 ? 'readout-hot' : ''}>
+            <Swords />
+            <span><small>資金圧力</small><b>{pressureRatio >= 0 ? '+' : ''}{(pressureRatio * 100).toFixed(0)}%・×{pressureMultiplier.toFixed(2)}</b></span>
+          </div>
+          <div>
+            <TimerReset />
+            <span><small>決着予測</small><b>{expectedSeconds ? `約${Math.min(999, expectedSeconds)}秒` : '競り値拮抗'}</b></span>
+          </div>
+          <div className={dangerousSubs > 0 ? 'readout-danger' : ''}>
+            <ShieldAlert />
+            <span><small>資金源リスク</small><b>{dangerousSubs > 0 ? `赤信号 ${dangerousSubs}社` : `${battleSubs.length}社が安定`}</b></span>
+          </div>
+          <div>
+            <Layers3 />
+            <span><small>交易連携</small><b>{groups.length}系統・補正+{Math.round(influenceBonus * 100)}%</b></span>
+          </div>
+          <div className={aiProgress >= 72 ? 'readout-danger' : ''}>
+            <Building2 />
+            <span><small>競合の次手</small><b>{enemyReserve <= 0 ? '追加資金なし' : aiProgress >= 72 ? '対抗投入まもなく' : '資金を準備中'}</b></span>
+          </div>
         </section>
 
         <section className="active-time">
