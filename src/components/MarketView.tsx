@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Property, IndustryType, CommunityType } from '../types';
-import { TRADE_COMMUNITIES } from '../data/worldData';
+import { COMMUNITY_CAMPAIGN_ORDER, TRADE_COMMUNITIES } from '../data/worldData';
 import { formatCurrency } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
-import { Search, ArrowRight, ShieldAlert, CheckCircle2, TrendingUp, TrendingDown, Newspaper, MapPinned, ListFilter, CircleHelp, ChevronRight } from 'lucide-react';
+import { Search, ArrowRight, ShieldAlert, CheckCircle2, TrendingUp, TrendingDown, Newspaper, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole } from 'lucide-react';
 import { WindIndicator, WIND_CONDITIONS, WindCondition, WindType } from './WindIndicator';
 import { BeginnerGuide } from './BeginnerGuide';
 import { HelpTip } from './HelpTip';
@@ -13,12 +13,14 @@ import { FANKIT_ART, getFankitJobArt } from '../data/fankitAssets';
 interface MarketViewProps {
   properties: Property[];
   totalFunds: number;
+  unlockedCommunityIds: Set<CommunityType>;
   onStartBuyout: (property: Property) => void;
 }
 
 export const MarketView: React.FC<MarketViewProps> = ({
   properties,
   totalFunds,
+  unlockedCommunityIds,
   onStartBuyout,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -108,7 +110,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
   const communityProgress = useMemo(
     () =>
-      TRADE_COMMUNITIES.map((community) => {
+      COMMUNITY_CAMPAIGN_ORDER.map((communityId) => TRADE_COMMUNITIES.find((community) => community.id === communityId)!).map((community) => {
         const targets = properties.filter((property) => property.community === community.id);
         const owned = targets.filter((property) => property.owner === 'player').length;
         return {
@@ -135,15 +137,17 @@ export const MarketView: React.FC<MarketViewProps> = ({
       const matchesCommunity =
         selectedCommunity === 'ALL' || p.community === selectedCommunity;
 
+      const matchesUnlocked = unlockedCommunityIds.has(p.community);
+
       const matchesOwner =
         selectedOwnerFilter === 'ALL' ||
         (selectedOwnerFilter === 'INDEPENDENT' && p.owner === 'independent') ||
         (selectedOwnerFilter === 'CARTEL' && (p.owner === 'dofor' || p.owner === 'abyss')) ||
         (selectedOwnerFilter === 'PLAYER' && p.owner === 'player');
 
-      return matchesSearch && matchesIndustry && matchesCommunity && matchesOwner;
+      return matchesUnlocked && matchesSearch && matchesIndustry && matchesCommunity && matchesOwner;
     });
-  }, [properties, searchTerm, selectedIndustry, selectedCommunity, selectedOwnerFilter]);
+  }, [properties, searchTerm, selectedIndustry, selectedCommunity, selectedOwnerFilter, unlockedCommunityIds]);
 
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
@@ -203,16 +207,20 @@ export const MarketView: React.FC<MarketViewProps> = ({
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            {communityProgress.map((community, index) => (
-              <button key={community.id} type="button" onClick={() => { setSelectedCommunity(community.id); setViewMode('targets'); }} className={`group relative min-h-24 overflow-hidden rounded-xl border p-3 text-left transition-all active:scale-95 ${community.conquered ? 'border-emerald-400/50 bg-emerald-950/45' : 'border-slate-700 bg-slate-950 hover:border-cyan-400/60'}`} style={{ animationDelay: `${index * 28}ms` }}>
+            {communityProgress.map((community, index) => {
+              const unlocked = unlockedCommunityIds.has(community.id);
+              const prerequisite = COMMUNITY_CAMPAIGN_ORDER[index - 1];
+              return (
+              <button key={community.id} type="button" disabled={!unlocked} onClick={() => { setSelectedCommunity(community.id); setViewMode('targets'); }} className={`group relative min-h-24 overflow-hidden rounded-xl border p-3 text-left transition-all ${unlocked ? 'active:scale-95' : 'cursor-not-allowed opacity-55'} ${community.conquered ? 'border-emerald-400/50 bg-emerald-950/45' : unlocked ? 'border-cyan-500/35 bg-slate-950 hover:border-cyan-300/70' : 'border-slate-800 bg-slate-950/80'}`} style={{ animationDelay: `${index * 28}ms` }}>
                 <img src={getFankitJobArt(community.id)} alt="" aria-hidden="true" className="absolute -bottom-5 -right-4 h-24 w-24 object-contain opacity-20 transition-transform group-hover:scale-110" />
-                <span className="relative z-10 block text-xs font-black text-slate-100">{community.id}</span>
+                <span className="relative z-10 flex items-center gap-1 text-xs font-black text-slate-100">{!unlocked && <LockKeyhole className="h-3 w-3 text-slate-500" />}{community.id}</span>
                 <span className="relative z-10 mt-1 block text-[9px] text-cyan-300">{community.marketCharacter}</span>
                 <span className={`relative z-10 mt-3 inline-block rounded px-1.5 py-0.5 text-[9px] font-black ${community.conquered ? 'bg-emerald-400/20 text-emerald-200' : 'bg-slate-800 text-slate-300'}`}>
-                  {community.owned}/{community.total} {community.conquered ? '制覇済み' : '取得'}
+                  {community.conquered ? '制覇済み' : unlocked ? `${community.owned}/${community.total} 取得` : `${prerequisite}制覇で解放`}
                 </span>
               </button>
-            ))}
+              );
+            })}
           </div>
         </section>
         <p className="text-center text-[9px] text-slate-600">FFXIVファンキット素材使用 © SQUARE ENIX</p>
@@ -290,7 +298,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
             className="bg-slate-950 border border-violet-500/40 rounded-lg px-2.5 py-1.5 text-xs text-violet-200 focus:outline-none focus:border-violet-400"
           >
             <option value="ALL">全都市</option>
-            {TRADE_COMMUNITIES.map((community) => (
+            {TRADE_COMMUNITIES.filter((community) => unlockedCommunityIds.has(community.id)).map((community) => (
               <option key={community.id} value={community.id}>
                 {community.id}
               </option>

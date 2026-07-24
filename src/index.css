@@ -159,23 +159,87 @@
 @keyframes market-screen-enter { from { opacity:0; transform:translateX(28px) scale(.985); filter:blur(4px); } to { opacity:1; transform:none; filter:blur(0); } }
 @keyframes battle-screen-enter { from { opacity:0; transform:scale(1.045); filter:brightness(1.7) blur(7px); } 55% { filter:brightness(1.15) blur(1px); } to { opacity:1; transform:scale(1); filter:brightness(1) blur(0); } }
 
-.market-chart { position:relative; z-index:2; overflow:hidden; border:1px solid rgba(34,211,238,.28); border-radius:.65rem; background:linear-gradient(180deg,rgba(2,10,23,.97),rgba(4,18,31,.96)); padding:.45rem .55rem; box-shadow:inset 0 0 24px rgba(8,145,178,.08); }
-.market-chart__header,.market-chart__forces,.market-chart__event { display:flex; align-items:center; justify-content:space-between; gap:.45rem; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
-.market-chart__header>div { display:flex; align-items:baseline; gap:.45rem; }
-.market-chart__header strong { color:#e2e8f0; font-size:.92rem; }
-.market-chart__eyebrow { color:#67e8f9; font-size:.48rem; font-weight:900; letter-spacing:.15em; }
-.market-chart__trend { border:1px solid rgba(103,232,249,.25); border-radius:999px; color:#a5f3fc; background:rgba(8,51,68,.45); padding:.12rem .45rem; font-size:.55rem; font-weight:800; }
-.market-chart__plot { position:relative; display:flex; align-items:stretch; gap:2px; height:66px; margin-top:.28rem; overflow:hidden; }
-.market-chart__grid { position:absolute; inset:0; background:repeating-linear-gradient(to bottom,transparent 0 16px,rgba(56,189,248,.09) 16px 17px),repeating-linear-gradient(to right,transparent 0 34px,rgba(56,189,248,.06) 34px 35px); pointer-events:none; }
-.market-candle { position:relative; flex:1 1 0; min-width:3px; height:100%; }
-.market-candle i,.market-candle b { position:absolute; left:50%; display:block; transform:translateX(-50%); }
-.market-candle i { width:1px; background:currentColor; opacity:.8; }
-.market-candle b { width:min(6px,80%); min-height:3px; border-radius:1px; background:currentColor; box-shadow:0 0 5px currentColor; }
-.market-candle--up { color:#34d399; } .market-candle--down { color:#fb7185; }
-.market-candle--shock b { animation:candle-shock .45s ease-out; box-shadow:0 0 13px currentColor; }
-@keyframes candle-shock { from { transform:translateX(-50%) scaleX(2.6); filter:brightness(2); } to { transform:translateX(-50%) scaleX(1); filter:brightness(1); } }
-.market-chart__event { justify-content:flex-start; margin-top:.28rem; min-height:1.05rem; border-left:2px solid #22d3ee; background:rgba(8,47,73,.5); padding:.16rem .4rem; color:#e0f2fe; font-size:.57rem; font-weight:800; }
-.market-chart__pulse { width:.38rem; height:.38rem; flex:0 0 auto; border-radius:999px; background:#22d3ee; box-shadow:0 0 8px #22d3ee; animation:market-pulse .9s infinite; }
-@keyframes market-pulse { 50% { opacity:.35; transform:scale(.7); } }
-.market-chart__forces { margin-top:.25rem; color:#94a3b8; font-size:.54rem; }
-.market-chart__forces strong { color:#e2e8f0; } .chart-up { color:#6ee7b7; font-weight:900; } .chart-down { color:#fda4af; font-weight:900; }
+.launch-intro {
+  animation: launch-curtain .55s ease-out;
+}
+
+.launch-intro__panel {
+  animation: launch-panel .48s cubic-bezier(.2,.8,.2,1);
+}
+
+.city-unlock {
+  animation: launch-curtain .35s ease-out;
+}
+
+.city-unlock__card {
+  animation: city-unlock-card .65s cubic-bezier(.16,.9,.22,1);
+}
+
+.ownership-battle {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(34,211,238,.12), transparent 52%),
+    linear-gradient(180deg, rgba(5,12,28,.98), rgba(2,6,18,.98));
+  box-shadow: inset 0 0 30px rgba(8,145,178,.07);
+}
+
+.ownership-battle--finishing {
+  animation: ownership-final-push .3s ease-in-out infinite alternate;
+}
+
+.ownership-track {
+  background:
+    repeating-linear-gradient(to right, transparent 0 9.8%, rgba(255,255,255,.08) 10%),
+    linear-gradient(90deg, #713f12 0%, #451a03 48%, #4c0519 52%, #881337 100%);
+}
+
+.ownership-track__player {
+  box-shadow: inset -10px 0 18px rgba(255,255,255,.35), 8px 0 24px rgba(251,191,36,.55);
+}
+
+.ownership-track__clash {
+  transform: translateX(-50%);
+  animation: ownership-clash .42s ease-in-out infinite alternate;
+}
+
+.ownership-event {
+  animation: ownership-event-pulse 1.25s ease-in-out infinite;
+}
+
+@keyframes launch-curtain {
+  from { opacity:0; filter:brightness(1.8) blur(6px); }
+  to { opacity:1; filter:brightness(1) blur(0); }
+}
+
+@keyframes launch-panel {
+  from { opacity:0; transform:translateX(-34px); }
+  to { opacity:1; transform:none; }
+}
+
+@keyframes city-unlock-card {
+  0% { opacity:0; transform:scale(.78); filter:brightness(2); }
+  62% { transform:scale(1.035); }
+  100% { opacity:1; transform:scale(1); filter:brightness(1); }
+}
+
+@keyframes ownership-final-push {
+  from { box-shadow:0 0 12px rgba(251,191,36,.3), inset 0 0 20px rgba(251,191,36,.08); }
+  to { box-shadow:0 0 34px rgba(251,191,36,.8), inset 0 0 34px rgba(251,191,36,.18); }
+}
+
+@keyframes ownership-clash {
+  from { opacity:.72; filter:brightness(1); }
+  to { opacity:1; filter:brightness(2.2); }
+}
+
+@keyframes ownership-event-pulse {
+  50% { border-color:rgba(34,211,238,.42); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launch-intro, .launch-intro__panel, .city-unlock, .city-unlock__card,
+  .ownership-battle--finishing, .ownership-track__clash, .ownership-event {
+    animation: none;
+  }
+}

@@ -6,6 +6,7 @@ import { GAME_WORLD } from '../data/worldData';
 import { HELP_TEXT } from '../data/helpText';
 
 interface HeaderProps {
+  companyName: string;
   totalFunds: number;
   passiveRevenue: number;
   ownedCount: number;
@@ -23,6 +24,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
+  companyName,
   totalFunds,
   passiveRevenue,
   ownedCount,
@@ -74,7 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Total Capital */}
           <div
             className="bg-slate-950 border border-amber-500/40 rounded-lg px-2.5 py-1 flex items-center gap-1.5 shadow-inner"
-            title="現在使えるタタル商会の現金。買収手数料、直接出資、ネマワシに使います。"
+            title={`現在使える${companyName}の現金。買収手数料、直接出資、ネマワシに使います。`}
           >
             <span className="text-[10px] text-amber-300 font-semibold hidden sm:inline">資金</span>
             <span className="text-sm font-black text-amber-400 font-mono">
@@ -120,7 +122,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Owned Count */}
           <div
             className="bg-slate-950 border border-slate-700/60 rounded-lg px-2 py-1 flex items-center gap-1 hidden sm:flex"
-            title="タタル商会が所有している物件数／市場に存在する全物件数"
+            title={`${companyName}が所有している物件数／市場に存在する全物件数`}
           >
             <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
             <span className="text-xs font-bold text-cyan-300 font-mono">
@@ -170,7 +172,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <TrendingUp className="w-4 h-4" />
-          {GAME_WORLD.companyName}の保有物件 ({ownedCount})
+          {companyName}の保有物件 ({ownedCount})
         </button>
 
         <button

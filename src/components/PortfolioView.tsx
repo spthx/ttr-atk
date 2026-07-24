@@ -1,6 +1,5 @@
 import React from 'react';
 import { Property } from '../types';
-import { GAME_WORLD } from '../data/worldData';
 import { HelpTip } from './HelpTip';
 import { HELP_TEXT } from '../data/helpText';
 import {
@@ -17,6 +16,7 @@ import {
 } from 'lucide-react';
 
 interface PortfolioViewProps {
+  companyName: string;
   properties: Property[];
   totalFunds: number;
   onReduceLoyaltyRisk: (propertyId: string, amount: number, cost: number) => void;
@@ -24,6 +24,7 @@ interface PortfolioViewProps {
 }
 
 export const PortfolioView: React.FC<PortfolioViewProps> = ({
+  companyName,
   properties,
   totalFunds,
   onReduceLoyaltyRisk,
@@ -58,7 +59,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
           <div>
             <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
               <Building2 className="w-5 h-5 text-amber-400" />
-              {GAME_WORLD.companyName}の保有物件・独立危険度
+              {companyName}の保有物件・独立危険度
               <HelpTip term="独立危険度" description={HELP_TEXT.independenceRisk} />
             </h2>
           </div>

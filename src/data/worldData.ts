@@ -8,13 +8,26 @@ export interface TradeCommunity {
 
 export const GAME_WORLD = {
   title: '進撃の小人 — Attack on Tataru',
-  companyName: 'タタル商会',
+  companyName: 'タタルの大繁盛商店',
   playerRole: '交易実務担当',
   advisorName: 'タタル',
   advisorRole: '商会長・助言役',
   premise:
-    'プレイヤーはタタル商会の交易実務担当として、市場調査・買収・資金管理を行う。タタルは報告を受け、方針と助言を示す。',
+    'プレイヤーは自分のカンパニーの交易実務担当として、市場調査・買収・資金管理を行う。タタルは報告を受け、方針と助言を示す。',
 } as const;
+
+export const COMMUNITY_CAMPAIGN_ORDER: CommunityType[] = [
+  'グリダニア',
+  'リムサ・ロミンサ',
+  'ウルダハ',
+  'イシュガルド',
+  'クガネ',
+  'ラザハン',
+  'クリスタリウム',
+  'オールド・シャーレアン',
+  'トライヨラ',
+  'ソリューション・ナイン',
+];
 
 export const TRADE_COMMUNITIES: TradeCommunity[] = [
   { id: 'リムサ・ロミンサ', region: 'バイルブランド', marketCharacter: '海運・造船' },

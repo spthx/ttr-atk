@@ -32,7 +32,6 @@ import {
 } from 'lucide-react';
 import { HELP_TEXT } from '../data/helpText';
 import { FANKIT_ART, getFankitJobArt } from '../data/fankitAssets';
-import { BattleMarketChart, MarketCandle } from './BattleMarketChart';
 
 interface BattleModalProps {
   targetProperty: Property;
@@ -128,15 +127,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [cashFlow, setCashFlow] = useState(0);
   const [marginCountdown, setMarginCountdown] = useState<number | null>(null);
 
-  // Dynamic Market Sentiment Waves (FX Market Observation)
+  // Market sentiment moves the ownership line directly. There is no separate price chart.
   const [marketTrend, setMarketTrend] = useState<MarketTrendType>('STABLE');
   const [trendMultiplier, setTrendMultiplier] = useState<number>(1.0);
-  const [marketCandles, setMarketCandles] = useState<MarketCandle[]>(() => Array.from({ length: 24 }, (_, index) => ({ id: index, open: 100, close: 100, high: 100.25, low: 99.75, cause: '寄り付き・小動き', shock: false })));
-  const [latestMarketEvent, setLatestMarketEvent] = useState('寄り付き直後。資金投入を監視中…');
-  const marketIndexRef = useRef(100);
-  const marketImpulseRef = useRef(0);
-  const marketDriftRef = useRef(0);
-  const marketCandleIdRef = useRef(24);
+  const [ownershipEvent, setOwnershipEvent] = useState('小口売買で所有率が微動しています');
+  const ownershipImpulseRef = useRef(0);
+  const ownershipDriftRef = useRef(0);
 
   // Difficulty Level based on Property Rank / Market Price (1: Easy to 5: Boss)
   const aiDifficulty = React.useMemo(() => {
@@ -185,10 +181,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const opponentReserveRef = useRef(opponentReserve);
   useEffect(() => { opponentReserveRef.current = opponentReserve; }, [opponentReserve]);
 
-  const recordMarketImpulse = (delta: number, label: string) => {
+  const recordOwnershipImpulse = (delta: number, label: string) => {
     const bounded = Math.max(-12, Math.min(12, delta));
-    marketImpulseRef.current = Math.max(-14, Math.min(14, marketImpulseRef.current + bounded));
-    setLatestMarketEvent(`${bounded >= 0 ? '▲ 急騰' : '▼ 急落'} ${label} (${bounded >= 0 ? '+' : ''}${bounded.toFixed(1)})`);
+    ownershipImpulseRef.current = Math.max(-14, Math.min(14, ownershipImpulseRef.current + bounded));
+    setOwnershipEvent(`${bounded >= 0 ? '▲ 自社所有率が急伸' : '▼ 自社所有率が急落'} — ${label}`);
     if (Math.abs(bounded) >= 2.5) soundFx.playMarketShock(bounded >= 0 ? 'rise' : 'drop', Math.abs(bounded) / 12);
   };
 
@@ -203,7 +199,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setOpponentInvested((prev) => prev + actual);
     triggerEStackWobble();
     soundFx.playCapitalImpact('opponent', actual / Math.max(targetProperty.marketPrice * 0.2, 1));
-    recordMarketImpulse(-Math.min(10, 3 + (actual / Math.max(targetProperty.marketPrice, 1)) * 16), `競合が${formatCurrency(actual)}を対抗投入`);
+    recordOwnershipImpulse(-Math.min(10, 3 + (actual / Math.max(targetProperty.marketPrice, 1)) * 16), `競合が${formatCurrency(actual)}を対抗投入`);
     triggerEffect(`+${formatCurrency(actual)}`, 'opponent');
     addLog(`▶ 【競合】${reason} ${formatCurrency(actual)} 投入（残予算 ${formatCurrency(opponentReserveRef.current)}）`, 'enemy');
     if (opponentReserveRef.current <= 0) {
@@ -313,15 +309,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
       if (nextTrend === 'BULL') {
         setTrendMultiplier(1.15);
-        recordMarketImpulse(5.5, '買い注文集中・自社出資効率15%上昇');
+        recordOwnershipImpulse(5.5, '買い注文集中・自社出資効率15%上昇');
         addLog(`📈 【市場好転】買い気が優勢。自社出資の効きが15%上昇。`, 'market');
       } else if (nextTrend === 'BEAR') {
         setTrendMultiplier(0.85);
-        recordMarketImpulse(-6.5, '信用不安・自社出資効率15%低下');
+        recordOwnershipImpulse(-6.5, '信用不安・自社出資効率15%低下');
         addLog(`📉 【市場警戒】慎重ムード。出資効率が15%低下。`, 'market');
       } else if (nextTrend === 'VOLATILE') {
         setTrendMultiplier(1.25);
-        recordMarketImpulse(Math.random() > 0.5 ? 8 : -8, '大口注文で相場が乱高下');
+        recordOwnershipImpulse(Math.random() > 0.5 ? 8 : -8, '大口注文で相場が乱高下');
         addLog(`⚡ 【出来高増】値動きが活発化。攻防の進行がやや速まる。`, 'market');
       } else {
         setTrendMultiplier(1.0);
@@ -332,26 +328,27 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return () => clearInterval(waveInterval);
   }, [isEnded]);
 
-  // Sub-second tape: micro movement is continuous, capital commits create visible shocks.
+  // Sub-second ownership tape: continuous micro movement, with visible shocks after capital commits.
   useEffect(() => {
     if (isEnded) return;
     const interval = setInterval(() => {
-      const open = marketIndexRef.current;
       const trendBias = marketTrend === 'BULL' ? 0.18 : marketTrend === 'BEAR' ? -0.18 : 0;
       const microNoise = (Math.random() - 0.5) * (marketTrend === 'VOLATILE' ? 1.8 : 0.75);
-      const impulse = marketImpulseRef.current;
+      const impulse = ownershipImpulseRef.current;
       const delta = trendBias + microNoise + impulse;
-      const close = Math.max(72, Math.min(132, open + delta));
-      const wick = 0.18 + Math.random() * 0.55 + Math.abs(delta) * 0.12;
-      const cause = Math.abs(impulse) >= 1 ? latestMarketEvent : marketTrend === 'STABLE' ? '小口注文による微動' : `${marketTrend}地合いの継続`;
-      const nextCandle: MarketCandle = { id: marketCandleIdRef.current++, open, close, high: Math.max(open, close) + wick, low: Math.min(open, close) - wick, cause, shock: Math.abs(delta) >= 2.2 };
-      marketIndexRef.current = close;
-      marketImpulseRef.current *= 0.24;
-      marketDriftRef.current = Math.max(-0.7, Math.min(0.7, -delta * 0.055));
-      setMarketCandles((previous) => [...previous.slice(-29), nextCandle]);
+      ownershipImpulseRef.current *= 0.24;
+      ownershipDriftRef.current = Math.max(-0.7, Math.min(0.7, -delta * 0.055));
+      if (Math.abs(impulse) < 1 && Math.random() < 0.18) {
+        setOwnershipEvent(
+          marketTrend === 'STABLE'
+            ? '小口売買で所有率が微動しています'
+            : `${marketTrend === 'BULL' ? '買い優勢' : marketTrend === 'BEAR' ? '売り優勢' : '乱高下'}の地合いが所有率を揺らしています`
+        );
+      }
     }, 420);
     return () => clearInterval(interval);
-  }, [isEnded, marketTrend, latestMarketEvent]);
+  }, [isEnded, marketTrend]);
+
   // Wind Ticker Effect (Shifts wind direction and momentum periodically)
   useEffect(() => {
     if (isEnded) return;
@@ -401,7 +398,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         targetProperty.marketPrice,
         phiSkillMultiplier * trendMultiplier * currentWind.speedMultiplier * (1 + industryInfluence.playerBonus)
       );
-      const v = finishingPushRef.current ? -36 : capitalVelocity + marketDriftRef.current;
+      const v = finishingPushRef.current ? -36 : capitalVelocity + ownershipDriftRef.current;
 
       setGaugeSpeed(v);
 
@@ -437,7 +434,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         if (gauge < -30 || diff > targetProperty.marketPrice * 0.3) {
           // Enemy feels pressured and prepares counter-charge
           setAiMindState('charging');
-          setLatestMarketEvent('⚠ 競合の大口対抗注文を検知。約定すると急落します');
+          setOwnershipEvent('⚠ 競合の大口対抗注文を検知。約定すると急落します');
           setAiChargeProgress((prev) => {
             const nextProgress = prev + 34;
             if (nextProgress >= 100) {
@@ -560,7 +557,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setPlayerCompanyInvested((prev) => prev + amount);
     triggerPStackWobble();
     soundFx.playCapitalImpact('player', multiplierLevel / 10);
-    recordMarketImpulse(Math.min(10, 2.5 + (amount / Math.max(targetProperty.marketPrice, 1)) * 18), `自社が${formatCurrency(amount)}を買い投入`);
+    recordOwnershipImpulse(Math.min(10, 2.5 + (amount / Math.max(targetProperty.marketPrice, 1)) * 18), `自社が${formatCurrency(amount)}を買い投入`);
     triggerEffect(`+${formatCurrency(amount)}`, 'player');
     if (multiplierLevel >= 5) triggerShake();
     const lvlCfg = INVESTMENT_LEVELS.find((i) => i.level === multiplierLevel) || INVESTMENT_LEVELS[0];
@@ -594,7 +591,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setDemandedSubIds((prev) => [...prev, sub.id]);
     triggerPStackWobble();
     soundFx.playBigCash();
-    recordMarketImpulse(7.5, `支援資金${formatCurrency(amount)}が流入`);
+    recordOwnershipImpulse(7.5, `支援資金${formatCurrency(amount)}が流入`);
     triggerEffect(`+${formatCurrency(amount)}`, 'player');
     triggerShake();
     addLog(`▶ 【グループ要求: ${sub.name}】支援資金 ${formatCurrency(amount)} を確保（危険度 +25 / この交渉では再要求不可）`, 'subs');
@@ -619,7 +616,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setPlayerDemandInvested((prev) => prev + totalAmount);
     triggerPStackWobble();
     soundFx.playBigCash();
-    recordMarketImpulse(9, `全グループ資金${formatCurrency(totalAmount)}が流入`);
+    recordOwnershipImpulse(9, `全グループ資金${formatCurrency(totalAmount)}が流入`);
     triggerEffect(`+${formatCurrency(totalAmount)}`, 'player');
     triggerShake();
     addLog(`▶ 【全グループ一括要求】合計 ${formatCurrency(totalAmount)} を一挙投入！`, 'subs');
@@ -634,7 +631,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setAllianceSupportUsed(true);
     triggerPStackWobble();
     soundFx.playBigCash();
-    recordMarketImpulse(7.5, `支援資金${formatCurrency(amount)}が流入`);
+    recordOwnershipImpulse(7.5, `支援資金${formatCurrency(amount)}が流入`);
     triggerEffect(`+${formatCurrency(amount)}`, 'player');
     triggerShake();
     addLog(`▶ 【同盟支援: ${alliance.allyName}】同盟資金 ${formatCurrency(amount)} 注入！`, 'subs');
@@ -864,14 +861,38 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <span className="text-indigo-300">{industryInfluence.playerBonus > 0 ? `自社出資 +${Math.round(industryInfluence.playerBonus * 100)}%` : '次の保有で影響力が上昇'}{industryInfluence.enemyBudgetDiscount > 0 && ' / 敵予算 -10%'}</span>
           </div>
         )}
-        <BattleMarketChart
-          candles={marketCandles}
-          latestEvent={latestMarketEvent}
-          gaugeSpeed={gaugeSpeed}
-          playerForce={playerForce}
-          enemyForce={enemyForce}
-          trendLabel={trendLabel}
-        />
+        <section className={`ownership-battle rounded-xl border p-3 ${finishingPush ? 'ownership-battle--finishing border-amber-300' : enemyBudgetExhausted ? 'border-emerald-400/70' : 'border-cyan-500/35'}`}>
+          <div className="mb-2 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-[9px] font-black tracking-[.22em] text-cyan-300">LIVE OWNERSHIP</p>
+              <p className="mt-0.5 text-[10px] text-slate-400">この一本が勝敗です。右端100%へ押し切れば買収成功。</p>
+            </div>
+            <span className={`rounded px-2 py-1 text-[9px] font-black ${enemyBudgetExhausted ? 'bg-emerald-400/15 text-emerald-200' : 'bg-rose-500/10 text-rose-200'}`}>
+              {enemyBudgetExhausted ? '敵防衛崩壊 — 次の直接出資で決着' : `敵残予算 ${formatCurrency(opponentReserve)}`}
+            </span>
+          </div>
+
+          <div className="mb-1 flex items-baseline justify-between font-black">
+            <span className="text-amber-300">自社所有率 <strong className="font-mono text-2xl">{Math.max(0, Math.round((100 - gauge) / 2))}%</strong></span>
+            <span className="text-right text-rose-300"><strong className="font-mono text-2xl">{Math.max(0, Math.round((100 + gauge) / 2))}%</strong> 敵所有率</span>
+          </div>
+
+          <div className="ownership-track relative h-14 overflow-hidden rounded-lg border border-slate-600 bg-rose-950 shadow-inner">
+            <div className="ownership-track__player absolute inset-y-0 left-0 bg-gradient-to-r from-amber-700 via-amber-400 to-yellow-200 transition-[width] duration-75" style={{ width: `${Math.max(0, Math.min(100, (100 - gauge) / 2))}%` }} />
+            <div className="absolute inset-y-0 left-1/2 w-px bg-white/35" />
+            <div className="ownership-track__clash absolute inset-y-0 w-1 bg-white shadow-[0_0_18px_rgba(255,255,255,.95)] transition-[left] duration-75" style={{ left: `${Math.max(0, Math.min(100, (100 - gauge) / 2))}%` }} />
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-950 drop-shadow-sm">自社 →</span>
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-black text-rose-100">← 競合</span>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px]">
+            <span className={`font-black ${gaugeSpeed < -0.05 ? 'text-amber-300' : gaugeSpeed > 0.05 ? 'text-rose-300' : 'text-slate-300'}`}>
+              {gaugeSpeed < -0.05 ? '≫ 自社が押している' : gaugeSpeed > 0.05 ? '≪ 敵に押し返されている' : '＝ 所有率が拮抗'}
+            </span>
+            <span className="font-mono text-slate-400">圧力 自社 {playerForce.toFixed(1)} / 敵 {enemyForce.toFixed(1)} ・ {trendLabel}</span>
+          </div>
+          <p className="ownership-event mt-2 rounded-md border border-slate-700 bg-slate-950/80 px-2.5 py-1.5 text-[10px] font-bold text-cyan-100">{ownershipEvent}</p>
+        </section>
 
         {/* REAL-TIME 3D MONEY & CHIP STACK ARENA (画面中央 カジノチップ積載対決グラフィック) */}
         <div className={`bg-[#050814] border border-amber-500/40 rounded-xl p-2.5 relative overflow-hidden shadow-2xl ${finishingPush ? 'final-push-arena' : ''}`}>
@@ -992,57 +1013,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 );
               })()}
             </div>
-          </div>
-        </div>
-
-        {/* Investment Push Direction & Meter Labels */}
-        <div className="flex items-center justify-between text-[11px] font-bold px-1">
-          <div className="flex items-center gap-1 text-yellow-300">
-            <span className="text-slate-400 font-normal">自社支配率:</span>
-            <span className="font-mono">{Math.max(0, Math.round((100 - gauge) / 2))}%</span>
-          </div>
-
-          <div className="font-mono text-[10px]">
-            {gaugeSpeed < -0.1 ? (
-              <span className="text-yellow-300 font-bold tracking-wider animate-pulse">
-                自社優勢 敵陣へ攻め込み中 &gt;&gt;&gt;
-              </span>
-            ) : gaugeSpeed > 0.1 ? (
-              <span className="text-rose-400 font-bold tracking-wider animate-pulse">
-                &lt;&lt;&lt; 敵優勢 押し返されています
-              </span>
-            ) : (
-              <span className="text-slate-400">=== 攻防伯仲 ===</span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1 text-rose-400">
-            <span className="text-slate-400 font-normal">敵残存率:</span>
-            <span className="font-mono">{Math.max(0, Math.round((100 + gauge) / 2))}%</span>
-          </div>
-        </div>
-
-        {/* TUG-OF-WAR BAR TRACK (自社=左 敵=右。優勢で右へ進む) */}
-        <div
-          className="relative w-full h-6 bg-[#040817] rounded-md border border-slate-700 overflow-hidden shadow-inner flex items-center"
-          title="敵の防衛予算を0にしてから直接出資。最終押し込みで金色の針が右端WINへ届くと買収成功です。左端LOSEは失敗です。"
-        >
-          <div className="absolute left-0 top-0 bottom-0 w-1/4 bg-rose-500/20 border-r border-rose-500/40 flex items-center justify-start pl-1">
-            <span className="text-[8px] font-black text-rose-400/80">LOSE (自社拠点)</span>
-          </div>
-          <div className="absolute right-0 top-0 bottom-0 w-1/4 bg-yellow-500/20 border-l border-yellow-500/40 flex items-center justify-end pr-1">
-            <span className="text-[8px] font-black text-yellow-300/80">WIN (買収完遂)</span>
-          </div>
-          <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-amber-400/80 z-10" />
-
-          {/* Golden Needle (Moves Right when Player pushes and gains advantage) */}
-          <div
-            className="absolute top-0 bottom-0 w-5 -ml-2.5 rounded bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 border border-amber-100 shadow-[0_0_8px_rgba(255,215,0,0.9)] transition-all duration-75 flex items-center justify-center z-20"
-            style={{
-              left: `${Math.max(0, Math.min(100, ((100 - gauge) / 200) * 100))}%`,
-            }}
-          >
-            <div className="w-0.5 h-3 bg-[#1f1201] rounded-full" />
           </div>
         </div>
 
@@ -1475,7 +1445,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <div className="grid grid-cols-1 gap-2 p-3 text-xs sm:grid-cols-2">
               <div className="rounded-xl border border-amber-500/25 bg-amber-950/15 p-3">
                 <strong className="mb-1 block text-amber-300">1. 勝利条件</strong>
-                <p className="leading-relaxed text-slate-300">まず敵の防衛予算を0にします。0は防衛不能の合図で、まだ勝利ではありません。次の直接出資で最終押し込みが始まり、金色の針が「WIN」へ届いた瞬間に勝利です。</p>
+                <p className="leading-relaxed text-slate-300">まず敵の防衛予算を0にします。0は防衛不能の合図で、まだ勝利ではありません。次の直接出資で最終押し込みが始まり、自社所有率が100%へ届いた瞬間に勝利です。</p>
               </div>
               <div className="rounded-xl border border-amber-500/25 bg-amber-950/15 p-3">
                 <strong className="mb-1 block text-amber-300">2. 直接出資</strong>
@@ -1668,7 +1638,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
               <p className="text-xs text-slate-300">
                 {winner === 'player'
-                  ? '敵の防衛資金を枯らし、最後の直接出資でWINまで押し切って買収を成立させました。'
+                  ? '敵の防衛資金を枯らし、最後の直接出資で自社所有率100%まで押し切り、買収を成立させました。'
                   : '敵陣営の防衛資金に対抗しきれず撤退。直接出資の75%が撤退損として確定します。'}
               </p>
             </div>

@@ -15,6 +15,7 @@ import { HelpTip } from './HelpTip';
 import { HELP_TEXT } from '../data/helpText';
 
 interface CartelAllianceViewProps {
+  companyName: string;
   cartels: Cartel[];
   properties: Property[];
   alliance: AllianceState;
@@ -24,6 +25,7 @@ interface CartelAllianceViewProps {
 }
 
 export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
+  companyName,
   cartels,
   properties,
   alliance,
@@ -76,7 +78,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
         <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
           <div className="flex items-start gap-2">
             <span className="text-indigo-400 font-bold">1. 不可侵契約:</span>
-            <span>同盟企業からタタル商会への対抗買収が一切仕掛けられなくなります。</span>
+            <span>同盟企業から{companyName}への対抗買収が一切仕掛けられなくなります。</span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-indigo-400 font-bold">2. 同盟資金要求:</span>

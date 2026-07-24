@@ -6,6 +6,7 @@ import {
   Cartel,
   AllianceState,
   GameLog,
+  CommunityType,
 } from './types';
 import {
   INITIAL_PROPERTIES,
@@ -23,8 +24,10 @@ import { SkillsSynergyView } from './components/SkillsSynergyView';
 import { CartelAllianceView } from './components/CartelAllianceView';
 import { BattleModal } from './components/BattleModal';
 import { TatarAdvisor } from './components/TatarAdvisor';
-import { GAME_WORLD, TRADE_COMMUNITIES } from './data/worldData';
-import { Bell } from 'lucide-react';
+import { LaunchIntro } from './components/LaunchIntro';
+import { FANKIT_ART } from './data/fankitAssets';
+import { COMMUNITY_CAMPAIGN_ORDER, GAME_WORLD, TRADE_COMMUNITIES } from './data/worldData';
+import { Bell, MapPinned } from 'lucide-react';
 
 export default function App() {
   // --- Game Core State ---
@@ -51,6 +54,22 @@ export default function App() {
   const [activeBattleProperty, setActiveBattleProperty] = useState<Property | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [logs, setLogs] = useState<GameLog[]>([]);
+  const [companyName, setCompanyName] = useState<string>(GAME_WORLD.companyName);
+  const [showLaunchIntro, setShowLaunchIntro] = useState(true);
+  const [unlockNotice, setUnlockNotice] = useState<CommunityType | null>(null);
+
+  useEffect(() => {
+    const savedName = window.localStorage.getItem('tataru-company-name');
+    if (savedName) setCompanyName(savedName);
+  }, []);
+
+  const completeLaunchIntro = () => {
+    const normalizedName = companyName.trim() || GAME_WORLD.companyName;
+    setCompanyName(normalizedName);
+    window.localStorage.setItem('tataru-company-name', normalizedName);
+    soundFx.playBigCash();
+    setShowLaunchIntro(false);
+  };
 
   const addGameLog = (
     message: string,
@@ -100,6 +119,23 @@ export default function App() {
   const conqueredCommunityCount = communityProgress.filter(
     (community) => community.conquered
   ).length;
+
+  const unlockedCommunityIds = useMemo(() => {
+    const unlocked = new Set<CommunityType>();
+    COMMUNITY_CAMPAIGN_ORDER.forEach((communityId, index) => {
+      const priorCitiesConquered = COMMUNITY_CAMPAIGN_ORDER
+        .slice(0, index)
+        .every((priorId) => communityProgress.find((city) => city.id === priorId)?.conquered);
+      if (index === 0 || priorCitiesConquered) unlocked.add(communityId);
+    });
+    return unlocked;
+  }, [communityProgress]);
+
+  useEffect(() => {
+    if (!unlockNotice) return;
+    const timer = window.setTimeout(() => setUnlockNotice(null), 4200);
+    return () => window.clearTimeout(timer);
+  }, [unlockNotice]);
 
   // 業界掌握の第一段階。保有数に応じて、同業界の買収を少し有利にする。
   const industryInfluence = useMemo(() => {
@@ -163,6 +199,12 @@ export default function App() {
 
   // Handlers
   const handleStartBuyout = (property: Property) => {
+    if (!unlockedCommunityIds.has(property.community)) {
+      soundFx.playWarning();
+      addGameLog(`【航路未開通】${property.community}へ進むには、手前の都市を制覇してください。`, 'warning');
+      setActiveTab('market');
+      return;
+    }
     soundFx.playCoin();
     setActiveBattleProperty(property);
   };
@@ -193,11 +235,18 @@ export default function App() {
     setTotalFunds((prev) => Math.max(0, prev - brokerageFee - settlementCost + battleCashDelta + (winner === 'player' ? victoryReward : 0)));
 
     if (winner === 'player') {
+      const conquersCity = properties
+        .filter((property) => property.community === targetProperty.community)
+        .every((property) => property.owner === 'player' || property.id === targetProperty.id);
+      const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
+      const nextCommunity = COMMUNITY_CAMPAIGN_ORDER[campaignIndex + 1];
+      if (conquersCity && nextCommunity) setUnlockNotice(nextCommunity);
+
       // Transfer target property ownership to player
       setProperties((prev) =>
         prev.map((p) =>
           p.id === targetProperty.id
-            ? { ...p, owner: 'player', ownerName: GAME_WORLD.companyName, loyaltyRisk: 0 }
+            ? { ...p, owner: 'player', ownerName: companyName, loyaltyRisk: 0 }
             : p
         )
       );
@@ -356,8 +405,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950 flex flex-col">
+      {showLaunchIntro && (
+        <LaunchIntro companyName={companyName} onCompanyNameChange={setCompanyName} onComplete={completeLaunchIntro} />
+      )}
+
       {/* Header & Metric Navigation */}
       <Header
+        companyName={companyName}
         totalFunds={totalFunds}
         passiveRevenue={passiveRevenue}
         ownedCount={ownedProperties.length}
@@ -389,12 +443,14 @@ export default function App() {
           <MarketView
             properties={properties}
             totalFunds={totalFunds}
+            unlockedCommunityIds={unlockedCommunityIds}
             onStartBuyout={handleStartBuyout}
           />
         )}
 
         {activeTab === 'portfolio' && (
           <PortfolioView
+            companyName={companyName}
             properties={properties}
             totalFunds={totalFunds}
             onReduceLoyaltyRisk={handleReduceLoyaltyRisk}
@@ -414,6 +470,7 @@ export default function App() {
 
         {activeTab === 'cartels' && (
           <CartelAllianceView
+            companyName={companyName}
             cartels={cartels}
             properties={properties}
             alliance={alliance}
@@ -451,6 +508,18 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {unlockNotice && (
+        <button type="button" onClick={() => setUnlockNotice(null)} className="city-unlock fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/90 p-5 text-left">
+          <span className="city-unlock__card relative block w-full max-w-xl overflow-hidden rounded-2xl border border-amber-300/60 bg-slate-900 p-7 shadow-2xl">
+            <img src={FANKIT_ART.marketBackdrop} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover opacity-25" />
+            <span className="relative z-10 block text-[10px] font-black tracking-[.3em] text-cyan-300">NEW TRADE ROUTE</span>
+            <span className="relative z-10 mt-2 flex items-center gap-2 text-3xl font-black text-white"><MapPinned className="h-7 w-7 text-amber-300" /> {unlockNotice}</span>
+            <span className="relative z-10 mt-3 block text-sm text-slate-200">前の都市を制覇し、新たな交易都市への航路が開通しました。</span>
+            <span className="relative z-10 mt-5 inline-block rounded-lg bg-amber-400 px-4 py-2 text-xs font-black text-slate-950">都市マップへ進む</span>
+          </span>
+        </button>
+      )}
 
       {/* Real-time Buyout Battle Modal */}
       {activeBattleProperty && (

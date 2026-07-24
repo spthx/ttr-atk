@@ -1,6 +1,6 @@
 export const metadata = {
   title: "進撃の小人 — Attack on Tataru",
-  description: "タタル商会の交易実務担当として、FF14の主要都市と企業連合を制覇する金融ゲーム。",
+  description: "タタルの大繁盛商店を旗揚げし、FF14の主要都市を順番に制覇する金融ゲーム。",
 };
 
 export default function Home() {
