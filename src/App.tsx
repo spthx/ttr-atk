@@ -346,7 +346,7 @@ export default function App() {
 
   const handleResetFunds = () => {
     setTotalFunds(50_000);
-    addGameLog(`🔄 【テスト機能】資金を初期値 50,000円 にリセットしました。`, 'warning');
+    addGameLog(`🔄 【テスト機能】資金を初期値 50,000ギル にリセットしました。`, 'warning');
   };
 
   // Equipped skills object array

@@ -7,21 +7,21 @@ export function formatCurrency(amount: number): string {
     return '-' + formatCurrency(Math.abs(amount));
   }
   if (amount < 1_000) {
-    return `¥${Math.floor(amount).toLocaleString('ja-JP')}`;
+    return `${Math.floor(amount).toLocaleString('ja-JP')} ギル`;
   }
   if (amount < 1_000_000) {
-    return `¥${(amount / 1_000).toFixed(2)}K`;
+    return `${(amount / 1_000).toFixed(2)}K ギル`;
   }
   if (amount < 1_000_000_000) {
-    return `¥${(amount / 1_000_000).toFixed(2)}M`;
+    return `${(amount / 1_000_000).toFixed(2)}M ギル`;
   }
   if (amount < 1_000_000_000_000) {
-    return `¥${(amount / 1_000_000_000).toFixed(2)}B`;
+    return `${(amount / 1_000_000_000).toFixed(2)}B ギル`;
   }
   if (amount < 1_000_000_000_000_000) {
-    return `¥${(amount / 1_000_000_000_000).toFixed(2)}T`;
+    return `${(amount / 1_000_000_000_000).toFixed(2)}T ギル`;
   }
-  return `¥${(amount / 1_000_000_000_000_000).toFixed(2)}Qa`;
+  return `${(amount / 1_000_000_000_000_000).toFixed(2)}Qa ギル`;
 }
 
 export function formatNumber(amount: number): string {

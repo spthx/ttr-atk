@@ -31,6 +31,7 @@ import {
   CircleHelp,
 } from 'lucide-react';
 import { HELP_TEXT } from '../data/helpText';
+import { FANKIT_ART, getFankitJobArt } from '../data/fankitAssets';
 
 interface BattleModalProps {
   targetProperty: Property;
@@ -115,6 +116,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const initialEnemyCommitment = Math.round(enemyBudget * 0.38);
   const [opponentInvested, setOpponentInvested] = useState<number>(initialEnemyCommitment);
   const [opponentReserve, setOpponentReserve] = useState<number>(enemyBudget - initialEnemyCommitment);
+  const [finishingPush, setFinishingPush] = useState<boolean>(false);
+  const finishingPushRef = useRef(false);
+  const enemyBudgetExhausted = opponentReserve <= 0;
 
   const [remainingPlayerCash, setRemainingPlayerCash] = useState<number>(
     totalFunds - brokerageFee
@@ -184,8 +188,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setOpponentReserve(opponentReserveRef.current);
     setOpponentInvested((prev) => prev + actual);
     triggerEStackWobble();
+    soundFx.playCapitalImpact('opponent', actual / Math.max(targetProperty.marketPrice * 0.2, 1));
     triggerEffect(`+${formatCurrency(actual)}`, 'opponent');
     addLog(`▶ 【競合】${reason} ${formatCurrency(actual)} 投入（残予算 ${formatCurrency(opponentReserveRef.current)}）`, 'enemy');
+    if (opponentReserveRef.current <= 0) {
+      soundFx.playWarning();
+      addLog(`🚨 【防衛資金枯渇】競合はもう反撃資金を出せません。次の直接出資で最終押し込み可能！`, 'system');
+    }
     return actual;
   };
 
@@ -348,12 +357,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const effectiveOpponentInvested = opponentInvested * currentWind.enemyMultiplier;
 
       // Calculate gauge displacement speed dG/dt with Market Trend & Wind Multipliers
-      const v = calculateGaugeVelocity(
-        effectivePlayerInvested,
-        effectiveOpponentInvested,
-        targetProperty.marketPrice,
-        phiSkillMultiplier * trendMultiplier * currentWind.speedMultiplier * (1 + industryInfluence.playerBonus)
-      );
+      const v = finishingPushRef.current
+        ? -36
+        : calculateGaugeVelocity(
+            effectivePlayerInvested,
+            effectiveOpponentInvested,
+            targetProperty.marketPrice,
+            phiSkillMultiplier * trendMultiplier * currentWind.speedMultiplier * (1 + industryInfluence.playerBonus)
+          );
 
       setGaugeSpeed(v);
 
@@ -363,8 +374,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
         // Victory Condition ($G \le -100$)
         if (nextG <= -100) {
-          handleFinish('player');
-          return -100;
+          if (finishingPushRef.current) {
+            handleFinish('player');
+            return -100;
+          }
+          return -99;
         }
         // Defeat Condition ($G \ge +100$)
         if (nextG >= 100) {
@@ -375,7 +389,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       });
 
       // Opponent AI Mind & Action Tick
-      if (now >= aiNextTickRef.current) {
+      if (!finishingPushRef.current && opponentReserveRef.current > 0 && now >= aiNextTickRef.current) {
         const baseInterval = 2600;
         const aiInterval = isDemoralized ? baseInterval * 1.5 : baseInterval;
         aiNextTickRef.current = now + aiInterval;
@@ -435,6 +449,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     industryInfluence.playerBonus,
     isDemoralized,
     gauge,
+    finishingPush,
   ]);
 
   // 交渉中も市場の細かな値動きと保有物件の収益で、可処分資金が少しずつ変わる。
@@ -485,7 +500,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   // Command: Invest Company Funds (自社資金を出す)
   const handleInvestCompany = (multiplierLevel: number) => {
-    if (isEnded) return;
+    if (isEnded || finishingPushRef.current) return;
     const amount = getInvestmentCost(targetProperty.marketPrice, multiplierLevel);
 
     if (remainingPlayerCash < amount) {
@@ -506,11 +521,21 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setRemainingPlayerCash((prev) => prev - amount);
     setPlayerCompanyInvested((prev) => prev + amount);
     triggerPStackWobble();
-    soundFx.playCoin();
+    soundFx.playCapitalImpact('player', multiplierLevel / 10);
     triggerEffect(`+${formatCurrency(amount)}`, 'player');
     if (multiplierLevel >= 5) triggerShake();
     const lvlCfg = INVESTMENT_LEVELS.find((i) => i.level === multiplierLevel) || INVESTMENT_LEVELS[0];
     addLog(`▶ 【自社出資】Lv${multiplierLevel}(${lvlCfg.label}) ${formatCurrency(amount)} 投入！`, 'player');
+
+    if (opponentReserveRef.current <= 0) {
+      finishingPushRef.current = true;
+      setFinishingPush(true);
+      setAutoInvestActive(false);
+      triggerShake();
+      soundFx.playFinalPush();
+      triggerEffect('FINAL PUSH!', 'skill');
+      addLog(`⚔️ 【最終押し込み】敵は防衛不能！ ${formatCurrency(amount)} を積み、WINまで一気に押し切ります！`, 'result');
+    }
   };
 
   // Command: Demand Funds from Subsidiary (グループ会社要求)
@@ -689,6 +714,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   const getAdvisorMessage = () => {
     if (isEnded) return '結果を整理して、商会の帳簿へ反映してくださいです。';
+    if (finishingPush) return '⚔️ 最終押し込み中！ 金色の針がWINへ届いた瞬間に買収成立ですっぺ！';
+    if (enemyBudgetExhausted) return '🚨 敵は防衛不能！ 「直接出資」をもう一度押せば最終押し込み開始ですっぺ！';
     if (isTutorial) return '初回はLv1～3の少額出資から。金色の針を右のWINまで進めるですっぺ！';
     if (aiMindState === 'charging') {
       return '⚠️ 相手が対抗資金を準備中ですっぺ！ 溜まり切る前に直接出資で畳みかけるです！';
@@ -706,6 +733,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
   return (
     <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col h-[100dvh] max-h-[100dvh] w-full overflow-hidden font-sans select-none touch-manipulation">
+      <img src={FANKIT_ART.battleBackdrop} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover opacity-30" />
+      <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-[1px]" />
       {/* Floating Effects Layer */}
       <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
         {effects.map((fx) => (
@@ -726,7 +755,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       </div>
 
       {/* 1. SLEEK COMPACT HEADER */}
-      <div className="bg-slate-900 px-3 py-1.5 border-b border-slate-800 flex items-center justify-between shrink-0 h-10 shadow">
+      <div className="relative z-10 bg-slate-900/95 px-3 py-1.5 border-b border-slate-800 flex items-center justify-between shrink-0 h-10 shadow">
         <div className="flex items-center gap-1.5 min-w-0">
           <Crown className="w-4 h-4 text-amber-400 shrink-0" />
           <span className="font-extrabold text-slate-100 text-sm truncate">
@@ -778,7 +807,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       </div>
 
       {/* 2. DYNAMIC MONEY STACK GRAPHIC & TUG-OF-WAR BATTLE METER */}
-      <div className="bg-slate-900/95 border-b border-slate-800 p-2.5 shrink-0 space-y-2 shadow-xl relative overflow-hidden">
+      <div className="relative z-10 bg-slate-900/95 border-b border-slate-800 p-2.5 shrink-0 space-y-2 shadow-xl overflow-hidden">
         {industryInfluence.owned > 0 && (
           <div
             className="flex items-center justify-between rounded-lg border border-indigo-500/40 bg-indigo-950/40 px-2.5 py-1 text-[10px] font-bold"
@@ -789,7 +818,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           </div>
         )}
         {/* REAL-TIME 3D MONEY & CHIP STACK ARENA (画面中央 カジノチップ積載対決グラフィック) */}
-        <div className="bg-[#050814] border border-amber-500/40 rounded-xl p-2.5 relative overflow-hidden shadow-2xl">
+        <div className={`bg-[#050814] border border-amber-500/40 rounded-xl p-2.5 relative overflow-hidden shadow-2xl ${finishingPush ? 'final-push-arena' : ''}`}>
+          <img src={FANKIT_ART.battleBackdrop} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.13] mix-blend-screen" />
           <div className="flex items-center justify-between text-[11px] font-bold mb-1.5 px-1 relative z-10">
             <div className="flex items-center gap-1 text-yellow-300 bg-slate-950/80 px-2 py-0.5 rounded-lg border border-amber-500/30">
               <Coins className="w-3.5 h-3.5 text-yellow-400 animate-bounce shrink-0" />
@@ -807,10 +837,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             </div>
           </div>
           <div className="flex items-center justify-between gap-2 px-1 text-[10px] font-mono">
-            <span className="text-slate-400">敵防衛予算: <strong className="text-rose-300">{formatCurrency(opponentReserve)}</strong> / {formatCurrency(enemyBudget)}（開始時に固定）</span>
+            <span className={enemyBudgetExhausted ? 'text-amber-200 font-black' : 'text-slate-400'}>
+              敵防衛予算: <strong className={enemyBudgetExhausted ? 'text-amber-300' : 'text-rose-300'}>{formatCurrency(opponentReserve)}</strong> / {formatCurrency(enemyBudget)}
+              {enemyBudgetExhausted ? ' — 防衛不能' : '（開始時に固定）'}
+            </span>
             <span className={cashFlow >= 0 ? 'text-emerald-300' : 'text-rose-300'}>
               市場損益: {cashFlow >= 0 ? '+' : ''}{formatCurrency(cashFlow)}/秒
             </span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1 text-center text-[9px] font-bold">
+            <span className="rounded border border-emerald-500/30 bg-emerald-950/40 px-1 py-1 text-emerald-300">① 防衛資金を削る</span>
+            <span className={`rounded border px-1 py-1 ${enemyBudgetExhausted ? 'border-emerald-400 bg-emerald-950/50 text-emerald-200' : 'border-slate-700 bg-slate-950 text-slate-500'}`}>② 残高0＝防衛不能</span>
+            <span className={`rounded border px-1 py-1 ${finishingPush ? 'animate-pulse border-amber-300 bg-amber-500/20 text-amber-200' : enemyBudgetExhausted ? 'border-amber-500 bg-amber-950/60 text-amber-300' : 'border-slate-700 bg-slate-950 text-slate-500'}`}>③ 直接出資で押し切る</span>
           </div>
 
           {/* CENTER STAGE WITH ABSOLUTE POSITIONED 3D CHIP TOWER STACKS */}
@@ -826,6 +865,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
             {/* LEFT: PLAYER GOLD CHIP TOWER STACK (自社黄金チップ積載タワー - CSS絶対配置) */}
             <div className="relative w-28 h-full flex items-end justify-start z-10 pb-1">
+              <img src={getFankitJobArt(targetProperty.industry)} alt="" aria-hidden="true" className="absolute -left-3 bottom-0 h-20 w-20 object-contain opacity-35 drop-shadow-[0_0_10px_rgba(251,191,36,0.6)]" />
               {(() => {
                 const pChipCount = Math.min(12, Math.max(1, Math.floor(totalPlayerInvested / ((targetProperty.marketPrice || 1000) * 0.08))));
                 return (
@@ -835,18 +875,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     {Array.from({ length: pChipCount }).map((_, chipIdx) => (
                       <div
                         key={`player-chip-${chipIdx}`}
-                        className={`absolute w-12 h-3.5 rounded-full bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-600 border border-yellow-100 shadow-[0_2px_4px_rgba(0,0,0,0.85)] flex items-center justify-center text-[7px] font-black text-amber-950 transition-all duration-300 ${
+                        className={`gil-chip gil-chip--player absolute transition-all duration-300 ${
                           pStackWobble ? 'animate-bounce' : ''
                         }`}
                         style={{
                           bottom: `${chipIdx * 5}px`,
                           zIndex: chipIdx + 1,
-                          transform: `scale(${1 - chipIdx * 0.015})`,
+                          transform: `translateX(${(chipIdx % 3 - 1) * 2}px) rotate(${(chipIdx % 2 ? 1 : -1) * 2}deg) scale(${1 - chipIdx * 0.015})`,
                         }}
                       >
-                        <div className="w-8 h-1.5 rounded-full border border-dashed border-amber-900/40 flex items-center justify-center text-[6px] font-mono">
-                          ¥
-                        </div>
+                        <div className="gil-chip-face"><span>G</span></div>
                       </div>
                     ))}
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-black text-amber-300 bg-slate-950/90 px-1.5 py-0.2 rounded border border-amber-500/50 shadow whitespace-nowrap z-30">
@@ -863,12 +901,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <span className="text-xs font-black text-yellow-300 tracking-tighter">VS</span>
               </div>
               <span className="text-[8px] font-mono text-amber-200/80 mt-1 font-bold">
-                {gaugeSpeed < -0.1 ? '自社買収推進中 ➔' : gaugeSpeed > 0.1 ? '⬅ 競合防衛激化' : '買収攻防伯仲'}
+                {finishingPush ? '⚔ 最終押し込み中 ⚔' : gaugeSpeed < -0.1 ? '自社買収推進中 ➔' : gaugeSpeed > 0.1 ? '⬅ 競合防衛激化' : '買収攻防伯仲'}
               </span>
             </div>
 
             {/* RIGHT: OPPONENT DARK CHIP TOWER STACK (競合裏資金チップタワー - CSS絶対配置) */}
             <div className="relative w-28 h-full flex items-end justify-end z-10 pb-1">
+              <img src={FANKIT_ART.jobs[1]} alt="" aria-hidden="true" className="absolute -right-3 bottom-0 h-20 w-20 object-contain opacity-30 grayscale drop-shadow-[0_0_10px_rgba(244,63,94,0.6)]" />
               {(() => {
                 const eChipCount = Math.min(12, Math.max(1, Math.floor(opponentInvested / ((targetProperty.marketPrice || 1000) * 0.08))));
                 return (
@@ -878,18 +917,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     {Array.from({ length: eChipCount }).map((_, chipIdx) => (
                       <div
                         key={`opp-chip-${chipIdx}`}
-                        className={`absolute w-12 h-3.5 rounded-full bg-gradient-to-r from-rose-500 via-red-600 to-purple-800 border border-rose-300 shadow-[0_2px_4px_rgba(0,0,0,0.85)] flex items-center justify-center text-[7px] font-black text-rose-100 transition-all duration-300 ${
+                        className={`gil-chip gil-chip--enemy absolute transition-all duration-300 ${
                           eStackWobble ? 'animate-bounce' : ''
                         }`}
                         style={{
                           bottom: `${chipIdx * 5}px`,
                           zIndex: chipIdx + 1,
-                          transform: `scale(${1 - chipIdx * 0.015})`,
+                          transform: `translateX(${(chipIdx % 3 - 1) * 2}px) rotate(${(chipIdx % 2 ? 1 : -1) * 2}deg) scale(${1 - chipIdx * 0.015})`,
                         }}
                       >
-                        <div className="w-8 h-1.5 rounded-full border border-dashed border-rose-200/40 flex items-center justify-center text-[6px] font-mono">
-                          $
-                        </div>
+                        <div className="gil-chip-face"><span>G</span></div>
                       </div>
                     ))}
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-black text-rose-300 bg-slate-950/90 px-1.5 py-0.2 rounded border border-rose-500/50 shadow whitespace-nowrap z-30">
@@ -932,7 +969,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         {/* TUG-OF-WAR BAR TRACK (自社=左 敵=右。優勢で右へ進む) */}
         <div
           className="relative w-full h-6 bg-[#040817] rounded-md border border-slate-700 overflow-hidden shadow-inner flex items-center"
-          title="金色の針を右端のWINまで進めると買収成功、左端のLOSEまで押されると失敗です。"
+          title="敵の防衛予算を0にしてから直接出資。最終押し込みで金色の針が右端WINへ届くと買収成功です。左端LOSEは失敗です。"
         >
           <div className="absolute left-0 top-0 bottom-0 w-1/4 bg-rose-500/20 border-r border-rose-500/40 flex items-center justify-start pl-1">
             <span className="text-[8px] font-black text-rose-400/80">LOSE (自社拠点)</span>
@@ -958,7 +995,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       </div>
 
       {/* 3. PRIME THUMB-OPTIMIZED COMMAND PANEL (BOTTOM SHEET STYLE) */}
-      <div className="flex-1 p-2 flex flex-col justify-between space-y-1.5 overflow-y-auto bg-slate-950">
+      <div className="relative z-10 flex-1 p-2 flex flex-col justify-between space-y-1.5 overflow-y-auto bg-slate-950/95">
         {/* TOP ADVISOR & MARKET TACTICAL TICKER */}
         <div className="bg-slate-900 border border-slate-800 rounded-lg p-2 flex items-center justify-between text-xs gap-2 shrink-0">
           <div className="flex items-center gap-1.5 shrink-0 font-bold" title={HELP_TEXT.marketTrend}>
@@ -1057,16 +1094,20 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   <div className="space-y-1">
                     <button
                       onClick={() => handleInvestCompany(selectedInvestLevel)}
-                      disabled={!canAffordSelected || isEnded}
+                      disabled={!canAffordSelected || isEnded || finishingPush}
                       className={`w-full py-3 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95 touch-manipulation select-none cursor-pointer ${
-                        canAffordSelected && !isEnded
+                        canAffordSelected && !isEnded && !finishingPush
                           ? 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-300 text-slate-950 shadow-amber-500/30 border border-amber-200'
                           : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
                       }`}
                     >
                       <Coins className="w-4 h-4 shrink-0 text-slate-950" />
                       <span>
-                        【Lv{selectedInvestLevel} ({selectedCfg.label})】{formatCurrency(selectedCost)} を出資投入！
+                        {finishingPush
+                          ? '最終押し込み中… WIN到達を確認！'
+                          : enemyBudgetExhausted
+                          ? `【決着】${formatCurrency(selectedCost)} を積んで押し切る！`
+                          : `【Lv${selectedInvestLevel} (${selectedCfg.label})】${formatCurrency(selectedCost)} を出資投入！`}
                       </span>
                     </button>
                     <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono px-1">
@@ -1317,7 +1358,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       {/* 4. BOTTOM REALTIME TICKER / VICTORY BANNER (32px FIXED) */}
       <div
         onClick={() => setShowLogModal(true)}
-        className="bg-slate-900 px-3 py-1 border-t border-slate-800 flex items-center justify-between shrink-0 h-9 shadow-inner cursor-pointer hover:bg-slate-850 transition-colors"
+        className="relative z-10 bg-slate-900 px-3 py-1 border-t border-slate-800 flex items-center justify-between shrink-0 h-9 shadow-inner cursor-pointer hover:bg-slate-850 transition-colors"
         title="タップして全戦局ログ一覧を開く"
       >
         {isEnded ? (
@@ -1378,7 +1419,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <div className="grid grid-cols-1 gap-2 p-3 text-xs sm:grid-cols-2">
               <div className="rounded-xl border border-amber-500/25 bg-amber-950/15 p-3">
                 <strong className="mb-1 block text-amber-300">1. 勝利条件</strong>
-                <p className="leading-relaxed text-slate-300">出資で金色の針を右側の「WIN」へ進めます。左側の「LOSE」へ到達すると失敗です。</p>
+                <p className="leading-relaxed text-slate-300">まず敵の防衛予算を0にします。0は防衛不能の合図で、まだ勝利ではありません。次の直接出資で最終押し込みが始まり、金色の針が「WIN」へ届いた瞬間に勝利です。</p>
               </div>
               <div className="rounded-xl border border-amber-500/25 bg-amber-950/15 p-3">
                 <strong className="mb-1 block text-amber-300">2. 直接出資</strong>
@@ -1571,7 +1612,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
               <p className="text-xs text-slate-300">
                 {winner === 'player'
-                  ? '敵陣営の資金抵抗を退け、対象物件の過半数株式を獲得しました。'
+                  ? '敵の防衛資金を枯らし、最後の直接出資でWINまで押し切って買収を成立させました。'
                   : '敵陣営の防衛資金に対抗しきれず撤退。直接出資の75%が撤退損として確定します。'}
               </p>
             </div>

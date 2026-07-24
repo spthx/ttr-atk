@@ -57,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Simple Clean Title */}
         <div className="flex items-center space-x-2 shrink-0">
           <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950 font-black shadow-md text-sm">
-            ¥
+            G
           </div>
           <div className="min-w-0">
             <h1 className="text-base sm:text-lg font-black tracking-tight text-amber-400 truncate">
@@ -89,7 +89,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={() => onAddFunds(100_000_000)}
                 className="px-2 py-1 rounded bg-amber-950 hover:bg-amber-900 border border-amber-500/50 text-amber-300 text-[10px] font-extrabold cursor-pointer transition-all active:scale-95 shadow"
-                title="テスト用：資金に +1億円 補充"
+                title="テスト用：資金に +1億ギル補充"
               >
                 🧪 +1億
               </button>
@@ -98,7 +98,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={onResetFunds}
                 className="px-1.5 py-1 rounded bg-slate-800 hover:bg-rose-950/80 border border-slate-700 hover:border-rose-500/60 text-slate-300 hover:text-rose-300 text-[10px] font-bold cursor-pointer transition-all active:scale-95"
-                title="テスト用：資金を初期値（5万円）にリセット"
+                title="テスト用：資金を初期値（5万ギル）にリセット"
               >
                 🔄 リセット
               </button>

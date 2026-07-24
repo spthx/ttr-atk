@@ -8,6 +8,7 @@ import { WindIndicator, WIND_CONDITIONS, WindCondition, WindType } from './WindI
 import { BeginnerGuide } from './BeginnerGuide';
 import { HelpTip } from './HelpTip';
 import { HELP_TEXT } from '../data/helpText';
+import { FANKIT_ART, getFankitJobArt } from '../data/fankitAssets';
 
 interface MarketViewProps {
   properties: Property[];
@@ -172,6 +173,24 @@ export const MarketView: React.FC<MarketViewProps> = ({
   return (
     <div className="space-y-3 font-sans">
       <BeginnerGuide />
+      <section className="relative min-h-28 overflow-hidden rounded-xl border border-amber-400/40 shadow-2xl">
+        <img
+          src={FANKIT_ART.marketBackdrop}
+          alt="FFXIVファンキットによる交易世界の背景"
+          className="absolute inset-0 h-full w-full object-cover object-center"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/80 to-slate-950/20" />
+        <div className="relative z-10 flex min-h-28 max-w-2xl flex-col justify-center px-5 py-4">
+          <p className="text-[10px] font-black tracking-[0.28em] text-amber-300">EORZEA GRAND MARKET</p>
+          <h2 className="mt-1 text-xl font-black text-white drop-shadow-lg sm:text-2xl">全都市を、ギルの力で商圏に。</h2>
+          <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-200 drop-shadow">
+            相場を読み、防衛予算を枯らし、最後の直接出資で押し切る。タタル商会の交易戦線です。
+          </p>
+        </div>
+        <div className="absolute bottom-2 right-3 z-10 rounded border border-white/20 bg-slate-950/65 px-2 py-1 text-[8px] text-slate-300 backdrop-blur-sm">
+          FFXIVファンキット素材使用
+        </div>
+      </section>
 
       {/* Insufficient Funds Warning Banner */}
       {noticeMessage && (
@@ -329,7 +348,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
           return (
             <div
               key={prop.id}
-              className={`bg-slate-900 border rounded-xl p-4 flex flex-col justify-between transition-all duration-200 hover:border-slate-600 shadow-md ${
+              className={`relative overflow-hidden bg-slate-900 border rounded-xl p-4 flex flex-col justify-between transition-all duration-200 hover:border-slate-600 shadow-md ${
                 isPlayerOwned
                   ? 'border-emerald-500/30 bg-emerald-950/10'
                   : prop.isCartelHQ
@@ -337,7 +356,13 @@ export const MarketView: React.FC<MarketViewProps> = ({
                   : 'border-slate-800'
               }`}
             >
-              <div>
+              <img
+                src={getFankitJobArt(`${prop.community}-${prop.industry}`)}
+                alt=""
+                aria-hidden="true"
+                className="pointer-events-none absolute -right-8 -top-7 h-36 w-36 object-contain opacity-[0.14] saturate-150"
+              />
+              <div className="relative z-10">
                 {/* Community, Industry & Owner Badges */}
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <div className="flex items-center gap-1.5 min-w-0">
@@ -465,6 +490,9 @@ export const MarketView: React.FC<MarketViewProps> = ({
           </button>
         </div>
       )}
-    </div>
+
+      <footer className="pb-2 text-center text-[9px] leading-relaxed text-slate-500">
+        本作は非公式・非営利の私用ファンゲームです。FFXIVファンキット素材を使用しています。© SQUARE ENIX
+      </footer>    </div>
   );
 };
