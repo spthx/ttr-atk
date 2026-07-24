@@ -16,23 +16,23 @@ const getAdvice = ({
   totalCommunityCount,
 }: TatarAdvisorProps) => {
   if (conqueredCommunityCount === totalCommunityCount && totalCommunityCount > 0) {
-    return '全都市の商圏を押さえました。数字を確認して、交易網を安定させるですっぺ！';
+    return '全都市の商圏を押さえたでっす！ 数字を確認して、交易網を安定させるでっす！';
   }
 
   if (ownedCount === 0) {
-    return 'まずは手の届く物件を選び、仲介手数料と残り資金を確認して報告するです。';
+    return 'まずは手の届く物件を選んで、仲介手数料と残り資金を確認するでっす。';
   }
 
   if (activeTab === 'market') {
-    return '都市ごとの物件数と相場を比べ、制覇までの残りが少ない市場から狙うですっぺ。';
+    return '都市ごとの物件数と相場を比べて、制覇までの残りが少ない市場から狙うでっす。';
   }
   if (activeTab === 'portfolio') {
-    return '傘下の独立危険度を点検するです。支援を求めすぎた会社には根回しが必要ですっぺ。';
+    return '傘下の独立危険度を点検するでっす。支援を求めすぎた会社には根回しが必要でっす。';
   }
   if (activeTab === 'skills') {
-    return '物件の組み合わせで使える手が増えます。次の買収先に合う技を選ぶです。';
+    return '物件の組み合わせで使える手が増えるでっす。次の買収先に合う技を選ぶでっす。';
   }
-  return '本部へ挑む前に傘下を切り崩し、同盟と資金余力を整えておくですっぺ。';
+  return '本部へ挑む前に傘下を切り崩して、同盟と資金余力を整えるでっす。';
 };
 
 export const TatarAdvisor: React.FC<TatarAdvisorProps> = (props) => (

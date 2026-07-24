@@ -31,6 +31,7 @@ import '../battle-buyout.css';
 import '../battle-balance.css';
 import '../battle-clarity.css';
 import '../battle-enemy-budget.css';
+import '../battle-command-refine.css';
 
 interface BattleModalProps {
   targetProperty: Property;
@@ -207,6 +208,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const ownership = Math.max(0, Math.min(100, (100 - gauge) / 2));
   const commandReady = commandProgress >= 100;
   const selectedCost = getInvestmentCost(targetProperty.marketPrice, selectedLevel);
+  const maxAffordableConfig = [...INVESTMENT_LEVELS].reverse()
+    .find((item) => getInvestmentCost(targetProperty.marketPrice, item.level) <= cash);
   const capitalGap = totalPlayerInvested - enemyInvested;
   const pressureRatio = capitalGap / Math.max(targetProperty.marketPrice, 1);
   const pressureMultiplier = 1 + Math.min(2.4, Math.abs(pressureRatio) * 3.2);
@@ -222,6 +225,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const enemyReservePercent = enemyReserve <= 0 ? 0 : Math.min(99.9, (enemyReserve / enemyReserveCapacity) * 100);
   const enemyReserveState = enemyReservePercent <= 0 ? 'short' : enemyReservePercent <= 10 ? 'critical'
     : enemyReservePercent <= 25 ? 'danger' : enemyReservePercent <= 50 ? 'warning' : 'healthy';
+  const alliedMobilizationEstimate = battleSubs.reduce(
+    (total, property) => total + Math.round(property.marketPrice * 0.24),
+    alliance.active && !allianceUsed ? Math.round(targetProperty.marketPrice * 0.24) : 0
+  );
+  const alliedSourcesAvailable = battleSubs.length > 0 || (alliance.active && !allianceUsed);
+
+  useEffect(() => {
+    if (selectedCost <= cash || !maxAffordableConfig) return;
+    setSelectedLevel(maxAffordableConfig.level);
+    setStatusText(`残高に合わせて投資額を「${maxAffordableConfig.label}」へ自動調整`);
+  }, [cash, maxAffordableConfig, selectedCost]);
 
   const groups = useMemo(() => {
     const grouped = new Map<string, Property[]>();
@@ -427,6 +441,65 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     addLog(`${property.name}へ第${(subRequestCounts[property.id] || 0) + 1}次資金要求。${formatCurrency(amount)}を調達、独立危険度${nextRisk}%。`, 'funds');
   };
 
+  const demandFromAllies = () => {
+    if (!alliedSourcesAvailable || !consumeCommand()) return;
+    let amount = 0;
+    let lost = 0;
+    const leaving: Property[] = [];
+    const survivors: Property[] = [];
+
+    battleSubs.forEach((member) => {
+      const nextRisk = Math.min(100, member.loyaltyRisk + 12);
+      if (Math.random() < calculateRebellionProbability(nextRisk)) {
+        leaving.push({ ...member, loyaltyRisk: 100 });
+        lost += subContributions[member.id] || 0;
+      } else {
+        survivors.push({ ...member, loyaltyRisk: nextRisk });
+        amount += Math.round(member.marketPrice * 0.24);
+      }
+    });
+
+    const allianceAmount = alliance.active && !allianceUsed
+      ? Math.round(targetProperty.marketPrice * 0.24)
+      : 0;
+    amount += allianceAmount;
+
+    setBattleSubs((current) => current
+      .filter((item) => !leaving.some((leaver) => leaver.id === item.id))
+      .map((item) => survivors.find((survivor) => survivor.id === item.id) || item));
+    setSubRequestCounts((current) => {
+      const next = { ...current };
+      battleSubs.forEach((member) => {
+        next[member.id] = (next[member.id] || 0) + 1;
+      });
+      return next;
+    });
+    setSubContributions((current) => {
+      const next = { ...current };
+      survivors.forEach((member) => {
+        next[member.id] = (next[member.id] || 0) + Math.round(member.marketPrice * 0.24);
+      });
+      leaving.forEach((member) => delete next[member.id]);
+      return next;
+    });
+    if (leaving.length) setRebelled((current) => [...current, ...leaving]);
+    if (allianceAmount > 0) setAllianceUsed(true);
+    setDemandInvested((value) => Math.max(0, value - lost) + amount);
+    const impact = amount > 0 ? Math.min(12, 3 + (amount / Math.max(targetProperty.marketPrice, 1)) * 9) : 0;
+    setGauge((value) => Math.max(-99, value - impact));
+    showFloater(`総動員 +${formatCurrency(amount)}`, 'player');
+    playMotion(leaving.length ? 'rebel' : 'player');
+    soundFx.playBigCash();
+
+    if (leaving.length) {
+      setStatusText(`全陣営総動員！ ${formatCurrency(amount)}を投入、${leaving.length}社が独立`);
+      addLog(`全陣営から${formatCurrency(amount)}を調達したが、${leaving.map((item) => item.name).join('・')}が独立。`, 'funds');
+    } else {
+      setStatusText(`全陣営総動員！ ${formatCurrency(amount)}を一斉投入`);
+      addLog(`傘下${survivors.length}社${allianceAmount > 0 ? 'と同盟' : ''}から${formatCurrency(amount)}を一斉調達。`, 'funds');
+    }
+  };
+
   const demandFromGroup = (key: string, name: string, members: Property[]) => {
     if (!consumeCommand()) return;
     let amount = 0;
@@ -541,11 +614,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   const resultAnalysis = winner === 'player'
     ? demandInvested > companyInvested
-      ? `勝因は交易網です。傘下・同盟から集めた${formatCurrency(demandInvested)}が競り値を押し上げ、最後まで優勢を維持しました。`
-      : `勝因は自社資金の決断です。競合を${formatCurrency(Math.max(0, capitalGap))}上回るまでギルを積み、所有率100%まで押し切りました。`
+      ? `勝因は交易網でっす。傘下・同盟から集めた${formatCurrency(demandInvested)}が競り値を押し上げ、最後まで優勢を維持できたでっす。`
+      : `勝因は自社資金の決断でっす。競合を${formatCurrency(Math.max(0, capitalGap))}上回るまでギルを積み、所有率100%まで押し切ったでっす。`
     : rebelled.length > 0
-      ? `${rebelled.length}社の独立で資金の山が崩れました。次は赤い資金源へ要求する前にネマワシを使うべきです。`
-      : `競合の競り値を${formatCurrency(Math.max(0, -capitalGap))}下回ったため、所有率を押し戻されました。`;
+      ? `${rebelled.length}社の独立で資金の山が崩れたでっす。次は赤い資金源へ要求する前にネマワシを使うでっす。`
+      : `競合の競り値を${formatCurrency(Math.max(0, -capitalGap))}下回って、所有率を押し戻されたでっす。`;
 
   return (
     <div className="buyout-screen">
@@ -687,21 +760,27 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 {INVESTMENT_LEVELS.map((item) => {
                   const cost = getInvestmentCost(targetProperty.marketPrice, item.level);
                   return (
-                    <button type="button" key={item.level} className={selectedLevel === item.level ? 'selected' : ''} onClick={() => setSelectedLevel(item.level)}>
+                    <button type="button" key={item.level} className={selectedLevel === item.level ? 'selected' : ''} onClick={() => setSelectedLevel(item.level)} disabled={cost > cash}>
                       <small>{item.label}</small><b>{formatCurrency(cost)}</b>
                     </button>
                   );
                 })}
               </div>
-              <button type="button" className="command-primary" onClick={investCompanyFunds} disabled={!commandReady || cash < selectedCost || !!winner}>
-                <HandCoins /><span>{commandReady ? `${formatCurrency(selectedCost)}を積む` : '命令待ち…'}</span>
+              <button type="button" className="command-primary" onClick={investCompanyFunds} disabled={!commandReady || !maxAffordableConfig || cash < selectedCost || !!winner}>
+                <HandCoins /><span>{!maxAffordableConfig ? '自己資金不足' : commandReady ? `${formatCurrency(selectedCost)}を積む` : '命令待ち…'}</span>
               </button>
-              <p>可処分資金 {formatCurrency(cash)}　／　資金差だけが所有率を動かします</p>
+              <p className={maxAffordableConfig && maxAffordableConfig.level < 5 ? 'investment-auto-note' : ''}>
+                可処分資金 {formatCurrency(cash)}　／　{maxAffordableConfig && maxAffordableConfig.level < 5 ? `残高連動：最大「${maxAffordableConfig.label}」へ自動調整` : '資金差だけが所有率を動かします'}
+              </p>
             </div>
           )}
 
           {panel === 'funds' && (
             <div className="command-panel command-panel--funds">
+              <button type="button" className="grand-allied-fund" onClick={demandFromAllies} disabled={!commandReady || !alliedSourcesAvailable || !!winner}>
+                <Users /><span><b>全陣営資金・総動員</b><small>傘下{battleSubs.length}社{alliance.active && !allianceUsed ? '＋同盟' : ''}・全社に独立判定</small></span>
+                <strong>約+{formatCurrency(alliedMobilizationEstimate)}</strong>
+              </button>
               {groups.length > 0 && (
                 <div className="group-funds">
                   {groups.map((group) => (
