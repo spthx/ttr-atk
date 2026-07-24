@@ -2,7 +2,6 @@ import React from 'react';
 import { formatCurrency } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
 import { Volume2, VolumeX, Building2, TrendingUp, ShieldCheck, Zap, MapPin } from 'lucide-react';
-import { GAME_WORLD } from '../data/worldData';
 import { HELP_TEXT } from '../data/helpText';
 
 interface HeaderProps {
@@ -56,19 +55,11 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="bg-slate-900 border-b border-slate-800 text-slate-100 sticky top-0 z-30 shadow-xl">
       {/* Top Bar */}
       <div className="max-w-7xl mx-auto px-3 py-2 sm:px-6 flex items-center justify-between gap-2">
-        {/* Simple Clean Title */}
-        <div className="flex items-center space-x-2 shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950 font-black shadow-md text-sm">
-            G
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-base sm:text-lg font-black tracking-tight text-amber-400 truncate">
-              {GAME_WORLD.title}
-            </h1>
-            <p className="hidden lg:block text-[9px] text-slate-400 leading-none mt-0.5">
-              実務担当：あなた ／ タタルは商会長・助言役
-            </p>
-          </div>
+        <div
+          className="w-8 h-8 shrink-0 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950 font-black shadow-md text-sm"
+          aria-label="タタルの大繁盛商店"
+        >
+          G
         </div>
 
         {/* Metrics Bar */}

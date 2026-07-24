@@ -7,7 +7,7 @@ export interface TradeCommunity {
 }
 
 export const GAME_WORLD = {
-  title: '進撃の小人 — Attack on Tataru',
+  title: 'タタルの野望',
   companyName: 'タタルの大繁盛商店',
   playerRole: '交易実務担当',
   advisorName: 'タタル',
