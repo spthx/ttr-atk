@@ -29,6 +29,7 @@ import { soundFx } from '../utils/audio';
 import { FANKIT_ART, getFankitJobArt } from '../data/fankitAssets';
 import '../battle-buyout.css';
 import '../battle-balance.css';
+import '../battle-clarity.css';
 
 interface BattleModalProps {
   targetProperty: Property;
@@ -565,23 +566,40 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             </span>
             <b>競合 {(100 - ownership).toFixed(1)}%</b>
           </div>
-          <div
-            className={`ownership-track ownership-track--${battleDirection} ${motion !== 'idle' ? 'ownership-track--impact' : ''}`}
-            aria-label={`自社所有率${ownership.toFixed(1)}%`}
-            style={{ '--flow-duration': `${Math.max(.32, 1.4 - Math.min(1, ownershipRate / 4))}s` } as React.CSSProperties}
-          >
-            <div className="ownership-track__player" style={{ width: `${ownership}%` }} />
-            <div className="ownership-track__enemy-flow" style={{ left: `${ownership}%` }} />
-            <div className="ownership-track__tension" style={{ left: `${ownership}%` }} />
-            <div className="ownership-track__ticks">{Array.from({ length: 9 }).map((_, index) => <i key={index} />)}</div>
-            <div className="ownership-track__marker" style={{ left: `${ownership}%` }}><i /><i /><i /></div>
-            <img className={`ownership-avatar ownership-avatar--player ${motion === 'player' ? 'avatar-attack' : ''}`} src={FANKIT_ART.tataru.windUp} alt="タタル" />
-            <img className={`ownership-avatar ownership-avatar--enemy ${motion === 'enemy' ? 'avatar-hit' : ''}`} src={getFankitJobArt(targetProperty.industry)} alt="競合代表" />
+          <div className="ownership-duel">
+            <div className="ownership-fighter ownership-fighter--player">
+              <img className={`ownership-avatar ownership-avatar--player ${motion === 'player' ? 'avatar-attack' : ''}`} src={FANKIT_ART.tataru.windUp} alt="タタル" />
+            </div>
+            <div
+              className={`ownership-track ownership-track--${battleDirection} ${motion !== 'idle' ? 'ownership-track--impact' : ''}`}
+              aria-label={`自社所有率${ownership.toFixed(1)}%`}
+              style={{ '--flow-duration': `${Math.max(.32, 1.4 - Math.min(1, ownershipRate / 4))}s` } as React.CSSProperties}
+            >
+              <div className="ownership-track__player" style={{ width: `${ownership}%` }} />
+              <div className="ownership-track__enemy-flow" style={{ left: `${ownership}%` }} />
+              <div className="ownership-track__tension" style={{ left: `${ownership}%` }} />
+              <div className="ownership-track__ticks">{Array.from({ length: 9 }).map((_, index) => <i key={index} />)}</div>
+              <div className="ownership-track__marker" style={{ left: `${ownership}%` }}><i /><i /><i /></div>
+            </div>
+            <div className="ownership-fighter ownership-fighter--enemy">
+              <img className={`ownership-avatar ownership-avatar--enemy ${motion === 'enemy' ? 'avatar-hit' : ''}`} src={getFankitJobArt(targetProperty.industry)} alt="競合代表" />
+            </div>
           </div>
           <p className={motion === 'rebel' ? 'status-rebel' : ''}>{statusText}</p>
         </section>
 
         <section className="capital-arena">
+          <div className="capital-scoreboard" aria-label="現在積まれている資金">
+            <div className="capital-score capital-score--player">
+              <small>自分の積み額</small>
+              <strong>{formatCurrency(totalPlayerInvested)}</strong>
+            </div>
+            <b className="capital-scoreboard__vs">VS</b>
+            <div className="capital-score capital-score--enemy">
+              <small>敵の積み額</small>
+              <strong>{formatCurrency(enemyInvested)}</strong>
+            </div>
+          </div>
           <div className="capital-arena__side">
             <span>自社の競り値</span>
             <GilTower amount={totalPlayerInvested} marketPrice={targetProperty.marketPrice} side="player" motion={motion} />

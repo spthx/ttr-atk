@@ -1,5 +1,5 @@
 {
-  "name": "タタルの野望",
+  "name": "タタルの大繁盛店",
   "description": "タタル商会の交易実務担当として、商魂と買収で全都市制覇を目指す金融シミュレーションゲーム",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

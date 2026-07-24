@@ -1,0 +1,150 @@
+.ownership-duel {
+  display: grid;
+  grid-template-columns: 3.15rem minmax(0, 1fr) 3.15rem;
+  align-items: end;
+  gap: .3rem;
+}
+
+.ownership-fighter {
+  position: relative;
+  z-index: 10;
+  display: grid;
+  height: 2.85rem;
+  place-items: end center;
+  border-bottom: 1px solid rgba(245, 196, 81, .25);
+  border-radius: .5rem;
+  background: radial-gradient(ellipse at center bottom, rgba(245, 196, 81, .18), transparent 67%);
+  pointer-events: none;
+}
+
+.ownership-fighter--enemy {
+  border-color: rgba(251, 113, 133, .28);
+  background: radial-gradient(ellipse at center bottom, rgba(251, 113, 133, .16), transparent 67%);
+}
+
+.ownership-fighter .ownership-avatar {
+  position: relative;
+  inset: auto;
+  bottom: -.08rem;
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+.ownership-fighter .ownership-avatar--player {
+  left: auto;
+}
+
+.ownership-fighter .ownership-avatar--enemy {
+  right: auto;
+}
+
+.ownership-duel .ownership-track {
+  align-self: end;
+  margin-bottom: .42rem;
+}
+
+.capital-arena {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.capital-scoreboard {
+  z-index: 5;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) 2.8rem minmax(0, 1fr);
+  align-items: center;
+  gap: .3rem;
+  margin: -.05rem .15rem .28rem;
+  padding: .3rem .45rem;
+  border: 1px solid rgba(245, 196, 81, .34);
+  border-radius: .55rem;
+  background: rgba(2, 6, 15, .9);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .04), 0 5px 18px rgba(0, 0, 0, .28);
+}
+
+.capital-score {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.capital-score small {
+  color: #8292a8;
+  font-size: .48rem;
+  font-weight: 900;
+}
+
+.capital-score strong {
+  overflow: hidden;
+  color: #ffe079;
+  font: 1000 .82rem/1.2 ui-monospace, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.capital-score--enemy {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.capital-score--enemy strong {
+  color: #ff91a7;
+}
+
+.capital-scoreboard__vs {
+  display: grid;
+  width: 2.55rem;
+  height: 1.65rem;
+  place-items: center;
+  border: 1px solid #b88628;
+  border-radius: 999px;
+  color: #fff5bd;
+  background: radial-gradient(circle, #713d08, #211406 72%);
+  box-shadow: 0 0 14px rgba(245, 196, 81, .3);
+  font: 1000 .73rem/1 ui-monospace, monospace;
+  letter-spacing: .05em;
+}
+
+.capital-arena__side,
+.capital-arena__center {
+  grid-row: 2;
+}
+
+@media (max-width: 639px) {
+  .ownership-duel {
+    grid-template-columns: 2.6rem minmax(0, 1fr) 2.6rem;
+    gap: .18rem;
+  }
+
+  .ownership-fighter {
+    height: 2.45rem;
+  }
+
+  .ownership-fighter .ownership-avatar {
+    width: 2.35rem;
+    height: 2.35rem;
+  }
+
+  .ownership-duel .ownership-track {
+    margin-bottom: .34rem;
+  }
+
+  .capital-arena {
+    min-height: 8.6rem;
+  }
+
+  .capital-scoreboard {
+    grid-template-columns: minmax(0, 1fr) 2.3rem minmax(0, 1fr);
+    padding: .24rem .3rem;
+  }
+
+  .capital-score strong {
+    font-size: .68rem;
+  }
+
+  .capital-scoreboard__vs {
+    width: 2.1rem;
+    height: 1.45rem;
+    font-size: .64rem;
+  }
+}

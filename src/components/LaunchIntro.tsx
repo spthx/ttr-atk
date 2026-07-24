@@ -62,7 +62,7 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
       <div className="launch-intro__content relative z-10 mx-auto flex min-h-[100dvh] max-w-6xl flex-col justify-between px-5 py-5 sm:px-10 sm:py-10">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-[10px] font-black tracking-[.28em] text-amber-300">
-            <ShieldCheck className="h-4 w-4" /> ATTACK ON TATARU
+            <ShieldCheck className="h-4 w-4" /> タタルの大繁盛店
           </div>
           <span className="text-[9px] text-slate-400">UNOFFICIAL FAN GAME</span>
         </header>
