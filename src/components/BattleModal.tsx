@@ -990,6 +990,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           <div className="battle-chip-stage relative h-24 w-full flex items-center justify-between px-4 overflow-hidden rounded-lg bg-gradient-to-b from-[#0b1022] to-[#03050d] border border-slate-800/80">
             {/* Background Grid & Light Glow */}
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent pointer-events-none" />
+            <div className="capital-stage-grid absolute inset-0 pointer-events-none" />
+            {pStackWobble && (
+              <div className="capital-volley capital-volley--player" aria-hidden="true">
+                {Array.from({ length: 7 }).map((_, index) => <span key={`p-volley-${index}`} />)}
+              </div>
+            )}
+            {eStackWobble && (
+              <div className="capital-volley capital-volley--enemy" aria-hidden="true">
+                {Array.from({ length: 7 }).map((_, index) => <span key={`e-volley-${index}`} />)}
+              </div>
+            )}
+            {(pStackWobble || eStackWobble) && <span className="capital-impact-burst" aria-hidden="true">GIL!</span>}
+            <div className="capital-stage-title absolute left-1/2 top-2 z-20 -translate-x-1/2 text-[8px] font-black tracking-[.24em] text-amber-200/70">CAPITAL CLASH</div>
             <div className="absolute left-[31%] top-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[25%] truncate text-2xl sm:text-4xl font-black font-mono text-amber-300/[0.16] pointer-events-none">
               {formatCurrency(totalPlayerInvested)}
             </div>
@@ -998,12 +1011,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             </div>
 
             {/* LEFT: PLAYER GOLD CHIP TOWER STACK (自社黄金チップ積載タワー - CSS絶対配置) */}
-            <div className="relative w-28 h-full flex items-end justify-start z-10 pb-1">
-              <img src={getFankitJobArt(targetProperty.industry)} alt="" aria-hidden="true" className="absolute -left-3 bottom-0 h-20 w-20 object-contain opacity-35 drop-shadow-[0_0_10px_rgba(251,191,36,0.6)]" />
+            <div className="battle-stack-side battle-stack-side--player relative w-28 h-full flex items-end justify-start z-10 pb-1">
+              <img src={getFankitJobArt(targetProperty.industry)} alt="" aria-hidden="true" className="battle-stack-avatar absolute -left-3 bottom-0 h-20 w-20 object-contain opacity-35 drop-shadow-[0_0_10px_rgba(251,191,36,0.6)]" />
               {(() => {
-                const pChipCount = Math.min(12, Math.max(1, Math.floor(totalPlayerInvested / ((targetProperty.marketPrice || 1000) * 0.08))));
+                const pChipCount = Math.min(20, Math.max(1, Math.floor(totalPlayerInvested / ((targetProperty.marketPrice || 1000) * 0.025))));
                 return (
-                  <div className={`relative w-16 h-20 flex items-end justify-center transition-all duration-200 ${
+                  <div className={`battle-chip-tower relative w-16 h-20 flex items-end justify-center transition-all duration-200 ${
                     pStackWobble ? 'scale-110 -rotate-3 -translate-y-1' : ''
                   }`}>
                     {Array.from({ length: pChipCount }).map((_, chipIdx) => (
@@ -1013,7 +1026,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                           pStackWobble ? 'animate-bounce' : ''
                         }`}
                         style={{
-                          bottom: `${chipIdx * 5}px`,
+                          bottom: `calc(${chipIdx} * var(--chip-step, 4px))`,
                           zIndex: chipIdx + 1,
                           transform: `translateX(${(chipIdx % 3 - 1) * 2}px) rotate(${(chipIdx % 2 ? 1 : -1) * 2}deg) scale(${1 - chipIdx * 0.015})`,
                         }}
@@ -1021,7 +1034,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                         <div className="gil-chip-face"><span>G</span></div>
                       </div>
                     ))}
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-black text-amber-300 bg-slate-950/90 px-1.5 py-0.2 rounded border border-amber-500/50 shadow whitespace-nowrap z-30">
+                    <div className="battle-stack-label absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-black text-amber-300 bg-slate-950/90 px-1.5 py-0.2 rounded border border-amber-500/50 shadow whitespace-nowrap z-30">
                       {pChipCount}層積載
                     </div>
                   </div>
@@ -1040,12 +1053,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             </div>
 
             {/* RIGHT: OPPONENT DARK CHIP TOWER STACK (競合裏資金チップタワー - CSS絶対配置) */}
-            <div className="relative w-28 h-full flex items-end justify-end z-10 pb-1">
-              <img src={FANKIT_ART.jobs[1]} alt="" aria-hidden="true" className="absolute -right-3 bottom-0 h-20 w-20 object-contain opacity-30 grayscale drop-shadow-[0_0_10px_rgba(244,63,94,0.6)]" />
+            <div className="battle-stack-side battle-stack-side--enemy relative w-28 h-full flex items-end justify-end z-10 pb-1">
+              <img src={FANKIT_ART.jobs[1]} alt="" aria-hidden="true" className="battle-stack-avatar absolute -right-3 bottom-0 h-20 w-20 object-contain opacity-30 grayscale drop-shadow-[0_0_10px_rgba(244,63,94,0.6)]" />
               {(() => {
-                const eChipCount = Math.min(12, Math.max(1, Math.floor(opponentInvested / ((targetProperty.marketPrice || 1000) * 0.08))));
+                const eChipCount = Math.min(20, Math.max(1, Math.floor(opponentInvested / ((targetProperty.marketPrice || 1000) * 0.025))));
                 return (
-                  <div className={`relative w-16 h-20 flex items-end justify-center transition-all duration-200 ${
+                  <div className={`battle-chip-tower relative w-16 h-20 flex items-end justify-center transition-all duration-200 ${
                     eStackWobble ? 'scale-110 rotate-3 -translate-y-1' : ''
                   }`}>
                     {Array.from({ length: eChipCount }).map((_, chipIdx) => (
@@ -1055,7 +1068,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                           eStackWobble ? 'animate-bounce' : ''
                         }`}
                         style={{
-                          bottom: `${chipIdx * 5}px`,
+                          bottom: `calc(${chipIdx} * var(--chip-step, 4px))`,
                           zIndex: chipIdx + 1,
                           transform: `translateX(${(chipIdx % 3 - 1) * 2}px) rotate(${(chipIdx % 2 ? 1 : -1) * 2}deg) scale(${1 - chipIdx * 0.015})`,
                         }}
@@ -1063,7 +1076,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                         <div className="gil-chip-face"><span>G</span></div>
                       </div>
                     ))}
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-black text-rose-300 bg-slate-950/90 px-1.5 py-0.2 rounded border border-rose-500/50 shadow whitespace-nowrap z-30">
+                    <div className="battle-stack-label absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-black text-rose-300 bg-slate-950/90 px-1.5 py-0.2 rounded border border-rose-500/50 shadow whitespace-nowrap z-30">
                       {eChipCount}層対抗
                     </div>
                   </div>
@@ -1078,7 +1091,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       </div>
 
       {/* 3. PRIME THUMB-OPTIMIZED COMMAND PANEL (BOTTOM SHEET STYLE) */}
-      <div className="battle-command-panel relative z-10 min-h-0 flex-1 p-2 flex flex-col justify-between space-y-1.5 overflow-hidden bg-slate-950/95">
+      <div className={`battle-command-panel ${activeTab === 'company' ? 'battle-command-panel--closed' : 'battle-command-panel--open'} relative z-10 min-h-0 flex-1 p-2 flex flex-col justify-between space-y-1.5 overflow-hidden bg-slate-950/95`}>
         {/* TOP ADVISOR & MARKET TACTICAL TICKER */}
         <div className="battle-advisor-strip bg-slate-900 border border-slate-800 rounded-lg p-2 flex items-center justify-between text-xs gap-2 shrink-0">
           <div className="flex items-center gap-1.5 shrink-0 font-bold" title={HELP_TEXT.marketTrend}>
@@ -1439,7 +1452,21 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       </div>
 
       <div className="battle-mobile-dock relative z-40 shrink-0 border-t border-amber-400/40 bg-slate-950/95 px-2 pt-1.5 sm:hidden">
-        <div className="mb-1 flex gap-1">
+        <div className="battle-mobile-strategy mb-1 grid grid-cols-4 gap-1">
+          <button type="button" onClick={() => setActiveTab('company')} className={`battle-strategy-key ${activeTab === 'company' ? 'battle-strategy-key--active' : ''}`}>
+            <Coins className="h-3.5 w-3.5" /> 出資
+          </button>
+          <button type="button" onClick={() => setActiveTab('skills')} className={`battle-strategy-key ${activeTab === 'skills' ? 'battle-strategy-key--active' : ''}`}>
+            <Zap className="h-3.5 w-3.5" /> かけひき
+          </button>
+          <button type="button" onClick={() => setActiveTab('subs')} className={`battle-strategy-key ${activeTab === 'subs' ? 'battle-strategy-key--active' : ''}`}>
+            <Building2 className="h-3.5 w-3.5" /> 傘下
+          </button>
+          <button type="button" onClick={() => setActiveTab('auto')} className={`battle-strategy-key ${activeTab === 'auto' ? 'battle-strategy-key--active' : ''}`}>
+            <Sparkles className="h-3.5 w-3.5" /> 自動
+          </button>
+        </div>
+        <div className="battle-mobile-levels mb-1 flex gap-1">
           {[1, 3, 5, 7, 10].map((level) => {
             return (
               <button
@@ -1458,7 +1485,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           type="button"
           onClick={() => handleInvestCompany(selectedInvestLevel)}
           disabled={!canAffordSelectedInvestment || isEnded || finishingPush}
-          className={`min-h-12 w-full rounded-xl border px-3 text-sm font-black shadow-lg active:scale-[.98] ${canAffordSelectedInvestment && !isEnded && !finishingPush ? 'border-amber-100 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 text-slate-950' : 'border-slate-700 bg-slate-800 text-slate-500'}`}
+          className={`battle-capital-button min-h-12 w-full rounded-xl border px-3 text-sm font-black shadow-lg active:scale-[.98] ${enemyBudgetExhausted ? 'battle-capital-button--finish ' : ''}${canAffordSelectedInvestment && !isEnded && !finishingPush ? 'border-amber-100 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 text-slate-950' : 'border-slate-700 bg-slate-800 text-slate-500'}`}
         >
           {finishingPush
             ? '最終押し込み中…'
