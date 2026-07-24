@@ -274,8 +274,8 @@
   will-change: transform;
 }
 
-.pixel-fighter--player { left: 7%; }
-.pixel-fighter--enemy { right: 7%; transform: scaleX(-1); }
+.pixel-fighter--player { left: 7%; transform: scaleX(-1); }
+.pixel-fighter--enemy { right: 7%; transform: none; }
 
 .sprite-impact {
   position: absolute;
@@ -294,10 +294,10 @@
 .sprite-exchange--enemy-attack .pixel-fighter--player { animation: pixel-hurt-left .5s steps(5); }
 .sprite-exchange--player-attack .sprite-impact,
 .sprite-exchange--enemy-attack .sprite-impact { animation: pixel-impact .5s steps(4); }
-.sprite-exchange--player-win .pixel-fighter--player,
-.sprite-exchange--enemy-win .pixel-fighter--enemy { animation: pixel-victory .38s steps(3) infinite alternate; }
-.sprite-exchange--player-win .pixel-fighter--enemy,
-.sprite-exchange--enemy-win .pixel-fighter--player { animation: pixel-defeat .65s steps(4) forwards; }
+.sprite-exchange--player-win .pixel-fighter--player { animation: pixel-victory-player .38s steps(3) infinite alternate; }
+.sprite-exchange--enemy-win .pixel-fighter--enemy { animation: pixel-victory-enemy .38s steps(3) infinite alternate; }
+.sprite-exchange--player-win .pixel-fighter--enemy { animation: pixel-defeat-enemy .65s steps(4) forwards; }
+.sprite-exchange--enemy-win .pixel-fighter--player { animation: pixel-defeat-player .65s steps(4) forwards; }
 
 .battle-result-beat {
   animation: result-beat 1.45s ease-out both;
@@ -307,31 +307,37 @@
   50% { transform: translateY(-5px); opacity: .3; }
 }
 @keyframes pixel-lunge-right {
-  0%, 100% { transform: translate(0, 0); }
-  45% { transform: translate(38px, -3px); }
+  0%, 100% { transform: scaleX(-1) translate(0, 0); }
+  45% { transform: scaleX(-1) translate(-38px, -3px); }
 }
 @keyframes pixel-lunge-left {
-  0%, 100% { transform: scaleX(-1) translate(0, 0); }
-  45% { transform: scaleX(-1) translate(38px, -3px); }
+  0%, 100% { transform: translate(0, 0); }
+  45% { transform: translate(-38px, -3px); }
 }
 @keyframes pixel-hurt-right {
-  20% { transform: scaleX(-1) translate(-5px, -4px); filter: brightness(2) drop-shadow(0 0 6px #fb7185); }
-  40% { transform: scaleX(-1) translate(7px, 3px); }
-  60% { transform: scaleX(-1) translate(-6px, -2px); }
+  20% { transform: translate(5px, -4px); filter: brightness(2) drop-shadow(0 0 6px #fb7185); }
+  40% { transform: translate(-7px, 3px); }
+  60% { transform: translate(6px, -2px); }
 }
 @keyframes pixel-hurt-left {
-  20% { transform: translate(-5px, -4px); filter: brightness(2) drop-shadow(0 0 6px #fb7185); }
-  40% { transform: translate(7px, 3px); }
-  60% { transform: translate(-6px, -2px); }
+  20% { transform: scaleX(-1) translate(5px, -4px); filter: brightness(2) drop-shadow(0 0 6px #fb7185); }
+  40% { transform: scaleX(-1) translate(-7px, 3px); }
+  60% { transform: scaleX(-1) translate(6px, -2px); }
 }
 @keyframes pixel-impact {
   35% { opacity: 1; transform: translate(-50%, -50%) scale(1.5) rotate(-7deg); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(2); }
 }
-@keyframes pixel-victory {
+@keyframes pixel-victory-player {
+  to { transform: scaleX(-1) translateY(-7px); filter: brightness(1.35) drop-shadow(0 0 9px #facc15); }
+}
+@keyframes pixel-victory-enemy {
   to { transform: translateY(-7px); filter: brightness(1.35) drop-shadow(0 0 9px #facc15); }
 }
-@keyframes pixel-defeat {
+@keyframes pixel-defeat-player {
+  to { transform: scaleX(-1) translateY(17px) rotate(-10deg); opacity: .35; filter: grayscale(1); }
+}
+@keyframes pixel-defeat-enemy {
   to { transform: translateY(17px) rotate(10deg); opacity: .35; filter: grayscale(1); }
 }
 @keyframes result-beat {
@@ -719,5 +725,43 @@
   .battle-capital-button::after,
   .battle-capital-button--finish {
     animation: none !important;
+  }
+}
+
+
+/* Result review: analysis scrolls, but the next-stage action never leaves the viewport. */
+.battle-result-card {
+  max-height: calc(100dvh - 1rem);
+}
+
+.battle-result-scroll {
+  scrollbar-gutter: stable;
+}
+
+.battle-result-actions {
+  box-shadow: 0 -12px 28px rgba(2, 6, 23, .88);
+}
+
+.tataru-result-face {
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 12px rgba(251, 191, 36, .35));
+}
+
+@media (min-width: 640px) {
+  .battle-result-card {
+    max-height: calc(100dvh - 3rem);
+  }
+}
+
+@media (max-width: 639px) {
+  .battle-result-actions > button:first-child {
+    flex: 0 0 auto;
+    padding-inline: .75rem;
+  }
+
+  .battle-result-actions > button:last-child {
+    min-height: 3rem;
+    padding-inline: .75rem;
+    font-size: .72rem;
   }
 }

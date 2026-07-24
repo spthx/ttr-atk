@@ -14,6 +14,7 @@ interface MarketViewProps {
   properties: Property[];
   totalFunds: number;
   unlockedCommunityIds: Set<CommunityType>;
+  navigationRequest?: { id: number; mode: 'map' | 'targets'; community: CommunityType | 'ALL' } | null;
   onStartBuyout: (property: Property) => void;
 }
 
@@ -21,6 +22,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
   properties,
   totalFunds,
   unlockedCommunityIds,
+  navigationRequest,
   onStartBuyout,
 }) => {
   const hasStartedCampaign = properties.some((property) => property.owner === 'player');
@@ -29,6 +31,16 @@ export const MarketView: React.FC<MarketViewProps> = ({
   const [selectedOwnerFilter, setSelectedOwnerFilter] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'map' | 'targets'>(hasStartedCampaign ? 'map' : 'targets');
   const [showGuide, setShowGuide] = useState(false);
+  const [showOwnedProperties, setShowOwnedProperties] = useState(false);
+
+  useEffect(() => {
+    if (!navigationRequest) return;
+    setSelectedCommunity(navigationRequest.community);
+    setSelectedIndustry('ALL');
+    setSelectedOwnerFilter('ALL');
+    setShowOwnedProperties(false);
+    setViewMode(navigationRequest.mode);
+  }, [navigationRequest]);
 
   // Real-time market fluctuation state for FX-like observation
   const [marketRates, setMarketRates] = useState<Record<string, { price: number; change: number }>>({});
@@ -143,6 +155,11 @@ export const MarketView: React.FC<MarketViewProps> = ({
     });
   }, [properties, selectedIndustry, selectedCommunity, selectedOwnerFilter, unlockedCommunityIds]);
 
+  const ownedFilteredCount = filteredProperties.filter((property) => property.owner === 'player').length;
+  const showOwnedCards = showOwnedProperties || selectedOwnerFilter === 'PLAYER';
+  const visibleProperties = filteredProperties.filter((property) => showOwnedCards || property.owner !== 'player');
+  const activeTargetCount = filteredProperties.length - ownedFilteredCount;
+
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
   const resetFilters = () => {
@@ -231,7 +248,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
           </button>
           <h2 className="text-base font-black text-white">{selectedCommunity === 'ALL' ? '全都市の買収対象' : `${selectedCommunity}の買収対象`}</h2>
         </div>
-        <div className="flex items-center gap-2 text-[10px] text-slate-400"><ListFilter className="h-4 w-4 text-amber-400" />{filteredProperties.length}社</div>
+        <div className="flex items-center gap-2 text-[10px] text-slate-400"><ListFilter className="h-4 w-4 text-amber-400" />買収対象 {activeTargetCount}社</div>
       </section>
 
       {/* Insufficient Funds Warning Banner */}
@@ -316,9 +333,20 @@ export const MarketView: React.FC<MarketViewProps> = ({
         </div>
       </div>
 
+      {ownedFilteredCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowOwnedProperties((open) => !open)}
+          className="flex w-full items-center justify-between rounded-xl border border-emerald-500/25 bg-emerald-950/20 px-4 py-2.5 text-left text-xs font-bold text-emerald-200"
+        >
+          <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" />買収済みショップ {ownedFilteredCount}件</span>
+          <span className="text-[10px] text-emerald-300">{showOwnedCards ? '畳む ▲' : '開く ▼'}</span>
+        </button>
+      )}
+
       {/* Property Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredProperties.map((prop) => {
+        {visibleProperties.map((prop) => {
           const isPlayerOwned = prop.owner === 'player';
           const rateInfo = marketRates[prop.id] || { price: prop.marketPrice, change: 0 };
           const activePrice = rateInfo.price;

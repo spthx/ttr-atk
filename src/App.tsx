@@ -57,6 +57,11 @@ export default function App() {
   const [companyName, setCompanyName] = useState<string>(GAME_WORLD.companyName);
   const [showLaunchIntro, setShowLaunchIntro] = useState(true);
   const [unlockNotice, setUnlockNotice] = useState<CommunityType | null>(null);
+  const [marketNavigationRequest, setMarketNavigationRequest] = useState<{
+    id: number;
+    mode: 'map' | 'targets';
+    community: CommunityType | 'ALL';
+  } | null>(null);
 
   useEffect(() => {
     const savedName = window.localStorage.getItem('tataru-company-name');
@@ -266,7 +271,21 @@ export default function App() {
         .every((property) => property.owner === 'player' || property.id === targetProperty.id);
       const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
       const nextCommunity = COMMUNITY_CAMPAIGN_ORDER[campaignIndex + 1];
-      if (conquersCity && nextCommunity) setUnlockNotice(nextCommunity);
+      if (conquersCity && nextCommunity) {
+        setUnlockNotice(nextCommunity);
+        setMarketNavigationRequest((previous) => ({
+          id: (previous?.id || 0) + 1,
+          mode: 'map',
+          community: nextCommunity,
+        }));
+      } else {
+        setMarketNavigationRequest((previous) => ({
+          id: (previous?.id || 0) + 1,
+          mode: 'targets',
+          community: targetProperty.community,
+        }));
+      }
+      setActiveTab('market');
 
       // Transfer target property ownership to player
       setProperties((prev) =>
@@ -302,6 +321,12 @@ export default function App() {
         )} 消費、直接出資の精算 ${formatCurrency(settlementCost)}）`,
         'warning'
       );
+      setMarketNavigationRequest((previous) => ({
+        id: (previous?.id || 0) + 1,
+        mode: 'targets',
+        community: targetProperty.community,
+      }));
+      setActiveTab('market');
     }
 
     // 2. Handle Rebellion & Strategic Bankruptcy Liquidation Cashback
@@ -470,6 +495,7 @@ export default function App() {
             properties={properties}
             totalFunds={totalFunds}
             unlockedCommunityIds={unlockedCommunityIds}
+            navigationRequest={marketNavigationRequest}
             onStartBuyout={handleStartBuyout}
           />
         )}
@@ -506,32 +532,29 @@ export default function App() {
           />
         )}
 
-        {/* Global Game Notification Log Bar */}
+        {/* Global activity stays closed until the player asks for it. */}
         {logs.length > 0 && (
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
-              <Bell className="w-4 h-4 text-amber-400" />
-              <span>システム運営アクティビティログ</span>
-            </div>
-
-            <div className="space-y-1.5 max-h-32 overflow-y-auto font-mono text-xs text-slate-300 scrollbar-thin pr-1">
+          <details className="group rounded-xl border border-slate-800 bg-slate-900/80 shadow-lg">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-300">
+              <span className="flex items-center gap-2"><Bell className="h-4 w-4 text-amber-400" />システム運営ログ</span>
+              <span className="text-[10px] text-slate-500 group-open:hidden">最新 {logs.length}件・タップして開く</span>
+              <span className="hidden text-[10px] text-amber-300 group-open:inline">閉じる</span>
+            </summary>
+            <div className="max-h-40 space-y-1.5 overflow-y-auto border-t border-slate-800 px-4 py-3 font-mono text-xs text-slate-300 scrollbar-thin">
               {logs.map((log) => {
                 let badgeClass = 'text-slate-400';
                 if (log.type === 'success') badgeClass = 'text-emerald-400 font-bold';
                 if (log.type === 'warning') badgeClass = 'text-amber-400 font-bold';
                 if (log.type === 'danger') badgeClass = 'text-rose-400 font-bold';
-
                 return (
                   <div key={log.id} className="flex items-start gap-2 leading-relaxed">
-                    <span className="text-[10px] text-slate-500 shrink-0">
-                      [{log.timestamp}]
-                    </span>
+                    <span className="shrink-0 text-[10px] text-slate-500">[{log.timestamp}]</span>
                     <span className={badgeClass}>{log.message}</span>
                   </div>
                 );
               })}
             </div>
-          </div>
+          </details>
         )}
       </main>
 
@@ -558,6 +581,14 @@ export default function App() {
           industryInfluence={industryInfluence[activeBattleProperty.industry] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
           regionalInfluence={regionalInfluence[activeBattleProperty.community] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
           tradeNetworkBonus={tradeNetworkBonus}
+          nextCommunity={(() => {
+            const wouldConquer = properties
+              .filter((property) => property.community === activeBattleProperty.community)
+              .every((property) => property.owner === 'player' || property.id === activeBattleProperty.id);
+            if (!wouldConquer) return null;
+            const currentIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(activeBattleProperty.community);
+            return COMMUNITY_CAMPAIGN_ORDER[currentIndex + 1] || null;
+          })()}
           isTutorial={ownedProperties.length === 0 && activeBattleProperty.id.startsWith('prop_starter_')}
           onAddFunds={handleAddFunds}
           onResetFunds={handleResetFunds}

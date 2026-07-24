@@ -42,6 +42,7 @@ interface BattleModalProps {
   industryInfluence: { owned: number; total: number; label: string; playerBonus: number; enemyBudgetDiscount: number };
   regionalInfluence: { owned: number; total: number; label: string; playerBonus: number; enemyBudgetDiscount: number };
   tradeNetworkBonus: number;
+  nextCommunity?: string | null;
   isTutorial?: boolean;
   onAddFunds?: (amount: number) => void;
   onResetFunds?: () => void;
@@ -100,6 +101,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   industryInfluence,
   regionalInfluence,
   tradeNetworkBonus,
+  nextCommunity = null,
   isTutorial = false,
   onBattleEnd,
   onClose,
@@ -780,6 +782,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const playerForce = (totalPlayerInvested * currentWind.playerMultiplier * trendMultiplier * (1 + industryInfluence.playerBonus + regionalInfluence.playerBonus + tradeNetworkBonus) / Math.max(targetProperty.marketPrice, 1)) * 100;
   const enemyForce = (opponentInvested * currentWind.enemyMultiplier / Math.max(targetProperty.marketPrice, 1)) * 100;
   const trendLabel = marketTrend === 'BULL' ? '強気・買い優勢' : marketTrend === 'BEAR' ? '弱気・売り優勢' : marketTrend === 'VOLATILE' ? '乱高下' : '小動き';
+  const capitalGap = totalPlayerInvested - opponentInvested;
+  const influenceBonus = industryInfluence.playerBonus + regionalInfluence.playerBonus + tradeNetworkBonus;
+  const tataruResultAnalysis = winner === 'player'
+    ? playerDemandInvested > playerCompanyInvested
+      ? `傘下・同盟から集めた支援資金が自社出資を上回りました。交易網を育てたことが、${formatCurrency(Math.abs(capitalGap))}の資本差以上に効いた勝利ですっぺ！`
+      : influenceBonus >= 0.08
+        ? `業界と地域で築いた地盤が出資効率を押し上げました。敵の防衛資金を枯らしたあと、直接出資で確実に100%へ届かせたのが勝因です。`
+        : `敵の残り防衛資金を0まで使わせ、反撃できない瞬間に直接出資を重ねました。最後まで所有率を見て押し切った、手順どおりの勝利です。`
+    : opponentReserve > 0
+      ? `競合に${formatCurrency(opponentReserve)}の防衛余力を残したまま決着しました。小口出資を散らさず、先に敵予算を吐かせる組み立てが必要ですっぺ。`
+      : capitalGap < 0
+        ? `敵予算は削れましたが、最終的な投入額で${formatCurrency(Math.abs(capitalGap))}負けています。傘下支援か地域補正を増やしてから再挑戦するです。`
+        : `資金量では戦えていましたが、所有率を100%へ届かせる最後の一手が不足しました。敵資金0を確認した直後の直接出資が決定打になります。`;
 
   const getAdvisorMessage = () => {
     if (isEnded) return '結果を整理して、商会の帳簿へ反映してくださいです。';
@@ -1014,28 +1029,33 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <div className="battle-stack-side battle-stack-side--player relative w-28 h-full flex items-end justify-start z-10 pb-1">
               <img src={getFankitJobArt(targetProperty.industry)} alt="" aria-hidden="true" className="battle-stack-avatar absolute -left-3 bottom-0 h-20 w-20 object-contain opacity-35 drop-shadow-[0_0_10px_rgba(251,191,36,0.6)]" />
               {(() => {
-                const pChipCount = Math.min(20, Math.max(1, Math.floor(totalPlayerInvested / ((targetProperty.marketPrice || 1000) * 0.025))));
+                const rawChipCount = Math.max(1, Math.floor(totalPlayerInvested / ((targetProperty.marketPrice || 1000) * 0.025)));
+                const pChipCount = Math.min(120, rawChipCount);
+                const deckCount = Math.ceil(pChipCount / 20);
                 return (
                   <div className={`battle-chip-tower relative w-16 h-20 flex items-end justify-center transition-all duration-200 ${
                     pStackWobble ? 'scale-110 -rotate-3 -translate-y-1' : ''
                   }`}>
-                    {Array.from({ length: pChipCount }).map((_, chipIdx) => (
-                      <div
-                        key={`player-chip-${chipIdx}`}
-                        className={`gil-chip gil-chip--player absolute transition-all duration-300 ${
-                          pStackWobble ? 'animate-bounce' : ''
-                        }`}
-                        style={{
-                          bottom: `calc(${chipIdx} * var(--chip-step, 4px))`,
-                          zIndex: chipIdx + 1,
-                          transform: `translateX(${(chipIdx % 3 - 1) * 2}px) rotate(${(chipIdx % 2 ? 1 : -1) * 2}deg) scale(${1 - chipIdx * 0.015})`,
-                        }}
-                      >
-                        <div className="gil-chip-face"><span>G</span></div>
-                      </div>
-                    ))}
-                    <div className="battle-stack-label absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-black text-amber-300 bg-slate-950/90 px-1.5 py-0.2 rounded border border-amber-500/50 shadow whitespace-nowrap z-30">
-                      {pChipCount}層積載
+                    {Array.from({ length: pChipCount }).map((_, chipIdx) => {
+                      const deck = Math.floor(chipIdx / 20);
+                      const row = chipIdx % 20;
+                      const deckOffset = (deck - (deckCount - 1) / 2) * 9;
+                      return (
+                        <div
+                          key={`player-chip-${chipIdx}`}
+                          className={`gil-chip gil-chip--player absolute transition-all duration-300 ${pStackWobble ? 'animate-bounce' : ''}`}
+                          style={{
+                            bottom: `calc(${row} * var(--chip-step, 4px) + ${deck * 2}px)`,
+                            zIndex: deck * 20 + row + 1,
+                            transform: `translateX(${deckOffset + (row % 3 - 1) * 2}px) rotate(${(row % 2 ? 1 : -1) * (2 + deck * 0.35)}deg) scale(${Math.max(0.86, 1 - deck * 0.025)})`,
+                          }}
+                        >
+                          <div className="gil-chip-face"><span>G</span></div>
+                        </div>
+                      );
+                    })}
+                    <div className="battle-stack-label absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-black text-amber-300 bg-slate-950/90 px-1.5 py-0.2 rounded border border-amber-500/50 shadow whitespace-nowrap z-[140]">
+                      {rawChipCount > 120 ? `${rawChipCount}枚（120枚表示）` : `${rawChipCount}枚積載`}
                     </div>
                   </div>
                 );
@@ -1056,28 +1076,33 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <div className="battle-stack-side battle-stack-side--enemy relative w-28 h-full flex items-end justify-end z-10 pb-1">
               <img src={FANKIT_ART.jobs[1]} alt="" aria-hidden="true" className="battle-stack-avatar absolute -right-3 bottom-0 h-20 w-20 object-contain opacity-30 grayscale drop-shadow-[0_0_10px_rgba(244,63,94,0.6)]" />
               {(() => {
-                const eChipCount = Math.min(20, Math.max(1, Math.floor(opponentInvested / ((targetProperty.marketPrice || 1000) * 0.025))));
+                const rawChipCount = Math.max(1, Math.floor(opponentInvested / ((targetProperty.marketPrice || 1000) * 0.025)));
+                const eChipCount = Math.min(120, rawChipCount);
+                const deckCount = Math.ceil(eChipCount / 20);
                 return (
                   <div className={`battle-chip-tower relative w-16 h-20 flex items-end justify-center transition-all duration-200 ${
                     eStackWobble ? 'scale-110 rotate-3 -translate-y-1' : ''
                   }`}>
-                    {Array.from({ length: eChipCount }).map((_, chipIdx) => (
-                      <div
-                        key={`opp-chip-${chipIdx}`}
-                        className={`gil-chip gil-chip--enemy absolute transition-all duration-300 ${
-                          eStackWobble ? 'animate-bounce' : ''
-                        }`}
-                        style={{
-                          bottom: `calc(${chipIdx} * var(--chip-step, 4px))`,
-                          zIndex: chipIdx + 1,
-                          transform: `translateX(${(chipIdx % 3 - 1) * 2}px) rotate(${(chipIdx % 2 ? 1 : -1) * 2}deg) scale(${1 - chipIdx * 0.015})`,
-                        }}
-                      >
-                        <div className="gil-chip-face"><span>G</span></div>
-                      </div>
-                    ))}
-                    <div className="battle-stack-label absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-black text-rose-300 bg-slate-950/90 px-1.5 py-0.2 rounded border border-rose-500/50 shadow whitespace-nowrap z-30">
-                      {eChipCount}層対抗
+                    {Array.from({ length: eChipCount }).map((_, chipIdx) => {
+                      const deck = Math.floor(chipIdx / 20);
+                      const row = chipIdx % 20;
+                      const deckOffset = (deck - (deckCount - 1) / 2) * 9;
+                      return (
+                        <div
+                          key={`opp-chip-${chipIdx}`}
+                          className={`gil-chip gil-chip--enemy absolute transition-all duration-300 ${eStackWobble ? 'animate-bounce' : ''}`}
+                          style={{
+                            bottom: `calc(${row} * var(--chip-step, 4px) + ${deck * 2}px)`,
+                            zIndex: deck * 20 + row + 1,
+                            transform: `translateX(${deckOffset + (row % 3 - 1) * 2}px) rotate(${(row % 2 ? 1 : -1) * (2 + deck * 0.35)}deg) scale(${Math.max(0.86, 1 - deck * 0.025)})`,
+                          }}
+                        >
+                          <div className="gil-chip-face"><span>G</span></div>
+                        </div>
+                      );
+                    })}
+                    <div className="battle-stack-label absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-black text-rose-300 bg-slate-950/90 px-1.5 py-0.2 rounded border border-rose-500/50 shadow whitespace-nowrap z-[140]">
+                      {rawChipCount > 120 ? `${rawChipCount}枚（120枚表示）` : `${rawChipCount}枚対抗`}
                     </div>
                   </div>
                 );
@@ -1719,8 +1744,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
       {/* 6. POST-BATTLE RESULT & STRATEGY REVIEW OVERLAY (勝敗確定・戦略ログ確認モーダル) */}
       {showResultOverlay && (
-        <div className="fixed inset-0 z-[110] bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-fade-in overflow-y-auto">
-          <div className="bg-slate-900 border-2 border-amber-500/80 rounded-2xl w-full max-w-2xl my-auto p-4 sm:p-6 space-y-4 shadow-2xl relative overflow-hidden">
+        <div className="battle-result-overlay fixed inset-0 z-[110] bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-2 sm:p-6 animate-fade-in overflow-hidden">
+          <div className="battle-result-card bg-slate-900 border-2 border-amber-500/80 rounded-2xl w-full max-w-2xl shadow-2xl relative overflow-hidden flex flex-col">
             {/* Background Light Glow */}
             <div
               className={`absolute -top-24 -left-24 w-64 h-64 rounded-full blur-3xl pointer-events-none ${
@@ -1728,6 +1753,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               }`}
             />
 
+            <div className="battle-result-scroll min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
             {/* Victory / Defeat Header */}
             <div className="text-center space-y-1 relative z-10">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-950 border border-amber-500/40 text-xs font-black">
@@ -1755,6 +1781,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   ? '敵の防衛資金を枯らし、最後の直接出資で自社所有率100%まで押し切り、買収を成立させました。'
                   : '敵陣営の防衛資金に対抗しきれず撤退。直接出資の75%が撤退損として確定します。'}
               </p>
+            </div>
+
+            <div className="relative z-10 flex items-center gap-3 rounded-xl border border-amber-400/30 bg-slate-950/75 p-3">
+              <img src={FANKIT_ART.tataru.windUp} alt="タタル" className="tataru-result-face h-16 w-16 shrink-0 object-contain" />
+              <div>
+                <strong className="text-xs font-black text-amber-300">タタルの{winner === 'player' ? '勝因' : '敗因'}分析</strong>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-200">「{tataruResultAnalysis}」</p>
+              </div>
             </div>
 
             <section className={`relative z-10 rounded-xl border p-3 ${winner === 'player' ? 'border-emerald-400/35 bg-emerald-950/25' : 'border-rose-400/35 bg-rose-950/25'}`}>
@@ -1819,46 +1853,23 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               </div>
             </div>
 
-            {/* Embedded Strategy Log Section (勝手も負けてもログ確認) */}
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 space-y-2">
-              <div className="flex items-center justify-between text-xs font-extrabold text-amber-300">
-                <span className="flex items-center gap-1.5">
-                  <ScrollText className="w-4 h-4 text-amber-400" />
-                  【戦略検証】今回の買収戦局・動向ログ一覧
-                </span>
-                <button
-                  onClick={() => setShowLogModal(true)}
-                  className="text-[10px] text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  詳細ログモーダルで開く ➔
-                </button>
-              </div>
-
-              <div className="max-h-40 overflow-y-auto space-y-1.5 font-mono text-xs pr-1">
-                {logs.map((e) => (
-                  <div key={e.id} className="bg-slate-900 p-2 rounded border border-slate-800/80 flex items-start gap-2">
-                    <span className="text-[10px] text-slate-500 shrink-0">{e.timestamp}</span>
-                    <span className="text-slate-200 text-xs leading-tight">{e.message}</span>
-                  </div>
-                ))}
-              </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center justify-between gap-3 pt-2">
+            <div className="battle-result-actions shrink-0 flex items-center justify-between gap-2 border-t border-slate-700 bg-slate-950/95 p-3">
               <button
                 onClick={() => setShowLogModal(true)}
                 className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 text-slate-200 font-bold text-xs cursor-pointer transition-all flex items-center gap-1.5"
               >
                 <ScrollText className="w-4 h-4 text-amber-400" />
-                全ログ分析モーダルを開く
+                戦局ログ
               </button>
 
               <button
                 onClick={handleConfirmResult}
                 className="flex-1 py-3 px-6 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-300 active:scale-95 text-slate-950 font-black text-sm cursor-pointer shadow-lg shadow-amber-500/20 border border-amber-200 transition-all text-center"
               >
-                結果を確定して市場に戻る ➔
+                {winner === 'player' && nextCommunity ? `${nextCommunity}の都市マップへ ➔` : 'ターゲット選択へ戻る ➔'}
               </button>
             </div>
           </div>
