@@ -3,7 +3,7 @@ import { Property, IndustryType, CommunityType } from '../types';
 import { TRADE_COMMUNITIES } from '../data/worldData';
 import { formatCurrency } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
-import { Search, ArrowRight, ShieldAlert, CheckCircle2, TrendingUp, TrendingDown, Newspaper } from 'lucide-react';
+import { Search, ArrowRight, ShieldAlert, CheckCircle2, TrendingUp, TrendingDown, Newspaper, MapPinned, ListFilter, CircleHelp, ChevronRight } from 'lucide-react';
 import { WindIndicator, WIND_CONDITIONS, WindCondition, WindType } from './WindIndicator';
 import { BeginnerGuide } from './BeginnerGuide';
 import { HelpTip } from './HelpTip';
@@ -25,6 +25,8 @@ export const MarketView: React.FC<MarketViewProps> = ({
   const [selectedIndustry, setSelectedIndustry] = useState<string>('ALL');
   const [selectedCommunity, setSelectedCommunity] = useState<CommunityType | 'ALL'>('ALL');
   const [selectedOwnerFilter, setSelectedOwnerFilter] = useState<string>('ALL');
+  const [viewMode, setViewMode] = useState<'map' | 'targets'>('map');
+  const [showGuide, setShowGuide] = useState(false);
 
   // Real-time market fluctuation state for FX-like observation
   const [marketRates, setMarketRates] = useState<Record<string, { price: number; change: number }>>({});
@@ -170,26 +172,63 @@ export const MarketView: React.FC<MarketViewProps> = ({
     });
   };
 
+
+  if (viewMode === 'map') {
+    return (
+      <div className="market-screen-enter space-y-3 font-sans">
+        <section className="relative min-h-36 overflow-hidden rounded-2xl border border-amber-400/40 shadow-2xl">
+          <img src={FANKIT_ART.marketBackdrop} alt="FFXIVファンキットによる交易世界の背景" className="absolute inset-0 h-full w-full object-cover object-center" />
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/85 to-slate-950/25" />
+          <div className="relative z-10 flex min-h-36 max-w-2xl flex-col justify-center px-5 py-5">
+            <p className="text-[10px] font-black tracking-[0.28em] text-amber-300">EORZEA GRAND MARKET</p>
+            <h2 className="mt-1 text-2xl font-black text-white drop-shadow-lg">次に攻める都市を選ぶ</h2>
+            <p className="mt-1 text-xs text-slate-200">都市を選ぶと、買収できる敵企業だけを表示します。</p>
+          </div>
+          <button type="button" onClick={() => setShowGuide((open) => !open)} className="absolute bottom-3 right-3 z-20 flex items-center gap-1 rounded-lg border border-cyan-400/30 bg-slate-950/80 px-2.5 py-1.5 text-[10px] font-bold text-cyan-200">
+            <CircleHelp className="h-3.5 w-3.5" /> 遊び方
+          </button>
+        </section>
+
+        {showGuide && <BeginnerGuide />}
+
+        <section className="rounded-2xl border border-cyan-500/20 bg-slate-900/85 p-3 shadow-xl">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-black text-cyan-100"><MapPinned className="h-4 w-4 text-cyan-400" /> 都市戦略マップ</h3>
+              <p className="mt-0.5 text-[10px] text-slate-500">制覇数 {communityProgress.filter((city) => city.conquered).length}/{communityProgress.length}</p>
+            </div>
+            <button type="button" onClick={() => { setSelectedCommunity('ALL'); setViewMode('targets'); }} className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[10px] font-bold text-slate-300">
+              全企業から探す <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            {communityProgress.map((community, index) => (
+              <button key={community.id} type="button" onClick={() => { setSelectedCommunity(community.id); setViewMode('targets'); }} className={`group relative min-h-24 overflow-hidden rounded-xl border p-3 text-left transition-all active:scale-95 ${community.conquered ? 'border-emerald-400/50 bg-emerald-950/45' : 'border-slate-700 bg-slate-950 hover:border-cyan-400/60'}`} style={{ animationDelay: `${index * 28}ms` }}>
+                <img src={getFankitJobArt(community.id)} alt="" aria-hidden="true" className="absolute -bottom-5 -right-4 h-24 w-24 object-contain opacity-20 transition-transform group-hover:scale-110" />
+                <span className="relative z-10 block text-xs font-black text-slate-100">{community.id}</span>
+                <span className="relative z-10 mt-1 block text-[9px] text-cyan-300">{community.marketCharacter}</span>
+                <span className={`relative z-10 mt-3 inline-block rounded px-1.5 py-0.5 text-[9px] font-black ${community.conquered ? 'bg-emerald-400/20 text-emerald-200' : 'bg-slate-800 text-slate-300'}`}>
+                  {community.owned}/{community.total} {community.conquered ? '制覇済み' : '取得'}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+        <p className="text-center text-[9px] text-slate-600">FFXIVファンキット素材使用 © SQUARE ENIX</p>
+      </div>
+    );
+  }
   return (
-    <div className="space-y-3 font-sans">
-      <BeginnerGuide />
-      <section className="relative min-h-28 overflow-hidden rounded-xl border border-amber-400/40 shadow-2xl">
-        <img
-          src={FANKIT_ART.marketBackdrop}
-          alt="FFXIVファンキットによる交易世界の背景"
-          className="absolute inset-0 h-full w-full object-cover object-center"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/80 to-slate-950/20" />
-        <div className="relative z-10 flex min-h-28 max-w-2xl flex-col justify-center px-5 py-4">
-          <p className="text-[10px] font-black tracking-[0.28em] text-amber-300">EORZEA GRAND MARKET</p>
-          <h2 className="mt-1 text-xl font-black text-white drop-shadow-lg sm:text-2xl">全都市を、ギルの力で商圏に。</h2>
-          <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-200 drop-shadow">
-            相場を読み、防衛予算を枯らし、最後の直接出資で押し切る。タタル商会の交易戦線です。
-          </p>
+    <div className="market-screen-enter space-y-3 font-sans">
+      <section className="flex items-center justify-between rounded-xl border border-cyan-500/20 bg-slate-900/90 p-3">
+        <div>
+          <button type="button" onClick={() => setViewMode('map')} className="mb-1 flex items-center gap-1 text-[10px] font-bold text-cyan-300 hover:text-cyan-200">
+            <MapPinned className="h-3.5 w-3.5" /> 都市マップへ戻る
+          </button>
+          <h2 className="text-base font-black text-white">{selectedCommunity === 'ALL' ? '全都市の買収対象' : `${selectedCommunity}の買収対象`}</h2>
         </div>
-        <div className="absolute bottom-2 right-3 z-10 rounded border border-white/20 bg-slate-950/65 px-2 py-1 text-[8px] text-slate-300 backdrop-blur-sm">
-          FFXIVファンキット素材使用
-        </div>
+        <div className="flex items-center gap-2 text-[10px] text-slate-400"><ListFilter className="h-4 w-4 text-amber-400" />{filteredProperties.length}社</div>
       </section>
 
       {/* Insufficient Funds Warning Banner */}
@@ -224,42 +263,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
           <WindIndicator currentWind={marketWind} nextChangeSeconds={windCountdown} compact />
         </div>
       </div>
-
-      {/* City Conquest Progress */}
-      <section className="rounded-xl border border-violet-500/20 bg-slate-900/80 p-2.5">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="flex items-center gap-1 text-xs font-black text-violet-200">
-            都市商圏の制覇状況
-            <HelpTip term="都市制覇" description={HELP_TEXT.cityConquest} />
-          </h2>
-          <span className="text-[10px] text-slate-400">都市内の全物件取得で制覇</span>
-        </div>
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-violet-500/40">
-          {communityProgress.map((community) => {
-            const isSelected = selectedCommunity === community.id;
-            return (
-              <button
-                key={community.id}
-                type="button"
-                onClick={() => setSelectedCommunity(isSelected ? 'ALL' : community.id)}
-                className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-left transition-colors ${
-                  community.conquered
-                    ? 'border-emerald-500/50 bg-emerald-950/50 text-emerald-300'
-                    : isSelected
-                    ? 'border-violet-400 bg-violet-950/70 text-violet-200'
-                    : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-violet-500/50'
-                }`}
-                title={`${community.region}／${community.marketCharacter}。${HELP_TEXT.cityConquest}`}
-              >
-                <span className="block text-[10px] font-bold">{community.id}</span>
-                <span className="block text-[9px] font-mono opacity-80">
-                  {community.owned}/{community.total} {community.conquered ? '制覇' : '取得'}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
 
       {/* Filters Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">

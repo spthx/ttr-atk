@@ -11,17 +11,17 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: baseUrl,
     title: "進撃の小人 — Attack on Tataru",
-    description: "FF14の主要都市と企業連合を、買収と交易で制覇する金融ゲーム。",
+    description: "FF14の主要都市と企業連合を、リアルタイム相場と資金攻防で制覇する金融ゲーム。",
     openGraph: {
       title: "進撃の小人 — Attack on Tataru",
-      description: "買収・交易・資金管理で全都市制覇を目指す金融ゲーム。",
-      images: [new URL("/og.png", baseUrl).toString()],
+      description: "急騰・急落を読み、ギルを積み、全都市制覇を目指すリアルタイム金融ゲーム。",
+      images: [new URL("/og-market-battle.png", baseUrl).toString()],
     },
     twitter: {
       card: "summary_large_image",
       title: "進撃の小人 — Attack on Tataru",
-      description: "買収・交易・資金管理で全都市制覇を目指す金融ゲーム。",
-      images: [new URL("/og.png", baseUrl).toString()],
+      description: "急騰・急落を読み、ギルを積み、全都市制覇を目指すリアルタイム金融ゲーム。",
+      images: [new URL("/og-market-battle.png", baseUrl).toString()],
     },
   };
 }

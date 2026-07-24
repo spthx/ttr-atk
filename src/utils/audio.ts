@@ -188,6 +188,29 @@ class SoundEffects {
     }
   }
 
+  playMarketShock(direction: 'rise' | 'drop', intensity: number = 0.5) {
+    if (!this.enabled) return;
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+      const gain = ctx.createGain();
+      const osc = ctx.createOscillator();
+      const power = Math.max(0.25, Math.min(1, intensity));
+      osc.type = direction === 'rise' ? 'triangle' : 'sawtooth';
+      osc.frequency.setValueAtTime(direction === 'rise' ? 260 : 680, now);
+      osc.frequency.exponentialRampToValueAtTime(direction === 'rise' ? 1040 : 92, now + 0.28);
+      gain.gain.setValueAtTime(0.16 * power, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.33);
+    } catch {
+      // Audio fallback
+    }
+  }
   // Rising, original fantasy-game cue played while the final capital push is visible.
   playFinalPush() {
     if (!this.enabled) return;

@@ -376,12 +376,14 @@ export default function App() {
 
       {/* Main View Area */}
       <main className="max-w-7xl w-full mx-auto px-3 sm:px-6 py-3 pb-20 md:py-6 md:pb-6 flex-1 space-y-4 md:space-y-6">
-        <TatarAdvisor
-          activeTab={activeTab}
-          ownedCount={ownedProperties.length}
-          conqueredCommunityCount={conqueredCommunityCount}
-          totalCommunityCount={TRADE_COMMUNITIES.length}
-        />
+        {activeTab !== 'market' && (
+          <TatarAdvisor
+            activeTab={activeTab}
+            ownedCount={ownedProperties.length}
+            conqueredCommunityCount={conqueredCommunityCount}
+            totalCommunityCount={TRADE_COMMUNITIES.length}
+          />
+        )}
 
         {activeTab === 'market' && (
           <MarketView
