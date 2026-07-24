@@ -30,6 +30,7 @@ import { FANKIT_ART, getFankitJobArt } from '../data/fankitAssets';
 import '../battle-buyout.css';
 import '../battle-balance.css';
 import '../battle-clarity.css';
+import '../battle-enemy-budget.css';
 
 interface BattleModalProps {
   targetProperty: Property;
@@ -217,6 +218,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       : null;
   const dangerousSubs = battleSubs.filter((property) => property.loyaltyRisk >= 60).length;
   const battleDirection = gaugeSpeed < -0.08 ? 'player' : gaugeSpeed > 0.08 ? 'enemy' : 'even';
+  const enemyReserveCapacity = Math.max(1, enemyBudget - initialEnemyCommitment);
+  const enemyReservePercent = enemyReserve <= 0 ? 0 : Math.min(99.9, (enemyReserve / enemyReserveCapacity) * 100);
+  const enemyReserveState = enemyReservePercent <= 0 ? 'short' : enemyReservePercent <= 10 ? 'critical'
+    : enemyReservePercent <= 25 ? 'danger' : enemyReservePercent <= 50 ? 'warning' : 'healthy';
 
   const groups = useMemo(() => {
     const grouped = new Map<string, Property[]>();
@@ -616,9 +621,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           </div>
           <div className="capital-arena__side">
             <span>競合の競り値</span>
-            <GilTower amount={enemyInvested} marketPrice={targetProperty.marketPrice} side="enemy" motion={motion} />
+            <div className="enemy-capital-stack">
+              <GilTower amount={enemyInvested} marketPrice={targetProperty.marketPrice} side="enemy" motion={motion} />
+              <div className={`enemy-budget-overlay enemy-budget-overlay--${enemyReserveState}`}>
+                <small>追加防衛資金</small>
+                <strong>{enemyReservePercent.toFixed(1)}%</strong>
+                <span>{enemyReserve <= 0 ? 'SHORT / 追加投入不能' : enemyReservePercent <= 10 ? '枯渇寸前' : '追加投入余力'}</span>
+              </div>
+            </div>
             <small>残り防衛予算 {formatCurrency(enemyReserve)}</small>
-            <div className="enemy-reserve-bar"><i style={{ width: `${enemyBudget > 0 ? enemyReserve / enemyBudget * 100 : 0}%` }} /></div>
+            <div className="enemy-reserve-bar"><i style={{ width: `${enemyReservePercent}%` }} /></div>
           </div>
           {floaters.map((item) => <i key={item.id} className={`gil-floater gil-floater--${item.side}`}>{item.text}</i>)}
         </section>
