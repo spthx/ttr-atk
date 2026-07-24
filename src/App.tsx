@@ -25,6 +25,7 @@ import { CartelAllianceView } from './components/CartelAllianceView';
 import { BattleModal } from './components/BattleModal';
 import { TatarAdvisor } from './components/TatarAdvisor';
 import { LaunchIntro } from './components/LaunchIntro';
+import { WIND_CONDITIONS, WindCondition, WindType } from './components/WindIndicator';
 import { FANKIT_ART } from './data/fankitAssets';
 import { COMMUNITY_CAMPAIGN_ORDER, GAME_WORLD, TRADE_COMMUNITIES } from './data/worldData';
 import { Bell, MapPinned } from 'lucide-react';
@@ -62,6 +63,20 @@ export default function App() {
     mode: 'map' | 'targets';
     community: CommunityType | 'ALL';
   } | null>(null);
+  const [marketWind, setMarketWind] = useState<WindCondition>(WIND_CONDITIONS.TAILWIND_PLAYER);
+  const [windCountdown, setWindCountdown] = useState(8);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setWindCountdown((current) => {
+        if (current > 1) return current - 1;
+        const types: WindType[] = ['TAILWIND_PLAYER', 'HEADWIND_PLAYER', 'TAILWIND_ENEMY', 'CROSSWIND', 'CALM'];
+        setMarketWind(WIND_CONDITIONS[types[Math.floor(Math.random() * types.length)]]);
+        return 8;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const savedName = window.localStorage.getItem('tataru-company-name');
@@ -495,6 +510,8 @@ export default function App() {
             properties={properties}
             totalFunds={totalFunds}
             unlockedCommunityIds={unlockedCommunityIds}
+            currentWind={marketWind}
+            windCountdown={windCountdown}
             navigationRequest={marketNavigationRequest}
             onStartBuyout={handleStartBuyout}
           />
@@ -580,6 +597,8 @@ export default function App() {
           alliance={alliance}
           industryInfluence={industryInfluence[activeBattleProperty.industry] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
           regionalInfluence={regionalInfluence[activeBattleProperty.community] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
+          currentWind={marketWind}
+          windCountdown={windCountdown}
           tradeNetworkBonus={tradeNetworkBonus}
           nextCommunity={(() => {
             const wouldConquer = properties

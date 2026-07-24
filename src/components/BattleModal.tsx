@@ -27,11 +27,13 @@ import {
 } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
 import { FANKIT_ART, getFankitJobArt } from '../data/fankitAssets';
+import { WindCondition } from './WindIndicator';
 import '../battle-buyout.css';
 import '../battle-balance.css';
 import '../battle-clarity.css';
 import '../battle-enemy-budget.css';
 import '../battle-command-refine.css';
+import '../battle-final-wind.css';
 
 interface BattleModalProps {
   targetProperty: Property;
@@ -42,6 +44,8 @@ interface BattleModalProps {
   industryInfluence: { owned: number; total: number; label: string; playerBonus: number; enemyBudgetDiscount: number };
   regionalInfluence: { owned: number; total: number; label: string; playerBonus: number; enemyBudgetDiscount: number };
   tradeNetworkBonus: number;
+  currentWind: WindCondition;
+  windCountdown: number;
   nextCommunity?: string | null;
   isTutorial?: boolean;
   onAddFunds?: (amount: number) => void;
@@ -152,6 +156,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   industryInfluence,
   regionalInfluence,
   tradeNetworkBonus,
+  currentWind,
+  windCountdown,
   nextCommunity = null,
   isTutorial = false,
   onBattleEnd,
@@ -194,6 +200,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [aiProgress, setAiProgress] = useState(0);
   const [winner, setWinner] = useState<'player' | 'opponent' | null>(null);
   const [showResult, setShowResult] = useState(false);
+  const [battleAnnouncement, setBattleAnnouncement] = useState<'start' | 'limit' | 'final' | null>('start');
+  const [finalPushActive, setFinalPushActive] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [floaters, setFloaters] = useState<FloatingGil[]>([]);
@@ -203,6 +211,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const endedRef = useRef(false);
   const animationRef = useRef<number | null>(null);
   const lastTickRef = useRef(performance.now());
+  const finalPushRef = useRef(false);
+  const announcementTimerRef = useRef<number | null>(null);
 
   const totalPlayerInvested = companyInvested + demandInvested;
   const ownership = Math.max(0, Math.min(100, (100 - gauge) / 2));
@@ -211,7 +221,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const maxAffordableConfig = [...INVESTMENT_LEVELS].reverse()
     .find((item) => getInvestmentCost(targetProperty.marketPrice, item.level) <= cash);
   const capitalGap = totalPlayerInvested - enemyInvested;
-  const pressureRatio = capitalGap / Math.max(targetProperty.marketPrice, 1);
+  const effectivePlayerInvested = totalPlayerInvested * currentWind.playerMultiplier;
+  const effectiveEnemyInvested = enemyInvested * currentWind.enemyMultiplier;
+  const effectiveCapitalGap = effectivePlayerInvested - effectiveEnemyInvested;
+  const pressureRatio = effectiveCapitalGap / Math.max(targetProperty.marketPrice, 1);
   const pressureMultiplier = 1 + Math.min(2.4, Math.abs(pressureRatio) * 3.2);
   const ownershipRate = Math.abs(gaugeSpeed) / 2;
   const expectedSeconds = gaugeSpeed < -0.08
@@ -229,6 +242,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     (total, property) => total + Math.round(property.marketPrice * 0.24),
     alliance.active && !allianceUsed ? Math.round(targetProperty.marketPrice * 0.24) : 0
   );
+  const playerReserveCapacity = Math.max(1, totalFunds - brokerageFee);
+  const playerReservePercent = Math.max(0, Math.min(100, (cash / playerReserveCapacity) * 100));
+  const playerReserveState = playerReservePercent <= 0 ? 'short' : playerReservePercent <= 10 ? 'critical'
+    : playerReservePercent <= 25 ? 'danger' : playerReservePercent <= 50 ? 'warning' : 'healthy';
+  const windSide = currentWind.type === 'TAILWIND_PLAYER' ? 'player'
+    : currentWind.type === 'TAILWIND_ENEMY' || currentWind.type === 'HEADWIND_PLAYER' ? 'enemy'
+      : currentWind.type === 'CROSSWIND' ? 'cross' : 'calm';
+  const windTitle = windSide === 'player' ? '疾風怒濤の計' : windSide === 'enemy' ? 'ONSLAUGHT' : windSide === 'cross' ? '乱旋風' : '静穏';
+  const windDetail = windSide === 'player' ? `BURST ×${currentWind.playerMultiplier.toFixed(2)}` : windSide === 'enemy' ? `敵攻勢 ×${currentWind.enemyMultiplier.toFixed(2)}` : currentWind.directionLabel;
   const alliedSourcesAvailable = battleSubs.length > 0 || (alliance.active && !allianceUsed);
 
   useEffect(() => {
@@ -236,6 +258,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setSelectedLevel(maxAffordableConfig.level);
     setStatusText(`残高に合わせて投資額を「${maxAffordableConfig.label}」へ自動調整`);
   }, [cash, maxAffordableConfig, selectedCost]);
+
+  useEffect(() => {
+    soundFx.playSkillSpark();
+    announcementTimerRef.current = window.setTimeout(() => setBattleAnnouncement(null), 2200);
+    return () => {
+      if (announcementTimerRef.current) window.clearTimeout(announcementTimerRef.current);
+    };
+  }, []);
 
   const groups = useMemo(() => {
     const grouped = new Map<string, Property[]>();
@@ -266,10 +296,29 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     window.setTimeout(() => setMotion('idle'), 520);
   };
 
+  const announceBattle = (announcement: 'limit' | 'final', duration = 2100) => {
+    if (announcementTimerRef.current) window.clearTimeout(announcementTimerRef.current);
+    setBattleAnnouncement(announcement);
+    announcementTimerRef.current = window.setTimeout(() => setBattleAnnouncement(null), duration);
+  };
+
+  useEffect(() => {
+    if (currentWind.type === 'CALM') return;
+    const text = windSide === 'player'
+      ? `疾風怒濤の計――自社資金効率${currentWind.playerMultiplier.toFixed(2)}倍`
+      : windSide === 'enemy'
+        ? `ONSLAUGHT――競合防衛効率${currentWind.enemyMultiplier.toFixed(2)}倍`
+        : `乱旋風――所有率速度${currentWind.speedMultiplier.toFixed(2)}倍`;
+    setStatusText(text);
+    setLogs((current) => [{ id: `wind-${Date.now()}`, category: 'system' as LogCategory, text }, ...current].slice(0, 100));
+    soundFx.playSkillSpark();
+  }, [currentWind.type]);
+
   const consumeCommand = () => {
     if (!commandReady || endedRef.current) {
       soundFx.playWarning();
       return false;
+
     }
     setCommandProgress(0);
     return true;
@@ -359,16 +408,21 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const tick = (now: number) => {
       const dt = Math.min(0.1, (now - lastTickRef.current) / 1000);
       lastTickRef.current = now;
+      if (finalPushRef.current) {
+        setGaugeSpeed(-30);
+        animationRef.current = requestAnimationFrame(tick);
+        return;
+      }
       const baseVelocity = calculateGaugeVelocity(
-        totalPlayerInvested,
-        enemyInvested,
+        totalPlayerInvested * currentWind.playerMultiplier,
+        enemyInvested * currentWind.enemyMultiplier,
         targetProperty.marketPrice,
         pushMultiplier * (1 + influenceBonus)
       );
-      const gapRatio = Math.abs(totalPlayerInvested - enemyInvested) / Math.max(targetProperty.marketPrice, 1);
+      const gapRatio = Math.abs(effectiveCapitalGap) / Math.max(targetProperty.marketPrice, 1);
       const leverage = 1 + Math.min(2.4, gapRatio * 3.2);
       const deadZone = gapRatio < 0.025 ? 0.32 : 1;
-      const velocity = baseVelocity * 8.5 * leverage * deadZone;
+      const velocity = baseVelocity * 8.5 * leverage * deadZone * currentWind.speedMultiplier;
       setGaugeSpeed(velocity);
       setGauge((value) => {
         const next = value + velocity * dt;
@@ -388,7 +442,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [enemyInvested, influenceBonus, pushMultiplier, targetProperty.marketPrice, totalPlayerInvested, winner]);
+  }, [currentWind.enemyMultiplier, currentWind.playerMultiplier, currentWind.speedMultiplier, effectiveCapitalGap, enemyInvested, influenceBonus, pushMultiplier, targetProperty.marketPrice, totalPlayerInvested, winner]);
 
   const investCompanyFunds = () => {
     if (!consumeCommand()) return;
@@ -407,6 +461,23 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     playMotion('player');
     soundFx.playCapitalImpact('player', selectedLevel / 5);
     addLog(`自社資金${formatCurrency(selectedCost)}を直接投入。`, 'player');
+    if (enemyReserveRef.current <= 0) {
+      finalPushRef.current = true;
+      setFinalPushActive(true);
+      announceBattle('final', 1800);
+      setGauge(-99);
+      setGaugeSpeed(-30);
+      setStatusText(`FINAL PUSH――${formatCurrency(selectedCost)}で防衛線を突破！`);
+      showFloater(`FINAL +${formatCurrency(selectedCost)}`, 'player');
+      playMotion('player');
+      soundFx.playFinalPush();
+      addLog(`競合SHORT後の最終出資${formatCurrency(selectedCost)}。防衛線を押し切った。`, 'result');
+      window.setTimeout(() => {
+        setGauge(-100);
+        finishBattle('player');
+      }, 950);
+      return;
+    }
   };
 
   const demandFromProperty = (property: Property) => {
@@ -443,6 +514,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   const demandFromAllies = () => {
     if (!alliedSourcesAvailable || !consumeCommand()) return;
+    announceBattle('limit', 2300);
+    soundFx.playFinalPush();
+    addLog('LIMIT BREAK――傘下企業と同盟へ全資金投入を号令。', 'skill');
     let amount = 0;
     let lost = 0;
     const leaving: Property[] = [];
@@ -487,15 +561,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setDemandInvested((value) => Math.max(0, value - lost) + amount);
     const impact = amount > 0 ? Math.min(12, 3 + (amount / Math.max(targetProperty.marketPrice, 1)) * 9) : 0;
     setGauge((value) => Math.max(-99, value - impact));
-    showFloater(`総動員 +${formatCurrency(amount)}`, 'player');
+    showFloater(`LIMIT BREAK +${formatCurrency(amount)}`, 'player');
     playMotion(leaving.length ? 'rebel' : 'player');
-    soundFx.playBigCash();
 
     if (leaving.length) {
-      setStatusText(`全陣営総動員！ ${formatCurrency(amount)}を投入、${leaving.length}社が独立`);
+      setStatusText(`LIMIT BREAK！ ${formatCurrency(amount)}を投入、${leaving.length}社が独立`);
       addLog(`全陣営から${formatCurrency(amount)}を調達したが、${leaving.map((item) => item.name).join('・')}が独立。`, 'funds');
     } else {
-      setStatusText(`全陣営総動員！ ${formatCurrency(amount)}を一斉投入`);
+      setStatusText(`LIMIT BREAK！ 全社から${formatCurrency(amount)}を一斉投入`);
       addLog(`傘下${survivors.length}社${allianceAmount > 0 ? 'と同盟' : ''}から${formatCurrency(amount)}を一斉調達。`, 'funds');
     }
   };
@@ -623,6 +696,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   return (
     <div className="buyout-screen">
       <img className="buyout-backdrop" src={FANKIT_ART.battleBackdrop} alt="" aria-hidden="true" />
+      {battleAnnouncement && (
+        <div className={`battle-announcement battle-announcement--${battleAnnouncement}`} aria-live="assertive">
+          <div>
+            <small>{battleAnnouncement === 'start' ? 'CONTENT COMMENCED' : battleAnnouncement === 'limit' ? 'LIMIT BREAK' : 'FINAL PUSH'}</small>
+            <strong>{battleAnnouncement === 'start' ? '買収戦開始' : battleAnnouncement === 'limit' ? '全社資金・総動員' : '防衛資金枯渇'}</strong>
+            <span>{battleAnnouncement === 'start' ? targetProperty.name : battleAnnouncement === 'limit' ? '傘下企業のギルを解放' : '最後の一手で買収成立へ'}</span>
+          </div>
+        </div>
+      )}
       <header className="buyout-header">
         <div>
           <span>ACTIVE BUYOUT</span>
@@ -649,11 +731,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <img className={`ownership-avatar ownership-avatar--player ${motion === 'player' ? 'avatar-attack' : ''}`} src={FANKIT_ART.tataru.windUp} alt="タタル" />
             </div>
             <div
-              className={`ownership-track ownership-track--${battleDirection} ${motion !== 'idle' ? 'ownership-track--impact' : ''}`}
+              className={`ownership-track ownership-track--${battleDirection} wind-field--${windSide} ${finalPushActive ? 'ownership-track--final' : ''} ${motion !== 'idle' ? 'ownership-track--impact' : ''}`}
               aria-label={`自社所有率${ownership.toFixed(1)}%`}
               style={{ '--flow-duration': `${Math.max(.32, 1.4 - Math.min(1, ownershipRate / 4))}s` } as React.CSSProperties}
             >
               <div className="ownership-track__player" style={{ width: `${ownership}%` }} />
+              <div className="battle-wind-magic" aria-hidden="true"><i /><i /><i /><i /></div>
+              <div className={`battle-wind-sigil battle-wind-sigil--${windSide}`}>
+                <Sparkles /><b>{windTitle}</b><span>{windDetail}</span><small>{windCountdown}s</small>
+              </div>
               <div className="ownership-track__enemy-flow" style={{ left: `${ownership}%` }} />
               <div className="ownership-track__tension" style={{ left: `${ownership}%` }} />
               <div className="ownership-track__ticks">{Array.from({ length: 9 }).map((_, index) => <i key={index} />)}</div>
@@ -680,14 +766,21 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           </div>
           <div className="capital-arena__side">
             <span>自社の競り値</span>
-            <GilTower amount={totalPlayerInvested} marketPrice={targetProperty.marketPrice} side="player" motion={motion} />
+            <div className="player-capital-stack">
+              <GilTower amount={totalPlayerInvested} marketPrice={targetProperty.marketPrice} side="player" motion={motion} />
+              <div className={`player-budget-overlay player-budget-overlay--${playerReserveState}`}>
+                <small>自社残り資金</small>
+                <strong>{playerReservePercent.toFixed(1)}%</strong>
+                <span>{playerReservePercent <= 0 ? 'EMPTY / 投入不能' : playerReservePercent <= 10 ? '枯渇寸前' : '投入可能'}</span>
+              </div>
+            </div>
             <small>自社 {formatCurrency(companyInvested)} / 支援 {formatCurrency(demandInvested)}</small>
             <div className="capital-source-bar"><i style={{ width: `${totalPlayerInvested > 0 ? companyInvested / totalPlayerInvested * 100 : 0}%` }} /><span /></div>
           </div>
           <div className="capital-arena__center">
             <div className={`capital-clash capital-clash--${battleDirection}`}><i /><i /><i /></div>
             <Swords />
-            <strong>{capitalGap >= 0 ? '自社優勢' : '競合優勢'}</strong>
+            <strong>{effectiveCapitalGap >= 0 ? '自社優勢' : '競合優勢'}</strong>
             <b>{formatCurrency(Math.abs(capitalGap))}差</b>
             <span className="pressure-multiplier">押込 ×{pressureMultiplier.toFixed(2)}</span>
             {enemyReserve <= 0 && <em>敵の追加予算なし</em>}
@@ -777,8 +870,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
           {panel === 'funds' && (
             <div className="command-panel command-panel--funds">
-              <button type="button" className="grand-allied-fund" onClick={demandFromAllies} disabled={!commandReady || !alliedSourcesAvailable || !!winner}>
-                <Users /><span><b>全陣営資金・総動員</b><small>傘下{battleSubs.length}社{alliance.active && !allianceUsed ? '＋同盟' : ''}・全社に独立判定</small></span>
+              <button type="button" className="grand-allied-fund grand-allied-fund--limit" onClick={demandFromAllies} disabled={!commandReady || !alliedSourcesAvailable || !!winner}>
+                <Zap /><span><b>LIMIT BREAK</b><small>全社資金・総動員／傘下{battleSubs.length}社{alliance.active && !allianceUsed ? '＋同盟' : ''}・独立判定あり</small></span>
                 <strong>約+{formatCurrency(alliedMobilizationEstimate)}</strong>
               </button>
               {groups.length > 0 && (
@@ -839,10 +932,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <header><CircleHelp /><strong>買収劇の遊び方</strong><button type="button" onClick={() => setShowHelp(false)}><X /></button></header>
             <ol>
               <li><b>ギルを積む</b><span>自社・傘下・交易グループから資金を集めます。</span></li>
+              <li><b>風を読む</b><span>疾風怒濤の計は自社資金、赤いONSLAUGHTは敵防衛を実際に強化します。</span></li>
+              <li><b>LIMIT BREAK</b><span>傘下企業と同盟の資金を一斉投入します。強力ですが、傘下には独立判定があります。</span></li>
               <li><b>競り値差を見る</b><span>自社の累積ギルが多いほど、所有率が連続して自社側へ進みます。</span></li>
               <li><b>命令を待つ</b><span>一手ごとに命令待ち時間があります。その間にも競合は反撃します。</span></li>
               <li><b>独立リスクを選ぶ</b><span>同じ傘下へ何度でも要求できますが、危険度が上がり、独立すると過去の資金も崩れます。</span></li>
-              <li><b>端まで押し切る</b><span>敵予算0では決着しません。所有率100%を実際に確認して買収成立です。</span></li>
+              <li><b>FINAL PUSH</b><span>敵がSHORTしただけでは未決着。次の自社資金投入で防衛線を100%まで押し切り、買収成立です。</span></li>
             </ol>
             <button type="button" className="dialog-close" onClick={() => setShowHelp(false)}>商談へ戻る</button>
           </article>

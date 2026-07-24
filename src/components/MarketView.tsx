@@ -4,7 +4,7 @@ import { COMMUNITY_CAMPAIGN_ORDER, TRADE_COMMUNITIES } from '../data/worldData';
 import { formatCurrency } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
 import { ArrowRight, ShieldAlert, CheckCircle2, TrendingUp, TrendingDown, Newspaper, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole } from 'lucide-react';
-import { WindIndicator, WIND_CONDITIONS, WindCondition, WindType } from './WindIndicator';
+import { WindIndicator, WindCondition } from './WindIndicator';
 import { BeginnerGuide } from './BeginnerGuide';
 import { HelpTip } from './HelpTip';
 import { HELP_TEXT } from '../data/helpText';
@@ -15,6 +15,8 @@ interface MarketViewProps {
   totalFunds: number;
   unlockedCommunityIds: Set<CommunityType>;
   navigationRequest?: { id: number; mode: 'map' | 'targets'; community: CommunityType | 'ALL' } | null;
+  currentWind: WindCondition;
+  windCountdown: number;
   onStartBuyout: (property: Property) => void;
 }
 
@@ -23,6 +25,8 @@ export const MarketView: React.FC<MarketViewProps> = ({
   totalFunds,
   unlockedCommunityIds,
   navigationRequest,
+  currentWind,
+  windCountdown,
   onStartBuyout,
 }) => {
   const hasStartedCampaign = properties.some((property) => property.owner === 'player');
@@ -56,24 +60,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
     '【市場気配】全体的に押し目買いが優勢。買収工作の絶好のタイミング！',
   ];
 
-  // Market Wind & Momentum State
-  const [marketWind, setMarketWind] = useState<WindCondition>(WIND_CONDITIONS.TAILWIND_PLAYER);
-  const [windCountdown, setWindCountdown] = useState<number>(8);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setWindCountdown((prev) => {
-        if (prev <= 1) {
-          const types: WindType[] = ['TAILWIND_PLAYER', 'HEADWIND_PLAYER', 'TAILWIND_ENEMY', 'CROSSWIND', 'CALM'];
-          const nextType = types[Math.floor(Math.random() * types.length)];
-          setMarketWind(WIND_CONDITIONS[nextType]);
-          return 8;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Fluctuate property prices periodically
   useEffect(() => {
@@ -280,7 +266,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
         </div>
 
         <div className="shrink-0">
-          <WindIndicator currentWind={marketWind} nextChangeSeconds={windCountdown} compact />
+          <WindIndicator currentWind={currentWind} nextChangeSeconds={windCountdown} compact />
         </div>
       </div>
 
