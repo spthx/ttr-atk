@@ -352,3 +352,124 @@
   .sprite-impact,
   .battle-result-beat { animation: none !important; }
 }
+
+
+/* Mobile viewport and soft-keyboard safety. */
+.launch-intro,
+.launch-intro__content {
+  min-height: 100dvh;
+}
+
+.launch-intro__name-field {
+  scroll-margin-block: 18dvh;
+}
+
+@media (max-height: 620px) {
+  .launch-intro__content {
+    gap: .75rem;
+    justify-content: flex-start;
+    padding-block: .75rem;
+  }
+
+  .launch-intro__panel {
+    margin-block: auto;
+  }
+
+  .launch-intro__panel h1 {
+    font-size: 1.65rem;
+  }
+
+  .launch-intro__panel p {
+    margin-top: .35rem;
+    line-height: 1.45;
+  }
+
+  .launch-intro__name-field {
+    margin-top: .65rem;
+  }
+}
+
+/* Keep the mobile battle focused on ownership, money stacks and one reachable action. */
+@media (max-width: 639px) {
+  .battle-stage {
+    padding: .35rem;
+  }
+
+  .battle-stage > :not([hidden]) ~ :not([hidden]) {
+    margin-block-start: .3rem !important;
+  }
+
+  .battle-ownership-panel {
+    padding: .45rem;
+  }
+
+  .battle-ownership-panel > div:first-child {
+    margin-bottom: .25rem;
+  }
+
+  .battle-ownership-help,
+  .battle-force-line,
+  .battle-steps,
+  .battle-wind,
+  .battle-advisor-strip,
+  .battle-bottom-ticker,
+  .battle-company-panel {
+    display: none;
+  }
+
+  .battle-ownership-event {
+    margin-top: .3rem;
+    padding-block: .25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .battle-fund-arena {
+    padding: .35rem;
+  }
+
+  .battle-fund-headline {
+    margin-bottom: .2rem;
+  }
+
+  .battle-fund-headline > div:nth-child(2) {
+    display: none;
+  }
+
+  .battle-fund-headline > div {
+    padding-inline: .35rem;
+    font-size: .58rem;
+  }
+
+  .battle-budget-line {
+    font-size: .55rem;
+  }
+
+  .battle-budget-line > span:last-child {
+    display: none;
+  }
+
+  .battle-chip-stage {
+    height: 4.6rem;
+    padding-inline: .5rem;
+  }
+
+  .battle-chip-stage .gil-chip {
+    transform: scale(.82);
+    transform-origin: bottom center;
+  }
+
+  .battle-command-panel {
+    padding: .25rem;
+  }
+
+  .battle-command-sheet {
+    padding: .3rem;
+    border-width: 1px;
+  }
+
+  .battle-mobile-dock {
+    padding-bottom: max(.35rem, env(safe-area-inset-bottom));
+  }
+}

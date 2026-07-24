@@ -50,25 +50,16 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
   };
 
   return (
-    <div className="launch-intro fixed inset-0 z-[200] overflow-hidden bg-slate-950 text-white">
+    <div className="launch-intro fixed inset-0 z-[200] overflow-y-auto overscroll-contain bg-slate-950 text-white">
       <img
-        src={step === 1 ? FANKIT_ART.battleBackdrop : FANKIT_ART.marketBackdrop}
+        src={step === 2 ? FANKIT_ART.launchWallpaperMobile : step === 1 ? FANKIT_ART.battleBackdrop : FANKIT_ART.marketBackdrop}
         alt=""
         aria-hidden="true"
-        className="absolute inset-0 h-full w-full object-cover"
+        className={`fixed inset-0 h-[100dvh] w-full object-cover ${step === 2 ? 'object-[62%_center]' : 'object-center'}`}
       />
-      <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-slate-950/35" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_25%,rgba(251,191,36,.18),transparent_40%)]" />
-      {step === 2 && (
-        <img
-          src={FANKIT_ART.tataru.dressUp}
-          alt=""
-          aria-hidden="true"
-          className="launch-intro__tataru absolute bottom-6 right-4 z-[2] w-36 opacity-20 sm:bottom-8 sm:right-12 sm:w-56"
-        />
-      )}
-
-      <div className="relative z-10 mx-auto flex h-full max-w-6xl flex-col justify-between px-5 py-6 sm:px-10 sm:py-10">
+      <div className="fixed inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-slate-950/35" />
+      <div className="fixed inset-0 bg-[radial-gradient(circle_at_75%_25%,rgba(251,191,36,.18),transparent_40%)]" />
+      <div className="launch-intro__content relative z-10 mx-auto flex min-h-[100dvh] max-w-6xl flex-col justify-between px-5 py-5 sm:px-10 sm:py-10">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-[10px] font-black tracking-[.28em] text-amber-300">
             <ShieldCheck className="h-4 w-4" /> ATTACK ON TATARU
@@ -85,18 +76,24 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
           <p className="mt-4 max-w-xl text-sm leading-7 text-slate-200 sm:text-base">{current.body}</p>
 
           {step === 2 && (
-            <label className="mt-6 block max-w-lg">
+            <label className="launch-intro__name-field mt-5 block max-w-lg">
               <span className="mb-2 flex items-center gap-1.5 text-xs font-black text-amber-200">
                 <PencilLine className="h-4 w-4" /> カンパニー名
               </span>
               <input
                 value={companyName}
                 onChange={(event) => onCompanyNameChange(event.target.value.slice(0, 24))}
+                onFocus={(event) => {
+                  const input = event.currentTarget;
+                  window.setTimeout(() => input.scrollIntoView({ block: 'center', behavior: 'smooth' }), 180);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') next();
                 }}
                 className="w-full rounded-xl border border-amber-400/50 bg-slate-950/85 px-4 py-3 text-lg font-black text-amber-100 outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-400/20"
                 placeholder="タタルの大繁盛商店"
+                inputMode="text"
+                enterKeyHint="done"
                 autoFocus
               />
               <span className="mt-1 block text-right text-[9px] text-slate-500">{companyName.length}/24</span>

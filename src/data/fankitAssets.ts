@@ -28,6 +28,7 @@ export const getFankitCommerceIcon = (seed: string) => COMMERCE_ICONS[hashText(s
 
 export const FANKIT_ART = {
   marketBackdrop: '/ff14-fankit/dawntrail-fankit.jpg',
+  launchWallpaperMobile: '/ff14-fankit/launch-wallpaper-mobile.jpg',
   battleBackdrop: '/ff14-fankit/stormblood-fankit.jpg',
   jobs: JOB_ART,
   commerceIcons: COMMERCE_ICONS,

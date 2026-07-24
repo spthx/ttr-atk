@@ -23,10 +23,11 @@ export const MarketView: React.FC<MarketViewProps> = ({
   unlockedCommunityIds,
   onStartBuyout,
 }) => {
+  const hasStartedCampaign = properties.some((property) => property.owner === 'player');
   const [selectedIndustry, setSelectedIndustry] = useState<string>('ALL');
-  const [selectedCommunity, setSelectedCommunity] = useState<CommunityType | 'ALL'>('ALL');
+  const [selectedCommunity, setSelectedCommunity] = useState<CommunityType | 'ALL'>(hasStartedCampaign ? 'ALL' : 'グリダニア');
   const [selectedOwnerFilter, setSelectedOwnerFilter] = useState<string>('ALL');
-  const [viewMode, setViewMode] = useState<'map' | 'targets'>('map');
+  const [viewMode, setViewMode] = useState<'map' | 'targets'>(hasStartedCampaign ? 'map' : 'targets');
   const [showGuide, setShowGuide] = useState(false);
 
   // Real-time market fluctuation state for FX-like observation
