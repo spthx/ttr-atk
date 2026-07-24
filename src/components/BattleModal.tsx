@@ -40,6 +40,8 @@ interface BattleModalProps {
   equippedSkills: TacticalSkill[];
   alliance: AllianceState;
   industryInfluence: { owned: number; total: number; label: string; playerBonus: number; enemyBudgetDiscount: number };
+  regionalInfluence: { owned: number; total: number; label: string; playerBonus: number; enemyBudgetDiscount: number };
+  tradeNetworkBonus: number;
   isTutorial?: boolean;
   onAddFunds?: (amount: number) => void;
   onResetFunds?: () => void;
@@ -96,6 +98,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   equippedSkills,
   alliance,
   industryInfluence,
+  regionalInfluence,
+  tradeNetworkBonus,
   isTutorial = false,
   onBattleEnd,
   onClose,
@@ -111,8 +115,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const enemyBudget = React.useMemo(() => {
     const price = targetProperty.marketPrice;
     const rankFactor = price >= 20_000_000 ? 0.9 : price >= 1_000_000 ? 0.7 : price >= 200_000 ? 0.55 : 0.42;
-    return Math.round(price * (rankFactor + (targetProperty.isCartelHQ ? 0.2 : 0)) * (1 - industryInfluence.enemyBudgetDiscount));
-  }, [targetProperty, industryInfluence.enemyBudgetDiscount]);
+    const defenseDiscount = Math.min(0.3, industryInfluence.enemyBudgetDiscount + regionalInfluence.enemyBudgetDiscount);
+    return Math.round(price * (rankFactor + (targetProperty.isCartelHQ ? 0.2 : 0)) * (1 - defenseDiscount));
+  }, [targetProperty, industryInfluence.enemyBudgetDiscount, regionalInfluence.enemyBudgetDiscount]);
   const initialEnemyCommitment = Math.round(enemyBudget * 0.38);
   const [opponentInvested, setOpponentInvested] = useState<number>(initialEnemyCommitment);
   const [opponentReserve, setOpponentReserve] = useState<number>(enemyBudget - initialEnemyCommitment);
@@ -169,6 +174,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   const [isEnded, setIsEnded] = useState<boolean>(false);
   const [winner, setWinner] = useState<'player' | 'opponent' | null>(null);
+  const [showResultOverlay, setShowResultOverlay] = useState(false);
+  const [spriteMotion, setSpriteMotion] = useState<'idle' | 'player-attack' | 'enemy-attack' | 'player-win' | 'enemy-win'>('idle');
+  const spriteMotionTimerRef = useRef<number | null>(null);
+  const resultDelayTimerRef = useRef<number | null>(null);
   const [rebelledList, setRebelledList] = useState<Property[]>([]);
   const [showLogModal, setShowLogModal] = useState<boolean>(false);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
@@ -180,11 +189,24 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [allianceSupportUsed, setAllianceSupportUsed] = useState(false);
   const opponentReserveRef = useRef(opponentReserve);
   useEffect(() => { opponentReserveRef.current = opponentReserve; }, [opponentReserve]);
+  useEffect(() => () => {
+    if (spriteMotionTimerRef.current) window.clearTimeout(spriteMotionTimerRef.current);
+    if (resultDelayTimerRef.current) window.clearTimeout(resultDelayTimerRef.current);
+  }, []);
+
+  const triggerSpriteMotion = (motion: 'player-attack' | 'enemy-attack' | 'player-win' | 'enemy-win') => {
+    if (spriteMotionTimerRef.current) window.clearTimeout(spriteMotionTimerRef.current);
+    setSpriteMotion(motion);
+    if (motion === 'player-attack' || motion === 'enemy-attack') {
+      spriteMotionTimerRef.current = window.setTimeout(() => setSpriteMotion('idle'), 520);
+    }
+  };
 
   const recordOwnershipImpulse = (delta: number, label: string) => {
     const bounded = Math.max(-12, Math.min(12, delta));
     ownershipImpulseRef.current = Math.max(-14, Math.min(14, ownershipImpulseRef.current + bounded));
     setOwnershipEvent(`${bounded >= 0 ? '▲ 自社所有率が急伸' : '▼ 自社所有率が急落'} — ${label}`);
+    triggerSpriteMotion(bounded >= 0 ? 'player-attack' : 'enemy-attack');
     if (Math.abs(bounded) >= 2.5) soundFx.playMarketShock(bounded >= 0 ? 'rise' : 'drop', Math.abs(bounded) / 12);
   };
 
@@ -396,7 +418,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         effectivePlayerInvested,
         effectiveOpponentInvested,
         targetProperty.marketPrice,
-        phiSkillMultiplier * trendMultiplier * currentWind.speedMultiplier * (1 + industryInfluence.playerBonus)
+        phiSkillMultiplier * trendMultiplier * currentWind.speedMultiplier * (1 + industryInfluence.playerBonus + regionalInfluence.playerBonus + tradeNetworkBonus)
       );
       const v = finishingPushRef.current ? -36 : capitalVelocity + ownershipDriftRef.current;
 
@@ -482,6 +504,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     trendMultiplier,
     currentWind,
     industryInfluence.playerBonus,
+    regionalInfluence.playerBonus,
+    tradeNetworkBonus,
     isDemoralized,
     gauge,
     finishingPush,
@@ -708,6 +732,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setIsEnded(true);
     setWinner(resultWinner);
     setAutoInvestActive(false);
+    setShowResultOverlay(false);
+    triggerSpriteMotion(resultWinner === 'player' ? 'player-win' : 'enemy-win');
+    resultDelayTimerRef.current = window.setTimeout(() => setShowResultOverlay(true), 1500);
 
     const rebelledProps: Property[] = [];
     battleSubs.forEach((sub) => {
@@ -750,15 +777,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const totalPlayerInvested = playerCompanyInvested + playerDemandInvested;
-  const playerForce = (totalPlayerInvested * currentWind.playerMultiplier * trendMultiplier * (1 + industryInfluence.playerBonus) / Math.max(targetProperty.marketPrice, 1)) * 100;
+  const playerForce = (totalPlayerInvested * currentWind.playerMultiplier * trendMultiplier * (1 + industryInfluence.playerBonus + regionalInfluence.playerBonus + tradeNetworkBonus) / Math.max(targetProperty.marketPrice, 1)) * 100;
   const enemyForce = (opponentInvested * currentWind.enemyMultiplier / Math.max(targetProperty.marketPrice, 1)) * 100;
   const trendLabel = marketTrend === 'BULL' ? '強気・買い優勢' : marketTrend === 'BEAR' ? '弱気・売り優勢' : marketTrend === 'VOLATILE' ? '乱高下' : '小動き';
 
   const getAdvisorMessage = () => {
     if (isEnded) return '結果を整理して、商会の帳簿へ反映してくださいです。';
-    if (finishingPush) return '⚔️ 最終押し込み中！ 金色の針がWINへ届いた瞬間に買収成立ですっぺ！';
+    if (finishingPush) return '⚔️ 最終押し込み中！ 自社所有率が100%へ届いた瞬間に買収成立ですっぺ！';
     if (enemyBudgetExhausted) return '🚨 敵は防衛不能！ 「直接出資」をもう一度押せば最終押し込み開始ですっぺ！';
-    if (isTutorial) return '初回はLv1～3の少額出資から。金色の針を右のWINまで進めるですっぺ！';
+    if (isTutorial) return '初回はLv1～3の少額出資から。自社所有率を右端100%まで進めるですっぺ！';
     if (aiMindState === 'charging') {
       return '⚠️ 相手が対抗資金を準備中ですっぺ！ 溜まり切る前に直接出資で畳みかけるです！';
     }
@@ -773,7 +800,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     }
     if (gaugeSpeed < -0.05) return `📈 自社圧力${playerForce.toFixed(1)}が敵${enemyForce.toFixed(1)}を上回り、WIN方向へ進行中です。`;
     if (gaugeSpeed > 0.05) return `📉 敵圧力${enemyForce.toFixed(1)}が自社${playerForce.toFixed(1)}を上回り、LOSE方向へ押されています。`;
-    return '⚖️ 圧力差が小さく、小口注文で針が微動しています。次の大口投入が転機です。';
+    return '⚖️ 圧力差が小さく、小口注文で所有率が微動しています。次の大口投入が転機です。';
   };
   return (
     <div className="battle-screen-enter fixed inset-0 z-[100] bg-slate-950 flex flex-col h-[100dvh] max-h-[100dvh] w-full overflow-hidden font-sans select-none touch-manipulation">
@@ -852,15 +879,23 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
       {/* 2. DYNAMIC MONEY STACK GRAPHIC & TUG-OF-WAR BATTLE METER */}
       <div className="relative z-10 bg-slate-900/95 border-b border-slate-800 p-2.5 shrink-0 space-y-2 shadow-xl overflow-hidden">
-        {industryInfluence.owned > 0 && (
-          <div
-            className="flex items-center justify-between rounded-lg border border-indigo-500/40 bg-indigo-950/40 px-2.5 py-1 text-[10px] font-bold"
-            title={HELP_TEXT.industryInfluence}
-          >
-            <span className="text-indigo-200">{targetProperty.industry}：{industryInfluence.label} ({industryInfluence.owned}/{industryInfluence.total})</span>
-            <span className="text-indigo-300">{industryInfluence.playerBonus > 0 ? `自社出資 +${Math.round(industryInfluence.playerBonus * 100)}%` : '次の保有で影響力が上昇'}{industryInfluence.enemyBudgetDiscount > 0 && ' / 敵予算 -10%'}</span>
+        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+          <div className="influence-ribbon relative overflow-hidden rounded-lg border border-indigo-500/40 bg-indigo-950/40 px-2.5 py-1.5 text-[10px] font-bold" title={HELP_TEXT.industryInfluence}>
+            <img src={FANKIT_ART.commerceIcons[0]} alt="" aria-hidden="true" className="absolute -right-2 -top-3 h-12 w-12 opacity-20" />
+            <span className="relative block text-indigo-200">業界：{industryInfluence.label} ({industryInfluence.owned}/{industryInfluence.total})</span>
+            <span className="relative text-indigo-300">出資 +{Math.round(industryInfluence.playerBonus * 100)}%{industryInfluence.enemyBudgetDiscount > 0 && ' / 敵予算 -10%'}</span>
           </div>
-        )}
+          <div className="influence-ribbon relative overflow-hidden rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-2.5 py-1.5 text-[10px] font-bold" title={HELP_TEXT.regionalInfluence}>
+            <img src={FANKIT_ART.commerceIcons[3]} alt="" aria-hidden="true" className="absolute -right-2 -top-3 h-12 w-12 opacity-20" />
+            <span className="relative block text-emerald-200">地域：{regionalInfluence.label} ({regionalInfluence.owned}/{regionalInfluence.total})</span>
+            <span className="relative text-emerald-300">出資 +{Math.round(regionalInfluence.playerBonus * 100)}%{regionalInfluence.enemyBudgetDiscount > 0 && ` / 敵予算 -${Math.round(regionalInfluence.enemyBudgetDiscount * 100)}%`}</span>
+          </div>
+          <div className="influence-ribbon relative overflow-hidden rounded-lg border border-amber-500/40 bg-amber-950/40 px-2.5 py-1.5 text-[10px] font-bold" title={HELP_TEXT.regionalInfluence}>
+            <img src={FANKIT_ART.commerceIcons[1]} alt="" aria-hidden="true" className="absolute -right-2 -top-3 h-12 w-12 opacity-20" />
+            <span className="relative block text-amber-200">都市交易網</span>
+            <span className="relative text-amber-300">制覇都市補正 +{Math.round(tradeNetworkBonus * 100)}%</span>
+          </div>
+        </div>
         <section className={`ownership-battle rounded-xl border p-3 ${finishingPush ? 'ownership-battle--finishing border-amber-300' : enemyBudgetExhausted ? 'border-emerald-400/70' : 'border-cyan-500/35'}`}>
           <div className="mb-2 flex items-end justify-between gap-3">
             <div>
@@ -881,8 +916,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <div className="ownership-track__player absolute inset-y-0 left-0 bg-gradient-to-r from-amber-700 via-amber-400 to-yellow-200 transition-[width] duration-75" style={{ width: `${Math.max(0, Math.min(100, (100 - gauge) / 2))}%` }} />
             <div className="absolute inset-y-0 left-1/2 w-px bg-white/35" />
             <div className="ownership-track__clash absolute inset-y-0 w-1 bg-white shadow-[0_0_18px_rgba(255,255,255,.95)] transition-[left] duration-75" style={{ left: `${Math.max(0, Math.min(100, (100 - gauge) / 2))}%` }} />
-            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-950 drop-shadow-sm">自社 →</span>
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-black text-rose-100">← 競合</span>
+            <div className={`sprite-exchange sprite-exchange--${spriteMotion}`}>
+              <img src={FANKIT_ART.jobs[0]} alt="自社側ジョブキャラクター" className="pixel-fighter pixel-fighter--player" />
+              <span className="sprite-impact" aria-hidden="true">GIL!</span>
+              <img src={FANKIT_ART.jobs[1]} alt="競合側ジョブキャラクター" className="pixel-fighter pixel-fighter--enemy" />
+            </div>
+            <span className="absolute left-2 top-1 text-[9px] font-black text-slate-950 drop-shadow-sm">自社 →</span>
+            <span className="absolute right-2 top-1 text-[9px] font-black text-rose-100">← 競合</span>
+            {isEnded && !showResultOverlay && (
+              <div className="battle-result-beat absolute inset-x-1/2 top-1/2 z-30 w-48 -translate-x-1/2 -translate-y-1/2 rounded border border-white/50 bg-slate-950/90 px-2 py-1 text-center">
+                <b className={winner === 'player' ? 'text-amber-300' : 'text-rose-300'}>{winner === 'player' ? '自社所有率 100% — 買収成立' : '自社所有率 0% — 買収失敗'}</b>
+                <span className="block text-[8px] text-slate-300">決着状況を確認中…</span>
+              </div>
+            )}
           </div>
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px]">
@@ -1604,7 +1650,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       )}
 
       {/* 6. POST-BATTLE RESULT & STRATEGY REVIEW OVERLAY (勝敗確定・戦略ログ確認モーダル) */}
-      {isEnded && (
+      {showResultOverlay && (
         <div className="fixed inset-0 z-[110] bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-fade-in overflow-y-auto">
           <div className="bg-slate-900 border-2 border-amber-500/80 rounded-2xl w-full max-w-2xl my-auto p-4 sm:p-6 space-y-4 shadow-2xl relative overflow-hidden">
             {/* Background Light Glow */}

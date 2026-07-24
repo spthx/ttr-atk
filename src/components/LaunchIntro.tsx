@@ -59,6 +59,14 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
       />
       <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-slate-950/35" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_25%,rgba(251,191,36,.18),transparent_40%)]" />
+      {step === 2 && (
+        <img
+          src={FANKIT_ART.tataru.dressUp}
+          alt=""
+          aria-hidden="true"
+          className="launch-intro__tataru absolute bottom-6 right-4 z-[2] w-36 opacity-20 sm:bottom-8 sm:right-12 sm:w-56"
+        />
+      )}
 
       <div className="relative z-10 mx-auto flex h-full max-w-6xl flex-col justify-between px-5 py-6 sm:px-10 sm:py-10">
         <header className="flex items-center justify-between">

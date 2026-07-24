@@ -3,7 +3,7 @@ import { Property, IndustryType, CommunityType } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER, TRADE_COMMUNITIES } from '../data/worldData';
 import { formatCurrency } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
-import { Search, ArrowRight, ShieldAlert, CheckCircle2, TrendingUp, TrendingDown, Newspaper, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole } from 'lucide-react';
+import { ArrowRight, ShieldAlert, CheckCircle2, TrendingUp, TrendingDown, Newspaper, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole } from 'lucide-react';
 import { WindIndicator, WIND_CONDITIONS, WindCondition, WindType } from './WindIndicator';
 import { BeginnerGuide } from './BeginnerGuide';
 import { HelpTip } from './HelpTip';
@@ -23,7 +23,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
   unlockedCommunityIds,
   onStartBuyout,
 }) => {
-  const [searchTerm, setSearchTerm] = useState('');
   const [selectedIndustry, setSelectedIndustry] = useState<string>('ALL');
   const [selectedCommunity, setSelectedCommunity] = useState<CommunityType | 'ALL'>('ALL');
   const [selectedOwnerFilter, setSelectedOwnerFilter] = useState<string>('ALL');
@@ -125,12 +124,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
   const filteredProperties = useMemo(() => {
     return properties.filter((p) => {
-      const matchesSearch =
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.ownerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.community.toLowerCase().includes(searchTerm.toLowerCase());
-
       const matchesIndustry =
         selectedIndustry === 'ALL' || p.industry === selectedIndustry;
 
@@ -145,14 +138,13 @@ export const MarketView: React.FC<MarketViewProps> = ({
         (selectedOwnerFilter === 'CARTEL' && (p.owner === 'dofor' || p.owner === 'abyss')) ||
         (selectedOwnerFilter === 'PLAYER' && p.owner === 'player');
 
-      return matchesUnlocked && matchesSearch && matchesIndustry && matchesCommunity && matchesOwner;
+      return matchesUnlocked && matchesIndustry && matchesCommunity && matchesOwner;
     });
-  }, [properties, searchTerm, selectedIndustry, selectedCommunity, selectedOwnerFilter, unlockedCommunityIds]);
+  }, [properties, selectedIndustry, selectedCommunity, selectedOwnerFilter, unlockedCommunityIds]);
 
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
   const resetFilters = () => {
-    setSearchTerm('');
     setSelectedIndustry('ALL');
     setSelectedCommunity('ALL');
     setSelectedOwnerFilter('ALL');
@@ -210,6 +202,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
             {communityProgress.map((community, index) => {
               const unlocked = unlockedCommunityIds.has(community.id);
               const prerequisite = COMMUNITY_CAMPAIGN_ORDER[index - 1];
+              const regionalBonus = community.owned === 0 ? 0 : community.conquered ? 12 : community.owned / community.total >= 0.5 ? 8 : 3;
               return (
               <button key={community.id} type="button" disabled={!unlocked} onClick={() => { setSelectedCommunity(community.id); setViewMode('targets'); }} className={`group relative min-h-24 overflow-hidden rounded-xl border p-3 text-left transition-all ${unlocked ? 'active:scale-95' : 'cursor-not-allowed opacity-55'} ${community.conquered ? 'border-emerald-400/50 bg-emerald-950/45' : unlocked ? 'border-cyan-500/35 bg-slate-950 hover:border-cyan-300/70' : 'border-slate-800 bg-slate-950/80'}`} style={{ animationDelay: `${index * 28}ms` }}>
                 <img src={getFankitJobArt(community.id)} alt="" aria-hidden="true" className="absolute -bottom-5 -right-4 h-24 w-24 object-contain opacity-20 transition-transform group-hover:scale-110" />
@@ -218,6 +211,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 <span className={`relative z-10 mt-3 inline-block rounded px-1.5 py-0.5 text-[9px] font-black ${community.conquered ? 'bg-emerald-400/20 text-emerald-200' : 'bg-slate-800 text-slate-300'}`}>
                   {community.conquered ? '制覇済み' : unlocked ? `${community.owned}/${community.total} 取得` : `${prerequisite}制覇で解放`}
                 </span>
+                {unlocked && <span className="relative z-10 mt-1 block text-[8px] font-bold text-amber-300">地域補正 +{regionalBonus}%</span>}
               </button>
               );
             })}
@@ -274,20 +268,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
       {/* Filters Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
-        {/* Search */}
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input
-            type="text"
-            aria-label="物件を検索"
-            title="物件名、所有者名、都市名、説明文から検索します"
-            placeholder="物件名・所有者・キーワード検索..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-700/70 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
-          />
-        </div>
-
         {/* Category Filters */}
         <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
           <select

@@ -162,6 +162,32 @@ export default function App() {
     return result;
   }, [properties]);
 
+  const regionalInfluence = useMemo(() => {
+    const result: Record<string, { owned: number; total: number; label: string; playerBonus: number; enemyBudgetDiscount: number }> = {};
+    communityProgress.forEach((community) => {
+      const ratio = community.total > 0 ? community.owned / community.total : 0;
+      const entry = { owned: community.owned, total: community.total, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 };
+      if (community.owned > 0) {
+        entry.label = '足場を築いた';
+        entry.playerBonus = 0.03;
+      }
+      if (ratio >= 0.5) {
+        entry.label = '地域優勢';
+        entry.playerBonus = 0.08;
+        entry.enemyBudgetDiscount = 0.05;
+      }
+      if (community.conquered) {
+        entry.label = '地域制覇';
+        entry.playerBonus = 0.12;
+        entry.enemyBudgetDiscount = 0.08;
+      }
+      result[community.id] = entry;
+    });
+    return result;
+  }, [communityProgress]);
+
+  const tradeNetworkBonus = Math.min(0.16, conqueredCommunityCount * 0.02);
+
   // Active Synergies Count & Bonus Multiplier
   const { activeSynergiesCount, bonusMultiplier } = useMemo(() => {
     let count = 0;
@@ -530,6 +556,8 @@ export default function App() {
           equippedSkills={equippedSkills}
           alliance={alliance}
           industryInfluence={industryInfluence[activeBattleProperty.industry] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
+          regionalInfluence={regionalInfluence[activeBattleProperty.community] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
+          tradeNetworkBonus={tradeNetworkBonus}
           isTutorial={ownedProperties.length === 0 && activeBattleProperty.id.startsWith('prop_starter_')}
           onAddFunds={handleAddFunds}
           onResetFunds={handleResetFunds}
