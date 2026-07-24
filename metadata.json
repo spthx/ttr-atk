@@ -1,6 +1,6 @@
 {
-  "name": "タタル商会 世界交易帳",
-  "description": "タタル商会の交易実務担当として全都市の商圏制覇を目指し、タタルの助言を受けながら資本買収を進める金融シミュレーションゲーム",
+  "name": "進撃の小人 — Attack on Tataru",
+  "description": "タタル商会の交易実務担当として、商魂と買収で全都市制覇を目指す金融シミュレーションゲーム",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

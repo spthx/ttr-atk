@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "タタル商会 世界交易帳",
+  title: "進撃の小人 — Attack on Tataru",
   description: "タタル商会の交易実務担当として、FF14の主要都市と企業連合を制覇する金融ゲーム。",
 };
 
@@ -9,7 +9,7 @@ export default function Home() {
       <iframe
         className="game-frame"
         src="/game/index.html"
-        title="タタル商会 世界交易帳"
+        title="進撃の小人 — Attack on Tataru"
         allow="fullscreen"
       />
       <noscript>

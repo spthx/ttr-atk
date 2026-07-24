@@ -10,16 +10,16 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     metadataBase: baseUrl,
-    title: "タタル商会 世界交易帳",
+    title: "進撃の小人 — Attack on Tataru",
     description: "FF14の主要都市と企業連合を、買収と交易で制覇する金融ゲーム。",
     openGraph: {
-      title: "タタル商会 世界交易帳",
+      title: "進撃の小人 — Attack on Tataru",
       description: "買収・交易・資金管理で全都市制覇を目指す金融ゲーム。",
       images: [new URL("/og.png", baseUrl).toString()],
     },
     twitter: {
       card: "summary_large_image",
-      title: "タタル商会 世界交易帳",
+      title: "進撃の小人 — Attack on Tataru",
       description: "買収・交易・資金管理で全都市制覇を目指す金融ゲーム。",
       images: [new URL("/og.png", baseUrl).toString()],
     },
