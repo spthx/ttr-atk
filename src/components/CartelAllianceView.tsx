@@ -13,13 +13,15 @@ import {
 } from 'lucide-react';
 import { HelpTip } from './HelpTip';
 import { HELP_TEXT } from '../data/helpText';
+import { ALLIANCE_CANDIDATES } from '../data/allianceData';
+import { isPublicPatronage } from '../utils/alliance';
 
 interface CartelAllianceViewProps {
   companyName: string;
   cartels: Cartel[];
   properties: Property[];
   alliance: AllianceState;
-  onFormAlliance: (allyName: string) => void;
+  onFormAlliance: (alliance: Omit<AllianceState, 'active'>) => void;
   onBreakAlliance: () => void;
   onStartBuyout: (property: Property) => void;
 }
@@ -34,61 +36,77 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
   onStartBuyout,
 }) => {
   const propertyMap = new Map<string, Property>(properties.map((p) => [p.id, p]));
+  const publicPatronageActive = isPublicPatronage(alliance);
+  const activeCandidate = ALLIANCE_CANDIDATES.find((candidate) => candidate.allyId === alliance.allyId);
 
   return (
     <div className="space-y-8">
-      {/* 1. Alliances (同盟) Section */}
+      {/* 1. External cooperation / public patronage. Grand Companies are never properties. */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
               <Users className="w-5 h-5 text-indigo-400" />
-              TRADE PARTY（外部協力）協定
-              <HelpTip term="トレード・パーティ" description={HELP_TEXT.alliance} />
+              ALLIANCE（外部協力・公的後援）
+              <HelpTip term="ALLIANCE" description={HELP_TEXT.alliance} />
             </h2>
+
+            {alliance.active && (
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="bg-indigo-950/80 border border-indigo-500/40 px-3 py-1.5 rounded-lg text-indigo-300 text-xs font-bold flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-indigo-400" />
+                  {publicPatronageActive ? '公的後援' : '協力協定'}：{alliance.allyName}
+                </div>
+                <button onClick={onBreakAlliance} className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-xs font-bold transition-all cursor-pointer">
+                  {publicPatronageActive ? '後援を返上' : '協定解除'}
+                </button>
+              </div>
+            )}
           </div>
 
-          {alliance.active ? (
-            <div className="flex items-center gap-3">
-              <div className="bg-indigo-950/80 border border-indigo-500/40 px-3 py-1.5 rounded-lg text-indigo-300 text-xs font-bold flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-indigo-400" />
-                パーティ協定中: {alliance.allyName}
-              </div>
-              <button
-                onClick={onBreakAlliance}
-                className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-xs font-bold transition-all cursor-pointer"
-              >
-                協定解除
-              </button>
+          {!alliance.active && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+              {ALLIANCE_CANDIDATES.map((candidate) => {
+                const isGrandCompany = candidate.allyKind === 'grand_company';
+                return (
+                  <button key={candidate.allyId} type="button" onClick={() => { soundFx.playCoin(); onFormAlliance(candidate); }} className={`min-h-28 p-3 rounded-lg border text-left transition-all cursor-pointer active:scale-[.99] ${isGrandCompany ? 'bg-violet-950/20 border-violet-500/35 hover:border-violet-400/70' : 'bg-indigo-950/20 border-indigo-500/35 hover:border-indigo-400/70'}`}>
+                    <span className={`text-[10px] font-black tracking-wider ${isGrandCompany ? 'text-violet-300' : 'text-indigo-300'}`}>
+                      {isGrandCompany ? 'PUBLIC PATRONAGE' : 'TRADE PARTY'}
+                    </span>
+                    <b className="mt-1 block text-sm text-slate-100">{candidate.allyName}</b>
+                    <small className="mt-1.5 block text-[11px] leading-relaxed text-slate-400">{candidate.summary}</small>
+                    <strong className={`mt-2 block text-xs ${isGrandCompany ? 'text-violet-300' : 'text-indigo-300'}`}>
+                      {isGrandCompany ? `${candidate.allyName}へ後援を申請` : `${candidate.allyName}をパーティに招く`}
+                    </strong>
+                  </button>
+                );
+              })}
             </div>
-          ) : (
-            <button
-              onClick={() => {
-                soundFx.playCoin();
-                onFormAlliance('ガーロンド・アイアンワークス');
-              }}
-              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-indigo-600/20"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              ガーロンド・アイアンワークスをパーティに招く（無料）
-            </button>
           )}
         </div>
 
-        <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
-          <div className="flex items-start gap-2">
-            <span className="text-indigo-400 font-bold">1. 不可侵契約:</span>
-            <span>パーティ企業から{companyName}への対抗買収が一切仕掛けられなくなります。</span>
+        {alliance.active && publicPatronageActive ? (
+          <>
+            <p className="rounded-lg border border-violet-500/30 bg-violet-950/20 p-3 text-xs leading-relaxed text-violet-200">
+              グランドカンパニーは都市国家の公的組織です。買収・所有・傘下化はできず、許認可・調達・輸送などの後援を受けます。
+            </p>
+            <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
+              <div className="flex items-start gap-2"><span className="text-violet-400 font-bold">1. 通商・調達の後援:</span><span>{activeCandidate?.summary || `${alliance.allyName}から公的後援を受けます。`}</span></div>
+              <div className="flex items-start gap-2"><span className="text-violet-400 font-bold">2. 支援要請:</span><span>一交渉1回、許認可・調達・輸送を含む相場32%相当の支援価値を受けます。LBには含まれません。</span></div>
+              <div className="flex items-start gap-2"><span className="text-slate-400 font-bold">3. 任意返上:</span><span>後援はいつでも返上できます。通常物件への買収で自動解除されません。</span></div>
+            </div>
+          </>
+        ) : alliance.active ? (
+          <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
+            <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">1. 不可侵契約:</span><span>パーティ企業から{companyName}への対抗買収が一切仕掛けられなくなります。</span></div>
+            <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">2. パーティ支援要請:</span><span>買収交渉ごとに1回、対象相場の32%相当を要請できます。LBには含まれません。</span></div>
+            <div className="flex items-start gap-2"><span className="text-rose-400 font-bold">3. 破棄条件:</span><span>パーティ企業の傘下へ買収を仕掛けると、協定は永久解除されます。</span></div>
           </div>
-          <div className="flex items-start gap-2">
-            <span className="text-indigo-400 font-bold">2. パーティ支援要請:</span>
-            <span>買収交渉ごとに1回、対象相場の32%相当を要請できます。LIMIT BREAKには含まれません。</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="text-rose-400 font-bold">3. 破棄条件:</span>
-            <span>パーティ企業の傘下へ買収を仕掛けると、協定は永久解除されます。</span>
-          </div>
-        </div>
+        ) : (
+          <p className="text-xs leading-relaxed text-slate-400">
+            同時に有効にできる協力先は1つです。企業との協力協定か、三都市いずれかのグランドカンパニーによる公的後援を選べます。
+          </p>
+        )}
       </div>
 
       {/* 2. Enterprise Alliances & Staged Negotiation */}

@@ -61,7 +61,7 @@ export interface TacticalSkill {
     | 'INDEPENDENCE_SABOTAGE' // 連環計 (disrupts enemy funding)
     | 'DEMORALIZE' // 消沈 (slows enemy AI)
     | 'CAPITAL_BOOST' // 意気衝天
-    | 'SNS_BLITZ' // ぶんどる
+    | 'LIVING_DEAD' // リビングデッド（旧skill_sns_blitz IDを維持）
     | 'SYNERGY_PUSH'; // バトルリタニー
   unlockRequirements: string; // Text description
   requiredIndustries?: IndustryType[];
@@ -120,10 +120,17 @@ export interface GameLog {
   type: 'info' | 'success' | 'warning' | 'danger';
 }
 
+export type AllianceAllyKind = 'company' | 'grand_company';
+export type AllianceRelationType = 'commercial_alliance' | 'public_patronage';
+
 export interface AllianceState {
-  allyId: string; // Cartel/Company ID
+  allyId: string; // External company or public-organization ID. Never a Property ID.
   allyName: string;
   active: boolean;
+  /** Optional for compatibility with schema-v3 saves created before public patronage. */
+  allyKind?: AllianceAllyKind;
+  /** Missing values are normalized to commercial_alliance on load. */
+  relationType?: AllianceRelationType;
 }
 
 export type FinishMethod =

@@ -32,6 +32,7 @@ import {
   formatCurrency,
 } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
+import { calculateAllianceSupport, isPublicPatronage } from '../utils/alliance';
 import { FANKIT_ART, getFankitJobArt } from '../data/fankitAssets';
 import { WindCondition } from './WindIndicator';
 import {
@@ -42,6 +43,7 @@ import {
 import {
   BATTLE_GAUGE_SPEED_FACTOR,
   calculateEnemyBudget,
+  calculateOwnershipFromGauge,
   calculateLimitBreakAmount,
   calculateLimitBreakChargeGain,
   calculateLimitBreakOwnershipAfterDefense,
@@ -52,11 +54,14 @@ import {
   getEnemyDifficultyLevel,
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
+  LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER,
   LIMIT_BREAK_CHARGE_PER_BAR,
   LIMIT_BREAK_MULTIPLIERS,
   LIMIT_BREAK_OWNERSHIP_CAPS,
+  resolveLivingDeadOutcome,
   TACTICAL_SKILL_BALANCE,
   type LimitBreakTier,
+  type LivingDeadPhase,
 } from '../utils/gameBalance';
 export { ENEMY_BALANCE_FACTOR, LIMIT_BREAK_MULTIPLIERS };
 import gilChipPlayer from '../assets/battle/gil-chip-player.png';
@@ -73,6 +78,7 @@ import '../battle-update-v2.css';
 import '../battle-update-v3.css';
 import '../battle-chip-stack-v3.css';
 import '../battle-limit-gauge.css';
+import '../battle-special-actions.css';
 
 interface BattleModalProps {
   targetProperty: Property;
@@ -103,6 +109,7 @@ type BattleMotion = 'idle' | 'player' | 'enemy' | 'rebel';
 type LogCategory = 'system' | 'player' | 'enemy' | 'funds' | 'skill' | 'result';
 type BattleAnnouncement = 'start' | 'limit' | 'final';
 type BattleConditionKind = 'player' | 'enemy' | 'cross' | 'calm' | 'synergy' | 'burst';
+type DefeatReason = 'CAPITAL_COLLAPSE' | 'WALKING_DEAD_FAILED';
 
 interface BattleConditionAnnouncement {
   kind: BattleConditionKind;
@@ -289,7 +296,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [pushMultiplierRemaining, setPushMultiplierRemaining] = useState(0);
   const [skillCooldowns, setSkillCooldowns] = useState<Record<string, number>>({});
   const [usedSkillIds, setUsedSkillIds] = useState<Set<string>>(() => new Set());
-  const [snsCounterRemaining, setSnsCounterRemaining] = useState(0);
+  const [livingDeadPhase, setLivingDeadPhase] = useState<LivingDeadPhase>('inactive');
+  const [livingDeadRemaining, setLivingDeadRemaining] = useState(0);
   const [motion, setMotion] = useState<BattleMotion>('idle');
   const [statusText, setStatusText] = useState('効果を確認して交渉を開始してください');
   const [aiText, setAiText] = useState('敵大規模防衛出資を準備中');
@@ -298,6 +306,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [finishMethod, setFinishMethod] = useState<FinishMethod>('NORMAL');
   const [finalOwnership, setFinalOwnership] = useState(50);
   const [overkill, setOverkill] = useState(0);
+  const [defeatReason, setDefeatReason] = useState<DefeatReason>('CAPITAL_COLLAPSE');
   const [battleAnnouncement, setBattleAnnouncement] = useState<BattleAnnouncement | null>(null);
   const [conditionAnnouncement, setConditionAnnouncement] = useState<BattleConditionAnnouncement | null>(null);
   const [openingSlowActive, setOpeningSlowActive] = useState(false);
@@ -326,9 +335,24 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const openingSlowTimerRef = useRef<number | null>(null);
   const decisiveImpactTimerRef = useRef<number | null>(null);
   const decisiveResolveTimerRef = useRef<number | null>(null);
+  const livingDeadNoticeTimerRef = useRef<number | null>(null);
   const decisiveRef = useRef(false);
   const lastAnnouncedWindRef = useRef(currentWind.type);
-  const snsCounterAmountRef = useRef(0);
+  const livingDeadPhaseRef = useRef<LivingDeadPhase>('inactive');
+  const livingDeadRemainingRef = useRef(0);
+
+  const updateLivingDeadState = (phase: LivingDeadPhase, remainingMs = 0) => {
+    livingDeadPhaseRef.current = phase;
+    livingDeadRemainingRef.current = remainingMs;
+    setLivingDeadPhase(phase);
+    setLivingDeadRemaining(remainingMs);
+  };
+  const livingDeadGaugeFloor =
+    100 - TACTICAL_SKILL_BALANCE.livingDead.minimumOwnership * 2;
+  const capGaugeAtLivingDeadFloor = (nextGauge: number) =>
+    livingDeadPhaseRef.current === 'recovery'
+      ? Math.min(livingDeadGaugeFloor, nextGauge)
+      : nextGauge;
 
   const groups = useMemo(() => {
     const grouped = new Map<string, Property[]>();
@@ -345,7 +369,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   }, [battleSubs]);
 
   const totalPlayerInvested = companyInvested + demandInvested;
-  const ownership = Math.max(0, Math.min(100, (100 - gauge) / 2));
+  const ownership = calculateOwnershipFromGauge(gauge);
   const commandReady = commandProgress >= 100;
   const selectedCost = getInvestmentCost(targetProperty.marketPrice, selectedLevel);
   const maxAffordableConfig = [...INVESTMENT_LEVELS].reverse()
@@ -402,6 +426,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     visibleLimitBreakCharge,
     limitBreakCapacityTier
   );
+  const limitBreakGaugeFull =
+    limitBreakChargeCapacity > 0 &&
+    visibleLimitBreakCharge >= limitBreakChargeCapacity;
   const limitBreakMultiplier = limitBreakTier > 0 ? LIMIT_BREAK_MULTIPLIERS[limitBreakTier] : 0;
   const limitBreakOwnershipCap = limitBreakTier > 0
     ? LIMIT_BREAK_OWNERSHIP_CAPS[limitBreakTier]
@@ -411,7 +438,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     battleSubs,
     limitBreakTier
   );
-  const allianceSupport = alliance.active && !allianceUsed ? Math.round(targetProperty.marketPrice * 0.32) : 0;
+  const alliancePublicPatronage = isPublicPatronage(alliance);
+  const allianceSupport = alliance.active && !allianceUsed
+    ? calculateAllianceSupport(targetProperty.marketPrice)
+    : 0;
   const onePassPropertySupport = battleSubs.reduce(
     (total, property) => total + Math.round(property.marketPrice * 0.45),
     0
@@ -432,6 +462,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       : preparationRatio >= 0.45
         ? '要・風／妨害'
         : '準備不足';
+  const commandProgressPerTick = fastHorse
+    ? TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick
+    : TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick;
+  const playerRecastSeconds = commandReady
+    ? 0
+    : Math.max(0, ((100 - commandProgress) / commandProgressPerTick) * 0.05);
   const isPaused = battlePhase !== 'active' || showHelp || showLog;
   const timeScale = isPaused
     ? 0
@@ -461,6 +497,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     enemyDifficultyLevel, isTutorial, lastPlayerAction, targetProperty.isCartelHQ,
     targetProperty.marketPrice, windCountdown,
   ]);
+  const enemyRecastSeconds = enemyReserve <= 0
+    ? 0
+    : Math.max(0, (enemyDecision.waitMs * (1 - aiProgress / 100)) / 1000);
+  const livingDeadDuration = livingDeadPhase === 'waiting'
+    ? TACTICAL_SKILL_BALANCE.livingDead.waitingDurationMs
+    : livingDeadPhase === 'recovery'
+      ? TACTICAL_SKILL_BALANCE.livingDead.recoveryDurationMs
+      : 0;
+  const livingDeadProgress = livingDeadDuration > 0
+    ? Math.max(0, Math.min(100, livingDeadRemaining / livingDeadDuration * 100))
+    : livingDeadPhase === 'survived' ? 100 : 0;
   useEffect(() => {
     if (selectedCost <= cash || !maxAffordableConfig) return;
     setSelectedLevel(maxAffordableConfig.level);
@@ -483,6 +530,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (openingSlowTimerRef.current) window.clearTimeout(openingSlowTimerRef.current);
     if (decisiveImpactTimerRef.current) window.clearTimeout(decisiveImpactTimerRef.current);
     if (decisiveResolveTimerRef.current) window.clearTimeout(decisiveResolveTimerRef.current);
+    if (livingDeadNoticeTimerRef.current) window.clearTimeout(livingDeadNoticeTimerRef.current);
   }, [onTimeScaleChange]);
 
   useEffect(() => {
@@ -637,7 +685,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const finalizeBattle = (
     result: 'player' | 'opponent',
     method: FinishMethod = 'NORMAL',
-    rawOwnership = ownership
+    rawOwnership = ownership,
+    resolvedDefeatReason: DefeatReason = 'CAPITAL_COLLAPSE'
   ) => {
     if (endedRef.current) return;
     endedRef.current = true;
@@ -646,6 +695,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const resolvedOwnership = Math.max(0, rawOwnership);
     const resolvedOverkill = result === 'player' ? Math.max(0, resolvedOwnership - 100) : 0;
     setWinner(result);
+    setDefeatReason(resolvedDefeatReason);
     setFinishMethod(method);
     setFinalOwnership(resolvedOwnership);
     setOverkill(resolvedOverkill);
@@ -655,10 +705,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setFinishTelegraphVisible(true);
     if (finishTimerRef.current) window.clearTimeout(finishTimerRef.current);
     finishTimerRef.current = window.setTimeout(() => setFinishTelegraphVisible(false), 1450);
-    setStatusText(result === 'player' ? '所有率100%――買収成立！' : '所有率0%――買収失敗');
+    setStatusText(result === 'player'
+      ? '所有率100%――買収成立！'
+      : resolvedDefeatReason === 'WALKING_DEAD_FAILED'
+        ? '蘇生猶予終了――所有率30％へ届かず買収失敗'
+        : '所有率0%――買収失敗');
     addLog(result === 'player'
       ? `${companyName}が${targetProperty.name}を${FINISH_LABELS[method]}で押し切りました。`
-      : `${companyName}は競合に所有率を押し切られました。`, 'result');
+      : resolvedDefeatReason === 'WALKING_DEAD_FAILED'
+        ? `リビングデッドの蘇生猶予中に所有率30％へ戻せず、${companyName}は敗北しました。`
+        : `${companyName}は競合に所有率を押し切られました。`, 'result');
     if (result === 'player') {
       soundFx.playVictory();
       confetti({ particleCount: 150, spread: 100, origin: { y: 0.48 } });
@@ -671,11 +727,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     result: 'player' | 'opponent',
     method: FinishMethod = 'NORMAL',
     rawOwnership = ownership,
-    cinematic = true
+    cinematic = true,
+    resolvedDefeatReason: DefeatReason = 'CAPITAL_COLLAPSE'
   ) => {
     if (endedRef.current || decisiveRef.current) return;
     if (!cinematic) {
-      finalizeBattle(result, method, rawOwnership);
+      finalizeBattle(result, method, rawOwnership, resolvedDefeatReason);
       return;
     }
 
@@ -685,7 +742,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setDecisiveBlow({ winner: result, impacted: false });
     setStatusText(result === 'player'
       ? '決着の一撃――最後の資金が防衛線へ届く！'
-      : '決着の一撃――競合の大口防衛出資が直撃！');
+      : resolvedDefeatReason === 'WALKING_DEAD_FAILED'
+        ? '蘇生猶予終了――最後の防衛線が崩壊する！'
+        : '決着の一撃――競合の大口防衛出資が直撃！');
     playMotion(result === 'player' ? 'player' : 'enemy');
     soundFx.playDecisiveBlow(result);
 
@@ -696,8 +755,29 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     }, 190);
     decisiveResolveTimerRef.current = window.setTimeout(() => {
       decisiveRef.current = false;
-      finalizeBattle(result, method, rawOwnership);
+      finalizeBattle(result, method, rawOwnership, resolvedDefeatReason);
     }, 760);
+  };
+
+  const triggerWalkingDead = () => {
+    const outcome = resolveLivingDeadOutcome(
+      livingDeadPhaseRef.current,
+      0,
+      livingDeadRemainingRef.current
+    );
+    if (outcome !== 'triggered') return false;
+    updateLivingDeadState(
+      'recovery',
+      TACTICAL_SKILL_BALANCE.livingDead.recoveryDurationMs
+    );
+    setGaugeSpeed(0);
+    setStatusText('WALKING DEAD――10秒以内に所有率30％まで押し戻してください');
+    showFloater('WALKING DEAD / 1%', 'center');
+    playMotion('player');
+    soundFx.playWarning();
+    soundFx.playSkillSpark();
+    addLog('リビングデッド発動。所有率1％で踏みとどまり、10秒の蘇生猶予へ移行。', 'skill');
+    return true;
   };
 
   const showShortNotice = () => {
@@ -753,7 +833,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     }
     const counterShock = Math.min(10, (1.5 + (actual / Math.max(targetProperty.marketPrice, 1)) * 18) * currentWind.enemyMultiplier);
     if (applyGaugeShock) {
-      setGauge((value) => Math.min(99, value + counterShock));
+      setGauge((value) => capGaugeAtLivingDeadFloor(Math.min(99, value + counterShock)));
     }
     setStatusText(`敵大規模防衛出資――${formatCurrency(actual)}を対抗投入`);
     setAiText(nextReserve > 0 ? '次の敵大規模防衛出資を詠唱中' : 'SHORT / 追加防衛不能');
@@ -790,28 +870,49 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setEnemySlowedRemaining((value) => Math.max(0, value - elapsed));
       setEnemyDisruptionRemaining((value) => Math.max(0, value - elapsed));
       setPushMultiplierRemaining((value) => Math.max(0, value - elapsed));
-      setSnsCounterRemaining((value) => Math.max(0, value - elapsed));
+      if (livingDeadPhaseRef.current === 'waiting' || livingDeadPhaseRef.current === 'recovery') {
+        const nextRemaining = Math.max(0, livingDeadRemainingRef.current - elapsed);
+        livingDeadRemainingRef.current = nextRemaining;
+        setLivingDeadRemaining(nextRemaining);
+      }
     }, 50);
     return () => window.clearInterval(interval);
   }, [fastHorse, timeScale, winner]);
 
   useEffect(() => {
-    if (snsCounterRemaining > 0 || snsCounterAmountRef.current <= 0 || winner) return;
-    const amount = snsCounterAmountRef.current;
-    snsCounterAmountRef.current = 0;
-    setEnemyInvested((value) => value + amount);
-    chargeLimitBreak(amount * currentWind.enemyMultiplier);
-    const counterShock = Math.min(
-      6,
-      (1 + (amount / Math.max(targetProperty.marketPrice, 1)) * 10) * currentWind.enemyMultiplier
+    if (winner) return;
+    const outcome = resolveLivingDeadOutcome(
+      livingDeadPhase,
+      ownership,
+      livingDeadRemaining
     );
-    setGauge((value) => Math.min(99, value + counterShock));
-    setStatusText(`反論キャンペーン発生――競合資金${formatCurrency(amount)}が復帰`);
-    showFloater(`反論 +${formatCurrency(amount)}`, 'enemy');
-    playMotion('enemy');
-    soundFx.playCapitalImpact('opponent', amount / Math.max(targetProperty.marketPrice, 1));
-    addLog(`ぶんどるへの反論で競合資金${formatCurrency(amount)}が復帰。`, 'enemy');
-  }, [currentWind.enemyMultiplier, snsCounterRemaining, targetProperty.marketPrice, winner]);
+    if (outcome === 'waiting_expired') {
+      updateLivingDeadState('inactive');
+      setStatusText('リビングデッドの待機効果が終了');
+      addLog('リビングデッドは発動条件を満たさず終了。', 'skill');
+      return;
+    }
+    if (outcome === 'recovered') {
+      updateLivingDeadState('survived');
+      setStatusText('DEAD REBIRTH――所有率30％へ復帰。買収戦を続行します');
+      showFloater('DEAD REBIRTH / SUCCESS', 'center');
+      soundFx.playFeatureUnlocked();
+      addLog('蘇生成功。所有率30％以上へ戻し、リビングデッドを完遂。', 'result');
+      if (livingDeadNoticeTimerRef.current) window.clearTimeout(livingDeadNoticeTimerRef.current);
+      livingDeadNoticeTimerRef.current = window.setTimeout(
+        () => updateLivingDeadState('inactive'),
+        1800
+      );
+      return;
+    }
+    if (outcome === 'failed') {
+      updateLivingDeadState('failed');
+      setStatusText('WALKING DEAD FAILED――蘇生猶予が尽きました');
+      showFloater('RESURRECTION FAILED', 'center');
+      addLog('蘇生猶予終了。所有率30％へ届かず、リビングデッド失敗。', 'result');
+      finishBattle('opponent', 'NORMAL', ownership, true, 'WALKING_DEAD_FAILED');
+    }
+  }, [livingDeadPhase, livingDeadRemaining, ownership, winner]);
 
   useEffect(() => {
     if (timeScale <= 0 || winner || battlePhase !== 'active') return;
@@ -893,10 +994,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           return -99.2;
         }
         if (next >= 100) {
+          if (triggerWalkingDead()) return livingDeadGaugeFloor;
+          if (livingDeadPhaseRef.current === 'recovery') return livingDeadGaugeFloor;
           finishBattle('opponent', 'NORMAL', 0);
           return 99.2;
         }
-        return next;
+        return capGaugeAtLivingDeadFloor(next);
       });
       animationRef.current = requestAnimationFrame(tick);
     };
@@ -1163,16 +1266,25 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (!alliance.active || allianceUsed || !consumeCommand()) return;
     setPanel('capital');
     setLastPlayerAction('ALLIANCE');
-    const amount = Math.round(targetProperty.marketPrice * 0.32);
+    const amount = calculateAllianceSupport(targetProperty.marketPrice);
     setDemandInvested((value) => value + amount);
     chargeLimitBreak(amount * currentWind.playerMultiplier);
     setAllianceUsed(true);
-    setStatusText(`${alliance.allyName}から${formatCurrency(amount)}の援軍`);
-    showFloater(`PARTY +${formatCurrency(amount)}`, 'player');
+    setStatusText(alliancePublicPatronage
+      ? `${alliance.allyName}へ通商支援を要請――後援支援 +${formatCurrency(amount)}相当`
+      : `${alliance.allyName}から${formatCurrency(amount)}のパーティ支援`);
+    showFloater(alliancePublicPatronage
+      ? `後援支援 +${formatCurrency(amount)}`
+      : `PARTY +${formatCurrency(amount)}`, 'player');
     playMotion('player');
     soundFx.playBigCash();
-    announceSynergy('TRADE PARTY', `${alliance.allyName}から+${formatCurrency(amount)}`);
-    addLog(`${alliance.allyName}へパーティ支援を要請。${formatCurrency(amount)}を調達。`, 'funds');
+    announceSynergy(
+      alliancePublicPatronage ? 'PUBLIC PATRONAGE' : 'TRADE PARTY',
+      `${alliance.allyName}から+${formatCurrency(amount)}相当`
+    );
+    addLog(alliancePublicPatronage
+      ? `${alliance.allyName}へ通商支援を要請。許認可・調達・輸送を含む${formatCurrency(amount)}相当の後援支援。`
+      : `${alliance.allyName}へパーティ支援を要請。${formatCurrency(amount)}を調達。`, 'funds');
   };
 
   const useSkill = (skill: TacticalSkill) => {
@@ -1215,16 +1327,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       chargeLimitBreak(amount * currentWind.playerMultiplier);
       setStatusText(`意気衝天――無料支援資金${formatCurrency(amount)}を即時投入`);
       showFloater(`+${formatCurrency(amount)}`, 'player');
-    } else if (skill.effectType === 'SNS_BLITZ') {
-      const amount = Math.min(
-        enemyInvested,
-        Math.round(targetProperty.marketPrice * TACTICAL_SKILL_BALANCE.steal.marketRatio)
+    } else if (skill.effectType === 'LIVING_DEAD') {
+      updateLivingDeadState(
+        'waiting',
+        TACTICAL_SKILL_BALANCE.livingDead.waitingDurationMs
       );
-      setEnemyInvested((value) => Math.max(0, value - amount));
-      chargeLimitBreak(amount * currentWind.playerMultiplier);
-      snsCounterAmountRef.current = amount;
-      setSnsCounterRemaining(TACTICAL_SKILL_BALANCE.steal.counterDelayMs);
-      setStatusText(`ぶんどる――敵資金${formatCurrency(amount)}を一時除去。7秒後の反論に注意`);
+      setStatusText('リビングデッド――10秒間、所有率0％への到達を待機');
+      showFloater('LIVING DEAD / ARMED', 'center');
     } else if (skill.effectType === 'SYNERGY_PUSH') {
       setPushMultiplierRemaining(TACTICAL_SKILL_BALANCE.battleLitany.durationMs);
       setStatusText('バトルリタニー――7秒間、所有率の押し込み速度が1.5倍');
@@ -1256,9 +1365,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       : demandInvested > companyInvested
         ? `勝因はSYNERGYでっす。傘下から集めた${formatCurrency(demandInvested)}が競り値を押し上げたでっす。`
         : `勝因は自社資金の決断でっす。SHORT後までギルを残し、${FINISH_LABELS[finishMethod]}で決着したでっす。`
-    : rebelled.length > 0
-      ? `${rebelled.length}社の独立で資金の山が崩れたでっす。次は赤い資金源へ要求する前に士気高揚の策を使うでっす。`
-      : `競合の競り値を${formatCurrency(Math.max(0, -capitalGap))}下回り、所有率を押し戻されたでっす。`;
+    : defeatReason === 'WALKING_DEAD_FAILED'
+      ? 'リビングデッドは発動したでっすが、10秒以内に所有率30％へ戻せなかったでっす。蘇生猶予では意気衝天や大口出資を温存しておくでっす。'
+      : rebelled.length > 0
+        ? `${rebelled.length}社の独立で資金の山が崩れたでっす。次は赤い資金源へ要求する前に士気高揚の策を使うでっす。`
+        : `競合の競り値を${formatCurrency(Math.max(0, -capitalGap))}下回り、所有率を押し戻されたでっす。`;
 
   const briefingSynergies = [
     ...(battleSubs.length + 1 >= 4
@@ -1277,7 +1388,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   return (
     <div
-      className={`buyout-screen buyout-screen--phase-${battlePhase} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''} ${isBurstTime ? 'buyout-screen--burst' : ''} ${decisiveBlow ? `buyout-screen--decisive buyout-screen--decisive-${decisiveBlow.winner}` : ''}`}
+      className={`buyout-screen buyout-screen--phase-${battlePhase} buyout-screen--living-${livingDeadPhase} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''} ${isBurstTime ? 'buyout-screen--burst' : ''} ${decisiveBlow ? `buyout-screen--decisive buyout-screen--decisive-${decisiveBlow.winner}` : ''}`}
       style={{ '--battle-time-scale': timeScale } as React.CSSProperties}
     >
       <img className="buyout-backdrop" src={FANKIT_ART.battleBackdrop} alt="" aria-hidden="true" />
@@ -1301,6 +1412,25 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <strong>{conditionAnnouncement.title}</strong>
             <span>{conditionAnnouncement.detail}</span>
           </div>
+        </div>
+      )}
+
+      {livingDeadPhase !== 'inactive' && (
+        <div className={`battle-living-dead battle-living-dead--${livingDeadPhase}`} aria-live="assertive">
+          <img src={FANKIT_ART.jobs[1]} alt="" aria-hidden="true" />
+          <div>
+            <small>{livingDeadPhase === 'waiting' ? 'DARK KNIGHT ACTION' : livingDeadPhase === 'recovery' ? 'RESURRECTION WINDOW' : 'LIVING DEAD RESULT'}</small>
+            <strong>{livingDeadPhase === 'waiting' ? 'LIVING DEAD' : livingDeadPhase === 'recovery' ? 'WALKING DEAD' : livingDeadPhase === 'survived' ? 'DEAD REBIRTH' : 'WALKING DEAD FAILED'}</strong>
+            <span>{livingDeadPhase === 'waiting'
+              ? '致死待機中：所有率0％で1％に踏みとどまる'
+              : livingDeadPhase === 'recovery'
+                ? `蘇生猶予：所有率30％以上へ回復（現在 ${ownership.toFixed(1)}％）`
+                : livingDeadPhase === 'survived'
+                  ? '蘇生成功：通常の買収戦へ復帰'
+                  : '蘇生失敗：所有率30％へ届かなかった'}</span>
+            <i><u style={{ width: `${livingDeadProgress}%` }} /></i>
+          </div>
+          <b>{livingDeadDuration > 0 ? `${(livingDeadRemaining / 1000).toFixed(1)}s` : livingDeadPhase === 'survived' ? 'SUCCESS' : 'FAILED'}</b>
         </div>
       )}
 
@@ -1390,54 +1520,83 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </section>
 
         <section className="active-time">
-          <div>
+          <div className="active-time__mode">
             <TimerReset />
-            <span>{commandReady ? 'ACTION READY' : fastHorse ? '神速魔でアクション加速中' : '次のアクション準備中'}</span>
-            {timeScale === 0.1 && (
-              <em>{openingSlowActive ? 'OPENING SLOW ×0.1' : 'TACTICAL MODE ×0.1'}</em>
-            )}{timeScale === 0.16 && <em>DECISIVE SLOW ×0.16</em>}<b className="battle-income-rate">商流 +{formatCurrency(Math.round(battleCashRecoveryPerSecond * timeScale))}/秒</b>
+            <span>{timeScale === 0.1
+              ? openingSlowActive ? 'OPENING SLOW ×0.1' : 'TACTICAL MODE ×0.1'
+              : timeScale === 0.16 ? 'DECISIVE SLOW ×0.16' : 'ACTIVE TIME'}</span>
+            <b className="battle-income-rate">商流 +{formatCurrency(Math.round(battleCashRecoveryPerSecond * timeScale))}/秒</b>
           </div>
-          <div className="active-time__bar"><i style={{ width: `${commandProgress}%` }} /></div>
-          <div className={`active-time__enemy ${aiProgress >= 72 ? 'active-time__enemy--danger' : ''}`}>
-            <span>{enemyReserve <= 0 ? 'SHORT / 追加防衛不能' : aiText}</span>
-            <i style={{ width: `${aiProgress}%` }} />
+          <div className="recast-lanes">
+            <div className={`recast-lane recast-lane--player ${commandReady ? 'recast-lane--ready' : ''}`}>
+              <span><b>ALLY ACTION</b><small>{fastHorse ? '神速魔で加速中' : commandReady ? '命令入力可能' : '次の命令を準備中'}</small></span>
+              <strong>{commandReady ? 'READY' : `${playerRecastSeconds.toFixed(1)}s`}</strong>
+              <i><u style={{ width: `${commandProgress}%` }} /></i>
+            </div>
+            <div className={`recast-lane recast-lane--enemy ${aiProgress >= 72 ? 'recast-lane--danger' : ''}`} title={aiText}>
+              <span><b>ENEMY ACTION</b><small>{enemyReserve <= 0 ? '追加防衛不能' : aiText}</small></span>
+              <strong>{enemyReserve <= 0 ? 'SHORT' : `${enemyRecastSeconds.toFixed(1)}s`}</strong>
+              <i><u style={{ width: `${aiProgress}%` }} /></i>
+            </div>
           </div>
         </section>
 
         {limitBreakCapacityTier > 0 && (
-          <section className={`battle-limit-meter ${limitBreakTier > 0 && !limitBreakUsed ? 'battle-limit-meter--ready' : ''}`}>
+          <section className={`battle-limit-meter ${limitBreakTier > 0 && !limitBreakUsed ? 'battle-limit-meter--ready' : ''} ${limitBreakGaugeFull && !limitBreakUsed ? 'battle-limit-meter--overflowing' : ''}`}>
+            {limitBreakGaugeFull && !limitBreakUsed && (
+              <div className="battle-limit-overflow" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
+            )}
             <div className="battle-limit-meter__heading">
               <span><Zap /><b>LIMIT BREAK GAUGE</b></span>
-              <strong>{limitBreakUsed ? `NEXT BATTLE ${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}` : limitBreakTier > 0 ? `LB ${limitBreakTier} READY` : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`}</strong>
+              <strong>{limitBreakUsed
+                ? `NEXT BATTLE ${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`
+                : limitBreakGaugeFull
+                  ? `LB ${limitBreakTier} MAX / AETHER OVERFLOW`
+                  : limitBreakTier > 0 ? `LB ${limitBreakTier} READY` : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`}</strong>
             </div>
-            <div
-              className="battle-limit-meter__bars"
-              role="progressbar"
-              aria-label="LIMIT BREAK ゲージ"
-              aria-valuemin={0}
-              aria-valuemax={limitBreakChargeCapacity}
-              aria-valuenow={Math.floor(visibleLimitBreakCharge)}
-            >
+            <div className="battle-limit-meter__bars" role="progressbar" aria-label="LIMIT BREAK ゲージ" aria-valuemin={0} aria-valuemax={limitBreakChargeCapacity} aria-valuenow={Math.floor(visibleLimitBreakCharge)}>
               {Array.from({ length: limitBreakCapacityTier }).map((_, index) => {
-                const segmentCharge = Math.max(0, Math.min(
-                  LIMIT_BREAK_CHARGE_PER_BAR,
-                  visibleLimitBreakCharge - index * LIMIT_BREAK_CHARGE_PER_BAR
-                ));
+                const segmentCharge = Math.max(0, Math.min(LIMIT_BREAK_CHARGE_PER_BAR, visibleLimitBreakCharge - index * LIMIT_BREAK_CHARGE_PER_BAR));
                 return (
                   <i key={index} className={segmentCharge >= LIMIT_BREAK_CHARGE_PER_BAR ? 'filled' : ''}>
-                    <span style={{ width: `${segmentCharge}%` }} />
-                    <em>LB {index + 1}</em>
+                    <span style={{ width: `${segmentCharge}%` }} /><em>LB {index + 1}</em>
                   </i>
                 );
               })}
             </div>
             <small>{limitBreakUsed
               ? 'この戦闘では発動済み・ここからの蓄積は次戦へ継承'
-              : limitBreakTier > 0
-                ? limitBreakTier < limitBreakCapacityTier
-                  ? `LB ${limitBreakTier}発動可能・ためれば次の段階へ`
-                  : `LB ${limitBreakTier}・現在の最大段階 READY`
-                : '攻防の資金衝突で蓄積・未使用分は次戦へ持ち越し'}</small>
+              : limitBreakGaugeFull
+                ? 'MAX――蓄積エネルギーが限界を超えてあふれています'
+                : limitBreakTier > 0
+                  ? limitBreakTier < limitBreakCapacityTier
+                    ? `LB ${limitBreakTier}発動可能・ためれば次の段階へ`
+                    : `LB ${limitBreakTier}・現在の最大段階 READY`
+                  : `攻防の資金衝突で通常比×${LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER.toFixed(1)}蓄積・未使用分は次戦へ`}</small>
+          </section>
+        )}
+
+        {(equippedSkills.length > 0 || limitBreakCapacityTier > 0) && (
+          <section className="special-action-hotbar" aria-label="特殊アクション クイックアクセス">
+            <header><span><Zap />SPECIAL ACTIONS</span><small>1タップ実行</small></header>
+            <div>
+              {limitBreakCapacityTier > 0 && (
+                <button type="button" className={`special-action-hotbar__action special-action-hotbar__action--lb ${limitBreakGaugeFull ? 'is-overflowing' : ''}`} onClick={demandFromAllies} disabled={!commandReady || limitBreakTier === 0 || limitBreakUsed || !!winner || battlePhase !== 'active'} title="カンパニー網の資金を総動員する">
+                  <Zap /><span><b>{limitBreakUsed ? 'LB 使用済み' : limitBreakTier > 0 ? `LIMIT BREAK ${limitBreakTier}` : 'LB CHARGING'}</b><small>{limitBreakUsed ? '次戦へ蓄積中' : limitBreakTier > 0 ? `所有率 最大+${limitBreakOwnershipCap}pt` : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`}</small></span><em>{limitBreakTier > 0 && !limitBreakUsed ? 'READY' : 'WAIT'}</em>
+                </button>
+              )}
+              {equippedSkills.map((skill) => {
+                const cooldown = skillCooldowns[skill.id] || 0;
+                const used = !!skill.oncePerBattle && usedSkillIds.has(skill.id);
+                return (
+                  <button type="button" key={`quick-${skill.id}`} className={`special-action-hotbar__action ${skill.effectType === 'LIVING_DEAD' ? 'special-action-hotbar__action--living' : ''}`} onClick={() => useSkill(skill)} disabled={!commandReady || cooldown > 0 || used || !!winner || battlePhase !== 'active'} title={skill.description}>
+                    {skill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
+                    <span><b>{skill.name}</b><small>{skill.effectType === 'LIVING_DEAD' ? '致死待機 → 蘇生猶予' : skill.description}</small></span>
+                    <em>{used ? 'USED' : cooldown > 0 ? `${(cooldown / 1000).toFixed(1)}s` : commandReady ? 'READY' : `${playerRecastSeconds.toFixed(1)}s`}</em>
+                  </button>
+                );
+              })}
+            </div>
           </section>
         )}
 
@@ -1515,7 +1674,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
               {alliance.active && (
                 <button type="button" className="alliance-fund" onClick={requestAlliance} disabled={!commandReady || allianceUsed || !!winner || battlePhase !== 'active'}>
-                  <Users /><span>TRADE PARTY：{alliance.allyName}</span><b>{allianceUsed ? '要請済み' : `+${formatCurrency(allianceSupport)}`}</b>
+                  <Users /><span>{alliancePublicPatronage ? 'PUBLIC PATRONAGE' : 'TRADE PARTY'}：{alliance.allyName}</span><b>{allianceUsed ? '要請済み' : `+${formatCurrency(allianceSupport)}相当`}</b>
                 </button>
               )}
 
@@ -1555,7 +1714,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       <footer className={`buyout-footer ${winner ? 'buyout-footer--settled' : ''}`}>
         {winner ? (
           <>
-            <span>{winner === 'player' ? `${FINISH_LABELS[finishMethod]} / 所有率 ${finalOwnership.toFixed(1)}%` : 'CAPITAL COLLAPSE / 買収失敗'}</span>
+            <span>{winner === 'player'
+              ? `${FINISH_LABELS[finishMethod]} / 所有率 ${finalOwnership.toFixed(1)}%`
+              : defeatReason === 'WALKING_DEAD_FAILED' ? 'WALKING DEAD FAILED / 蘇生失敗' : 'CAPITAL COLLAPSE / 買収失敗'}</span>
             <button type="button" className="battle-next-button" onClick={() => setBattlePhase('result')} disabled={finishTelegraphVisible}>
               {finishTelegraphVisible ? 'RESULT LOCKED' : 'NEXT →'}
             </button>
@@ -1594,12 +1755,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 : <p>今回発動するSYNERGYはありません。</p>}
             </section>
             <section className="briefing-section">
-              <h3><Users />ACTIVE TRADE PARTY</h3>
-              <p>{alliance.active ? `${alliance.allyName}：一回限り +${formatCurrency(allianceSupport)}` : '今回利用できる外部パーティ支援はありません。'}</p>
+              <h3><Users />ACTIVE ALLIANCE</h3>
+              <p>{alliance.active
+                ? alliancePublicPatronage
+                  ? `公的後援：${alliance.allyName}／通商支援1回 +${formatCurrency(allianceSupport)}相当（所有・LB社数には不算入）`
+                  : `協力協定：${alliance.allyName}／パーティ支援1回 +${formatCurrency(allianceSupport)}`
+                : '今回利用できる外部協力・公的後援はありません。'}</p>
             </section>
             <section className="briefing-section">
               <h3><ShieldAlert />勝敗条件</h3>
               <p>未投入資金や追加防衛枠が残っていても、所有率0％になった側は敗北します。</p>
+              {equippedSkills.some((skill) => skill.effectType === 'LIVING_DEAD') && (
+                <p className="briefing-living-dead">例外：リビングデッド待機中は1％で踏みとどまり、10秒以内に正規化所有率30％へ戻せば続行できます。</p>
+              )}
             </section>
             <button type="button" className="dialog-close briefing-start" onClick={startBattle}>効果を確認して討滅戦開始</button>
           </article>
@@ -1630,7 +1798,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           <i />
           <small>{winner === 'player' ? 'DUTY COMPLETE' : 'DUTY FAILED'}</small>
           <strong>{winner === 'player' ? 'WIN!' : 'LOSE'}</strong>
-          <span>{winner === 'player' ? FINISH_LABELS[finishMethod] : 'CAPITAL COLLAPSE'}</span>
+          <span>{winner === 'player'
+            ? FINISH_LABELS[finishMethod]
+            : defeatReason === 'WALKING_DEAD_FAILED' ? 'WALKING DEAD FAILED' : 'CAPITAL COLLAPSE'}</span>
           {winner === 'player' && overkill >= 0.5 && <em>OVERKILL +{overkill.toFixed(1)}%</em>}
           <i />
         </div>
@@ -1645,7 +1815,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <li><b>TACTICAL MODE</b><span>資金源・かけひき・LB選択中は戦闘と商流回復が通常の10%になります。</span></li>
               <li><b>商流回復</b><span>通常時は相場の0.3%/秒、1戦につき相場の15%まで可処分資金が戻ります。</span></li>
               <li><b>風を読む</b><span>自社資金効果上昇は緑、敵大規模防衛出資は赤で表示します。</span></li>
-              <li><b>LIMIT BREAK</b><span>攻防の資金衝突が大きいほど蓄積。4/8/16社で1/2/3本まで解放され、満タン本数でLB I～IIIが発動可能。発動で0、未使用分は次戦へ持ち越します。</span></li>
+              <li><b>LIMIT BREAK</b><span>攻防の資金衝突で通常比20％速く蓄積し、動員資金も20％増加。4/8/16社で1/2/3本まで解放され、発動で0、未使用分は次戦へ持ち越します。</span></li>
+              <li><b>SPECIAL ACTIONS</b><span>常設のクイック欄からLBとかけひきを1タップで実行できます。実行後は自動で通常速度へ戻ります。</span></li>
+              <li><b>リビングデッド</b><span>10秒の待機中に所有率0％へ到達すると1％で耐えます。その後10秒以内に30％以上へ戻せなければ敗北。1交渉1回です。</span></li>
               <li><b>TRADE PARTY</b><span>外部パーティの一回支援です。LBの社数や投入額には含みません。</span></li>
               <li><b>独立リスク</b><span>傘下へ繰り返し要求できますが、独立すると過去支援も崩れます。</span></li>
               <li><b>SHORT</b><span>敵の追加防衛資金が0になった戦況通知。約1.2秒後に自動再開し、FINAL PUSHか継続圧力で決着します。</span></li>
@@ -1671,7 +1843,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           <article className={`buyout-dialog buyout-result buyout-result--${winner}`}>
             <header>
               {winner === 'player' ? <Trophy /> : <XCircle />}
-              <strong>{winner === 'player' ? '買収成立' : '買収失敗'}</strong>
+              <strong>{winner === 'player' ? '買収成立' : defeatReason === 'WALKING_DEAD_FAILED' ? '蘇生失敗' : '買収失敗'}</strong>
             </header>
             <h2>{targetProperty.name}</h2>
             <div className="tataru-analysis">
@@ -1679,7 +1851,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <p><b>タタルの{winner === 'player' ? '勝因' : '敗因'}分析</b><span>「{resultAnalysis}」</span></p>
             </div>
             <div className="result-numbers">
-              <span><small>FINISH</small><b>{FINISH_LABELS[finishMethod]}</b></span>
+              <span><small>FINISH</small><b>{winner === 'opponent' && defeatReason === 'WALKING_DEAD_FAILED' ? 'WALKING DEAD FAILED' : FINISH_LABELS[finishMethod]}</b></span>
               <span><small>最終所有率</small><b>{winner === 'player' ? `${finalOwnership.toFixed(1)}%` : `${ownership.toFixed(1)}%`}</b></span>
               <span><small>OVERKILL</small><b>{winner === 'player' ? `+${overkill.toFixed(1)}%` : '---'}</b></span>
               <span><small>自社競り値</small><b>{formatCurrency(totalPlayerInvested)}</b></span>

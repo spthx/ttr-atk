@@ -40,7 +40,20 @@ const isAllianceState = (value: unknown): value is AllianceState =>
   isRecord(value) &&
   typeof value.allyId === 'string' &&
   typeof value.allyName === 'string' &&
-  typeof value.active === 'boolean';
+  typeof value.active === 'boolean' &&
+  (value.allyKind === undefined || value.allyKind === 'company' || value.allyKind === 'grand_company') &&
+  (value.relationType === undefined || value.relationType === 'commercial_alliance' || value.relationType === 'public_patronage');
+
+export const normalizeAllianceState = (alliance: AllianceState): AllianceState => {
+  const allyKind = alliance.allyKind === 'grand_company' ? 'grand_company' : 'company';
+  return {
+    allyId: alliance.allyId,
+    allyName: alliance.allyName,
+    active: alliance.active,
+    allyKind,
+    relationType: allyKind === 'grand_company' ? 'public_patronage' : 'commercial_alliance',
+  };
+};
 
 const isSavedProperty = (value: unknown): value is SavedPropertyState =>
   isRecord(value) &&
@@ -89,7 +102,7 @@ export const loadGameSave = (): GameSaveData | null => {
       totalFunds: Math.max(0, parsed.totalFunds),
       properties: parsed.properties,
       equippedSkillIds: parsed.equippedSkillIds,
-      alliance: parsed.alliance,
+      alliance: normalizeAllianceState(parsed.alliance),
       seenUnlockIds: Array.isArray(parsed.seenUnlockIds)
         ? parsed.seenUnlockIds.filter((id): id is string => typeof id === 'string')
         : [],
