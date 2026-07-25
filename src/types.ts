@@ -121,3 +121,34 @@ export interface AllianceState {
   allyName: string;
   active: boolean;
 }
+
+export type FinishMethod =
+  | 'LIMIT_BREAK_1'
+  | 'LIMIT_BREAK_2'
+  | 'LIMIT_BREAK_3'
+  | 'FINAL_PUSH'
+  | 'CAPITAL_PRESSURE'
+  | 'NORMAL';
+
+export type BattlePhase =
+  | 'briefing'
+  | 'active'
+  | 'short_notice'
+  | 'limit_charge'
+  | 'finisher_notice'
+  | 'result';
+
+export interface BattleResult {
+  winner: 'player' | 'opponent';
+  targetProperty: Property;
+  companyFundsInvested: number;
+  demandFundsInvested: number;
+  brokerageFee: number;
+  settlementCost: number;
+  battleCashDelta: number;
+  victoryReward: number;
+  rebelledProperties: Property[];
+  finishMethod: FinishMethod;
+  finalOwnership: number;
+  overkill: number;
+}

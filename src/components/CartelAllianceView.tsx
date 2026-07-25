@@ -43,7 +43,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
           <div>
             <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
               <Users className="w-5 h-5 text-indigo-400" />
-              アライアンス（同盟）協定
+              ALLIANCE（外部同盟）協定
               <HelpTip term="同盟" description={HELP_TEXT.alliance} />
             </h2>
           </div>
@@ -82,7 +82,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
           </div>
           <div className="flex items-start gap-2">
             <span className="text-indigo-400 font-bold">2. 同盟資金要求:</span>
-            <span>買収交渉ごとに1回、対象相場の35%相当の支援資金を要請できます。</span>
+            <span>買収交渉ごとに1回、対象相場の32%相当を要請できます。LIMIT BREAKには含まれません。</span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-rose-400 font-bold">3. 破棄条件:</span>

@@ -434,7 +434,7 @@ export const INITIAL_SKILLS: TacticalSkill[] = [
     cooldownMs: 25000,
     description: '発動中の事業のつながりを総動員し、一定時間ゲージ移動速度を2倍にする。',
     effectType: 'SYNERGY_PUSH',
-    unlockRequirements: 'いずれかの産業グループシナジーを発動中',
+    unlockRequirements: 'いずれかのSYNERGYを発動中',
   },
 ];
 

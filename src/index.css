@@ -1,4 +1,22 @@
 @import "tailwindcss";
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
+body {
+  position: relative;
+}
+
+@media (max-width: 639px) {
+  body {
+    touch-action: pan-y;
+  }
+}
 
 @layer components {
   /* Clean Modern Mobile Container Frame */

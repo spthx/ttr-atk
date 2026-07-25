@@ -7,6 +7,7 @@ import {
   AllianceState,
   GameLog,
   CommunityType,
+  BattleResult,
 } from './types';
 import {
   INITIAL_PROPERTIES,
@@ -53,6 +54,7 @@ export default function App() {
   // UI States
   const [activeTab, setActiveTab] = useState<'market' | 'portfolio' | 'skills' | 'cartels'>('market');
   const [activeBattleProperty, setActiveBattleProperty] = useState<Property | null>(null);
+  const [battleTimeScale, setBattleTimeScale] = useState(1);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [logs, setLogs] = useState<GameLog[]>([]);
   const [companyName, setCompanyName] = useState<string>(GAME_WORLD.companyName);
@@ -68,15 +70,18 @@ export default function App() {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
+      const scale = activeBattleProperty ? battleTimeScale : 1;
+      if (scale <= 0) return;
       setWindCountdown((current) => {
-        if (current > 1) return current - 1;
+        const next = current - (0.25 * scale);
+        if (next > 0) return next;
         const types: WindType[] = ['TAILWIND_PLAYER', 'HEADWIND_PLAYER', 'TAILWIND_ENEMY', 'CROSSWIND', 'CALM'];
         setMarketWind(WIND_CONDITIONS[types[Math.floor(Math.random() * types.length)]]);
         return 8;
       });
-    }, 1000);
+    }, 250);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [activeBattleProperty, battleTimeScale]);
 
   useEffect(() => {
     const savedName = window.localStorage.getItem('tataru-company-name');
@@ -209,21 +214,15 @@ export default function App() {
   const tradeNetworkBonus = Math.min(0.16, conqueredCommunityCount * 0.02);
 
   // Active Synergies Count & Bonus Multiplier
-  const { activeSynergiesCount, bonusMultiplier } = useMemo(() => {
-    let count = 0;
-    let mult = 1.0;
-
-    groupSynergies.forEach((syn) => {
-      const allOwned = syn.requiredPropertyIds.every((id) =>
-        ownedPropertyIds.has(id)
-      );
-      if (allOwned) {
-        count++;
-        mult *= syn.bonusYieldMultiplier;
-      }
-    });
-
-    return { activeSynergiesCount: count, bonusMultiplier: mult };
+  const { activeGroupSynergies, activeSynergiesCount, bonusMultiplier } = useMemo(() => {
+    const active = groupSynergies.filter((syn) =>
+      syn.requiredPropertyIds.every((id) => ownedPropertyIds.has(id))
+    );
+    return {
+      activeGroupSynergies: active,
+      activeSynergiesCount: active.length,
+      bonusMultiplier: active.reduce((multiplier, syn) => multiplier * syn.bonusYieldMultiplier, 1),
+    };
   }, [groupSynergies, ownedPropertyIds]);
 
   // Total Passive Revenue Yield per second (I_net)
@@ -252,6 +251,7 @@ export default function App() {
       return;
     }
     soundFx.playCoin();
+    setBattleTimeScale(0);
     setActiveBattleProperty(property);
   };
 
@@ -266,17 +266,7 @@ export default function App() {
     battleCashDelta,
     victoryReward,
     rebelledProperties,
-  }: {
-    winner: 'player' | 'opponent';
-    targetProperty: Property;
-    companyFundsInvested: number;
-    demandFundsInvested: number;
-    brokerageFee: number;
-    settlementCost: number;
-    battleCashDelta: number;
-    victoryReward: number;
-    rebelledProperties: Property[];
-  }) => {
+  }: BattleResult) => {
     // 仲介手数料に加え、直接出資の一部が買収費用・撤退損として確定する。
     setTotalFunds((prev) => Math.max(0, prev - brokerageFee - settlementCost + battleCashDelta + (winner === 'player' ? victoryReward : 0)));
 
@@ -379,6 +369,7 @@ export default function App() {
     }
 
     setActiveBattleProperty(null);
+    setBattleTimeScale(1);
   };
 
   // Reduce Loyalty Risk (Nemawashi) for single property
@@ -591,15 +582,18 @@ export default function App() {
       {activeBattleProperty && (
         <BattleModal
           targetProperty={activeBattleProperty}
+          companyName={companyName}
           totalFunds={totalFunds}
           ownedProperties={ownedProperties}
           equippedSkills={equippedSkills}
           alliance={alliance}
+          activeSynergies={activeGroupSynergies}
           industryInfluence={industryInfluence[activeBattleProperty.industry] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
           regionalInfluence={regionalInfluence[activeBattleProperty.community] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
           currentWind={marketWind}
-          windCountdown={windCountdown}
+          windCountdown={Math.max(0, Math.ceil(windCountdown))}
           tradeNetworkBonus={tradeNetworkBonus}
+          onTimeScaleChange={setBattleTimeScale}
           nextCommunity={(() => {
             const wouldConquer = properties
               .filter((property) => property.community === activeBattleProperty.community)
@@ -614,6 +608,7 @@ export default function App() {
           onBattleEnd={handleBattleEnd}
           onClose={() => {
             setActiveBattleProperty(null);
+            setBattleTimeScale(1);
           }}
         />
       )}

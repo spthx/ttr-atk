@@ -11,16 +11,16 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: baseUrl,
     title: "タタルの大繁盛店",
-    description: "カンパニーを旗揚げし、ギルと所有率の押し合いで都市を順番に制覇する金融ゲーム。",
+    description: "自社と傘下企業のギルを積み、競合の防衛資金と所有率を押し切って都市を制覇する金融ゲーム。",
     openGraph: {
       title: "タタルの大繁盛店",
-      description: "敵の防衛資金を崩し、最後の直接出資で所有率100%へ。都市を制覇して次の交易路を開け。",
+      description: "ギルを積み、魂を奪え。SYNERGYとALLIANCEを束ね、所有率100%まで押し切れ。",
       images: [new URL("/og-campaign-v2.png", baseUrl).toString()],
     },
     twitter: {
       card: "summary_large_image",
       title: "タタルの大繁盛店",
-      description: "敵の防衛資金を崩し、最後の直接出資で所有率100%へ。都市を制覇して次の交易路を開け。",
+      description: "ギルを積み、魂を奪え。SYNERGYとALLIANCEを束ね、所有率100%まで押し切れ。",
       images: [new URL("/og-campaign-v2.png", baseUrl).toString()],
     },
   };
