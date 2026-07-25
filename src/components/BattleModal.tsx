@@ -43,12 +43,16 @@ import {
   BATTLE_GAUGE_SPEED_FACTOR,
   calculateEnemyBudget,
   calculateLimitBreakAmount,
+  calculateLimitBreakChargeGain,
   calculateLimitBreakOwnershipAfterDefense,
   calculateLimitBreakOwnershipPush,
   ENEMY_BALANCE_FACTOR,
   ENEMY_INITIAL_COMMITMENT_RATIO,
+  getChargedLimitBreakTier,
   getEnemyDifficultyLevel,
+  getLimitBreakChargeCapacity,
   getLimitBreakTier,
+  LIMIT_BREAK_CHARGE_PER_BAR,
   LIMIT_BREAK_MULTIPLIERS,
   LIMIT_BREAK_OWNERSHIP_CAPS,
   type LimitBreakTier,
@@ -67,6 +71,7 @@ import '../battle-final-wind.css';
 import '../battle-update-v2.css';
 import '../battle-update-v3.css';
 import '../battle-chip-stack-v3.css';
+import '../battle-limit-gauge.css';
 
 interface BattleModalProps {
   targetProperty: Property;
@@ -79,6 +84,8 @@ interface BattleModalProps {
   industryInfluence: { owned: number; total: number; label: string; playerBonus: number; enemyBudgetDiscount: number };
   regionalInfluence: { owned: number; total: number; label: string; playerBonus: number; enemyBudgetDiscount: number };
   tradeNetworkBonus: number;
+  limitBreakCharge: number;
+  onLimitBreakChargeChange: React.Dispatch<React.SetStateAction<number>>;
   currentWind: WindCondition;
   windCountdown: number;
   nextCommunity?: string | null;
@@ -222,6 +229,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   industryInfluence,
   regionalInfluence,
   tradeNetworkBonus,
+  limitBreakCharge,
+  onLimitBreakChargeChange,
   currentWind,
   windCountdown,
   nextCommunity = null,
@@ -269,6 +278,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [rebelled, setRebelled] = useState<Property[]>([]);
   const [allianceUsed, setAllianceUsed] = useState(false);
   const [limitBreakUsed, setLimitBreakUsed] = useState(false);
+  const [activeLimitBreakTier, setActiveLimitBreakTier] = useState<LimitBreakTier>(0);
   const [panel, setPanel] = useState<Panel>('capital');
   const [selectedLevel, setSelectedLevel] = useState(3);
   const [commandProgress, setCommandProgress] = useState(100);
@@ -377,7 +387,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const enemySlowed = enemySlowedRemaining > 0;
   const enemyDisruption = enemyDisruptionRemaining > 0 ? 0.7 : 0;
   const pushMultiplier = pushMultiplierRemaining > 0 ? 2 : 1;
-  const limitBreakTier = getLimitBreakTier(battleSubs.length + 1);
+  const limitBreakCapacityTier = getLimitBreakTier(battleSubs.length + 1);
+  const limitBreakChargeCapacity = getLimitBreakChargeCapacity(limitBreakCapacityTier);
+  const visibleLimitBreakCharge = Math.min(
+    limitBreakChargeCapacity,
+    Math.max(0, limitBreakCharge)
+  );
+  const limitBreakTier = getChargedLimitBreakTier(
+    visibleLimitBreakCharge,
+    limitBreakCapacityTier
+  );
   const limitBreakMultiplier = limitBreakTier > 0 ? LIMIT_BREAK_MULTIPLIERS[limitBreakTier] : 0;
   const limitBreakOwnershipCap = limitBreakTier > 0
     ? LIMIT_BREAK_OWNERSHIP_CAPS[limitBreakTier]
@@ -478,6 +497,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const playMotion = (next: BattleMotion) => {
     setMotion(next);
     window.setTimeout(() => setMotion('idle'), 620);
+  };
+
+  const chargeLimitBreak = (effectiveCapitalMovement: number) => {
+    if (limitBreakChargeCapacity <= 0 || effectiveCapitalMovement <= 0) return 0;
+    const gain = calculateLimitBreakChargeGain(
+      effectiveCapitalMovement,
+      targetProperty.marketPrice
+    );
+    onLimitBreakChargeChange((current) =>
+      Math.min(limitBreakChargeCapacity, Math.max(0, current) + gain)
+    );
+    return gain;
   };
 
   const announceBattle = (announcement: BattleAnnouncement, duration = 2000) => {
@@ -684,7 +715,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     requested: number,
     reason: string,
     applyGaugeShock = true,
-    scheduleShort = true
+    scheduleShort = true,
+    chargeLimit = true
   ) => {
     const actual = Math.max(0, Math.min(Math.round(requested), enemyReserveRef.current));
     if (actual <= 0) {
@@ -695,6 +727,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (enemyDisruption > 0 && Math.random() < enemyDisruption) {
       const collapse = Math.min(enemyInvested, Math.round(targetProperty.marketPrice * 0.12));
       setEnemyInvested((value) => Math.max(0, value - collapse));
+      if (chargeLimit) {
+        chargeLimitBreak(collapse * currentWind.playerMultiplier);
+      }
       setStatusText(`物件独立工作が成功。敵の資金源から${formatCurrency(collapse)}が離脱`);
       showFloater(`離脱 -${formatCurrency(collapse)}`, 'enemy');
       playMotion('rebel');
@@ -705,6 +740,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     enemyReserveRef.current = nextReserve;
     setEnemyReserve(nextReserve);
     setEnemyInvested((value) => value + actual);
+    if (chargeLimit) {
+      chargeLimitBreak(actual * currentWind.enemyMultiplier);
+    }
     const counterShock = Math.min(10, (1.5 + (actual / Math.max(targetProperty.marketPrice, 1)) * 18) * currentWind.enemyMultiplier);
     if (applyGaugeShock) {
       setGauge((value) => Math.min(99, value + counterShock));
@@ -751,6 +789,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const amount = snsCounterAmountRef.current;
     snsCounterAmountRef.current = 0;
     setEnemyInvested((value) => value + amount);
+    chargeLimitBreak(amount * currentWind.enemyMultiplier);
     const counterShock = Math.min(
       6,
       (1 + (amount / Math.max(targetProperty.marketPrice, 1)) * 10) * currentWind.enemyMultiplier
@@ -868,6 +907,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const rawGaugeAfter = gauge - impact;
     setCash((value) => value - selectedCost);
     setCompanyInvested((value) => value + selectedCost);
+    chargeLimitBreak(selectedCost * currentWind.playerMultiplier);
     setGauge(Math.max(-99, rawGaugeAfter));
     setStatusText(`自社資金から${formatCurrency(selectedCost)}を積み増し`);
     showFloater(`+${formatCurrency(selectedCost)}`, 'player');
@@ -916,6 +956,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const lost = subContributions[property.id] || 0;
       setBattleSubs((current) => current.filter((item) => item.id !== property.id));
       setDemandInvested((value) => Math.max(0, value - lost));
+      chargeLimitBreak(lost * currentWind.enemyMultiplier);
       setRebelled((current) => [...current, { ...property, loyaltyRisk: 100 }]);
       setStatusText(`${property.name}が出資を拒否し独立！ ${formatCurrency(lost)}が崩落`);
       showFloater(`独立 -${formatCurrency(lost)}`, 'center');
@@ -928,6 +969,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setBattleSubs((current) => current.map((item) => item.id === property.id ? { ...item, loyaltyRisk: nextRisk } : item));
     setSubContributions((current) => ({ ...current, [property.id]: (current[property.id] || 0) + amount }));
     setDemandInvested((value) => value + amount);
+    chargeLimitBreak(amount * currentWind.playerMultiplier);
     const impact = Math.min(6.5, (1 + (amount / Math.max(targetProperty.marketPrice, 1)) * 8) * currentWind.playerMultiplier);
     setGauge((value) => Math.max(-99, value - impact));
     setStatusText(`${property.name}から${formatCurrency(amount)}を調達。独立危険度${nextRisk}%`);
@@ -942,6 +984,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setPanel('capital');
     setLastPlayerAction('LIMIT_BREAK');
     setLimitBreakUsed(true);
+    setActiveLimitBreakTier(limitBreakTier);
+    onLimitBreakChargeChange(0);
     setBattlePhase('limit_charge');
     setGaugeSpeed(0);
     announceBattle('limit', 2300);
@@ -969,6 +1013,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     addLog(`LIMIT BREAK ${limitBreakTier}発動。自社と傘下${battleSubs.length}社が全社出資へ参加。`, 'skill');
 
     limitBreakTimerRef.current = window.setTimeout(() => {
+      if (endedRef.current) return;
       setBattleSubs((current) => current
         .filter((item) => !leaving.some((leaver) => leaver.id === item.id))
         .map((item) => survivors.find((survivor) => survivor.id === item.id) || item));
@@ -1005,6 +1050,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ? commitEnemyFunds(
             emergencyDefense,
             'LIMIT BREAKへの緊急防衛',
+            false,
             false,
             false
           )
@@ -1077,6 +1123,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       .map((item) => survivors.find((survivor) => survivor.id === item.id) || item));
     if (leaving.length) setRebelled((current) => [...current, ...leaving]);
     setDemandInvested((value) => Math.max(0, value - lost) + amount);
+    chargeLimitBreak(amount * currentWind.playerMultiplier);
+    chargeLimitBreak(lost * currentWind.enemyMultiplier);
     setSubContributions((current) => {
       const next = { ...current };
       survivors.forEach((member) => {
@@ -1106,6 +1154,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setLastPlayerAction('ALLIANCE');
     const amount = Math.round(targetProperty.marketPrice * 0.32);
     setDemandInvested((value) => value + amount);
+    chargeLimitBreak(amount * currentWind.playerMultiplier);
     setAllianceUsed(true);
     setStatusText(`${alliance.allyName}から${formatCurrency(amount)}の援軍`);
     showFloater(`PARTY +${formatCurrency(amount)}`, 'player');
@@ -1145,11 +1194,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     } else if (skill.effectType === 'CAPITAL_BOOST') {
       const amount = Math.round(targetProperty.marketPrice * 0.3);
       setDemandInvested((value) => value + amount);
+      chargeLimitBreak(amount * currentWind.playerMultiplier);
       setStatusText(`商魂の即時調達で${formatCurrency(amount)}を追加`);
       showFloater(`+${formatCurrency(amount)}`, 'player');
     } else if (skill.effectType === 'SNS_BLITZ') {
       const amount = Math.min(enemyInvested, Math.round(targetProperty.marketPrice * 0.15));
       setEnemyInvested((value) => Math.max(0, value - amount));
+      chargeLimitBreak(amount * currentWind.playerMultiplier);
       snsCounterAmountRef.current = amount;
       setSnsCounterRemaining(7000);
       setStatusText(`評判工作で敵資金${formatCurrency(amount)}が離脱。7秒後の反論に注意`);
@@ -1214,7 +1265,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       {battleAnnouncement && (
         <div className={`battle-announcement battle-announcement--${battleAnnouncement}`} aria-live="assertive">
           <div>
-            <small>{battleAnnouncement === 'start' ? 'CONTENT COMMENCED' : battleAnnouncement === 'limit' ? `LIMIT BREAK ${limitBreakTier}` : 'FINAL PUSH'}</small>
+            <small>{battleAnnouncement === 'start' ? 'CONTENT COMMENCED' : battleAnnouncement === 'limit' ? `LIMIT BREAK ${activeLimitBreakTier || limitBreakTier}` : 'FINAL PUSH'}</small>
             <strong>{battleAnnouncement === 'start' ? `${targetProperty.name} 討滅戦` : battleAnnouncement === 'limit' ? '全社資金・総動員' : '最終買収攻勢'}</strong>
             <span>{battleAnnouncement === 'start' ? `START! / ${companyName}` : battleAnnouncement === 'limit' ? `${battleSubs.length + 1}社のギルを解放` : '最後の一手で買収成立へ'}</span>
           </div>
@@ -1240,7 +1291,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </div>
         <div className="buyout-header__actions">
           <button type="button" onClick={() => setShowHelp(true)} aria-label="買収劇の遊び方"><CircleHelp /></button>
-          <button type="button" onClick={onClose} aria-label="買収劇を閉じる"><X /></button>
+          {battlePhase === 'briefing' && (
+            <button type="button" onClick={onClose} aria-label="買収劇を閉じる"><X /></button>
+          )}
         </div>
       </header>
 
@@ -1330,6 +1383,43 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           </div>
         </section>
 
+        {limitBreakCapacityTier > 0 && (
+          <section className={`battle-limit-meter ${limitBreakTier > 0 && !limitBreakUsed ? 'battle-limit-meter--ready' : ''}`}>
+            <div className="battle-limit-meter__heading">
+              <span><Zap /><b>LIMIT BREAK GAUGE</b></span>
+              <strong>{limitBreakUsed ? `NEXT BATTLE ${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}` : limitBreakTier > 0 ? `LB ${limitBreakTier} READY` : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`}</strong>
+            </div>
+            <div
+              className="battle-limit-meter__bars"
+              role="progressbar"
+              aria-label="LIMIT BREAK ゲージ"
+              aria-valuemin={0}
+              aria-valuemax={limitBreakChargeCapacity}
+              aria-valuenow={Math.floor(visibleLimitBreakCharge)}
+            >
+              {Array.from({ length: limitBreakCapacityTier }).map((_, index) => {
+                const segmentCharge = Math.max(0, Math.min(
+                  LIMIT_BREAK_CHARGE_PER_BAR,
+                  visibleLimitBreakCharge - index * LIMIT_BREAK_CHARGE_PER_BAR
+                ));
+                return (
+                  <i key={index} className={segmentCharge >= LIMIT_BREAK_CHARGE_PER_BAR ? 'filled' : ''}>
+                    <span style={{ width: `${segmentCharge}%` }} />
+                    <em>LB {index + 1}</em>
+                  </i>
+                );
+              })}
+            </div>
+            <small>{limitBreakUsed
+              ? 'この戦闘では発動済み・ここからの蓄積は次戦へ継承'
+              : limitBreakTier > 0
+                ? limitBreakTier < limitBreakCapacityTier
+                  ? `LB ${limitBreakTier}発動可能・ためれば次の段階へ`
+                  : `LB ${limitBreakTier}・現在の最大段階 READY`
+                : '攻防の資金衝突で蓄積・未使用分は次戦へ持ち越し'}</small>
+          </section>
+        )}
+
         <section className="command-deck">
           <nav>
             <button type="button" className={panel === 'capital' ? 'active' : ''} onClick={() => setPanel('capital')}><Coins />自社資金</button>
@@ -1364,14 +1454,32 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 type="button"
                 className="grand-allied-fund grand-allied-fund--limit"
                 onClick={demandFromAllies}
-                disabled={!commandReady || limitBreakTier === 0 || limitBreakUsed || !!winner || battlePhase !== 'active'}
+                disabled={!commandReady || limitBreakCapacityTier === 0 || limitBreakTier === 0 || limitBreakUsed || !!winner || battlePhase !== 'active'}
               >
                 <Zap />
                 <span>
-                  <b>{limitBreakTier > 0 ? `LIMIT BREAK ${limitBreakTier}` : 'LIMIT BREAK 未解放'}</b>
-                  <small>{limitBreakUsed ? 'この交渉では使用済み' : limitBreakTier === 0 ? `あと${4 - (battleSubs.length + 1)}社で解放` : `自社＋傘下${battleSubs.length}社・所有率最大+${limitBreakOwnershipCap}pt・一交渉一回`}</small>
+                  <b>{limitBreakCapacityTier === 0
+                    ? 'LIMIT BREAK 未解放'
+                    : limitBreakUsed
+                      ? 'LIMIT BREAK 使用済み'
+                      : limitBreakTier > 0
+                        ? `LIMIT BREAK ${limitBreakTier}`
+                        : 'LIMIT BREAK CHARGING'}</b>
+                  <small>{limitBreakCapacityTier === 0
+                    ? `あと${4 - (battleSubs.length + 1)}社で1本目を解放`
+                    : limitBreakUsed
+                      ? 'この交渉では使用済み・現在の蓄積は次戦へ'
+                      : limitBreakTier === 0
+                        ? `攻防で蓄積 ${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}・次戦へ持ち越し`
+                        : `LB ${limitBreakTier}・所有率最大+${limitBreakOwnershipCap}pt・発動でゲージ0へ`}</small>
                 </span>
-                <strong>{limitBreakTier > 0 ? `約+${formatCurrency(alliedMobilizationEstimate)}` : '4社必要'}</strong>
+                <strong>{limitBreakCapacityTier === 0
+                  ? '4社必要'
+                  : limitBreakUsed
+                    ? `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`
+                    : limitBreakTier > 0
+                      ? `約+${formatCurrency(alliedMobilizationEstimate)}`
+                      : `あと${LIMIT_BREAK_CHARGE_PER_BAR - (Math.floor(visibleLimitBreakCharge) % LIMIT_BREAK_CHARGE_PER_BAR)}`}</strong>
               </button>
 
               {groups.length > 0 && (
@@ -1455,6 +1563,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <div><dt>仲介手数料</dt><dd>{formatCurrency(brokerageFee)}</dd></div>
               <div><dt>競合想定予算</dt><dd>{formatCurrency(enemyBudget)}</dd></div>
               <div><dt>競合戦術</dt><dd>AI LEVEL {enemyDifficultyLevel}</dd></div>
+              <div><dt>LBゲージ</dt><dd>{limitBreakCapacityTier === 0 ? '未解放（自社含む4社で解放）' : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}（最大${limitBreakCapacityTier}本・次戦へ継承）`}</dd></div>
               <div><dt>準備診断</dt><dd>{preparationLabel}<small>（自社＋一巡支援 約{formatCurrency(preparationCapital)}）</small></dd></div>
             </dl>
             <section className="briefing-section">
@@ -1515,7 +1624,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <li><b>TACTICAL MODE</b><span>資金源・かけひき・LB選択中は戦闘と商流回復が通常の10%になります。</span></li>
               <li><b>商流回復</b><span>通常時は相場の0.3%/秒、1戦につき相場の15%まで可処分資金が戻ります。</span></li>
               <li><b>風を読む</b><span>自社資金効果上昇は緑、敵大規模防衛出資は赤で表示します。</span></li>
-              <li><b>LIMIT BREAK</b><span>自社を含む4社で解放。所有率の直接上昇はLB I/II/IIIで10/20/30ptが上限で、敵の緊急防衛後に勝敗を判定します。</span></li>
+              <li><b>LIMIT BREAK</b><span>攻防の資金衝突が大きいほど蓄積。4/8/16社で1/2/3本まで解放され、満タン本数でLB I～IIIが発動可能。発動で0、未使用分は次戦へ持ち越します。</span></li>
               <li><b>TRADE PARTY</b><span>外部パーティの一回支援です。LBの社数や投入額には含みません。</span></li>
               <li><b>独立リスク</b><span>傘下へ繰り返し要求できますが、独立すると過去支援も崩れます。</span></li>
               <li><b>SHORT</b><span>敵の追加防衛資金が0になった戦況通知。約1.2秒後に自動再開し、FINAL PUSHか継続圧力で決着します。</span></li>

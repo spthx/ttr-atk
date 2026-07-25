@@ -1,0 +1,143 @@
+.battle-limit-meter {
+  display: grid;
+  grid-template-columns: minmax(9rem, auto) minmax(10rem, 1fr) minmax(10rem, auto);
+  align-items: center;
+  gap: .55rem;
+  padding: .42rem .7rem;
+  border-block: 1px solid rgba(250, 204, 21, .25);
+  color: #e2e8f0;
+  background:
+    linear-gradient(90deg, rgba(15, 23, 42, .98), rgba(50, 34, 5, .92) 50%, rgba(15, 23, 42, .98));
+  box-shadow: inset 0 0 1rem rgba(250, 204, 21, .06);
+}
+
+.battle-limit-meter--ready {
+  border-color: rgba(253, 224, 71, .7);
+  box-shadow: inset 0 0 1.2rem rgba(250, 204, 21, .13), 0 0 .8rem rgba(250, 204, 21, .12);
+}
+
+.battle-limit-meter__heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: .45rem;
+}
+
+.battle-limit-meter__heading > span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: .34rem;
+}
+
+.battle-limit-meter__heading svg {
+  width: .92rem;
+  height: .92rem;
+  color: #fde047;
+  filter: drop-shadow(0 0 .35rem rgba(250, 204, 21, .7));
+}
+
+.battle-limit-meter__heading b {
+  overflow: hidden;
+  font: 1000 .58rem/1 ui-monospace, monospace;
+  letter-spacing: .12em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battle-limit-meter__heading strong {
+  color: #fde68a;
+  font: 1000 .58rem/1 ui-monospace, monospace;
+  white-space: nowrap;
+}
+
+.battle-limit-meter__bars {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: .28rem;
+  min-width: 0;
+}
+
+.battle-limit-meter__bars > i {
+  position: relative;
+  height: .86rem;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, .45);
+  border-radius: .2rem;
+  background: rgba(2, 6, 23, .9);
+  box-shadow: inset 0 0 .35rem rgba(0, 0, 0, .8);
+}
+
+.battle-limit-meter__bars > i > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, #b45309, #facc15 64%, #fff7ae);
+  box-shadow: 0 0 .65rem rgba(250, 204, 21, .8);
+  transition: width .28s ease-out;
+}
+
+.battle-limit-meter__bars > i.filled {
+  border-color: #fde047;
+  box-shadow: 0 0 .55rem rgba(250, 204, 21, .35), inset 0 0 .35rem rgba(255, 255, 255, .28);
+}
+
+.battle-limit-meter__bars > i.filled > span {
+  animation: limit-bar-ready .7s ease-in-out infinite alternate;
+}
+
+.battle-limit-meter__bars em {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, .82);
+  font: 1000 .44rem/1 ui-monospace, monospace;
+  letter-spacing: .09em;
+  text-shadow: 0 1px .2rem #000;
+}
+
+.battle-limit-meter > small {
+  overflow: hidden;
+  color: #cbd5e1;
+  font-size: .48rem;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes limit-bar-ready {
+  to { filter: brightness(1.28); }
+}
+
+@media (max-width: 639px) {
+  .battle-limit-meter {
+    grid-template-columns: auto minmax(8rem, 1fr);
+    gap: .32rem .45rem;
+    padding: .32rem .45rem;
+  }
+
+  .battle-limit-meter__heading b,
+  .battle-limit-meter__heading strong {
+    font-size: .48rem;
+  }
+
+  .battle-limit-meter__bars > i {
+    height: .72rem;
+  }
+
+  .battle-limit-meter > small {
+    grid-column: 1 / -1;
+    font-size: .43rem;
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battle-limit-meter__bars > i > span,
+  .battle-limit-meter__bars > i.filled > span {
+    animation: none !important;
+    transition: none !important;
+  }
+}

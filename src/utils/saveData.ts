@@ -1,5 +1,6 @@
 import { INITIAL_PROPERTIES } from '../data/initialData';
 import type { AllianceState, Property } from '../types';
+import { LIMIT_BREAK_MAX_CHARGE } from './gameBalance';
 
 export const SAVE_SCHEMA_VERSION = 3;
 export const SAVE_STORAGE_KEY = 'tataru-world-trade-save-v3';
@@ -22,8 +23,15 @@ export interface GameSaveData {
   alliance: AllianceState;
   /** Optional so schema v3 saves created before staged unlocks stay compatible. */
   seenUnlockIds?: string[];
+  /** Optional so older schema v3 saves begin with an empty persistent LB gauge. */
+  limitBreakCharge?: number;
   lastSavedAt: number;
 }
+
+export const normalizeLimitBreakCharge = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.min(LIMIT_BREAK_MAX_CHARGE, value))
+    : 0;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -85,6 +93,7 @@ export const loadGameSave = (): GameSaveData | null => {
       seenUnlockIds: Array.isArray(parsed.seenUnlockIds)
         ? parsed.seenUnlockIds.filter((id): id is string => typeof id === 'string')
         : [],
+      limitBreakCharge: normalizeLimitBreakCharge(parsed.limitBreakCharge),
       lastSavedAt: parsed.lastSavedAt,
     };
   } catch (error) {

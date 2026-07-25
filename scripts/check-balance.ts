@@ -2,16 +2,20 @@ import assert from 'node:assert/strict';
 import { INITIAL_PROPERTIES, INITIAL_SKILLS } from '../src/data/initialData';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
 import { decideEnemyAction, type EnemyDecisionContext } from '../src/utils/enemyAi';
+import { normalizeLimitBreakCharge } from '../src/utils/saveData';
 import {
   BATTLE_GAUGE_SPEED_FACTOR,
   ENEMY_INITIAL_COMMITMENT_RATIO,
   PASSIVE_REVENUE_MULTIPLIER,
   calculateEnemyBudget,
   calculateLimitBreakAmount,
+  calculateLimitBreakChargeGain,
   calculateLimitBreakOwnershipAfterDefense,
   calculateLimitBreakOwnershipPush,
   countsTowardCityConquest,
   getCampaignProperties,
+  getChargedLimitBreakTier,
+  getLimitBreakChargeCapacity,
   getLimitBreakTier,
   isSkillUnlocked,
 } from '../src/utils/gameBalance';
@@ -148,6 +152,29 @@ assert.equal(calculateLimitBreakOwnershipPush(50_000, 1_000, 3, 1.15), 30);
 assert.equal(calculateLimitBreakOwnershipPush(50_000, 1_000, 0, 1.15), 0);
 assert.equal(calculateLimitBreakOwnershipAfterDefense(92, 10, 6), 99);
 assert.equal(calculateLimitBreakOwnershipAfterDefense(94, 10, 6), 101);
+assert.equal(getLimitBreakChargeCapacity(1), 100);
+assert.equal(getLimitBreakChargeCapacity(2), 200);
+assert.equal(getLimitBreakChargeCapacity(3), 300);
+assert.equal(getChargedLimitBreakTier(99, 3), 0);
+assert.equal(getChargedLimitBreakTier(100, 3), 1);
+assert.equal(getChargedLimitBreakTier(250, 3), 2);
+assert.equal(getChargedLimitBreakTier(300, 3), 3);
+assert.equal(calculateLimitBreakChargeGain(0, 1_000), 0);
+assert.equal(calculateLimitBreakChargeGain(20, 1_000), 4);
+assert.equal(calculateLimitBreakChargeGain(100, 1_000), 8);
+assert.equal(calculateLimitBreakChargeGain(350, 1_000), 20);
+assert.equal(calculateLimitBreakChargeGain(1_000, 1_000), 24);
+const mediumExchangeCharge =
+  calculateLimitBreakChargeGain(200, 1_000) +
+  calculateLimitBreakChargeGain(100, 1_000);
+assert.equal(mediumExchangeCharge, 21);
+assert.ok(mediumExchangeCharge * 4 < 100);
+assert.ok(mediumExchangeCharge * 5 >= 100);
+assert.equal(normalizeLimitBreakCharge(undefined), 0);
+assert.equal(normalizeLimitBreakCharge(Number.NaN), 0);
+assert.equal(normalizeLimitBreakCharge(-20), 0);
+assert.equal(normalizeLimitBreakCharge(175), 175);
+assert.equal(normalizeLimitBreakCharge(999), 300);
 
 const preFinalTargets = COMMUNITY_CAMPAIGN_ORDER.slice(0, 9).flatMap((community) =>
   getCampaignProperties(INITIAL_PROPERTIES, community)
