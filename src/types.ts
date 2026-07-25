@@ -56,13 +56,13 @@ export interface TacticalSkill {
   cooldownMs: number;
   description: string;
   effectType:
-    | 'COOLDOWN_REDUCTION' // 早馬
-    | 'NEMAWASHI' // ネマワシ (reduces L_risk)
-    | 'INDEPENDENCE_SABOTAGE' // 物件独立工作 (forces enemy property independence)
+    | 'COOLDOWN_REDUCTION' // 神速魔
+    | 'NEMAWASHI' // 士気高揚の策 (reduces L_risk)
+    | 'INDEPENDENCE_SABOTAGE' // 連環計 (disrupts enemy funding)
     | 'DEMORALIZE' // 消沈 (slows enemy AI)
-    | 'CAPITAL_BOOST' // 資本即時投入
-    | 'SNS_BLITZ' // SNS工作
-    | 'SYNERGY_PUSH'; // Group synergy skill
+    | 'CAPITAL_BOOST' // 意気衝天
+    | 'SNS_BLITZ' // ぶんどる
+    | 'SYNERGY_PUSH'; // バトルリタニー
   unlockRequirements: string; // Text description
   requiredIndustries?: IndustryType[];
   requiredPropertyIds?: string[];

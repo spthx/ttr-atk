@@ -7,6 +7,7 @@ import {
   BATTLE_GAUGE_SPEED_FACTOR,
   ENEMY_INITIAL_COMMITMENT_RATIO,
   PASSIVE_REVENUE_MULTIPLIER,
+  TACTICAL_SKILL_BALANCE,
   calculateEnemyBudget,
   calculateLimitBreakAmount,
   calculateLimitBreakChargeGain,
@@ -111,6 +112,15 @@ assert.equal(decideEnemyAction({ ...baseAiContext, enemyOwnership: 70, lastPlaye
 assert.equal(decideEnemyAction({ ...baseAiContext, windType: 'TAILWIND_PLAYER' }).intent, 'WAIT_FOR_WIND');
 assert.equal(decideEnemyAction({ ...baseAiContext, effectiveCapitalGap: 200_000 }).intent, 'AGGRESSIVE_DEFENSE');
 assert.equal(decideEnemyAction({ ...baseAiContext, enemyOwnership: 20, enemyReservePercent: 10 }).intent, 'EMERGENCY_DEFENSE');
+const normalEnemyDecision = decideEnemyAction(baseAiContext);
+const slowedEnemyDecision = decideEnemyAction({ ...baseAiContext, slowed: true });
+assert.ok(
+  Math.abs(
+    slowedEnemyDecision.waitMs / normalEnemyDecision.waitMs -
+    TACTICAL_SKILL_BALANCE.demoralize.enemyWaitMultiplier
+  ) < 0.002,
+  'demoralize wait multiplier'
+);
 const protectedReserve = decideEnemyAction({ ...baseAiContext, enemyReservePercent: 14 });
 assert.equal(protectedReserve.intent, 'CONSERVE');
 assert.equal(protectedReserve.reserveProtected, true);
@@ -120,6 +130,9 @@ assert.equal(allInCounter.intent, 'COUNTER_ATTACK');
 
 const snsSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_sns_blitz')!;
 const fastHorseSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_fast_horse')!;
+const moraleSupportSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_nemawashi')!;
+const disruptionSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_sabotage')!;
+const demoralizeSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_demoralize')!;
 const capitalBoostSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_capital_boost')!;
 const synergyPushSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_synergy_push')!;
 const noAssets = { ownedProperties: [], totalFunds: 50_000, activeSynergyCount: 0 };
@@ -135,6 +148,31 @@ assert.equal(isSkillUnlocked({
   ownedProperties: [INITIAL_PROPERTIES.find((property) => property.id === 'prop_ranch_1')!],
 }), true);
 assert.equal(capitalBoostSkill.oncePerBattle, true);
+assert.deepEqual(
+  INITIAL_SKILLS.map((skill) => skill.name),
+  ['神速魔', '士気高揚の策', '連環計', '消沈', '意気衝天', 'ぶんどる', 'バトルリタニー']
+);
+assert.equal(fastHorseSkill.cooldownMs, TACTICAL_SKILL_BALANCE.fastAction.cooldownMs);
+assert.equal(
+  fastHorseSkill.cooldownMs - TACTICAL_SKILL_BALANCE.fastAction.durationMs,
+  8_000,
+  '神速魔 cannot maintain permanent uptime'
+);
+const fastActionRatio =
+  TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick /
+  TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick;
+assert.ok(fastActionRatio > 1.78 && fastActionRatio < 1.79);
+assert.equal(TACTICAL_SKILL_BALANCE.moraleSupport.loyaltyRiskDivisor, 2);
+assert.match(moraleSupportSkill.description, /半減/);
+assert.equal(TACTICAL_SKILL_BALANCE.disruption.interruptChance, 0.7);
+assert.equal(TACTICAL_SKILL_BALANCE.disruption.collapseMarketRatio, 0.12);
+assert.match(disruptionSkill.description, /中断分は追加防衛枠から消費されない/);
+assert.match(demoralizeSkill.description, /1\.6倍/);
+assert.equal(TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio, 0.3);
+assert.equal(TACTICAL_SKILL_BALANCE.steal.marketRatio, 0.15);
+assert.equal(TACTICAL_SKILL_BALANCE.steal.counterDelayMs, 7_000);
+assert.match(snsSkill.description, /同額が復帰/);
+assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.pushMultiplier, 1.5);
 
 const lbSubs = [
   { ...INITIAL_PROPERTIES[0], marketPrice: 1_000 },

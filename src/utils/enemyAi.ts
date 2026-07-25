@@ -1,3 +1,5 @@
+import { TACTICAL_SKILL_BALANCE } from './gameBalance';
+
 export type EnemyIntent =
   | 'CONSERVE'
   | 'WAIT_FOR_WIND'
@@ -95,7 +97,9 @@ export const decideEnemyAction = ({
   const reserveFloor = 15;
   const reserveProtected = enemyReservePercent <= reserveFloor && !trueEmergency;
   const baseWait = isTutorial ? 3400 : Math.max(1780, 3020 - intellect * 245 - (isCartelHQ ? 140 : 0));
-  const slowedMultiplier = slowed ? 1.6 : 1;
+  const slowedMultiplier = slowed
+    ? TACTICAL_SKILL_BALANCE.demoralize.enemyWaitMultiplier
+    : 1;
   const randomDelay = 0.9 + jitter(cycle) * 0.2;
   const responseScale = 1 + intellect * 0.075;
 

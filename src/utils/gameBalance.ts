@@ -9,6 +9,38 @@ export const LIMIT_BREAK_MAX_BARS = 3;
 export const LIMIT_BREAK_MAX_CHARGE =
   LIMIT_BREAK_CHARGE_PER_BAR * LIMIT_BREAK_MAX_BARS;
 
+export const TACTICAL_SKILL_BALANCE = {
+  fastAction: {
+    durationMs: 10_000,
+    cooldownMs: 18_000,
+    baseCommandProgressPerTick: 2.8,
+    boostedCommandProgressPerTick: 5,
+  },
+  moraleSupport: {
+    loyaltyRiskDivisor: 2,
+  },
+  disruption: {
+    durationMs: 9_000,
+    interruptChance: 0.7,
+    collapseMarketRatio: 0.12,
+  },
+  demoralize: {
+    durationMs: 9_000,
+    enemyWaitMultiplier: 1.6,
+  },
+  capitalBoost: {
+    marketRatio: 0.3,
+  },
+  steal: {
+    marketRatio: 0.15,
+    counterDelayMs: 7_000,
+  },
+  battleLitany: {
+    durationMs: 7_000,
+    pushMultiplier: 1.5,
+  },
+} as const;
+
 export const LIMIT_BREAK_MULTIPLIERS = {
   1: 1.2,
   2: 1.5,
