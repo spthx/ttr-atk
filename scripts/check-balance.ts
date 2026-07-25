@@ -3,9 +3,13 @@ import { INITIAL_PROPERTIES, INITIAL_SKILLS } from '../src/data/initialData';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
 import { decideEnemyAction, type EnemyDecisionContext } from '../src/utils/enemyAi';
 import {
+  BATTLE_GAUGE_SPEED_FACTOR,
+  ENEMY_INITIAL_COMMITMENT_RATIO,
   PASSIVE_REVENUE_MULTIPLIER,
   calculateEnemyBudget,
   calculateLimitBreakAmount,
+  calculateLimitBreakOwnershipAfterDefense,
+  calculateLimitBreakOwnershipPush,
   countsTowardCityConquest,
   getCampaignProperties,
   getLimitBreakTier,
@@ -91,7 +95,7 @@ const baseAiContext: EnemyDecisionContext = {
   windType: 'CALM',
   windRemainingSeconds: 5,
   lastPlayerAction: null,
-  capitalGap: 0,
+  effectiveCapitalGap: 0,
   marketPrice: 1_000_000,
   isCartelHQ: false,
   isTutorial: false,
@@ -101,6 +105,7 @@ const baseAiContext: EnemyDecisionContext = {
 };
 assert.equal(decideEnemyAction({ ...baseAiContext, enemyOwnership: 70, lastPlayerAction: 'SMALL' }).intent, 'CONSERVE');
 assert.equal(decideEnemyAction({ ...baseAiContext, windType: 'TAILWIND_PLAYER' }).intent, 'WAIT_FOR_WIND');
+assert.equal(decideEnemyAction({ ...baseAiContext, effectiveCapitalGap: 200_000 }).intent, 'AGGRESSIVE_DEFENSE');
 assert.equal(decideEnemyAction({ ...baseAiContext, enemyOwnership: 20, enemyReservePercent: 10 }).intent, 'EMERGENCY_DEFENSE');
 const protectedReserve = decideEnemyAction({ ...baseAiContext, enemyReservePercent: 14 });
 assert.equal(protectedReserve.intent, 'CONSERVE');
@@ -135,6 +140,14 @@ const lbSubs = [
 const lbTier = getLimitBreakTier(lbSubs.length + 1);
 assert.equal(lbTier, 1);
 assert.equal(calculateLimitBreakAmount(1_000, lbSubs, lbTier), 2_352);
+assert.equal(BATTLE_GAUGE_SPEED_FACTOR, 4);
+assert.equal(ENEMY_INITIAL_COMMITMENT_RATIO, 0.25);
+assert.equal(calculateLimitBreakOwnershipPush(2_352, 1_000, 1, 1), 10);
+assert.equal(calculateLimitBreakOwnershipPush(20_000, 1_000, 2, 1.15), 20);
+assert.equal(calculateLimitBreakOwnershipPush(50_000, 1_000, 3, 1.15), 30);
+assert.equal(calculateLimitBreakOwnershipPush(50_000, 1_000, 0, 1.15), 0);
+assert.equal(calculateLimitBreakOwnershipAfterDefense(92, 10, 6), 99);
+assert.equal(calculateLimitBreakOwnershipAfterDefense(94, 10, 6), 101);
 
 const preFinalTargets = COMMUNITY_CAMPAIGN_ORDER.slice(0, 9).flatMap((community) =>
   getCampaignProperties(INITIAL_PROPERTIES, community)
