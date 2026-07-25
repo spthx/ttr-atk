@@ -44,6 +44,7 @@ export interface Property {
   loyaltyRisk: number; // L_risk in [0, 100]
   cartelId?: string; // Cartel this belongs to
   isCartelHQ?: boolean;
+  countsTowardCityConquest?: boolean; // Defaults to true. Optional cartel battles can opt out.
   groupKeys: string[]; // Industry group synergy keys, e.g. "JUNGLE_FEVER"
   description: string;
 }
@@ -65,6 +66,9 @@ export interface TacticalSkill {
   unlockRequirements: string; // Text description
   requiredIndustries?: IndustryType[];
   requiredPropertyIds?: string[];
+  requiredAssetValue?: number;
+  requiresActiveSynergy?: boolean;
+  oncePerBattle?: boolean;
 }
 
 export interface GroupSynergy {

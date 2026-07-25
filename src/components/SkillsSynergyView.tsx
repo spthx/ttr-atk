@@ -4,6 +4,7 @@ import { soundFx } from '../utils/audio';
 import { Zap, Check, Lock, Shield, Sparkles, Layers, ArrowRight } from 'lucide-react';
 import { HelpTip } from './HelpTip';
 import { HELP_TEXT } from '../data/helpText';
+import { isSkillUnlocked } from '../utils/gameBalance';
 
 const skillScaleLabel = {
   low: '小',
@@ -22,6 +23,8 @@ interface SkillsSynergyViewProps {
   equippedSkillIds: string[];
   groupSynergies: GroupSynergy[];
   ownedProperties: Property[];
+  totalFunds: number;
+  activeSynergyCount: number;
   onToggleEquipSkill: (skillId: string) => void;
 }
 
@@ -31,20 +34,10 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
   groupSynergies,
   ownedProperties,
   onToggleEquipSkill,
+  totalFunds,
+  activeSynergyCount,
 }) => {
   const ownedPropertyIds = new Set(ownedProperties.map((p) => p.id));
-  const ownedIndustries = new Set(ownedProperties.map((p) => p.industry));
-
-  // Helper to check if a skill is sparked / unlocked
-  const isSkillUnlocked = (skill: TacticalSkill): boolean => {
-    if (skill.requiredIndustries) {
-      return skill.requiredIndustries.some((ind) => ownedIndustries.has(ind));
-    }
-    if (skill.requiredPropertyIds) {
-      return skill.requiredPropertyIds.some((id) => ownedPropertyIds.has(id));
-    }
-    return true; // Default
-  };
 
   const handleToggle = (skill: TacticalSkill) => {
     soundFx.playSkillSpark();
@@ -76,7 +69,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
         {/* Skills Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {skills.map((skill) => {
-            const unlocked = isSkillUnlocked(skill);
+            const unlocked = isSkillUnlocked({ skill, ownedProperties, totalFunds, activeSynergyCount });
             const isEquipped = equippedSkillIds.includes(skill.id);
 
             return (
@@ -116,7 +109,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                   <div className="mt-3 p-2 rounded bg-slate-950 border border-slate-800/80 text-[11px] text-slate-400">
                     <strong className="flex items-center gap-1 text-slate-300 font-medium">
                       修得条件
-                      <HelpTip term="修得条件" description="表示された業界または物件を1つ以上所有すると、その技を装備できるようになります。" />
+                      <HelpTip term="修得条件" description="表示された物件・業界・総資産・SYNERGYの条件を満たすと装備できます。" />
                     </strong>
                     {skill.unlockRequirements}
                   </div>
@@ -144,6 +137,14 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                       ) : (
                         <span>スロットに装備</span>
                       )}
+                    </button>
+                  ) : isEquipped ? (
+                    <button
+                      type="button"
+                      onClick={() => handleToggle(skill)}
+                      className="w-full rounded-lg border border-rose-500/30 bg-rose-950/20 px-3 py-2 text-xs font-bold text-rose-300"
+                    >
+                      条件未達で休止中（装備解除）
                     </button>
                   ) : (
                     <div className="w-full py-2 px-3 rounded-lg bg-slate-950 border border-slate-800/80 text-slate-500 text-xs text-center font-medium flex items-center justify-center gap-1.5">

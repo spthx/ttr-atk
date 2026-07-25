@@ -39,6 +39,16 @@ import {
   ENEMY_INTENT_LABELS,
   PlayerBattleAction,
 } from '../utils/enemyAi';
+import {
+  calculateEnemyBudget,
+  calculateLimitBreakAmount,
+  ENEMY_BALANCE_FACTOR,
+  getEnemyDifficultyLevel,
+  getLimitBreakTier,
+  LIMIT_BREAK_MULTIPLIERS,
+  type LimitBreakTier,
+} from '../utils/gameBalance';
+export { ENEMY_BALANCE_FACTOR, LIMIT_BREAK_MULTIPLIERS };
 import gilChipPlayer from '../assets/battle/gil-chip-player.png';
 import defenseChipEnemy from '../assets/battle/defense-chip-enemy.png';
 import gilMedallionPlayer from '../assets/battle/gil-medallion-player.png';
@@ -79,7 +89,19 @@ type Panel = 'capital' | 'funds' | 'tactics';
 type BattleMotion = 'idle' | 'player' | 'enemy' | 'rebel';
 type LogCategory = 'system' | 'player' | 'enemy' | 'funds' | 'skill' | 'result';
 type BattleAnnouncement = 'start' | 'limit' | 'final';
-type LimitBreakTier = 0 | 1 | 2 | 3;
+type BattleConditionKind = 'player' | 'enemy' | 'cross' | 'calm' | 'synergy' | 'burst';
+
+interface BattleConditionAnnouncement {
+  kind: BattleConditionKind;
+  kicker: string;
+  title: string;
+  detail: string;
+}
+
+interface DecisiveBlow {
+  winner: 'player' | 'opponent';
+  impacted: boolean;
+}
 
 interface BattleLog {
   id: string;
@@ -93,22 +115,6 @@ interface FloatingGil {
   text: string;
 }
 
-export const LIMIT_BREAK_MULTIPLIERS = {
-  1: 1.2,
-  2: 1.5,
-  3: 1.85,
-} as const;
-
-export const ENEMY_BALANCE_FACTOR = {
-  tutorial: 1.08,
-  gridania: 1.3,
-  limsa: 1.42,
-  uldah: 1.55,
-  goldSaucer: 1.72,
-  advanced: 1.55,
-  cartelHQ: 1.75,
-} as const;
-
 const FINISH_LABELS: Record<FinishMethod, string> = {
   LIMIT_BREAK_1: 'LIMIT BREAK I',
   LIMIT_BREAK_2: 'LIMIT BREAK II',
@@ -116,13 +122,6 @@ const FINISH_LABELS: Record<FinishMethod, string> = {
   FINAL_PUSH: 'FINAL PUSH',
   CAPITAL_PRESSURE: 'CAPITAL PRESSURE',
   NORMAL: 'NORMAL BUYOUT',
-};
-
-const getLimitBreakTier = (companyCount: number): LimitBreakTier => {
-  if (companyCount >= 16) return 3;
-  if (companyCount >= 8) return 2;
-  if (companyCount >= 4) return 1;
-  return 0;
 };
 
 const getOverkillRating = (overkill: number) => {
@@ -228,37 +227,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 }) => {
   const brokerageFee = Math.round(targetProperty.marketPrice * 0.03);
   const influenceBonus = industryInfluence.playerBonus + regionalInfluence.playerBonus + tradeNetworkBonus;
-  const enemyDifficultyLevel = isTutorial
-    ? 0
-    : targetProperty.id === 'prop_casino_grand'
-      ? 4
-      : targetProperty.community === 'グリダニア'
-        ? 1
-        : targetProperty.community === 'リムサ・ロミンサ'
-          ? 2
-          : targetProperty.community === 'ウルダハ'
-            ? 3
-            : 4;
-  const enemyBudget = useMemo(() => {
-    const price = targetProperty.marketPrice;
-    const rankFactor = price >= 20_000_000 ? 1.05 : price >= 1_000_000 ? 0.82 : price >= 200_000 ? 0.68 : 0.54;
-    const defenseDiscount = Math.min(0.3, industryInfluence.enemyBudgetDiscount + regionalInfluence.enemyBudgetDiscount);
-    const baseBudget = price * (rankFactor + (targetProperty.isCartelHQ ? 0.3 : 0)) * (1 - defenseDiscount);
-    const balanceFactor = isTutorial
-      ? ENEMY_BALANCE_FACTOR.tutorial
-      : targetProperty.isCartelHQ
-        ? ENEMY_BALANCE_FACTOR.cartelHQ
-        : targetProperty.id === 'prop_casino_grand'
-          ? ENEMY_BALANCE_FACTOR.goldSaucer
-          : targetProperty.community === 'グリダニア'
-            ? ENEMY_BALANCE_FACTOR.gridania
-            : targetProperty.community === 'リムサ・ロミンサ'
-              ? ENEMY_BALANCE_FACTOR.limsa
-              : targetProperty.community === 'ウルダハ'
-                ? ENEMY_BALANCE_FACTOR.uldah
-                : ENEMY_BALANCE_FACTOR.advanced;
-    return Math.round(baseBudget * balanceFactor);
-  }, [industryInfluence.enemyBudgetDiscount, isTutorial, regionalInfluence.enemyBudgetDiscount, targetProperty]);
+  const enemyDifficultyLevel = getEnemyDifficultyLevel(targetProperty, isTutorial);
+
+  const enemyBudget = useMemo(
+    () =>
+      calculateEnemyBudget({
+        targetProperty,
+        industryInfluence,
+        regionalInfluence,
+        isTutorial,
+      }),
+    [industryInfluence, isTutorial, regionalInfluence, targetProperty]
+  );
 
   const initialEnemyCommitment = Math.round(enemyBudget * 0.5);
   const [battlePhase, setBattlePhase] = useState<BattlePhase>('briefing');
@@ -290,6 +270,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [enemyDisruptionRemaining, setEnemyDisruptionRemaining] = useState(0);
   const [pushMultiplierRemaining, setPushMultiplierRemaining] = useState(0);
   const [skillCooldowns, setSkillCooldowns] = useState<Record<string, number>>({});
+  const [usedSkillIds, setUsedSkillIds] = useState<Set<string>>(() => new Set());
+  const [snsCounterRemaining, setSnsCounterRemaining] = useState(0);
   const [motion, setMotion] = useState<BattleMotion>('idle');
   const [statusText, setStatusText] = useState('効果を確認して交渉を開始してください');
   const [aiText, setAiText] = useState('敵大規模防衛出資を準備中');
@@ -299,6 +281,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [finalOwnership, setFinalOwnership] = useState(50);
   const [overkill, setOverkill] = useState(0);
   const [battleAnnouncement, setBattleAnnouncement] = useState<BattleAnnouncement | null>(null);
+  const [conditionAnnouncement, setConditionAnnouncement] = useState<BattleConditionAnnouncement | null>(null);
+  const [decisiveBlow, setDecisiveBlow] = useState<DecisiveBlow | null>(null);
   const [finalPushActive, setFinalPushActive] = useState(false);
   const [lastPlayerAction, setLastPlayerAction] = useState<PlayerBattleAction | null>(null);
   const [aiCycle, setAiCycle] = useState(0);
@@ -318,6 +302,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const shortTimerRef = useRef<number | null>(null);
   const finishTimerRef = useRef<number | null>(null);
   const limitImpactTimerRef = useRef<number | null>(null);
+  const conditionTimerRef = useRef<number | null>(null);
+  const initialWindTimerRef = useRef<number | null>(null);
+  const decisiveImpactTimerRef = useRef<number | null>(null);
+  const decisiveResolveTimerRef = useRef<number | null>(null);
+  const decisiveRef = useRef(false);
+  const lastAnnouncedWindRef = useRef(currentWind.type);
+  const snsCounterAmountRef = useRef(0);
 
   const groups = useMemo(() => {
     const grouped = new Map<string, Property[]>();
@@ -356,27 +347,57 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const windSide = currentWind.type === 'TAILWIND_PLAYER' ? 'player'
     : currentWind.type === 'TAILWIND_ENEMY' || currentWind.type === 'HEADWIND_PLAYER' ? 'enemy'
       : currentWind.type === 'CROSSWIND' ? 'cross' : 'calm';
-  const windTitle = windSide === 'player' ? '自社資金効果上昇'
-    : windSide === 'enemy' ? '敵大規模防衛出資'
-      : windSide === 'cross' ? '乱旋風' : '静穏';
-  const windDetail = windSide === 'player' ? `BURST ×${currentWind.playerMultiplier.toFixed(2)}`
-    : windSide === 'enemy' ? `ONSLAUGHT ×${currentWind.enemyMultiplier.toFixed(2)}`
-      : currentWind.directionLabel;
+  const hasActiveBattleSynergy =
+    activeSynergies.length > 0 ||
+    groups.length > 0 ||
+    industryInfluence.playerBonus > 0 ||
+    regionalInfluence.playerBonus > 0 ||
+    tradeNetworkBonus > 0 ||
+    battleSubs.length + 1 >= 4;
+  const isBurstTime = windSide === 'player' && hasActiveBattleSynergy;
+  const windTitle = isBurstTime ? 'BURST TIME'
+    : windSide === 'player' ? '味方追い風'
+      : windSide === 'enemy' ? '敵方優勢の風'
+        : windSide === 'cross' ? '乱旋風' : '静穏';
+  const windDetail = isBurstTime ? `風 × SYNERGY / 自社効果 ×${currentWind.playerMultiplier.toFixed(2)}`
+    : currentWind.type === 'HEADWIND_PLAYER' ? `自社効果 ×${currentWind.playerMultiplier.toFixed(2)}`
+      : windSide === 'player' ? `自社効果 ×${currentWind.playerMultiplier.toFixed(2)}`
+        : windSide === 'enemy' ? `敵防衛 ×${currentWind.enemyMultiplier.toFixed(2)}`
+          : currentWind.directionLabel;
   const fastHorse = fastHorseRemaining > 0;
   const enemySlowed = enemySlowedRemaining > 0;
   const enemyDisruption = enemyDisruptionRemaining > 0 ? 0.7 : 0;
   const pushMultiplier = pushMultiplierRemaining > 0 ? 2 : 1;
   const limitBreakTier = getLimitBreakTier(battleSubs.length + 1);
   const limitBreakMultiplier = limitBreakTier > 0 ? LIMIT_BREAK_MULTIPLIERS[limitBreakTier] : 0;
-  const limitBreakSelfSlot = Math.round(targetProperty.marketPrice * 0.28);
-  const limitBreakSubsEstimate = battleSubs.reduce(
-    (total, property) => total + Math.round(property.marketPrice * 0.28),
+  const alliedMobilizationEstimate = calculateLimitBreakAmount(
+    targetProperty.marketPrice,
+    battleSubs,
+    limitBreakTier
+  );
+  const allianceSupport = alliance.active && !allianceUsed ? Math.round(targetProperty.marketPrice * 0.32) : 0;
+  const onePassPropertySupport = battleSubs.reduce(
+    (total, property) => total + Math.round(property.marketPrice * 0.45),
     0
   );
-  const alliedMobilizationEstimate = Math.round((limitBreakSelfSlot + limitBreakSubsEstimate) * limitBreakMultiplier);
-  const allianceSupport = alliance.active && !allianceUsed ? Math.round(targetProperty.marketPrice * 0.32) : 0;
+  const capitalBoostSupport = equippedSkills.some((skill) => skill.effectType === 'CAPITAL_BOOST')
+    ? Math.round(targetProperty.marketPrice * 0.3)
+    : 0;
+  const preparationCapital =
+    cash +
+    Math.max(onePassPropertySupport, alliedMobilizationEstimate) +
+    allianceSupport +
+    capitalBoostSupport;
+  const preparationRatio = preparationCapital / Math.max(enemyBudget, 1);
+  const preparationLabel = preparationRatio >= 1
+    ? '十分'
+    : preparationRatio >= 0.7
+      ? '互角'
+      : preparationRatio >= 0.45
+        ? '要・風／妨害'
+        : '準備不足';
   const isPaused = battlePhase !== 'active' || showHelp || showLog;
-  const timeScale = isPaused ? 0 : panel === 'capital' ? 1 : 0.1;
+  const timeScale = isPaused ? 0 : decisiveBlow ? 0.16 : panel === 'capital' ? 1 : 0.1;
   const enemyOwnershipForAi = Math.round((100 - ownership) / 5) * 5;
   const enemyDecision = useMemo(() => decideEnemyAction({
     enemyOwnership: enemyOwnershipForAi,
@@ -413,6 +434,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (shortTimerRef.current) window.clearTimeout(shortTimerRef.current);
     if (finishTimerRef.current) window.clearTimeout(finishTimerRef.current);
     if (limitImpactTimerRef.current) window.clearTimeout(limitImpactTimerRef.current);
+    if (conditionTimerRef.current) window.clearTimeout(conditionTimerRef.current);
+    if (initialWindTimerRef.current) window.clearTimeout(initialWindTimerRef.current);
+    if (decisiveImpactTimerRef.current) window.clearTimeout(decisiveImpactTimerRef.current);
+    if (decisiveResolveTimerRef.current) window.clearTimeout(decisiveResolveTimerRef.current);
   }, [onTimeScaleChange]);
 
   useEffect(() => {
@@ -440,31 +465,105 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     announcementTimerRef.current = window.setTimeout(() => setBattleAnnouncement(null), duration);
   };
 
+  const announceCondition = (announcement: BattleConditionAnnouncement, duration = 1650) => {
+    if (conditionTimerRef.current) window.clearTimeout(conditionTimerRef.current);
+    setConditionAnnouncement(announcement);
+    conditionTimerRef.current = window.setTimeout(() => setConditionAnnouncement(null), duration);
+  };
+
+  const announceCurrentWind = () => {
+    let announcement: BattleConditionAnnouncement;
+    if (isBurstTime) {
+      announcement = {
+        kind: 'burst',
+        kicker: 'TAILWIND × SYNERGY',
+        title: 'BURST TIME',
+        detail: `味方追い風と連携が共鳴 / 自社の出資効果 ×${currentWind.playerMultiplier.toFixed(2)}`,
+      };
+    } else if (currentWind.type === 'TAILWIND_PLAYER') {
+      announcement = {
+        kind: 'player',
+        kicker: 'MARKET WIND / ALLY',
+        title: '味方追い風',
+        detail: `自社の出資・支援効果 ×${currentWind.playerMultiplier.toFixed(2)}`,
+      };
+    } else if (currentWind.type === 'HEADWIND_PLAYER') {
+      announcement = {
+        kind: 'enemy',
+        kicker: 'WARNING / HEADWIND',
+        title: '自社向かい風',
+        detail: `自社の出資・支援効果 ×${currentWind.playerMultiplier.toFixed(2)}`,
+      };
+    } else if (currentWind.type === 'TAILWIND_ENEMY') {
+      announcement = {
+        kind: 'enemy',
+        kicker: 'WARNING / RIVAL WIND',
+        title: '敵方追い風',
+        detail: `競合の防衛出資効果 ×${currentWind.enemyMultiplier.toFixed(2)}`,
+      };
+    } else if (currentWind.type === 'CROSSWIND') {
+      announcement = {
+        kind: 'cross',
+        kicker: 'MARKET TURBULENCE',
+        title: '乱旋風',
+        detail: `双方の資金効果 ×${currentWind.playerMultiplier.toFixed(2)} / 所有率速度 ×${currentWind.speedMultiplier.toFixed(2)}`,
+      };
+    } else {
+      announcement = {
+        kind: 'calm',
+        kicker: 'MARKET WIND',
+        title: '静穏',
+        detail: '資金効果・所有率速度ともに基準値',
+      };
+    }
+    announceCondition(announcement);
+    const text = `${announcement.title}――${announcement.detail}`;
+    setStatusText(text);
+    setLogs((current) => [
+      { id: `wind-${Date.now()}`, category: 'system' as LogCategory, text },
+      ...current,
+    ].slice(0, 100));
+    if (announcement.kind === 'enemy') soundFx.playWarning();
+    else soundFx.playSkillSpark();
+  };
+
+  const announceSynergy = (name: string, detail: string) => {
+    announceCondition({
+      kind: isBurstTime ? 'burst' : 'synergy',
+      kicker: isBurstTime ? 'TAILWIND × SYNERGY' : 'PARTY COORDINATION',
+      title: isBurstTime ? 'BURST TIME' : 'SYNERGY発動！',
+      detail: isBurstTime ? `${name} × 味方追い風 / ${detail}` : `${name} / ${detail}`,
+    });
+  };
+
   const startBattle = () => {
     setBattlePhase('active');
     setStatusText('競り値が拮抗。命令を選んでギルを積んでください');
     setLogs((current) => [
-      { id: `open-${Date.now()}`, category: 'system', text: `${companyName}対${targetProperty.name}、買収交渉開始。競合は${formatCurrency(initialEnemyCommitment)}を先に積みました。` },
+      { id: `open-${Date.now()}`, category: 'system', text: `${companyName}対${targetProperty.name}、討滅戦開始。競合は${formatCurrency(initialEnemyCommitment)}を先に積みました。` },
       ...current,
     ]);
-    soundFx.playSkillSpark();
+    soundFx.playDutyStart();
     announceBattle('start', 1800);
+    if (initialWindTimerRef.current) window.clearTimeout(initialWindTimerRef.current);
+    initialWindTimerRef.current = window.setTimeout(announceCurrentWind, 1900);
   };
 
   useEffect(() => {
-    if (battlePhase !== 'active' || currentWind.type === 'CALM') return;
-    const text = windSide === 'player'
-      ? `自社資金効果上昇――BURST ${currentWind.playerMultiplier.toFixed(2)}倍`
-      : windSide === 'enemy'
-        ? `敵大規模防衛出資――ONSLAUGHT ${currentWind.enemyMultiplier.toFixed(2)}倍`
-        : `乱旋風――所有率速度${currentWind.speedMultiplier.toFixed(2)}倍`;
-    setStatusText(text);
-    setLogs((current) => [{ id: `wind-${Date.now()}`, category: 'system' as LogCategory, text }, ...current].slice(0, 100));
-    soundFx.playSkillSpark();
-  }, [battlePhase, currentWind.enemyMultiplier, currentWind.playerMultiplier, currentWind.speedMultiplier, currentWind.type, windSide]);
+    if (battlePhase !== 'active' || currentWind.type === lastAnnouncedWindRef.current) return;
+    lastAnnouncedWindRef.current = currentWind.type;
+    announceCurrentWind();
+  }, [
+    battlePhase,
+    currentWind.enemyMultiplier,
+    currentWind.playerMultiplier,
+    currentWind.speedMultiplier,
+    currentWind.type,
+    isBurstTime,
+  ]);
 
   const consumeCommand = () => {
-    if (!commandReady || endedRef.current || battlePhase !== 'active') {
+    if (!commandReady || endedRef.current || decisiveRef.current || battlePhase !== 'active') {
       soundFx.playWarning();
       return false;
     }
@@ -472,13 +571,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return true;
   };
 
-  const finishBattle = (
+  const finalizeBattle = (
     result: 'player' | 'opponent',
     method: FinishMethod = 'NORMAL',
     rawOwnership = ownership
   ) => {
     if (endedRef.current) return;
     endedRef.current = true;
+    decisiveRef.current = false;
+    setDecisiveBlow(null);
     const resolvedOwnership = Math.max(0, rawOwnership);
     const resolvedOverkill = result === 'player' ? Math.max(0, resolvedOwnership - 100) : 0;
     setWinner(result);
@@ -501,6 +602,39 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     } else {
       soundFx.playDefeat();
     }
+  };
+
+  const finishBattle = (
+    result: 'player' | 'opponent',
+    method: FinishMethod = 'NORMAL',
+    rawOwnership = ownership,
+    cinematic = true
+  ) => {
+    if (endedRef.current || decisiveRef.current) return;
+    if (!cinematic) {
+      finalizeBattle(result, method, rawOwnership);
+      return;
+    }
+
+    decisiveRef.current = true;
+    setGaugeSpeed(0);
+    setGauge(result === 'player' ? -99.2 : 99.2);
+    setDecisiveBlow({ winner: result, impacted: false });
+    setStatusText(result === 'player'
+      ? '決着の一撃――最後の資金が防衛線へ届く！'
+      : '決着の一撃――競合の大口防衛出資が直撃！');
+    playMotion(result === 'player' ? 'player' : 'enemy');
+    soundFx.playDecisiveBlow(result);
+
+    decisiveImpactTimerRef.current = window.setTimeout(() => {
+      setGauge(result === 'player' ? -100 : 100);
+      setDecisiveBlow({ winner: result, impacted: true });
+      soundFx.playCapitalImpact(result === 'player' ? 'player' : 'opponent', 1);
+    }, 190);
+    decisiveResolveTimerRef.current = window.setTimeout(() => {
+      decisiveRef.current = false;
+      finalizeBattle(result, method, rawOwnership);
+    }, 760);
   };
 
   const showShortNotice = () => {
@@ -570,9 +704,27 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setEnemySlowedRemaining((value) => Math.max(0, value - elapsed));
       setEnemyDisruptionRemaining((value) => Math.max(0, value - elapsed));
       setPushMultiplierRemaining((value) => Math.max(0, value - elapsed));
+      setSnsCounterRemaining((value) => Math.max(0, value - elapsed));
     }, 50);
     return () => window.clearInterval(interval);
   }, [fastHorse, timeScale, winner]);
+
+  useEffect(() => {
+    if (snsCounterRemaining > 0 || snsCounterAmountRef.current <= 0 || winner) return;
+    const amount = snsCounterAmountRef.current;
+    snsCounterAmountRef.current = 0;
+    setEnemyInvested((value) => value + amount);
+    const counterShock = Math.min(
+      6,
+      (1 + (amount / Math.max(targetProperty.marketPrice, 1)) * 10) * currentWind.enemyMultiplier
+    );
+    setGauge((value) => Math.min(99, value + counterShock));
+    setStatusText(`反論キャンペーン発生――競合資金${formatCurrency(amount)}が復帰`);
+    showFloater(`反論 +${formatCurrency(amount)}`, 'enemy');
+    playMotion('enemy');
+    soundFx.playCapitalImpact('opponent', amount / Math.max(targetProperty.marketPrice, 1));
+    addLog(`SNS工作への反論で競合資金${formatCurrency(amount)}が復帰。`, 'enemy');
+  }, [currentWind.enemyMultiplier, snsCounterRemaining, targetProperty.marketPrice, winner]);
 
   useEffect(() => {
     if (timeScale <= 0 || winner || battlePhase !== 'active') return;
@@ -591,7 +743,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   }, [battleCashRecoveryCap, battleCashRecoveryPerSecond, battlePhase, timeScale, winner]);
 
   useEffect(() => {
-    if (timeScale <= 0 || winner || enemyReserveRef.current <= 0) return;
+    if (timeScale <= 0 || winner || decisiveRef.current || enemyReserveRef.current <= 0) return;
     const step = (100 / (enemyDecision.waitMs / 100)) * timeScale;
     const interval = window.setInterval(() => {
       setAiProgress((value) => {
@@ -622,6 +774,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return;
     }
     const tick = (now: number) => {
+      if (decisiveRef.current) {
+        setGaugeSpeed(0);
+        lastTickRef.current = now;
+        animationRef.current = requestAnimationFrame(tick);
+        return;
+      }
       const dt = Math.min(0.1, (now - lastTickRef.current) / 1000) * timeScale;
       lastTickRef.current = now;
       const baseVelocity = calculateGaugeVelocity(
@@ -640,11 +798,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         if (next <= -100) {
           const method: FinishMethod = enemyReserveRef.current <= 0 ? 'CAPITAL_PRESSURE' : 'NORMAL';
           finishBattle('player', method, (100 - next) / 2);
-          return -100;
+          return -99.2;
         }
         if (next >= 100) {
           finishBattle('opponent', 'NORMAL', 0);
-          return 100;
+          return 99.2;
         }
         return next;
       });
@@ -657,13 +815,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   }, [currentWind.enemyMultiplier, currentWind.playerMultiplier, currentWind.speedMultiplier, effectiveCapitalGap, enemyInvested, influenceBonus, pushMultiplier, targetProperty.marketPrice, timeScale, totalPlayerInvested, winner]);
 
   const investCompanyFunds = () => {
-    if (!consumeCommand()) return;
     if (cash < selectedCost) {
-      setCommandProgress(100);
       soundFx.playWarning();
       setStatusText(`自社資金不足。必要額は${formatCurrency(selectedCost)}`);
       return;
     }
+    if (!consumeCommand()) return;
+    setPanel('capital');
     const impact = Math.min(14, (1.2 + (selectedCost / Math.max(targetProperty.marketPrice, 1)) * 20) * currentWind.playerMultiplier);
     const rawGaugeAfter = gauge - impact;
     setCash((value) => value - selectedCost);
@@ -705,6 +863,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   const demandFromProperty = (property: Property) => {
     if (!consumeCommand()) return;
+    setPanel('capital');
     setLastPlayerAction('FUNDS');
     const nextRisk = Math.min(100, property.loyaltyRisk + 18);
     const amount = Math.round(property.marketPrice * 0.45);
@@ -738,12 +897,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   const demandFromAllies = () => {
     if (limitBreakTier === 0 || limitBreakUsed || !consumeCommand()) return;
+    setPanel('capital');
     setLastPlayerAction('LIMIT_BREAK');
     setLimitBreakUsed(true);
     setBattlePhase('limit_charge');
     setGaugeSpeed(0);
     announceBattle('limit', 2300);
-    soundFx.playFinalPush();
+    soundFx.playLimitBreak();
 
     const leaving: Property[] = [];
     const survivors: Property[] = [];
@@ -758,11 +918,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       }
     });
 
-    const baseAmount = limitBreakSelfSlot + survivors.reduce(
-      (total, member) => total + Math.round(member.marketPrice * 0.24),
-      0
+    const amount = calculateLimitBreakAmount(
+      targetProperty.marketPrice,
+      survivors,
+      limitBreakTier
     );
-    const amount = Math.round(baseAmount * limitBreakMultiplier);
     setStatusText(`LIMIT BREAK ${limitBreakTier}――${survivors.length + 1}社の出資を集約中`);
     addLog(`LIMIT BREAK ${limitBreakTier}発動。自社と傘下${battleSubs.length}社が全社出資へ参加。`, 'skill');
 
@@ -791,6 +951,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setLimitImpactActive(true);
       if (limitImpactTimerRef.current) window.clearTimeout(limitImpactTimerRef.current);
       limitImpactTimerRef.current = window.setTimeout(() => setLimitImpactActive(false), 1450);
+
       confetti({ particleCount: 110, spread: 82, startVelocity: 38, origin: { y: 0.62 }, colors: ['#fef08a', '#f59e0b', '#34d399', '#ffffff'] });
       soundFx.playCapitalImpact('player', 1);
       soundFx.playBigCash();
@@ -828,6 +989,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   const demandFromGroup = (key: string, name: string, members: Property[]) => {
     if (!consumeCommand()) return;
+    setPanel('capital');
     setLastPlayerAction('SYNERGY');
     let amount = 0;
     let lost = 0;
@@ -864,6 +1026,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     showFloater(`連携 +${formatCurrency(amount)}`, 'player');
     playMotion(leaving.length ? 'rebel' : 'player');
     soundFx.playBigCash();
+    announceSynergy(name, `${members.length}社連携 / +${formatCurrency(amount)}`);
     if (leaving.length) {
       setStatusText(`${name}が発動。しかし${leaving.length}社が独立し${formatCurrency(lost)}崩落`);
       addLog(`${name}から${formatCurrency(amount)}を調達したが、${leaving.map((item) => item.name).join('・')}が独立。`, 'funds');
@@ -875,20 +1038,30 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   const requestAlliance = () => {
     if (!alliance.active || allianceUsed || !consumeCommand()) return;
+    setPanel('capital');
     setLastPlayerAction('ALLIANCE');
     const amount = Math.round(targetProperty.marketPrice * 0.32);
     setDemandInvested((value) => value + amount);
     setAllianceUsed(true);
     setStatusText(`${alliance.allyName}から${formatCurrency(amount)}の援軍`);
-    showFloater(`同盟 +${formatCurrency(amount)}`, 'player');
+    showFloater(`PARTY +${formatCurrency(amount)}`, 'player');
     playMotion('player');
     soundFx.playBigCash();
-    addLog(`${alliance.allyName}へ同盟資金を要請。${formatCurrency(amount)}を調達。`, 'funds');
+    announceSynergy('TRADE PARTY', `${alliance.allyName}から+${formatCurrency(amount)}`);
+    addLog(`${alliance.allyName}へパーティ支援を要請。${formatCurrency(amount)}を調達。`, 'funds');
   };
 
   const useSkill = (skill: TacticalSkill) => {
-    if ((skillCooldowns[skill.id] || 0) > 0 || !consumeCommand()) return;
+    if (
+      (skillCooldowns[skill.id] || 0) > 0 ||
+      (skill.oncePerBattle && usedSkillIds.has(skill.id)) ||
+      !consumeCommand()
+    ) return;
+    setPanel('capital');
     setSkillCooldowns((current) => ({ ...current, [skill.id]: skill.cooldownMs }));
+    if (skill.oncePerBattle) {
+      setUsedSkillIds((current) => new Set(current).add(skill.id));
+    }
     showFloater(skill.name, 'center');
     playMotion('player');
     soundFx.playSkillSpark();
@@ -913,7 +1086,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     } else if (skill.effectType === 'SNS_BLITZ') {
       const amount = Math.min(enemyInvested, Math.round(targetProperty.marketPrice * 0.15));
       setEnemyInvested((value) => Math.max(0, value - amount));
-      setStatusText(`評判工作で敵資金${formatCurrency(amount)}が離脱`);
+      snsCounterAmountRef.current = amount;
+      setSnsCounterRemaining(7000);
+      setStatusText(`評判工作で敵資金${formatCurrency(amount)}が離脱。7秒後の反論に注意`);
     } else if (skill.effectType === 'SYNERGY_PUSH') {
       setPushMultiplierRemaining(7000);
       setStatusText('交易網総動員――7秒間、所有率の押し込み速度が倍増');
@@ -941,7 +1116,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   const resultAnalysis = winner === 'player'
     ? finishMethod.startsWith('LIMIT_BREAK')
-      ? `勝因は企業網の総動員でっす。LIMIT BREAKで${formatCurrency(demandInvested)}を集め、所有率を一気に押し切ったでっす。`
+      ? `勝因はカンパニー網の総動員でっす。LIMIT BREAKで${formatCurrency(demandInvested)}を集め、所有率を一気に押し切ったでっす。`
       : demandInvested > companyInvested
         ? `勝因はSYNERGYでっす。傘下から集めた${formatCurrency(demandInvested)}が競り値を押し上げたでっす。`
         : `勝因は自社資金の決断でっす。SHORT後までギルを残し、${FINISH_LABELS[finishMethod]}で決着したでっす。`
@@ -950,6 +1125,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       : `競合の競り値を${formatCurrency(Math.max(0, -capitalGap))}下回り、所有率を押し戻されたでっす。`;
 
   const briefingSynergies = [
+    ...(battleSubs.length + 1 >= 4
+? [`ライトパーティ：${battleSubs.length + 1}社参加・SYNERGY / 味方追い風でBURST TIME`]
+      : []),
     ...(industryInfluence.playerBonus > 0 || industryInfluence.enemyBudgetDiscount > 0
       ? [`${targetProperty.industry} ${industryInfluence.label}：自社押込 +${Math.round(industryInfluence.playerBonus * 100)}% / 敵予算 -${Math.round(industryInfluence.enemyBudgetDiscount * 100)}%`]
       : []),
@@ -963,7 +1141,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   return (
     <div
-      className={`buyout-screen buyout-screen--phase-${battlePhase} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''}`}
+      className={`buyout-screen buyout-screen--phase-${battlePhase} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''} ${isBurstTime ? 'buyout-screen--burst' : ''} ${decisiveBlow ? `buyout-screen--decisive buyout-screen--decisive-${decisiveBlow.winner}` : ''}`}
       style={{ '--battle-time-scale': timeScale } as React.CSSProperties}
     >
       <img className="buyout-backdrop" src={FANKIT_ART.battleBackdrop} alt="" aria-hidden="true" />
@@ -973,15 +1151,26 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         <div className={`battle-announcement battle-announcement--${battleAnnouncement}`} aria-live="assertive">
           <div>
             <small>{battleAnnouncement === 'start' ? 'CONTENT COMMENCED' : battleAnnouncement === 'limit' ? `LIMIT BREAK ${limitBreakTier}` : 'FINAL PUSH'}</small>
-            <strong>{battleAnnouncement === 'start' ? '買収戦開始' : battleAnnouncement === 'limit' ? '全社資金・総動員' : '最終買収攻勢'}</strong>
-            <span>{battleAnnouncement === 'start' ? `${companyName} VS ${targetProperty.name}` : battleAnnouncement === 'limit' ? `${battleSubs.length + 1}社のギルを解放` : '最後の一手で買収成立へ'}</span>
+            <strong>{battleAnnouncement === 'start' ? `${targetProperty.name} 討滅戦` : battleAnnouncement === 'limit' ? '全社資金・総動員' : '最終買収攻勢'}</strong>
+            <span>{battleAnnouncement === 'start' ? `START! / ${companyName}` : battleAnnouncement === 'limit' ? `${battleSubs.length + 1}社のギルを解放` : '最後の一手で買収成立へ'}</span>
+          </div>
+        </div>
+      )}
+
+      {conditionAnnouncement && (
+        <div className={`battle-condition-announcement battle-condition-announcement--${conditionAnnouncement.kind}`} aria-live="assertive">
+          <div className="battle-condition-announcement__wind" aria-hidden="true"><i /><i /><i /><i /><i /></div>
+          <div>
+            <small>{conditionAnnouncement.kicker}</small>
+            <strong>{conditionAnnouncement.title}</strong>
+            <span>{conditionAnnouncement.detail}</span>
           </div>
         </div>
       )}
 
       <header className="buyout-header">
         <div>
-          <span>ACTIVE BUYOUT</span>
+          <span>ACTIVE BUYOUT DUTY</span>
           <strong title={targetProperty.name}>{targetProperty.name}</strong>
           <small>{targetProperty.community}・{targetProperty.industry}</small>
         </div>
@@ -1065,8 +1254,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         <section className="active-time">
           <div>
             <TimerReset />
-            <span>{commandReady ? 'COMMAND READY' : fastHorse ? '早馬で命令伝達中' : '次の命令を伝達中'}</span>
-            {timeScale === 0.1 && <em>TACTICAL MODE ×0.1</em>}<b className="battle-income-rate">商流 +{formatCurrency(Math.round(battleCashRecoveryPerSecond * timeScale))}/秒</b>
+            <span>{commandReady ? 'ACTION READY' : fastHorse ? '早馬でアクション伝達中' : '次のアクション準備中'}</span>
+            {timeScale === 0.1 && <em>TACTICAL MODE ×0.1</em>}{timeScale === 0.16 && <em>DECISIVE SLOW ×0.16</em>}<b className="battle-income-rate">商流 +{formatCurrency(Math.round(battleCashRecoveryPerSecond * timeScale))}/秒</b>
           </div>
           <div className="active-time__bar"><i style={{ width: `${commandProgress}%` }} /></div>
           <div className={`active-time__enemy ${aiProgress >= 72 ? 'active-time__enemy--danger' : ''}`}>
@@ -1131,7 +1320,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
               {alliance.active && (
                 <button type="button" className="alliance-fund" onClick={requestAlliance} disabled={!commandReady || allianceUsed || !!winner || battlePhase !== 'active'}>
-                  <Users /><span>ALLIANCE：{alliance.allyName}</span><b>{allianceUsed ? '要請済み' : `+${formatCurrency(allianceSupport)}`}</b>
+                  <Users /><span>TRADE PARTY：{alliance.allyName}</span><b>{allianceUsed ? '要請済み' : `+${formatCurrency(allianceSupport)}`}</b>
                 </button>
               )}
 
@@ -1155,9 +1344,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <div className="command-panel command-panel--tactics">
               {equippedSkills.map((skill) => {
                 const cooldown = skillCooldowns[skill.id] || 0;
+                const used = !!skill.oncePerBattle && usedSkillIds.has(skill.id);
                 return (
-                  <button type="button" key={skill.id} onClick={() => useSkill(skill)} disabled={!commandReady || cooldown > 0 || !!winner || battlePhase !== 'active'} title={skill.description}>
-                    <Zap /><span><b>{skill.name}</b><small>{skill.description}</small></span><em>{cooldown > 0 ? `${(cooldown / 1000).toFixed(1)}秒` : 'READY'}</em>
+                  <button type="button" key={skill.id} onClick={() => useSkill(skill)} disabled={!commandReady || cooldown > 0 || used || !!winner || battlePhase !== 'active'} title={skill.description}>
+                    <Zap /><span><b>{skill.name}</b><small>{skill.description}</small></span><em>{used ? '使用済み' : cooldown > 0 ? `${(cooldown / 1000).toFixed(1)}秒` : 'READY'}</em>
                   </button>
                 );
               })}
@@ -1179,7 +1369,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           <>
             <button type="button" onClick={() => setShowLog(true)}><ScrollText />戦局ログ</button>
             <span>{logs[0]?.text}</span>
-            <button type="button" onClick={() => finishBattle('opponent', 'NORMAL', ownership)}>撤退</button>
+            <button type="button" onClick={() => finishBattle('opponent', 'NORMAL', ownership, false)}>撤退</button>
           </>
         )}
       </footer>
@@ -1187,7 +1377,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       {battlePhase === 'briefing' && (
         <div className="buyout-overlay buyout-briefing-overlay">
           <article className="buyout-dialog buyout-briefing">
-            <header><Swords /><strong>BUYOUT OPERATION</strong></header>
+            <header><Swords /><strong>BUYOUT DUTY</strong></header>
             <div className="briefing-versus">
               <b className="company-name-full" title={companyName}>{companyName}</b>
               <span>VS</span>
@@ -1197,7 +1387,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <div><dt>対象都市・業界</dt><dd>{targetProperty.community}・{targetProperty.industry}</dd></div>
               <div><dt>現在相場</dt><dd>{formatCurrency(targetProperty.marketPrice)}</dd></div>
               <div><dt>仲介手数料</dt><dd>{formatCurrency(brokerageFee)}</dd></div>
+              <div><dt>競合想定予算</dt><dd>{formatCurrency(enemyBudget)}</dd></div>
               <div><dt>競合戦術</dt><dd>AI LEVEL {enemyDifficultyLevel}</dd></div>
+              <div><dt>準備診断</dt><dd>{preparationLabel}<small>（自社＋一巡支援 約{formatCurrency(preparationCapital)}）</small></dd></div>
             </dl>
             <section className="briefing-section">
               <h3><Sparkles />ACTIVE SYNERGY</h3>
@@ -1206,10 +1398,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 : <p>今回発動するSYNERGYはありません。</p>}
             </section>
             <section className="briefing-section">
-              <h3><Users />ACTIVE ALLIANCE</h3>
-              <p>{alliance.active ? `${alliance.allyName}：一回限り +${formatCurrency(allianceSupport)}` : '今回利用できるALLIANCE支援はありません。'}</p>
+              <h3><Users />ACTIVE TRADE PARTY</h3>
+              <p>{alliance.active ? `${alliance.allyName}：一回限り +${formatCurrency(allianceSupport)}` : '今回利用できる外部パーティ支援はありません。'}</p>
             </section>
-            <button type="button" className="dialog-close briefing-start" onClick={startBattle}>効果を確認して交渉開始</button>
+            <button type="button" className="dialog-close briefing-start" onClick={startBattle}>効果を確認して討滅戦開始</button>
           </article>
         </div>
       )}
@@ -1224,10 +1416,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </div>
       )}
 
-      {battlePhase === 'finisher_notice' && winner && finishTelegraphVisible && (
-        <div className={`battle-finish-telegraph battle-finish-telegraph--${winner}`} aria-live="assertive">
+      {decisiveBlow && (
+        <div className={`battle-decisive-blow battle-decisive-blow--${decisiveBlow.winner} ${decisiveBlow.impacted ? 'battle-decisive-blow--impact' : ''}`} aria-live="assertive">
           <i />
-          <small>{winner === 'player' ? 'BUYOUT OPERATION COMPLETE' : 'BUYOUT OPERATION FAILED'}</small>
+          <small>{decisiveBlow.winner === 'player' ? 'FINAL CAPITAL IMPACT' : 'RIVAL CAPITAL IMPACT'}</small>
+          <strong>DECISIVE BLOW</strong>
+          <span>{decisiveBlow.winner === 'player' ? '最後の一手が防衛線を貫く' : '大口防衛出資が所有率を押し潰す'}</span>
+          <i />
+        </div>
+      )}
+
+      {battlePhase === 'finisher_notice' && winner && finishTelegraphVisible && (        <div className={`battle-finish-telegraph battle-finish-telegraph--${winner}`} aria-live="assertive">
+          <i />
+          <small>{winner === 'player' ? 'DUTY COMPLETE' : 'DUTY FAILED'}</small>
           <strong>{winner === 'player' ? 'WIN!' : 'LOSE'}</strong>
           <span>{winner === 'player' ? FINISH_LABELS[finishMethod] : 'CAPITAL COLLAPSE'}</span>
           {winner === 'player' && overkill >= 0.5 && <em>OVERKILL +{overkill.toFixed(1)}%</em>}
@@ -1245,7 +1446,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <li><b>商流回復</b><span>通常時は相場の0.3%/秒、1戦につき相場の15%まで可処分資金が戻ります。</span></li>
               <li><b>風を読む</b><span>自社資金効果上昇は緑、敵大規模防衛出資は赤で表示します。</span></li>
               <li><b>LIMIT BREAK</b><span>自社を含む4社で解放。8社、16社で強化され、一交渉一回だけ使えます。</span></li>
-              <li><b>ALLIANCE</b><span>外部同盟の一回支援です。LBの企業数や投入額には含みません。</span></li>
+              <li><b>TRADE PARTY</b><span>外部パーティの一回支援です。LBの社数や投入額には含みません。</span></li>
               <li><b>独立リスク</b><span>傘下へ繰り返し要求できますが、独立すると過去支援も崩れます。</span></li>
               <li><b>SHORT</b><span>敵の追加防衛資金が0になった戦況通知。約1.2秒後に自動再開し、FINAL PUSHか継続圧力で決着します。</span></li>
               <li><b>OVERKILL</b><span>所有率100%をどれだけ超えて押し切ったかを示す派手さの評価です。</span></li>

@@ -32,7 +32,7 @@ const getAdvice = ({
   if (activeTab === 'skills') {
     return '物件の組み合わせで使える手が増えるでっす。次の買収先に合う技を選ぶでっす。';
   }
-  return '本部へ挑む前に傘下を切り崩して、同盟と資金余力を整えるでっす。';
+  return '本部へ挑む前に参加カンパニーを切り崩して、パーティ協定と資金余力を整えるでっす。';
 };
 
 export const TatarAdvisor: React.FC<TatarAdvisorProps> = (props) => (
