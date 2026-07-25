@@ -94,15 +94,19 @@ interface FloatingGil {
 }
 
 export const LIMIT_BREAK_MULTIPLIERS = {
-  1: 1,
-  2: 1.15,
-  3: 1.3,
+  1: 1.2,
+  2: 1.5,
+  3: 1.85,
 } as const;
 
 export const ENEMY_BALANCE_FACTOR = {
-  tutorial: 1,
-  normal: 1.2,
-  cartelHQ: 1.3,
+  tutorial: 1.08,
+  gridania: 1.3,
+  limsa: 1.42,
+  uldah: 1.55,
+  goldSaucer: 1.72,
+  advanced: 1.55,
+  cartelHQ: 1.75,
 } as const;
 
 const FINISH_LABELS: Record<FinishMethod, string> = {
@@ -224,6 +228,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 }) => {
   const brokerageFee = Math.round(targetProperty.marketPrice * 0.03);
   const influenceBonus = industryInfluence.playerBonus + regionalInfluence.playerBonus + tradeNetworkBonus;
+  const enemyDifficultyLevel = isTutorial
+    ? 0
+    : targetProperty.id === 'prop_casino_grand'
+      ? 4
+      : targetProperty.community === 'グリダニア'
+        ? 1
+        : targetProperty.community === 'リムサ・ロミンサ'
+          ? 2
+          : targetProperty.community === 'ウルダハ'
+            ? 3
+            : 4;
   const enemyBudget = useMemo(() => {
     const price = targetProperty.marketPrice;
     const rankFactor = price >= 20_000_000 ? 1.05 : price >= 1_000_000 ? 0.82 : price >= 200_000 ? 0.68 : 0.54;
@@ -233,7 +248,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       ? ENEMY_BALANCE_FACTOR.tutorial
       : targetProperty.isCartelHQ
         ? ENEMY_BALANCE_FACTOR.cartelHQ
-        : ENEMY_BALANCE_FACTOR.normal;
+        : targetProperty.id === 'prop_casino_grand'
+          ? ENEMY_BALANCE_FACTOR.goldSaucer
+          : targetProperty.community === 'グリダニア'
+            ? ENEMY_BALANCE_FACTOR.gridania
+            : targetProperty.community === 'リムサ・ロミンサ'
+              ? ENEMY_BALANCE_FACTOR.limsa
+              : targetProperty.community === 'ウルダハ'
+                ? ENEMY_BALANCE_FACTOR.uldah
+                : ENEMY_BALANCE_FACTOR.advanced;
     return Math.round(baseBudget * balanceFactor);
   }, [industryInfluence.enemyBudgetDiscount, isTutorial, regionalInfluence.enemyBudgetDiscount, targetProperty]);
 
@@ -247,6 +270,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [enemyReserve, setEnemyReserve] = useState(enemyBudget - initialEnemyCommitment);
   const enemyReserveRef = useRef(enemyBudget - initialEnemyCommitment);
   const [cash, setCash] = useState(Math.max(0, totalFunds - brokerageFee));
+  const battleCashRecoveryPerSecond = Math.max(1, Math.round(targetProperty.marketPrice * 0.003));
+  const battleCashRecoveryCap = Math.round(targetProperty.marketPrice * 0.15);
+  const [battleCashRecovered, setBattleCashRecovered] = useState(0);
+  const battleCashRecoveredRef = useRef(0);
+  const recoveryCarryRef = useRef(0);
+  const [limitImpactActive, setLimitImpactActive] = useState(false);
   const [battleSubs, setBattleSubs] = useState<Property[]>(ownedProperties);
   const [subContributions, setSubContributions] = useState<Record<string, number>>({});
   const [subRequestCounts, setSubRequestCounts] = useState<Record<string, number>>({});
@@ -288,6 +317,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const limitBreakTimerRef = useRef<number | null>(null);
   const shortTimerRef = useRef<number | null>(null);
   const finishTimerRef = useRef<number | null>(null);
+  const limitImpactTimerRef = useRef<number | null>(null);
 
   const groups = useMemo(() => {
     const grouped = new Map<string, Property[]>();
@@ -338,9 +368,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const pushMultiplier = pushMultiplierRemaining > 0 ? 2 : 1;
   const limitBreakTier = getLimitBreakTier(battleSubs.length + 1);
   const limitBreakMultiplier = limitBreakTier > 0 ? LIMIT_BREAK_MULTIPLIERS[limitBreakTier] : 0;
-  const limitBreakSelfSlot = Math.round(targetProperty.marketPrice * 0.24);
+  const limitBreakSelfSlot = Math.round(targetProperty.marketPrice * 0.28);
   const limitBreakSubsEstimate = battleSubs.reduce(
-    (total, property) => total + Math.round(property.marketPrice * 0.24),
+    (total, property) => total + Math.round(property.marketPrice * 0.28),
     0
   );
   const alliedMobilizationEstimate = Math.round((limitBreakSelfSlot + limitBreakSubsEstimate) * limitBreakMultiplier);
@@ -360,9 +390,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     isTutorial,
     slowed: enemySlowed,
     cycle: aiCycle,
+    difficultyLevel: enemyDifficultyLevel,
   }), [
     aiCycle, capitalGap, currentWind.type, enemyOwnershipForAi, enemyReservePercent, enemySlowed,
-    isTutorial, lastPlayerAction, targetProperty.isCartelHQ,
+    enemyDifficultyLevel, isTutorial, lastPlayerAction, targetProperty.isCartelHQ,
     targetProperty.marketPrice, windCountdown,
   ]);
   useEffect(() => {
@@ -381,6 +412,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (limitBreakTimerRef.current) window.clearTimeout(limitBreakTimerRef.current);
     if (shortTimerRef.current) window.clearTimeout(shortTimerRef.current);
     if (finishTimerRef.current) window.clearTimeout(finishTimerRef.current);
+    if (limitImpactTimerRef.current) window.clearTimeout(limitImpactTimerRef.current);
   }, [onTimeScaleChange]);
 
   useEffect(() => {
@@ -507,7 +539,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     enemyReserveRef.current = nextReserve;
     setEnemyReserve(nextReserve);
     setEnemyInvested((value) => value + actual);
-    const counterShock = Math.min(7, 1.5 + (actual / Math.max(targetProperty.marketPrice, 1)) * 18);
+    const counterShock = Math.min(10, (1.5 + (actual / Math.max(targetProperty.marketPrice, 1)) * 18) * currentWind.enemyMultiplier);
     setGauge((value) => Math.min(99, value + counterShock));
     setStatusText(`敵大規模防衛出資――${formatCurrency(actual)}を対抗投入`);
     setAiText(nextReserve > 0 ? '次の敵大規模防衛出資を詠唱中' : 'SHORT / 追加防衛不能');
@@ -541,6 +573,22 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     }, 50);
     return () => window.clearInterval(interval);
   }, [fastHorse, timeScale, winner]);
+
+  useEffect(() => {
+    if (timeScale <= 0 || winner || battlePhase !== 'active') return;
+    const interval = window.setInterval(() => {
+      if (battleCashRecoveredRef.current >= battleCashRecoveryCap) return;
+      const scaledGain = battleCashRecoveryPerSecond * 0.1 * timeScale + recoveryCarryRef.current;
+      const wholeGil = Math.floor(scaledGain);
+      recoveryCarryRef.current = scaledGain - wholeGil;
+      if (wholeGil <= 0) return;
+      const actual = Math.min(wholeGil, battleCashRecoveryCap - battleCashRecoveredRef.current);
+      battleCashRecoveredRef.current += actual;
+      setBattleCashRecovered(battleCashRecoveredRef.current);
+      setCash((value) => value + actual);
+    }, 100);
+    return () => window.clearInterval(interval);
+  }, [battleCashRecoveryCap, battleCashRecoveryPerSecond, battlePhase, timeScale, winner]);
 
   useEffect(() => {
     if (timeScale <= 0 || winner || enemyReserveRef.current <= 0) return;
@@ -616,7 +664,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setStatusText(`自社資金不足。必要額は${formatCurrency(selectedCost)}`);
       return;
     }
-    const impact = Math.min(10, 1.2 + (selectedCost / Math.max(targetProperty.marketPrice, 1)) * 20);
+    const impact = Math.min(14, (1.2 + (selectedCost / Math.max(targetProperty.marketPrice, 1)) * 20) * currentWind.playerMultiplier);
     const rawGaugeAfter = gauge - impact;
     setCash((value) => value - selectedCost);
     setCompanyInvested((value) => value + selectedCost);
@@ -679,7 +727,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setBattleSubs((current) => current.map((item) => item.id === property.id ? { ...item, loyaltyRisk: nextRisk } : item));
     setSubContributions((current) => ({ ...current, [property.id]: (current[property.id] || 0) + amount }));
     setDemandInvested((value) => value + amount);
-    const impact = Math.min(4.5, 1 + (amount / Math.max(targetProperty.marketPrice, 1)) * 8);
+    const impact = Math.min(6.5, (1 + (amount / Math.max(targetProperty.marketPrice, 1)) * 8) * currentWind.playerMultiplier);
     setGauge((value) => Math.max(-99, value - impact));
     setStatusText(`${property.name}から${formatCurrency(amount)}を調達。独立危険度${nextRisk}%`);
     showFloater(`+${formatCurrency(amount)}`, 'player');
@@ -732,7 +780,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setSubContributions((current) => {
         const next = { ...current };
         survivors.forEach((member) => {
-          const support = Math.round(member.marketPrice * 0.24 * limitBreakMultiplier);
+          const support = Math.round(member.marketPrice * 0.28 * limitBreakMultiplier);
           next[member.id] = (next[member.id] || 0) + support;
         });
         leaving.forEach((member) => delete next[member.id]);
@@ -740,7 +788,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       });
       if (leaving.length) setRebelled((current) => [...current, ...leaving]);
       setDemandInvested((value) => Math.max(0, value - lost) + amount);
-      const ownershipPush = (amount / Math.max(targetProperty.marketPrice, 1)) * 70;
+      setLimitImpactActive(true);
+      if (limitImpactTimerRef.current) window.clearTimeout(limitImpactTimerRef.current);
+      limitImpactTimerRef.current = window.setTimeout(() => setLimitImpactActive(false), 1450);
+      confetti({ particleCount: 110, spread: 82, startVelocity: 38, origin: { y: 0.62 }, colors: ['#fef08a', '#f59e0b', '#34d399', '#ffffff'] });
+      soundFx.playCapitalImpact('player', 1);
+      soundFx.playBigCash();
+      const ownershipPush = (amount / Math.max(targetProperty.marketPrice, 1)) * 85 * currentWind.playerMultiplier;
       const rawOwnershipAfter = ownership + ownershipPush;
       const rawGaugeAfter = 100 - rawOwnershipAfter * 2;
       setGauge(Math.max(-100, Math.min(100, rawGaugeAfter)));
@@ -751,7 +805,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         setStatusText(`DEFECT！ ${leaving.map((member) => member.name).join('・')}が支援を撤回。残存投入${formatCurrency(amount)}`);
         addLog(`DEFECT！ ${leaving.map((member) => member.name).join('・')}が離反し、過去支援${formatCurrency(lost)}が崩落。`, 'funds');
       } else {
-        setStatusText(`LIMIT BREAK ${limitBreakTier}！ ${formatCurrency(amount)}を一斉投入`);
+        setStatusText(`LIMIT BREAK ${limitBreakTier}！ ${formatCurrency(amount)}を一斉投入・風補正×${currentWind.playerMultiplier.toFixed(2)}`);
       }
 
       if (rawOwnershipAfter >= 100) {
@@ -761,7 +815,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setBattlePhase('active');
       setBattleAnnouncement(null);
       // A large LB forces an immediate emergency defense, so it can exhaust the remaining reserve.
-      const emergencyDefense = Math.min(enemyReserveRef.current, Math.round(amount * 0.35));
+      const emergencyDefense = Math.min(enemyReserveRef.current, Math.round(amount * 0.45));
       if (emergencyDefense > 0) {
         commitEnemyFunds(emergencyDefense, 'LIMIT BREAKへの緊急防衛');
       }
@@ -805,7 +859,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       leaving.forEach((member) => delete next[member.id]);
       return next;
     });
-    const groupImpact = Math.min(9, 2 + (amount / Math.max(targetProperty.marketPrice, 1)) * 7);
+    const groupImpact = Math.min(12, (2 + (amount / Math.max(targetProperty.marketPrice, 1)) * 7) * currentWind.playerMultiplier);
     setGauge((value) => Math.max(-99, value - groupImpact));
     showFloater(`連携 +${formatCurrency(amount)}`, 'player');
     playMotion(leaving.length ? 'rebel' : 'player');
@@ -909,10 +963,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   return (
     <div
-      className={`buyout-screen buyout-screen--phase-${battlePhase}`}
+      className={`buyout-screen buyout-screen--phase-${battlePhase} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''}`}
       style={{ '--battle-time-scale': timeScale } as React.CSSProperties}
     >
       <img className="buyout-backdrop" src={FANKIT_ART.battleBackdrop} alt="" aria-hidden="true" />
+      {limitImpactActive && <div className="limit-impact-field" aria-hidden="true"><i /><i /><i /><i /><i /></div>}
 
       {battleAnnouncement && (
         <div className={`battle-announcement battle-announcement--${battleAnnouncement}`} aria-live="assertive">
@@ -937,7 +992,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       </header>
 
       <main className="buyout-main">
-        <section className="ownership-board">
+        <section className={`ownership-board ownership-board--wind-${windSide}`}>
           <div className="ownership-board__labels">
             <b className="company-name-compact" title={companyName}>{companyName} {ownership.toFixed(1)}%</b>
             <span className={gaugeSpeed < -0.02 ? 'push-player' : gaugeSpeed > 0.02 ? 'push-enemy' : ''}>
@@ -956,7 +1011,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             >
               <div className="ownership-track__player" style={{ width: `${ownership}%` }} />
               <div className="battle-wind-magic" aria-hidden="true"><i /><i /><i /><i /></div>
-              <div className={`battle-wind-sigil battle-wind-sigil--${windSide}`}>
+              <div key={currentWind.type} className={`battle-wind-sigil battle-wind-sigil--${windSide}`}>
                 <Sparkles /><b>{windTitle}</b><span>{windDetail}</span><small>{windCountdown}s</small>
               </div>
               <div className="ownership-track__enemy-flow" style={{ left: `${ownership}%` }} />
@@ -979,10 +1034,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <div className={`player-budget-overlay player-budget-overlay--${playerReserveState}`}>
                 <small>自社残り資金</small>
                 <strong>{playerReservePercent.toFixed(1)}%</strong>
-                <span>{playerReservePercent <= 0 ? 'EMPTY / 投入不能' : playerReservePercent <= 10 ? '枯渇寸前' : '投入可能'}</span>
+                <span>{playerReservePercent <= 0 ? '回復待ち' : playerReservePercent <= 10 ? '枯渇寸前・回復中' : '投入可能'}</span>
               </div>
             </div>
-            <small>自社 {formatCurrency(companyInvested)} / 支援 {formatCurrency(demandInvested)}</small>
+            <small>自社 {formatCurrency(companyInvested)} / 支援 {formatCurrency(demandInvested)} / 商流回復 +{formatCurrency(battleCashRecovered)}</small>
             <div className="capital-source-bar"><i style={{ width: `${totalPlayerInvested > 0 ? companyInvested / totalPlayerInvested * 100 : 0}%` }} /><span /></div>
           </div>
           <div className="capital-arena__center">
@@ -1011,7 +1066,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           <div>
             <TimerReset />
             <span>{commandReady ? 'COMMAND READY' : fastHorse ? '早馬で命令伝達中' : '次の命令を伝達中'}</span>
-            {timeScale === 0.1 && <em>TACTICAL MODE ×0.1</em>}
+            {timeScale === 0.1 && <em>TACTICAL MODE ×0.1</em>}<b className="battle-income-rate">商流 +{formatCurrency(Math.round(battleCashRecoveryPerSecond * timeScale))}/秒</b>
           </div>
           <div className="active-time__bar"><i style={{ width: `${commandProgress}%` }} /></div>
           <div className={`active-time__enemy ${aiProgress >= 72 ? 'active-time__enemy--danger' : ''}`}>
@@ -1142,6 +1197,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <div><dt>対象都市・業界</dt><dd>{targetProperty.community}・{targetProperty.industry}</dd></div>
               <div><dt>現在相場</dt><dd>{formatCurrency(targetProperty.marketPrice)}</dd></div>
               <div><dt>仲介手数料</dt><dd>{formatCurrency(brokerageFee)}</dd></div>
+              <div><dt>競合戦術</dt><dd>AI LEVEL {enemyDifficultyLevel}</dd></div>
             </dl>
             <section className="briefing-section">
               <h3><Sparkles />ACTIVE SYNERGY</h3>
@@ -1185,7 +1241,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <header><CircleHelp /><strong>買収劇の遊び方</strong><button type="button" onClick={() => setShowHelp(false)}><X /></button></header>
             <ol>
               <li><b>ギルを積む</b><span>自社・傘下・SYNERGYから資金を集めます。</span></li>
-              <li><b>TACTICAL MODE</b><span>資金源・かけひき選択中は戦闘が0.1倍になります。</span></li>
+              <li><b>TACTICAL MODE</b><span>資金源・かけひき・LB選択中は戦闘と商流回復が通常の10%になります。</span></li>
+              <li><b>商流回復</b><span>通常時は相場の0.3%/秒、1戦につき相場の15%まで可処分資金が戻ります。</span></li>
               <li><b>風を読む</b><span>自社資金効果上昇は緑、敵大規模防衛出資は赤で表示します。</span></li>
               <li><b>LIMIT BREAK</b><span>自社を含む4社で解放。8社、16社で強化され、一交渉一回だけ使えます。</span></li>
               <li><b>ALLIANCE</b><span>外部同盟の一回支援です。LBの企業数や投入額には含みません。</span></li>
@@ -1226,6 +1283,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <span><small>OVERKILL</small><b>{winner === 'player' ? `+${overkill.toFixed(1)}%` : '---'}</b></span>
               <span><small>自社競り値</small><b>{formatCurrency(totalPlayerInvested)}</b></span>
               <span><small>競合競り値</small><b>{formatCurrency(enemyInvested)}</b></span>
+              <span><small>商流回復</small><b>+{formatCurrency(battleCashRecovered)}</b></span>
               <span><small>資金源離脱</small><b>{rebelled.length}社</b></span>
             </div>
             {winner === 'player' && <p className="overkill-rating">{getOverkillRating(overkill)}</p>}

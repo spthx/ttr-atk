@@ -11,9 +11,9 @@ interface LaunchIntroProps {
 
 const INTRO_STEPS = [
   {
-    eyebrow: 'TATARU GRAND COMPANY',
-    title: 'ギルは、世界を巡る。',
-    body: '各都市に根を張る企業を買収し、エオルゼアから新大陸まで交易路を広げます。',
+    eyebrow: 'FANTASY TRADE CAMPAIGN',
+    title: 'タタルの大繁盛店',
+    body: 'ギルを積み、風を読み、各都市の企業を買収。エオルゼアから新大陸まで交易路を広げます。',
     icon: MapPinned,
   },
   {
@@ -52,7 +52,7 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
   return (
     <div className="launch-intro fixed inset-0 z-[200] overflow-y-auto overscroll-contain bg-slate-950 text-white">
       <img
-        src={step === 2 ? FANKIT_ART.launchWallpaperMobile : step === 1 ? FANKIT_ART.battleBackdrop : FANKIT_ART.marketBackdrop}
+        src={step === 0 ? FANKIT_ART.titleHero : step === 2 ? FANKIT_ART.launchWallpaperMobile : FANKIT_ART.battleBackdrop}
         alt=""
         aria-hidden="true"
         className={`fixed inset-0 h-[100dvh] w-full object-cover ${step === 2 ? 'object-[62%_center]' : 'object-center'}`}
@@ -108,7 +108,7 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
                 <span key={index} className={`h-1 rounded-full transition-all ${index === step ? 'w-10 bg-amber-300' : 'w-5 bg-slate-700'}`} />
               ))}
             </div>
-            <p className="text-[8px] text-slate-500">FFXIVファンキット素材使用 © SQUARE ENIX</p>
+            <p className="launch-intro__copyright text-[8px] text-slate-400"><a href="https://jp.finalfantasyxiv.com/lodestone/special/fankit/" target="_blank" rel="noreferrer">FFXIVファンキット</a>使用の非公式ファンサイト<br /><span>© SQUARE ENIX</span></p>
           </div>
           <button
             type="button"

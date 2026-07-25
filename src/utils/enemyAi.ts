@@ -36,6 +36,7 @@ export interface EnemyDecisionContext {
   isTutorial: boolean;
   slowed: boolean;
   cycle: number;
+  difficultyLevel: number;
 }
 
 export interface EnemyDecision {
@@ -72,100 +73,106 @@ export const decideEnemyAction = ({
   isTutorial,
   slowed,
   cycle,
+  difficultyLevel,
 }: EnemyDecisionContext): EnemyDecision => {
-  const enemyWind =
-    windType === 'TAILWIND_ENEMY' || windType === 'HEADWIND_PLAYER';
+  const intellect = Math.max(0, Math.min(4, difficultyLevel));
+  const enemyWind = windType === 'TAILWIND_ENEMY' || windType === 'HEADWIND_PLAYER';
   const playerWind = windType === 'TAILWIND_PLAYER';
-  const pressured = capitalGap > marketPrice * 0.12;
-  const severePressure = capitalGap > marketPrice * 0.3;
+  const pressured = capitalGap > marketPrice * (0.12 - intellect * 0.008);
+  const severePressure = capitalGap > marketPrice * (0.3 - intellect * 0.018);
+  const baitAction = lastPlayerAction === 'SMALL' || lastPlayerAction === 'STEADY';
   const reactedToLarge =
     lastPlayerAction === 'LARGE' ||
     lastPlayerAction === 'ALL_IN' ||
     lastPlayerAction === 'LIMIT_BREAK';
-  const emergency =
-    enemyOwnership < 30 ||
-    reactedToLarge ||
-    enemyWind ||
-    isCartelHQ;
-  const reserveProtected = enemyReservePercent <= 15 && !emergency;
-  const baseWait = isTutorial ? 3600 : isCartelHQ ? 2250 : 2850;
+  const trueEmergency =
+    enemyOwnership < 24 ||
+    lastPlayerAction === 'ALL_IN' ||
+    lastPlayerAction === 'LIMIT_BREAK' ||
+    (isCartelHQ && enemyOwnership < 38);
+  const reserveFloor = 15 + intellect * 2;
+  const reserveProtected = enemyReservePercent <= reserveFloor && !trueEmergency;
+  const baseWait = isTutorial ? 3400 : Math.max(1780, 3020 - intellect * 245 - (isCartelHQ ? 140 : 0));
   const slowedMultiplier = slowed ? 1.6 : 1;
-  const randomDelay = 0.9 + jitter(cycle) * 0.22;
+  const randomDelay = 0.9 + jitter(cycle) * 0.2;
+  const responseScale = 1 + intellect * 0.075;
 
   if (reserveProtected) {
     return {
       intent: 'CONSERVE',
-      waitMs: Math.round(baseWait * 1.55 * slowedMultiplier),
+      waitMs: Math.round(baseWait * 1.45 * slowedMultiplier),
       investmentRatio: 0,
       reserveProtected: true,
-      reason: '最終予備資金を温存',
+      reason: `最終予備資金${reserveFloor}%を死守`,
+    };
+  }
+
+  if (intellect >= 2 && baitAction && enemyOwnership >= 43 && !pressured) {
+    return {
+      intent: 'CONSERVE',
+      waitMs: Math.round(baseWait * 1.18 * slowedMultiplier),
+      investmentRatio: 0,
+      reserveProtected: false,
+      reason: '小口の囮を見切り、追随せず温存',
+    };
+  }
+
+  if (enemyOwnership >= 57 && capitalGap <= marketPrice * 0.06 && !reactedToLarge) {
+    return {
+      intent: 'CONSERVE',
+      waitMs: Math.round(baseWait * 1.25 * slowedMultiplier * randomDelay),
+      investmentRatio: intellect >= 3 && enemyWind ? 0.016 : 0,
+      reserveProtected: false,
+      reason: enemyWind && intellect >= 3 ? '優勢を維持する最小限の増資' : '所有率優勢、無駄な追随を停止',
     };
   }
 
   if (reactedToLarge && enemyReservePercent > 0) {
     return {
-      intent: enemyOwnership < 25 ? 'EMERGENCY_DEFENSE' : 'COUNTER_ATTACK',
-      waitMs: Math.round(baseWait * 0.58 * slowedMultiplier),
-      investmentRatio: lastPlayerAction === 'LIMIT_BREAK' ? 0.14 : 0.105,
+      intent: enemyOwnership < 27 ? 'EMERGENCY_DEFENSE' : 'COUNTER_ATTACK',
+      waitMs: Math.round(baseWait * (0.62 - intellect * 0.035) * slowedMultiplier),
+      investmentRatio: (lastPlayerAction === 'LIMIT_BREAK' ? 0.16 : 0.11) * responseScale,
       reserveProtected: false,
-      reason: lastPlayerAction === 'LIMIT_BREAK' ? 'LB直後の緊急防衛' : '大口出資へ対抗',
+      reason: lastPlayerAction === 'LIMIT_BREAK' ? 'LB後の硬直を読んだ緊急防衛' : '大口出資だけを選別して対抗',
     };
   }
 
-  if (enemyOwnership >= 65) {
-    if (playerWind && windRemainingSeconds > 1.2 && !severePressure) {
-      return {
-        intent: 'WAIT_FOR_WIND',
-        waitMs: Math.round(baseWait * 1.4 * slowedMultiplier),
-        investmentRatio: 0,
-        reserveProtected: false,
-        reason: '有利を保ち風向きの変化を待つ',
-      };
-    }
-    return {
-      intent: 'CONSERVE',
-      waitMs: Math.round(baseWait * 1.25 * slowedMultiplier * randomDelay),
-      investmentRatio: pressured ? 0.04 : 0.025,
-      reserveProtected: false,
-      reason: '所有率優勢につき小口防衛',
-    };
-  }
-
-  if (enemyOwnership < 35) {
-    return {
-      intent: enemyOwnership < 25 ? 'EMERGENCY_DEFENSE' : 'AGGRESSIVE_DEFENSE',
-      waitMs: Math.round(baseWait * (enemyOwnership < 25 ? 0.58 : 0.76) * slowedMultiplier),
-      investmentRatio: enemyOwnership < 25 ? 0.13 : enemyWind ? 0.11 : 0.085,
-      reserveProtected: false,
-      reason: enemyOwnership < 25 ? '所有率危険域、緊急防衛' : '劣勢を押し返す大規模防衛',
-    };
-  }
-
-  if (playerWind && windRemainingSeconds > 1.5 && !severePressure) {
+  if (playerWind && windRemainingSeconds > 1.1 && !severePressure) {
     return {
       intent: 'WAIT_FOR_WIND',
-      waitMs: Math.round(baseWait * 1.25 * slowedMultiplier),
+      waitMs: Math.round(baseWait * (1.18 + intellect * 0.05) * slowedMultiplier),
       investmentRatio: 0,
       reserveProtected: false,
-      reason: '自社追い風を警戒し投入を保留',
+      reason: '自社の強い追い風を警戒し、風切れまで待機',
     };
   }
 
-  if (enemyWind) {
+  if (enemyOwnership < 40) {
+    const critical = enemyOwnership < 27;
+    return {
+      intent: critical ? 'EMERGENCY_DEFENSE' : 'AGGRESSIVE_DEFENSE',
+      waitMs: Math.round(baseWait * (critical ? 0.52 : 0.7) * slowedMultiplier),
+      investmentRatio: (critical ? 0.145 : enemyWind ? 0.12 : 0.092) * responseScale,
+      reserveProtected: false,
+      reason: critical ? '所有率危険域、予備資金を解放' : '劣勢分だけを計算して押し返す',
+    };
+  }
+
+  if (enemyWind && (pressured || enemyOwnership < 52)) {
     return {
       intent: 'AGGRESSIVE_DEFENSE',
-      waitMs: Math.round(baseWait * 0.72 * slowedMultiplier),
-      investmentRatio: 0.095,
+      waitMs: Math.round(baseWait * 0.68 * slowedMultiplier),
+      investmentRatio: 0.1 * responseScale,
       reserveProtected: false,
-      reason: '敵追い風の終了前に攻勢',
+      reason: '競合追い風を利用し、必要額だけ攻勢',
     };
   }
 
   return {
     intent: pressured ? 'AGGRESSIVE_DEFENSE' : 'STANDARD_DEFENSE',
     waitMs: Math.round(baseWait * randomDelay * slowedMultiplier),
-    investmentRatio: pressured ? 0.08 : 0.052,
+    investmentRatio: (pressured ? 0.085 : 0.05) * responseScale,
     reserveProtected: false,
-    reason: pressured ? '資金差を警戒し防衛を増額' : '標準防衛を準備',
+    reason: pressured ? '資金差を先読みし防衛額を増加' : '残予算を崩さない標準防衛',
   };
 };

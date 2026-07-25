@@ -1,23 +1,26 @@
+const PUBLIC_ASSET_BASE = (import.meta.env.VITE_PUBLIC_BASE || '/').replace(/\/?$/, '/');
+const publicAsset = (path: string) => `${PUBLIC_ASSET_BASE}${path.replace(/^\/+/, '')}`;
+
 const JOB_ART = [
-  '/ff14-fankit/job-paladin.png',
-  '/ff14-fankit/job-darkknight.png',
-  '/ff14-fankit/job-blackmage.png',
-  '/ff14-fankit/job-04.png',
-  '/ff14-fankit/job-05.png',
-  '/ff14-fankit/job-06.png',
-  '/ff14-fankit/job-07.png',
-  '/ff14-fankit/job-08.png',
-  '/ff14-fankit/job-09.png',
-  '/ff14-fankit/job-10.png',
-  '/ff14-fankit/job-11.png',
-  '/ff14-fankit/job-12.png',
+  publicAsset('ff14-fankit/job-paladin.png'),
+  publicAsset('ff14-fankit/job-darkknight.png'),
+  publicAsset('ff14-fankit/job-blackmage.png'),
+  publicAsset('ff14-fankit/job-04.png'),
+  publicAsset('ff14-fankit/job-05.png'),
+  publicAsset('ff14-fankit/job-06.png'),
+  publicAsset('ff14-fankit/job-07.png'),
+  publicAsset('ff14-fankit/job-08.png'),
+  publicAsset('ff14-fankit/job-09.png'),
+  publicAsset('ff14-fankit/job-10.png'),
+  publicAsset('ff14-fankit/job-11.png'),
+  publicAsset('ff14-fankit/job-12.png'),
 ] as const;
 
 const COMMERCE_ICONS = [
-  '/ff14-fankit/icon-goldsmith.png',
-  '/ff14-fankit/icon-weaver.png',
-  '/ff14-fankit/icon-culinarian.png',
-  '/ff14-fankit/icon-botanist.png',
+  publicAsset('ff14-fankit/icon-goldsmith.png'),
+  publicAsset('ff14-fankit/icon-weaver.png'),
+  publicAsset('ff14-fankit/icon-culinarian.png'),
+  publicAsset('ff14-fankit/icon-botanist.png'),
 ] as const;
 
 const hashText = (value: string) =>
@@ -27,13 +30,14 @@ export const getFankitJobArt = (seed: string) => JOB_ART[hashText(seed) % JOB_AR
 export const getFankitCommerceIcon = (seed: string) => COMMERCE_ICONS[hashText(seed) % COMMERCE_ICONS.length];
 
 export const FANKIT_ART = {
-  marketBackdrop: '/ff14-fankit/dawntrail-fankit.jpg',
-  launchWallpaperMobile: '/ff14-fankit/launch-wallpaper-mobile.jpg',
-  battleBackdrop: '/ff14-fankit/stormblood-fankit.jpg',
+  titleHero: publicAsset('title-hero-v1.png'),
+  marketBackdrop: publicAsset('ff14-fankit/dawntrail-fankit.jpg'),
+  launchWallpaperMobile: publicAsset('ff14-fankit/launch-wallpaper-mobile.jpg'),
+  battleBackdrop: publicAsset('ff14-fankit/stormblood-fankit.jpg'),
   jobs: JOB_ART,
   commerceIcons: COMMERCE_ICONS,
   tataru: {
-    dressUp: '/ff14-fankit/minion-dress-up-tataru.png',
-    windUp: '/ff14-fankit/minion-wind-up-tataru.png',
+    dressUp: publicAsset('ff14-fankit/minion-dress-up-tataru.png'),
+    windUp: publicAsset('ff14-fankit/minion-wind-up-tataru.png'),
   },
 } as const;

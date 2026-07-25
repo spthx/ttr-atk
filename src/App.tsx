@@ -620,6 +620,13 @@ export default function App() {
         )}
       </main>
 
+      <footer className="game-legal-notice">
+        <span>本作は非公式ファンサイト／ファンゲームです。</span>
+        <a href="https://jp.finalfantasyxiv.com/lodestone/special/fankit/" target="_blank" rel="noreferrer">FFXIV公式ファンキット</a>
+        <a href="https://support.jp.square-enix.com/rule.php?id=5381&la=0&tag=authc" target="_blank" rel="noreferrer">著作物利用条件</a>
+        <strong>© SQUARE ENIX</strong>
+      </footer>
+
       {unlockNotice && (
         <button type="button" onClick={() => setUnlockNotice(null)} className="city-unlock fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/90 p-5 text-left">
           <span className="city-unlock__card relative block w-full max-w-xl overflow-hidden rounded-2xl border border-amber-300/60 bg-slate-900 p-7 shadow-2xl">
