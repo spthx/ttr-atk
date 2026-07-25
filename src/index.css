@@ -783,3 +783,45 @@ body {
     font-size: .72rem;
   }
 }
+
+.launch-intro__panel h1 {
+  background: linear-gradient(180deg, #fffbd1 0%, #f7cf5c 58%, #ca7a12 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, .76);
+  filter: drop-shadow(0 0 16px rgba(245, 196, 81, .22));
+}
+
+.launch-intro__copyright a,
+.game-legal-notice a {
+  color: #f5cf67;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.launch-intro__copyright span {
+  display: inline-block;
+  margin-top: .18rem;
+  color: #e2e8f0;
+  white-space: nowrap;
+}
+
+.game-legal-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: .25rem .75rem;
+  padding: .7rem 1rem calc(.7rem + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(71, 85, 105, .45);
+  color: #7f8da1;
+  background: rgba(2, 6, 23, .92);
+  font-size: .58rem;
+  text-align: center;
+}
+
+.game-legal-notice strong {
+  color: #cbd5e1;
+  white-space: nowrap;
+}

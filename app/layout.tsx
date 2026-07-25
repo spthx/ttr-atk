@@ -15,13 +15,13 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: {
       title: "タタルの大繁盛店",
       description: "ギルを積み、魂を奪え。SYNERGYとALLIANCEを束ね、所有率100%まで押し切れ。",
-      images: [new URL("/og-campaign-v2.png", baseUrl).toString()],
+      images: [new URL("/title-hero-v1.png", baseUrl).toString()],
     },
     twitter: {
       card: "summary_large_image",
       title: "タタルの大繁盛店",
       description: "ギルを積み、魂を奪え。SYNERGYとALLIANCEを束ね、所有率100%まで押し切れ。",
-      images: [new URL("/og-campaign-v2.png", baseUrl).toString()],
+      images: [new URL("/title-hero-v1.png", baseUrl).toString()],
     },
   };
 }
