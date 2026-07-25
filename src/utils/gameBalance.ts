@@ -8,6 +8,7 @@ export const LIMIT_BREAK_CHARGE_PER_BAR = 100;
 export const LIMIT_BREAK_MAX_BARS = 3;
 export const LIMIT_BREAK_MAX_CHARGE =
   LIMIT_BREAK_CHARGE_PER_BAR * LIMIT_BREAK_MAX_BARS;
+export const LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER = 1.2;
 
 export const TACTICAL_SKILL_BALANCE = {
   fastAction: {
@@ -31,9 +32,12 @@ export const TACTICAL_SKILL_BALANCE = {
   capitalBoost: {
     marketRatio: 0.3,
   },
-  steal: {
-    marketRatio: 0.15,
-    counterDelayMs: 7_000,
+  livingDead: {
+    waitingDurationMs: 10_000,
+    recoveryDurationMs: 10_000,
+    minimumOwnership: 1,
+    recoveryOwnership: 30,
+    requiredAssetValue: 1_000_000,
   },
   battleLitany: {
     durationMs: 7_000,
@@ -41,10 +45,49 @@ export const TACTICAL_SKILL_BALANCE = {
   },
 } as const;
 
+export type LivingDeadPhase =
+  | 'inactive'
+  | 'waiting'
+  | 'recovery'
+  | 'survived'
+  | 'failed';
+
+export type LivingDeadOutcome =
+  | 'none'
+  | 'waiting_expired'
+  | 'triggered'
+  | 'recovered'
+  | 'failed';
+
+export const normalizeBattleOwnership = (ownership: number) =>
+  Number.isFinite(ownership) ? Math.max(0, Math.min(100, ownership)) : 0;
+
+export const calculateOwnershipFromGauge = (gauge: number) =>
+  normalizeBattleOwnership((100 - gauge) / 2);
+
+export const resolveLivingDeadOutcome = (
+  phase: LivingDeadPhase,
+  ownership: number,
+  remainingMs: number
+): LivingDeadOutcome => {
+  const normalizedOwnership = normalizeBattleOwnership(ownership);
+  if (phase === 'waiting') {
+    if (remainingMs <= 0) return 'waiting_expired';
+    if (normalizedOwnership <= 0) return 'triggered';
+  }
+  if (phase === 'recovery') {
+    if (normalizedOwnership >= TACTICAL_SKILL_BALANCE.livingDead.recoveryOwnership) {
+      return 'recovered';
+    }
+    if (remainingMs <= 0) return 'failed';
+  }
+  return 'none';
+};
+
 export const LIMIT_BREAK_MULTIPLIERS = {
-  1: 1.2,
-  2: 1.5,
-  3: 1.85,
+  1: 1.44,
+  2: 1.8,
+  3: 2.22,
 } as const;
 
 export type LimitBreakTier = 0 | 1 | 2 | 3;
@@ -181,7 +224,11 @@ export const calculateLimitBreakChargeGain = (
   if (effectiveCapitalMovement <= 0) return 0;
   const movementRatio =
     effectiveCapitalMovement / Math.max(targetMarketPrice, 1);
-  return Math.max(1, Math.round(Math.min(24, 3 + movementRatio * 48)));
+  const baseGain = Math.min(24, 3 + movementRatio * 48);
+  return Math.max(
+    1,
+    Math.round(baseGain * LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER)
+  );
 };
 
 export const calculateLimitBreakAmount = (

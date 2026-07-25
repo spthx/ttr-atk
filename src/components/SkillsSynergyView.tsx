@@ -89,7 +89,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                       技の規模: {skillScaleLabel[skill.costType]}
                     </span>
                     <span className="text-[10px] text-slate-400">
-                      再使用: {(skill.cooldownMs / 1000).toFixed(1)}秒
+                      {skill.oncePerBattle ? '使用制限: 1交渉1回' : `再使用: ${(skill.cooldownMs / 1000).toFixed(1)}秒`}
                     </span>
                   </div>
 

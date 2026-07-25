@@ -39,10 +39,13 @@ import {
   saveGame,
 } from './utils/saveData';
 import {
+  calculateTotalAssetValue,
   getCampaignProperties,
   isSkillUnlocked,
   PASSIVE_REVENUE_MULTIPLIER,
+  TACTICAL_SKILL_BALANCE,
 } from './utils/gameBalance';
+import { isPublicPatronage, shouldBreakAllianceForTarget } from './utils/alliance';
 
 export { PASSIVE_REVENUE_MULTIPLIER };
 
@@ -50,6 +53,7 @@ type FeatureUnlockId =
   | 'subsidiary_support'
   | 'light_party_limit_break'
   | 'guild_synergy'
+  | 'living_dead_skill'
   | 'full_party'
   | 'trade_alliance';
 
@@ -75,6 +79,12 @@ const FEATURE_UNLOCKS: Record<
     dialogue: '同じ商流で働く仲間がつながりましたな。これがギルド・シナジーでっす！',
     detail: '対象企業の組み合わせや地域・業界の影響力で、収益・押し込み・一斉支援が強化されます。',
   },
+  living_dead_skill: {
+    kicker: 'DARK KNIGHT ACTION',
+    title: 'リビングデッド 解放',
+    dialogue: '総資産100万ギル達成で、敗北寸前から立て直す暗黒騎士のかけひきが使えるでっす。',
+    detail: 'かけひき画面で装備してください。使用後10秒以内に所有率0%へ落ちると1%で踏みとどまり、さらに10秒以内に30%まで戻せば生存します。1交渉1回です。',
+  },
   full_party: {
     kicker: 'FULL PARTY',
     title: 'フルパーティ結成',
@@ -85,7 +95,7 @@ const FEATURE_UNLOCKS: Record<
     kicker: 'TRADE ALLIANCE',
     title: 'アライアンス航路 解放',
     dialogue: 'ウルダハでの実績が認められましたな。ここからは複数カンパニーが組む大規模案件でっす！',
-    detail: '参加カンパニーを先に攻略して本部防衛資本を削る、段階式の買収戦と外部パーティ協定が開放されます。',
+    detail: '段階式の買収戦、外部カンパニーとの協力協定、グランドカンパニーへの公的後援申請が開放されます。',
   },
 };
 
@@ -104,7 +114,7 @@ export default function App() {
   const [properties, setProperties] = useState<Property[]>(() => restoreProperties(initialSave));
   const [skills, setSkills] = useState<TacticalSkill[]>(INITIAL_SKILLS);
   const [equippedSkillIds, setEquippedSkillIds] = useState<string[]>(
-    initialSave?.equippedSkillIds ?? ['skill_sns_blitz']
+    initialSave?.equippedSkillIds ?? []
   );
   const [groupSynergies, setGroupSynergies] =
     useState<GroupSynergy[]>(INITIAL_GROUP_SYNERGIES);
@@ -114,6 +124,8 @@ export default function App() {
       allyId: '',
       allyName: '',
       active: false,
+      allyKind: 'company',
+      relationType: 'commercial_alliance',
     }
   );
 
@@ -281,6 +293,10 @@ export default function App() {
   }, [communityProgress]);
 
   const tradeNetworkBonus = Math.min(0.16, conqueredCommunityCount * 0.02);
+  const totalAssetValue = useMemo(
+    () => calculateTotalAssetValue(totalFunds, ownedProperties),
+    [ownedProperties, totalFunds]
+  );
 
   // Active Synergies Count & Bonus Multiplier
   const { activeGroupSynergies, activeSynergiesCount, bonusMultiplier } = useMemo(() => {
@@ -299,10 +315,13 @@ export default function App() {
     if (ownedProperties.length >= 1) reached.push('subsidiary_support');
     if (ownedProperties.length + 1 >= 4) reached.push('light_party_limit_break');
     if (activeSynergiesCount > 0) reached.push('guild_synergy');
+    if (totalAssetValue >= TACTICAL_SKILL_BALANCE.livingDead.requiredAssetValue) {
+      reached.push('living_dead_skill');
+    }
     if (ownedProperties.length + 1 >= 8) reached.push('full_party');
     if (tradeAllianceUnlocked) reached.push('trade_alliance');
     return reached;
-  }, [activeSynergiesCount, ownedProperties.length, tradeAllianceUnlocked]);
+  }, [activeSynergiesCount, ownedProperties.length, totalAssetValue, tradeAllianceUnlocked]);
 
   useEffect(() => {
     if (
@@ -460,12 +479,15 @@ export default function App() {
         'success'
       );
 
-      // Attacking a trade-party partner permanently ends the cooperation pact.
-      if (
-        alliance.active &&
-        targetProperty.ownerName.includes(alliance.allyName)
-      ) {
-        setAlliance({ allyId: '', allyName: '', active: false });
+      // Commercial partners own properties; public Grand Company patrons never do.
+      if (shouldBreakAllianceForTarget(alliance, targetProperty)) {
+        setAlliance({
+          allyId: '',
+          allyName: '',
+          active: false,
+          allyKind: 'company',
+          relationType: 'commercial_alliance',
+        });
         addGameLog(
           `【パーティ協定解除】協定企業の所有物件を攻めたため、${alliance.allyName} との協定が永久解除されました！`,
           'danger'
@@ -586,14 +608,33 @@ export default function App() {
   };
 
   // Trade-party cooperation management
-  const handleFormAlliance = (allyName: string) => {
-    setAlliance({ allyId: 'garland_ironworks', allyName, active: true });
-    addGameLog(`【トレード・パーティ結成】${allyName} との協力協定が成立しました！`, 'success');
+  const handleFormAlliance = (nextAlliance: Omit<AllianceState, 'active'>) => {
+    const formedAlliance: AllianceState = { ...nextAlliance, active: true };
+    setAlliance(formedAlliance);
+    addGameLog(
+      isPublicPatronage(formedAlliance)
+        ? `【公的後援】${formedAlliance.allyName}から通商・調達の後援を受けました！`
+        : `【トレード・パーティ結成】${formedAlliance.allyName}との協力協定が成立しました！`,
+      'success'
+    );
   };
 
   const handleBreakAlliance = () => {
-    setAlliance({ allyId: '', allyName: '', active: false });
-    addGameLog(`【パーティ解散】外部協力協定を解消しました。`, 'info');
+    const wasPublicPatronage = isPublicPatronage(alliance);
+    const allyName = alliance.allyName;
+    setAlliance({
+      allyId: '',
+      allyName: '',
+      active: false,
+      allyKind: 'company',
+      relationType: 'commercial_alliance',
+    });
+    addGameLog(
+      wasPublicPatronage
+        ? `【後援返上】${allyName}への公的後援を返上しました。`
+        : '【パーティ解散】外部協力協定を解消しました。',
+      'info'
+    );
   };
 
   // Debug / Test Fund Handlers
@@ -609,7 +650,7 @@ export default function App() {
 
   const handleNewGame = () => {
     const accepted = window.confirm(
-      '保存済みの所持金・物件・装備スキル・パーティ協定を削除して、ニューゲームを始めますか？'
+      '保存済みの所持金・物件・装備スキル・外部協力／公的後援を削除して、ニューゲームを始めますか？'
     );
     if (!accepted) return;
     clearGameSave();

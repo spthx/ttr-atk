@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
-import { INITIAL_PROPERTIES, INITIAL_SKILLS } from '../src/data/initialData';
+import { INITIAL_CARTELS, INITIAL_PROPERTIES, INITIAL_SKILLS } from '../src/data/initialData';
+import { ALLIANCE_CANDIDATES, GRAND_COMPANY_NAMES } from '../src/data/allianceData';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
 import { decideEnemyAction, type EnemyDecisionContext } from '../src/utils/enemyAi';
-import { normalizeLimitBreakCharge } from '../src/utils/saveData';
+import { normalizeAllianceState, normalizeLimitBreakCharge } from '../src/utils/saveData';
+import {
+  calculateAllianceSupport,
+  shouldBreakAllianceForTarget,
+} from '../src/utils/alliance';
 import {
   BATTLE_GAUGE_SPEED_FACTOR,
   ENEMY_INITIAL_COMMITMENT_RATIO,
@@ -11,6 +16,7 @@ import {
   calculateEnemyBudget,
   calculateLimitBreakAmount,
   calculateLimitBreakChargeGain,
+  calculateOwnershipFromGauge,
   calculateLimitBreakOwnershipAfterDefense,
   calculateLimitBreakOwnershipPush,
   countsTowardCityConquest,
@@ -19,6 +25,9 @@ import {
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
   isSkillUnlocked,
+  LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER,
+  LIMIT_BREAK_MULTIPLIERS,
+  resolveLivingDeadOutcome,
 } from '../src/utils/gameBalance';
 
 const noInfluence = { enemyBudgetDiscount: 0 };
@@ -79,6 +88,41 @@ INITIAL_PROPERTIES.filter((property) => optionalCartelIds.has(property.id)).forE
 assert.equal(countsTowardCityConquest(INITIAL_PROPERTIES.find((property) => property.id === 'prop_abyss_heavy')!), true);
 assert.equal(countsTowardCityConquest(INITIAL_PROPERTIES.find((property) => property.id === 'prop_abyss_mine')!), true);
 
+const grandCompanyCandidates = ALLIANCE_CANDIDATES.filter(
+  (candidate) => candidate.allyKind === 'grand_company'
+);
+assert.deepEqual(GRAND_COMPANY_NAMES, ['双蛇党', '黒渦団', '不滅隊']);
+assert.equal(grandCompanyCandidates.length, 3);
+const propertyAndCartelText = [
+  ...INITIAL_PROPERTIES.flatMap((property) => [property.name, property.ownerName]),
+  ...INITIAL_CARTELS.flatMap((cartel) => [cartel.name, cartel.description, cartel.id, cartel.hqPropertyId, ...cartel.subsidiaryIds]),
+].join(' ');
+GRAND_COMPANY_NAMES.forEach((name) => {
+  assert.equal(propertyAndCartelText.includes(name), false, `Grand Company is not buyout data: ${name}`);
+});
+grandCompanyCandidates.forEach((candidate) => {
+  assert.equal('marketPrice' in candidate, false);
+  assert.equal(candidate.relationType, 'public_patronage');
+  const restored = normalizeAllianceState(JSON.parse(JSON.stringify({ ...candidate, active: true })));
+  assert.equal(restored.allyKind, 'grand_company');
+  assert.equal(restored.relationType, 'public_patronage');
+  assert.equal(restored.allyName, candidate.allyName);
+  assert.equal(shouldBreakAllianceForTarget(restored, { ownerName: '通常の独立企業' }), false);
+});
+const legacyGarlandAlliance = normalizeAllianceState({
+  allyId: 'garland_ironworks',
+  allyName: 'ガーロンド・アイアンワークス',
+  active: true,
+});
+assert.equal(legacyGarlandAlliance.allyKind, 'company');
+assert.equal(legacyGarlandAlliance.relationType, 'commercial_alliance');
+assert.equal(
+  shouldBreakAllianceForTarget(legacyGarlandAlliance, { ownerName: 'ガーロンド・アイアンワークス系列' }),
+  true
+);
+assert.equal(calculateAllianceSupport(1_000_000), 320_000);
+assert.equal(getLimitBreakTier(4), 1, 'public patronage never changes participating company count');
+
 const enemyBudgetRatio = (propertyId: string, isTutorial = false) => {
   const property = INITIAL_PROPERTIES.find((candidate) => candidate.id === propertyId)!;
   return calculateEnemyBudget({
@@ -128,7 +172,7 @@ const allInCounter = decideEnemyAction({ ...baseAiContext, enemyReservePercent: 
 assert.equal(allInCounter.reserveProtected, false);
 assert.equal(allInCounter.intent, 'COUNTER_ATTACK');
 
-const snsSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_sns_blitz')!;
+const livingDeadSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_sns_blitz')!;
 const fastHorseSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_fast_horse')!;
 const moraleSupportSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_nemawashi')!;
 const disruptionSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_sabotage')!;
@@ -136,11 +180,13 @@ const demoralizeSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_demor
 const capitalBoostSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_capital_boost')!;
 const synergyPushSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_synergy_push')!;
 const noAssets = { ownedProperties: [], totalFunds: 50_000, activeSynergyCount: 0 };
-assert.equal(isSkillUnlocked({ skill: snsSkill, ...noAssets }), true);
+assert.equal(isSkillUnlocked({ skill: livingDeadSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: fastHorseSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: capitalBoostSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: synergyPushSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: capitalBoostSkill, ...noAssets, totalFunds: 1_000_000 }), true);
+assert.equal(isSkillUnlocked({ skill: livingDeadSkill, ...noAssets, totalFunds: 999_999 }), false);
+assert.equal(isSkillUnlocked({ skill: livingDeadSkill, ...noAssets, totalFunds: 1_000_000 }), true);
 assert.equal(isSkillUnlocked({ skill: synergyPushSkill, ...noAssets, activeSynergyCount: 1 }), true);
 assert.equal(isSkillUnlocked({
   skill: fastHorseSkill,
@@ -150,7 +196,7 @@ assert.equal(isSkillUnlocked({
 assert.equal(capitalBoostSkill.oncePerBattle, true);
 assert.deepEqual(
   INITIAL_SKILLS.map((skill) => skill.name),
-  ['神速魔', '士気高揚の策', '連環計', '消沈', '意気衝天', 'ぶんどる', 'バトルリタニー']
+  ['神速魔', '士気高揚の策', '連環計', '消沈', '意気衝天', 'リビングデッド', 'バトルリタニー']
 );
 assert.equal(fastHorseSkill.cooldownMs, TACTICAL_SKILL_BALANCE.fastAction.cooldownMs);
 assert.equal(
@@ -169,9 +215,23 @@ assert.equal(TACTICAL_SKILL_BALANCE.disruption.collapseMarketRatio, 0.12);
 assert.match(disruptionSkill.description, /中断分は追加防衛枠から消費されない/);
 assert.match(demoralizeSkill.description, /1\.6倍/);
 assert.equal(TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio, 0.3);
-assert.equal(TACTICAL_SKILL_BALANCE.steal.marketRatio, 0.15);
-assert.equal(TACTICAL_SKILL_BALANCE.steal.counterDelayMs, 7_000);
-assert.match(snsSkill.description, /同額が復帰/);
+assert.equal(livingDeadSkill.id, 'skill_sns_blitz', 'legacy save-compatible skill id');
+assert.equal(livingDeadSkill.effectType, 'LIVING_DEAD');
+assert.equal(livingDeadSkill.cooldownMs, 0);
+assert.equal(livingDeadSkill.oncePerBattle, true);
+assert.equal(TACTICAL_SKILL_BALANCE.livingDead.waitingDurationMs, 10_000);
+assert.equal(TACTICAL_SKILL_BALANCE.livingDead.recoveryDurationMs, 10_000);
+assert.equal(TACTICAL_SKILL_BALANCE.livingDead.minimumOwnership, 1);
+assert.equal(TACTICAL_SKILL_BALANCE.livingDead.recoveryOwnership, 30);
+assert.match(livingDeadSkill.description, /1交渉につき1回/);
+assert.equal(calculateOwnershipFromGauge(98), 1);
+assert.equal(calculateOwnershipFromGauge(40), 30);
+assert.equal(resolveLivingDeadOutcome('waiting', 50, 1), 'none');
+assert.equal(resolveLivingDeadOutcome('waiting', 0, 10_000), 'triggered');
+assert.equal(resolveLivingDeadOutcome('waiting', 0, 0), 'waiting_expired');
+assert.equal(resolveLivingDeadOutcome('recovery', 29.99, 1), 'none');
+assert.equal(resolveLivingDeadOutcome('recovery', 30, 1), 'recovered');
+assert.equal(resolveLivingDeadOutcome('recovery', 29.99, 0), 'failed');
 assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.pushMultiplier, 1.5);
 
 const lbSubs = [
@@ -181,10 +241,12 @@ const lbSubs = [
 ];
 const lbTier = getLimitBreakTier(lbSubs.length + 1);
 assert.equal(lbTier, 1);
-assert.equal(calculateLimitBreakAmount(1_000, lbSubs, lbTier), 2_352);
+assert.equal(calculateLimitBreakAmount(1_000, lbSubs, lbTier), 2_822);
 assert.equal(BATTLE_GAUGE_SPEED_FACTOR, 4);
+assert.equal(LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER, 1.2);
+assert.deepEqual(LIMIT_BREAK_MULTIPLIERS, { 1: 1.44, 2: 1.8, 3: 2.22 });
 assert.equal(ENEMY_INITIAL_COMMITMENT_RATIO, 0.25);
-assert.equal(calculateLimitBreakOwnershipPush(2_352, 1_000, 1, 1), 10);
+assert.equal(calculateLimitBreakOwnershipPush(2_822, 1_000, 1, 1), 10);
 assert.equal(calculateLimitBreakOwnershipPush(20_000, 1_000, 2, 1.15), 20);
 assert.equal(calculateLimitBreakOwnershipPush(50_000, 1_000, 3, 1.15), 30);
 assert.equal(calculateLimitBreakOwnershipPush(50_000, 1_000, 0, 1.15), 0);
@@ -198,14 +260,14 @@ assert.equal(getChargedLimitBreakTier(100, 3), 1);
 assert.equal(getChargedLimitBreakTier(250, 3), 2);
 assert.equal(getChargedLimitBreakTier(300, 3), 3);
 assert.equal(calculateLimitBreakChargeGain(0, 1_000), 0);
-assert.equal(calculateLimitBreakChargeGain(20, 1_000), 4);
-assert.equal(calculateLimitBreakChargeGain(100, 1_000), 8);
-assert.equal(calculateLimitBreakChargeGain(350, 1_000), 20);
-assert.equal(calculateLimitBreakChargeGain(1_000, 1_000), 24);
+assert.equal(calculateLimitBreakChargeGain(20, 1_000), 5);
+assert.equal(calculateLimitBreakChargeGain(100, 1_000), 9);
+assert.equal(calculateLimitBreakChargeGain(350, 1_000), 24);
+assert.equal(calculateLimitBreakChargeGain(1_000, 1_000), 29);
 const mediumExchangeCharge =
   calculateLimitBreakChargeGain(200, 1_000) +
   calculateLimitBreakChargeGain(100, 1_000);
-assert.equal(mediumExchangeCharge, 21);
+assert.equal(mediumExchangeCharge, 24);
 assert.ok(mediumExchangeCharge * 4 < 100);
 assert.ok(mediumExchangeCharge * 5 >= 100);
 assert.equal(normalizeLimitBreakCharge(undefined), 0);
