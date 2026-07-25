@@ -55,6 +55,7 @@ import {
   LIMIT_BREAK_CHARGE_PER_BAR,
   LIMIT_BREAK_MULTIPLIERS,
   LIMIT_BREAK_OWNERSHIP_CAPS,
+  TACTICAL_SKILL_BALANCE,
   type LimitBreakTier,
 } from '../utils/gameBalance';
 export { ENEMY_BALANCE_FACTOR, LIMIT_BREAK_MULTIPLIERS };
@@ -385,8 +386,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           : currentWind.directionLabel;
   const fastHorse = fastHorseRemaining > 0;
   const enemySlowed = enemySlowedRemaining > 0;
-  const enemyDisruption = enemyDisruptionRemaining > 0 ? 0.7 : 0;
-  const pushMultiplier = pushMultiplierRemaining > 0 ? 2 : 1;
+  const enemyDisruption = enemyDisruptionRemaining > 0
+    ? TACTICAL_SKILL_BALANCE.disruption.interruptChance
+    : 0;
+  const pushMultiplier = pushMultiplierRemaining > 0
+    ? TACTICAL_SKILL_BALANCE.battleLitany.pushMultiplier
+    : 1;
   const limitBreakCapacityTier = getLimitBreakTier(battleSubs.length + 1);
   const limitBreakChargeCapacity = getLimitBreakChargeCapacity(limitBreakCapacityTier);
   const visibleLimitBreakCharge = Math.min(
@@ -412,7 +417,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     0
   );
   const capitalBoostSupport = equippedSkills.some((skill) => skill.effectType === 'CAPITAL_BOOST')
-    ? Math.round(targetProperty.marketPrice * 0.3)
+    ? Math.round(targetProperty.marketPrice * TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio)
     : 0;
   const preparationCapital =
     cash +
@@ -725,15 +730,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return { actual: 0, counterShock: 0 };
     }
     if (enemyDisruption > 0 && Math.random() < enemyDisruption) {
-      const collapse = Math.min(enemyInvested, Math.round(targetProperty.marketPrice * 0.12));
+      const collapse = Math.min(
+        enemyInvested,
+        Math.round(targetProperty.marketPrice * TACTICAL_SKILL_BALANCE.disruption.collapseMarketRatio)
+      );
       setEnemyInvested((value) => Math.max(0, value - collapse));
       if (chargeLimit) {
         chargeLimitBreak(collapse * currentWind.playerMultiplier);
       }
-      setStatusText(`物件独立工作が成功。敵の資金源から${formatCurrency(collapse)}が離脱`);
+      setStatusText(`連環計が成功。敵の資金源から${formatCurrency(collapse)}が離脱`);
       showFloater(`離脱 -${formatCurrency(collapse)}`, 'enemy');
       playMotion('rebel');
-      addLog(`物件独立工作により競合資金${formatCurrency(collapse)}が崩落。`, 'skill');
+      addLog(`連環計により競合資金${formatCurrency(collapse)}が崩落。`, 'skill');
       return { actual: 0, counterShock: 0 };
     }
     const nextReserve = enemyReserveRef.current - actual;
@@ -763,7 +771,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (timeScale <= 0 || winner) return;
     const interval = window.setInterval(() => {
       const elapsed = 50 * timeScale;
-      setCommandProgress((value) => Math.min(100, value + (fastHorse ? 5 : 2.8) * timeScale));
+      const commandProgressPerTick = fastHorse
+        ? TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick
+        : TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick;
+      setCommandProgress((value) => Math.min(100, value + commandProgressPerTick * timeScale));
       setSkillCooldowns((current) => {
         let changed = false;
         const next = { ...current };
@@ -799,7 +810,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     showFloater(`反論 +${formatCurrency(amount)}`, 'enemy');
     playMotion('enemy');
     soundFx.playCapitalImpact('opponent', amount / Math.max(targetProperty.marketPrice, 1));
-    addLog(`SNS工作への反論で競合資金${formatCurrency(amount)}が復帰。`, 'enemy');
+    addLog(`ぶんどるへの反論で競合資金${formatCurrency(amount)}が復帰。`, 'enemy');
   }, [currentWind.enemyMultiplier, snsCounterRemaining, targetProperty.marketPrice, winner]);
 
   useEffect(() => {
@@ -1180,33 +1191,43 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     soundFx.playSkillSpark();
 
     if (skill.effectType === 'COOLDOWN_REDUCTION') {
-      setFastHorseRemaining(10_000);
-      setStatusText('早馬発動――10秒間、タタルの命令待ち時間が半減');
+      setFastHorseRemaining(TACTICAL_SKILL_BALANCE.fastAction.durationMs);
+      setStatusText('神速魔――10秒間、命令ゲージの進行速度が約1.8倍');
     } else if (skill.effectType === 'NEMAWASHI') {
-      setBattleSubs((current) => current.map((item) => ({ ...item, loyaltyRisk: Math.floor(item.loyaltyRisk / 2) })));
-      setStatusText('ネマワシ成功――全傘下の独立危険度が半減');
+      setBattleSubs((current) => current.map((item) => ({
+        ...item,
+        loyaltyRisk: Math.floor(
+          item.loyaltyRisk / TACTICAL_SKILL_BALANCE.moraleSupport.loyaltyRiskDivisor
+        ),
+      })));
+      setStatusText('士気高揚の策――全傘下の独立危険度が半減');
     } else if (skill.effectType === 'INDEPENDENCE_SABOTAGE') {
-      setEnemyDisruptionRemaining(9000);
-      setStatusText('物件独立工作――9秒間、敵の資金源離脱を狙う');
+      setEnemyDisruptionRemaining(TACTICAL_SKILL_BALANCE.disruption.durationMs);
+      setStatusText('連環計――9秒間、競合の追加防衛を70%で中断');
     } else if (skill.effectType === 'DEMORALIZE') {
-      setEnemySlowedRemaining(9000);
+      setEnemySlowedRemaining(TACTICAL_SKILL_BALANCE.demoralize.durationMs);
       setStatusText('競合の指揮系統が混乱。敵の命令待ち時間が延長');
     } else if (skill.effectType === 'CAPITAL_BOOST') {
-      const amount = Math.round(targetProperty.marketPrice * 0.3);
+      const amount = Math.round(
+        targetProperty.marketPrice * TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio
+      );
       setDemandInvested((value) => value + amount);
       chargeLimitBreak(amount * currentWind.playerMultiplier);
-      setStatusText(`商魂の即時調達で${formatCurrency(amount)}を追加`);
+      setStatusText(`意気衝天――無料支援資金${formatCurrency(amount)}を即時投入`);
       showFloater(`+${formatCurrency(amount)}`, 'player');
     } else if (skill.effectType === 'SNS_BLITZ') {
-      const amount = Math.min(enemyInvested, Math.round(targetProperty.marketPrice * 0.15));
+      const amount = Math.min(
+        enemyInvested,
+        Math.round(targetProperty.marketPrice * TACTICAL_SKILL_BALANCE.steal.marketRatio)
+      );
       setEnemyInvested((value) => Math.max(0, value - amount));
       chargeLimitBreak(amount * currentWind.playerMultiplier);
       snsCounterAmountRef.current = amount;
-      setSnsCounterRemaining(7000);
-      setStatusText(`評判工作で敵資金${formatCurrency(amount)}が離脱。7秒後の反論に注意`);
+      setSnsCounterRemaining(TACTICAL_SKILL_BALANCE.steal.counterDelayMs);
+      setStatusText(`ぶんどる――敵資金${formatCurrency(amount)}を一時除去。7秒後の反論に注意`);
     } else if (skill.effectType === 'SYNERGY_PUSH') {
-      setPushMultiplierRemaining(7000);
-      setStatusText('交易網総動員――7秒間、所有率の押し込み速度が倍増');
+      setPushMultiplierRemaining(TACTICAL_SKILL_BALANCE.battleLitany.durationMs);
+      setStatusText('バトルリタニー――7秒間、所有率の押し込み速度が1.5倍');
     }
     addLog(`${skill.name}を使用。${skill.description}`, 'skill');
   };
@@ -1236,7 +1257,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ? `勝因はSYNERGYでっす。傘下から集めた${formatCurrency(demandInvested)}が競り値を押し上げたでっす。`
         : `勝因は自社資金の決断でっす。SHORT後までギルを残し、${FINISH_LABELS[finishMethod]}で決着したでっす。`
     : rebelled.length > 0
-      ? `${rebelled.length}社の独立で資金の山が崩れたでっす。次は赤い資金源へ要求する前にネマワシを使うでっす。`
+      ? `${rebelled.length}社の独立で資金の山が崩れたでっす。次は赤い資金源へ要求する前に士気高揚の策を使うでっす。`
       : `競合の競り値を${formatCurrency(Math.max(0, -capitalGap))}下回り、所有率を押し戻されたでっす。`;
 
   const briefingSynergies = [
@@ -1371,7 +1392,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         <section className="active-time">
           <div>
             <TimerReset />
-            <span>{commandReady ? 'ACTION READY' : fastHorse ? '早馬でアクション伝達中' : '次のアクション準備中'}</span>
+            <span>{commandReady ? 'ACTION READY' : fastHorse ? '神速魔でアクション加速中' : '次のアクション準備中'}</span>
             {timeScale === 0.1 && (
               <em>{openingSlowActive ? 'OPENING SLOW ×0.1' : 'TACTICAL MODE ×0.1'}</em>
             )}{timeScale === 0.16 && <em>DECISIVE SLOW ×0.16</em>}<b className="battle-income-rate">商流 +{formatCurrency(Math.round(battleCashRecoveryPerSecond * timeScale))}/秒</b>
