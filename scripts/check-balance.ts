@@ -7,6 +7,7 @@ import {
   loadGameSave,
   normalizeAllianceState,
   normalizeLimitBreakCharge,
+  restoreProperties,
   SAVE_STORAGE_KEY,
 } from '../src/utils/saveData';
 import {
@@ -27,6 +28,7 @@ import {
   calculateEnemyBudget,
   calculateLimitBreakAmount,
   calculateLimitBreakChargeGain,
+  consumeLimitBreakCharge,
   calculateOwnershipFromGauge,
   calculateLimitBreakOwnershipAfterDefense,
   calculateLimitBreakOwnershipPush,
@@ -35,9 +37,11 @@ import {
   getChargedLimitBreakTier,
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
+  holdGaugeForManualShortFinish,
   isSkillUnlocked,
   LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER,
   LIMIT_BREAK_MULTIPLIERS,
+  SHORT_MANUAL_FINISH_GAUGE,
   resolveLivingDeadOutcome,
   SAVAGE_ENEMY_BUDGET_MULTIPLIER,
   getEnemyDifficultyLevel,
@@ -51,12 +55,25 @@ const expectedStageMaxPrices = [
   800_000,
   700_000,
   1_400_000,
-  2_000_000,
   3_000_000,
   4_500_000,
+  5_500_000,
   6_500_000,
   450_000_000,
 ];
+
+assert.deepEqual(COMMUNITY_CAMPAIGN_ORDER, [
+  'グリダニア',
+  'リムサ・ロミンサ',
+  'ウルダハ',
+  'イシュガルド',
+  'クガネ',
+  'クリスタリウム',
+  'オールド・シャーレアン',
+  'ラザハン',
+  'トライヨラ',
+  'ソリューション・ナイン',
+]);
 
 const campaignSummary = COMMUNITY_CAMPAIGN_ORDER.map((community, index) => {
   const targets = getCampaignProperties(INITIAL_PROPERTIES, community);
@@ -171,6 +188,26 @@ assert.equal(
 );
 assert.equal(calculateAllianceSupport(1_000_000), 320_000);
 assert.equal(getLimitBreakTier(4), 1, 'public patronage never changes participating company count');
+const worldText = INITIAL_PROPERTIES.flatMap((property) => [property.name, property.description, property.ownerName]).join(' ');
+['フォルタン家騎兵牧場', 'ハイウィンド飛空社', 'ラストスタンド食材組合', 'ゴールドソーサー運営局'].forEach((legacyLabel) => {
+  assert.equal(worldText.includes(legacyLabel), false, `world-text migration: ${legacyLabel}`);
+});
+assert.match(worldText, /MGPそのものをギルへ換金する事業ではない/);
+assert.match(worldText, /知識・技術交易連盟（本作オリジナル）/);
+const restoredWorldCopy = restoreProperties({
+  schemaVersion: 3,
+  companyName: '旧セーブ商会',
+  totalFunds: 100_000,
+  properties: [
+    { id: 'prop_abyss_heavy', owner: 'abyss', ownerName: '知識・技術交易連盟', loyaltyRisk: 0 },
+    { id: 'prop_starter_farm', owner: 'player', ownerName: '旧セーブ商会', loyaltyRisk: 12 },
+  ],
+  equippedSkillIds: [],
+  alliance: { allyId: '', allyName: '', active: false },
+  lastSavedAt: 1,
+});
+assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_abyss_heavy')?.ownerName, '知識・技術交易連盟（本作オリジナル）');
+assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_starter_farm')?.ownerName, '旧セーブ商会');
 
 const enemyBudgetRatio = (propertyId: string, isTutorial = false) => {
   const property = INITIAL_PROPERTIES.find((candidate) => candidate.id === propertyId)!;
@@ -340,6 +377,22 @@ const mediumExchangeCharge =
 assert.equal(mediumExchangeCharge, 24);
 assert.ok(mediumExchangeCharge * 4 < 100);
 assert.ok(mediumExchangeCharge * 5 >= 100);
+let repeatableLimitBreakCharge = 0;
+for (let activation = 0; activation < 3; activation += 1) {
+  for (let exchange = 0; exchange < 5; exchange += 1) {
+    repeatableLimitBreakCharge = Math.min(
+      getLimitBreakChargeCapacity(1),
+      repeatableLimitBreakCharge + mediumExchangeCharge
+    );
+  }
+  assert.equal(getChargedLimitBreakTier(repeatableLimitBreakCharge, 1), 1);
+  repeatableLimitBreakCharge = consumeLimitBreakCharge(repeatableLimitBreakCharge);
+  assert.equal(repeatableLimitBreakCharge, 0);
+}
+assert.equal(holdGaugeForManualShortFinish(-100, 0), SHORT_MANUAL_FINISH_GAUGE);
+assert.equal(calculateOwnershipFromGauge(SHORT_MANUAL_FINISH_GAUGE), 99.5);
+assert.equal(holdGaugeForManualShortFinish(-100, 1), -100);
+assert.equal(holdGaugeForManualShortFinish(-80, 0), -80);
 assert.equal(normalizeLimitBreakCharge(undefined), 0);
 assert.equal(normalizeLimitBreakCharge(Number.NaN), 0);
 assert.equal(normalizeLimitBreakCharge(-20), 0);

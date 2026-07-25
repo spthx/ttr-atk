@@ -22,9 +22,9 @@ export const COMMUNITY_CAMPAIGN_ORDER: CommunityType[] = [
   'ウルダハ',
   'イシュガルド',
   'クガネ',
-  'ラザハン',
   'クリスタリウム',
   'オールド・シャーレアン',
+  'ラザハン',
   'トライヨラ',
   'ソリューション・ナイン',
 ];
@@ -39,7 +39,7 @@ export const TRADE_COMMUNITIES: TradeCommunity[] = [
   { id: 'オールド・シャーレアン', region: '北洋', marketCharacter: '学術・技術' },
   { id: 'ラザハン', region: 'サベネア島', marketCharacter: '錬金・交易' },
   { id: 'トライヨラ', region: 'トラル大陸', marketCharacter: '食文化・工芸・国際交易' },
-  { id: 'ソリューション・ナイン', region: 'ヤースラニ荒野', marketCharacter: '先端技術・電力・娯楽' },
+  { id: 'ソリューション・ナイン', region: 'エバーキープ（ヤースラニ荒野）', marketCharacter: '先端技術・電力・娯楽' },
 ];
 
 export const getCommunityDefinition = (community: CommunityType) =>

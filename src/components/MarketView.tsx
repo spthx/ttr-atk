@@ -189,7 +189,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
           <div className="relative z-10 flex min-h-36 max-w-2xl flex-col justify-center px-5 py-5">
             <p className={`text-[10px] font-black tracking-[0.28em] ${campaignMode === 'savage' ? 'text-rose-300' : 'text-amber-300'}`}>{campaignMode === 'savage' ? 'SAVAGE TRADE RAID' : 'EORZEA GRAND MARKET'}</p>
             <h2 className="mt-1 text-2xl font-black text-white drop-shadow-lg">{campaignMode === 'savage' ? '挑戦する零式商戦を選ぶ' : '次に攻める都市を選ぶ'}</h2>
-            <p className="mt-1 text-xs text-slate-200">{campaignMode === 'savage' ? '各都市のノーマル商戦を再構成した1～4層の高難度交易レイドです。' : '都市を選ぶと、買収できる敵企業だけを表示します。'}</p>
+            <p className="mt-1 text-xs text-slate-200">{campaignMode === 'savage' ? '各都市の通常商戦を再構成した1～4層の高難度交易レイドです。' : '都市を選ぶと、買収できる敵企業だけを表示します。'}</p>
           </div>
           <button type="button" onClick={() => setShowGuide((open) => !open)} className="absolute bottom-3 right-3 z-20 flex items-center gap-1 rounded-lg border border-cyan-400/30 bg-slate-950/80 px-2.5 py-1.5 text-[10px] font-bold text-cyan-200">
             <CircleHelp className="h-3.5 w-3.5" /> 遊び方

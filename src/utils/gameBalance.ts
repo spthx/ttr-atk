@@ -10,6 +10,7 @@ export const LIMIT_BREAK_MAX_BARS = 3;
 export const LIMIT_BREAK_MAX_CHARGE =
   LIMIT_BREAK_CHARGE_PER_BAR * LIMIT_BREAK_MAX_BARS;
 export const LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER = 1.2;
+export const SHORT_MANUAL_FINISH_GAUGE = -99;
 
 export const TACTICAL_SKILL_BALANCE = {
   fastAction: {
@@ -224,6 +225,21 @@ export const getChargedLimitBreakTier = (
   );
   return Math.min(unlockedTier, filledBars, LIMIT_BREAK_MAX_BARS) as LimitBreakTier;
 };
+
+/** Every LIMIT BREAK spends the entire stored gauge, even when only one bar fires. */
+export const consumeLimitBreakCharge = (_charge: number) => 0;
+
+/**
+ * Once the rival is SHORT, passive capital pressure may reach 99.5% ownership,
+ * but the player must provide the finishing input.
+ */
+export const holdGaugeForManualShortFinish = (
+  nextGauge: number,
+  enemyReserve: number
+) =>
+  enemyReserve <= 0 && nextGauge <= -100
+    ? SHORT_MANUAL_FINISH_GAUGE
+    : nextGauge;
 
 export const calculateLimitBreakChargeGain = (
   effectiveCapitalMovement: number,
