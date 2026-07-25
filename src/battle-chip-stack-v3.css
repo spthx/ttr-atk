@@ -1,0 +1,80 @@
+/* The flat coin from attachment (1) is the base; attachment (2) supplies upright bundles. */
+
+.gil-chip-image--medallion {
+  left: 50% !important;
+  bottom: -.25rem !important;
+  z-index: 2 !important;
+  width: min(9.4rem, 93%) !important;
+}
+
+.gil-chip-image--stack {
+  bottom: .55rem;
+  z-index: 5;
+  width: min(3.8rem, 36%);
+  transform-origin: center bottom;
+}
+
+.gil-chip-image--stack:nth-of-type(2) {
+  left: 34%;
+  bottom: .45rem;
+  z-index: 5;
+  width: min(3.55rem, 34%);
+}
+
+.gil-chip-image--stack:nth-of-type(3) {
+  left: 50%;
+  bottom: .72rem;
+  z-index: 7;
+  width: min(3.8rem, 36%);
+}
+
+.gil-chip-image--stack:nth-of-type(4) {
+  left: 66%;
+  bottom: .4rem;
+  z-index: 6;
+  width: min(3.5rem, 33%);
+}
+
+.gil-chip-image--stack:nth-of-type(5) {
+  left: 77%;
+  bottom: .18rem;
+  z-index: 4;
+  width: min(3.15rem, 30%);
+}
+
+.gil-tower--enemy .gil-chip-image--stack:nth-of-type(2) { left: 66%; }
+.gil-tower--enemy .gil-chip-image--stack:nth-of-type(4) { left: 34%; }
+.gil-tower--enemy .gil-chip-image--stack:nth-of-type(5) { left: 23%; }
+
+@media (max-width: 639px) {
+  .gil-chip-image--medallion {
+    width: min(7.1rem, 98%) !important;
+  }
+
+  .gil-chip-image--stack,
+  .gil-chip-image--stack:nth-of-type(2),
+  .gil-chip-image--stack:nth-of-type(3),
+  .gil-chip-image--stack:nth-of-type(4),
+  .gil-chip-image--stack:nth-of-type(5) {
+    width: min(2.7rem, 34%);
+  }
+
+  .gil-chip-image--stack:nth-of-type(2) { bottom: .25rem; }
+  .gil-chip-image--stack:nth-of-type(3) { bottom: .4rem; }
+  .gil-chip-image--stack:nth-of-type(4) { bottom: .22rem; }
+  .gil-chip-image--stack:nth-of-type(5) { bottom: .08rem; }
+}
+
+@media (max-width: 390px) {
+  .gil-chip-image--medallion {
+    width: min(6.25rem, 100%) !important;
+  }
+
+  .gil-chip-image--stack,
+  .gil-chip-image--stack:nth-of-type(2),
+  .gil-chip-image--stack:nth-of-type(3),
+  .gil-chip-image--stack:nth-of-type(4),
+  .gil-chip-image--stack:nth-of-type(5) {
+    width: min(2.35rem, 32%);
+  }
+}

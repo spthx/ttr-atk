@@ -1,0 +1,297 @@
+/* Ver.3: image-based capital piles, compact battle telegraphs and save feedback. */
+
+.gil-tower__chips {
+  position: relative;
+  width: min(10.8rem, 100%);
+  min-height: 6.2rem;
+  margin-inline: auto;
+  overflow: visible;
+  isolation: isolate;
+}
+
+.gil-chip-image {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: min(9.6rem, 92%);
+  height: auto;
+  transform: translateX(-50%) rotate(var(--chip-angle));
+  transform-origin: center bottom;
+  filter: drop-shadow(0 .45rem .38rem rgba(0, 0, 0, .55));
+  pointer-events: none;
+  user-select: none;
+}
+
+.gil-chip-image:nth-of-type(1) { left: 49%; bottom: -.2rem; z-index: 5; }
+.gil-chip-image:nth-of-type(2) { left: 39%; bottom: .72rem; z-index: 4; width: 78%; }
+.gil-chip-image:nth-of-type(3) { left: 61%; bottom: 1.16rem; z-index: 3; width: 73%; }
+.gil-chip-image:nth-of-type(4) { left: 45%; bottom: 1.78rem; z-index: 2; width: 68%; }
+.gil-chip-image:nth-of-type(5) { left: 58%; bottom: 2.25rem; z-index: 1; width: 62%; }
+
+.gil-tower--player .gil-chip-image {
+  filter:
+    drop-shadow(0 .42rem .34rem rgba(0, 0, 0, .58))
+    drop-shadow(0 0 .42rem rgba(250, 204, 21, .26));
+}
+
+.gil-tower--enemy .gil-chip-image {
+  transform: translateX(-50%) scaleX(-1) rotate(var(--chip-angle));
+  filter:
+    drop-shadow(0 .42rem .34rem rgba(0, 0, 0, .65))
+    drop-shadow(0 0 .45rem rgba(244, 63, 94, .28));
+}
+
+.gil-chip-image--falling {
+  animation: gil-chip-image-drop .58s cubic-bezier(.16, .8, .24, 1.12) both;
+}
+
+.gil-tower__chips > em {
+  position: absolute;
+  right: .15rem;
+  bottom: .2rem;
+  z-index: 8;
+  padding: .14rem .28rem;
+  border: 1px solid rgba(253, 224, 71, .62);
+  border-radius: .25rem;
+  color: #fff4b0;
+  background: rgba(15, 10, 2, .82);
+  box-shadow: 0 0 .7rem rgba(245, 158, 11, .28);
+  font: 900 .46rem/1 ui-monospace, monospace;
+  letter-spacing: .05em;
+}
+
+.gil-tower--enemy .gil-tower__chips > em {
+  border-color: rgba(251, 113, 133, .62);
+  color: #fecdd3;
+  background: rgba(28, 4, 10, .86);
+}
+
+.gil-tower__empty {
+  position: absolute;
+  inset: auto 10% .65rem;
+  padding: .35rem;
+  border: 1px dashed rgba(148, 163, 184, .3);
+  color: #64748b;
+  font: 800 .48rem/1 ui-monospace, monospace;
+  text-align: center;
+  letter-spacing: .12em;
+}
+
+@keyframes gil-chip-image-drop {
+  from {
+    translate: 0 -4.5rem;
+    opacity: 0;
+    filter: brightness(1.7) drop-shadow(0 0 .7rem currentColor);
+  }
+  72% { opacity: 1; }
+  to { translate: 0 0; opacity: 1; }
+}
+
+.battle-short-telegraph,
+.battle-finish-telegraph {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  color: #f8fafc;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 3px, rgba(148, 163, 184, .035) 3px 4px),
+    rgba(1, 5, 15, .24);
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: contrast(1.08);
+}
+
+.battle-short-telegraph > i,
+.battle-finish-telegraph > i {
+  display: block;
+  width: min(36rem, 86vw);
+  height: 1px;
+  margin: .55rem 0;
+  background: linear-gradient(90deg, transparent, #e2e8f0 22%, #facc15 50%, #e2e8f0 78%, transparent);
+  box-shadow: 0 0 1rem rgba(250, 204, 21, .7);
+  animation: battle-scan-line .34s ease-out both;
+}
+
+.battle-short-telegraph small,
+.battle-finish-telegraph small {
+  color: #bfdbfe;
+  font: 900 .62rem/1 ui-monospace, monospace;
+  letter-spacing: .28em;
+}
+
+.battle-short-telegraph strong {
+  margin: .18rem 0;
+  color: #ffe774;
+  font: 1000 clamp(3rem, 14vw, 6.4rem)/.9 ui-monospace, monospace;
+  letter-spacing: .08em;
+  text-shadow: 0 0 .3rem #fff, 0 0 1.6rem rgba(245, 158, 11, .92);
+  animation: battle-telegraph-impact .34s steps(2) both;
+}
+
+.battle-short-telegraph span {
+  color: #e2e8f0;
+  font: 900 .72rem/1.2 ui-monospace, monospace;
+  letter-spacing: .1em;
+}
+
+.battle-finish-telegraph {
+  background:
+    radial-gradient(circle at center, rgba(250, 204, 21, .12), transparent 48%),
+    rgba(1, 5, 15, .3);
+}
+
+.battle-finish-telegraph--opponent {
+  background:
+    radial-gradient(circle at center, rgba(190, 18, 60, .18), transparent 48%),
+    rgba(1, 5, 15, .34);
+}
+
+.battle-finish-telegraph strong {
+  margin: .2rem 0 .1rem;
+  color: #fff5bd;
+  font: 1000 clamp(3rem, 15vw, 6.8rem)/.9 ui-monospace, monospace;
+  letter-spacing: .08em;
+  text-shadow: 0 0 .35rem #fff, 0 0 1.75rem rgba(250, 204, 21, .86);
+  animation: battle-telegraph-impact .38s steps(2) both;
+}
+
+.battle-finish-telegraph--opponent strong {
+  color: #fecdd3;
+  text-shadow: 0 0 .25rem #fff, 0 0 1.5rem rgba(225, 29, 72, .9);
+}
+
+.battle-finish-telegraph span {
+  color: #fde68a;
+  font: 1000 clamp(.78rem, 3.5vw, 1.2rem)/1.2 ui-monospace, monospace;
+  letter-spacing: .16em;
+}
+
+.battle-finish-telegraph--opponent span { color: #fda4af; }
+
+.battle-finish-telegraph em {
+  margin-top: .45rem;
+  color: #fff7cf;
+  font: 900 .64rem/1 ui-monospace, monospace;
+  letter-spacing: .12em;
+}
+
+@keyframes battle-telegraph-impact {
+  from { scale: 1.18; opacity: 0; filter: blur(.35rem) brightness(2); }
+  to { scale: 1; opacity: 1; filter: none; }
+}
+
+@keyframes battle-scan-line {
+  from { scale: .15 1; opacity: 0; }
+  to { scale: 1 1; opacity: 1; }
+}
+
+.buyout-footer--settled {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .75rem;
+  padding-bottom: max(1.15rem, calc(env(safe-area-inset-bottom) + .9rem));
+  background: linear-gradient(90deg, rgba(4, 15, 28, .98), rgba(30, 23, 5, .98));
+}
+
+.buyout-footer--settled > span {
+  overflow: hidden;
+  color: #f8e8a6;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battle-next-button {
+  min-width: 7.4rem;
+  min-height: 2.55rem;
+  border: 1px solid #ffe071 !important;
+  color: #161002 !important;
+  background: linear-gradient(90deg, #f3bf39, #fff0a0) !important;
+  box-shadow: 0 0 1rem rgba(245, 196, 81, .28);
+  font: 1000 .76rem/1 ui-monospace, monospace;
+  letter-spacing: .12em;
+}
+
+.battle-next-button:disabled {
+  color: #94a3b8 !important;
+  border-color: #334155 !important;
+  background: #0f172a !important;
+  box-shadow: none;
+}
+
+.offline-income-toast {
+  position: fixed;
+  top: 4.3rem;
+  right: .75rem;
+  z-index: 520;
+  display: grid;
+  min-width: min(17rem, calc(100vw - 1.5rem));
+  padding: .72rem .88rem;
+  border: 1px solid rgba(52, 211, 153, .55);
+  border-left-width: 3px;
+  border-radius: .45rem;
+  color: #d1fae5;
+  background: rgba(2, 20, 20, .94);
+  box-shadow: 0 .7rem 2rem rgba(0, 0, 0, .42), 0 0 1rem rgba(16, 185, 129, .15);
+  animation: offline-income-in .35s ease-out both;
+}
+
+.offline-income-toast small {
+  color: #6ee7b7;
+  font: 900 .5rem/1 ui-monospace, monospace;
+  letter-spacing: .18em;
+}
+
+.offline-income-toast strong {
+  margin-top: .2rem;
+  color: #fef3c7;
+  font-size: 1rem;
+}
+
+.offline-income-toast span {
+  margin-top: .12rem;
+  color: #94a3b8;
+  font-size: .58rem;
+}
+
+@keyframes offline-income-in {
+  from { translate: 1.5rem 0; opacity: 0; }
+  to { translate: 0 0; opacity: 1; }
+}
+
+@media (max-width: 639px) {
+  .gil-tower__chips { min-height: 4.75rem; }
+  .gil-chip-image { width: min(7.2rem, 96%); }
+  .gil-chip-image:nth-of-type(2) { bottom: .52rem; }
+  .gil-chip-image:nth-of-type(3) { bottom: .82rem; }
+  .gil-chip-image:nth-of-type(4) { bottom: 1.15rem; }
+  .gil-chip-image:nth-of-type(5) { bottom: 1.5rem; }
+  .gil-tower__chips > em { right: 0; bottom: 0; font-size: .39rem; }
+  .buyout-footer--settled { padding-inline: .55rem; }
+  .buyout-footer--settled > span { display: block; font-size: .56rem; }
+  .battle-next-button { min-width: 6.7rem; min-height: 2.75rem; }
+}
+
+@media (max-width: 390px) {
+  .gil-tower__chips { min-height: 4.2rem; }
+  .gil-chip-image { width: min(6.4rem, 98%); }
+  .gil-chip-image:nth-of-type(4),
+  .gil-chip-image:nth-of-type(5) { opacity: .86; }
+  .battle-short-telegraph strong,
+  .battle-finish-telegraph strong { font-size: 3.35rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gil-chip-image--falling,
+  .battle-short-telegraph > i,
+  .battle-finish-telegraph > i,
+  .battle-short-telegraph strong,
+  .battle-finish-telegraph strong,
+  .offline-income-toast {
+    animation: none !important;
+  }
+}

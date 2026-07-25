@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Property,
   TacticalSkill,
@@ -30,26 +30,46 @@ import { WIND_CONDITIONS, WindCondition, WindType } from './components/WindIndic
 import { FANKIT_ART } from './data/fankitAssets';
 import { COMMUNITY_CAMPAIGN_ORDER, GAME_WORLD, TRADE_COMMUNITIES } from './data/worldData';
 import { Bell, MapPinned } from 'lucide-react';
+import {
+  calculateOfflineIncome,
+  clearGameSave,
+  loadGameSave,
+  loadLegacyCompanyName,
+  restoreProperties,
+  saveGame,
+} from './utils/saveData';
+
+export const PASSIVE_REVENUE_MULTIPLIER = 2;
 
 export default function App() {
+  const initialSaveRef = useRef<ReturnType<typeof loadGameSave> | undefined>(undefined);
+  if (initialSaveRef.current === undefined) {
+    initialSaveRef.current = loadGameSave();
+  }
+  const initialSave = initialSaveRef.current;
+
   // --- Game Core State ---
-  const [totalFunds, setTotalFunds] = useState<number>(50_000); // Initial 50k capital for smooth gameplay
-  const [properties, setProperties] = useState<Property[]>(INITIAL_PROPERTIES);
+  const [totalFunds, setTotalFunds] = useState<number>(initialSave?.totalFunds ?? 50_000);
+  const [properties, setProperties] = useState<Property[]>(() => restoreProperties(initialSave));
   const [skills, setSkills] = useState<TacticalSkill[]>(INITIAL_SKILLS);
-  const [equippedSkillIds, setEquippedSkillIds] = useState<string[]>([
-    'skill_fast_horse',
-    'skill_nemawashi',
-    'skill_capital_boost',
-    'skill_sns_blitz',
-  ]);
+  const [equippedSkillIds, setEquippedSkillIds] = useState<string[]>(
+    initialSave?.equippedSkillIds ?? [
+      'skill_fast_horse',
+      'skill_nemawashi',
+      'skill_capital_boost',
+      'skill_sns_blitz',
+    ]
+  );
   const [groupSynergies, setGroupSynergies] =
     useState<GroupSynergy[]>(INITIAL_GROUP_SYNERGIES);
   const [cartels, setCartels] = useState<Cartel[]>(INITIAL_CARTELS);
-  const [alliance, setAlliance] = useState<AllianceState>({
-    allyId: '',
-    allyName: '',
-    active: false,
-  });
+  const [alliance, setAlliance] = useState<AllianceState>(
+    initialSave?.alliance ?? {
+      allyId: '',
+      allyName: '',
+      active: false,
+    }
+  );
 
   // UI States
   const [activeTab, setActiveTab] = useState<'market' | 'portfolio' | 'skills' | 'cartels'>('market');
@@ -57,8 +77,11 @@ export default function App() {
   const [battleTimeScale, setBattleTimeScale] = useState(1);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [logs, setLogs] = useState<GameLog[]>([]);
-  const [companyName, setCompanyName] = useState<string>(GAME_WORLD.companyName);
-  const [showLaunchIntro, setShowLaunchIntro] = useState(true);
+  const [companyName, setCompanyName] = useState<string>(
+    initialSave?.companyName || loadLegacyCompanyName() || GAME_WORLD.companyName
+  );
+  const [showLaunchIntro, setShowLaunchIntro] = useState(!initialSave);
+  const [offlineIncomeNotice, setOfflineIncomeNotice] = useState(0);
   const [unlockNotice, setUnlockNotice] = useState<CommunityType | null>(null);
   const [marketNavigationRequest, setMarketNavigationRequest] = useState<{
     id: number;
@@ -83,15 +106,9 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [activeBattleProperty, battleTimeScale]);
 
-  useEffect(() => {
-    const savedName = window.localStorage.getItem('tataru-company-name');
-    if (savedName) setCompanyName(savedName);
-  }, []);
-
   const completeLaunchIntro = () => {
     const normalizedName = companyName.trim() || GAME_WORLD.companyName;
     setCompanyName(normalizedName);
-    window.localStorage.setItem('tataru-company-name', normalizedName);
     soundFx.playBigCash();
     setShowLaunchIntro(false);
   };
@@ -228,8 +245,21 @@ export default function App() {
   // Total Passive Revenue Yield per second (I_net)
   const passiveRevenue = useMemo(() => {
     const base = ownedProperties.reduce((sum, p) => sum + p.annualRevenue, 0);
-    return Math.round(base * bonusMultiplier);
+    return Math.round(base * bonusMultiplier * PASSIVE_REVENUE_MULTIPLIER);
   }, [ownedProperties, bonusMultiplier]);
+
+  const offlineIncomeAppliedRef = useRef(false);
+  useEffect(() => {
+    if (offlineIncomeAppliedRef.current) return;
+    offlineIncomeAppliedRef.current = true;
+    if (!initialSave || passiveRevenue <= 0) return;
+    const income = calculateOfflineIncome(passiveRevenue, initialSave.lastSavedAt);
+    if (income <= 0) return;
+    setTotalFunds((current) => current + income);
+    setOfflineIncomeNotice(income);
+    const timer = window.setTimeout(() => setOfflineIncomeNotice(0), 4600);
+    return () => window.clearTimeout(timer);
+  }, [initialSave, passiveRevenue]);
 
   // IDLE CASH HARVEST ENGINE (1 Second Ticker)
   useEffect(() => {
@@ -241,6 +271,20 @@ export default function App() {
 
     return () => clearInterval(timer);
   }, [passiveRevenue]);
+
+  useEffect(() => {
+    if (showLaunchIntro) return;
+    const timer = window.setTimeout(() => {
+      saveGame({
+        companyName: companyName.trim() || GAME_WORLD.companyName,
+        totalFunds,
+        properties,
+        equippedSkillIds,
+        alliance,
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [alliance, companyName, equippedSkillIds, properties, showLaunchIntro, totalFunds]);
 
   // Handlers
   const handleStartBuyout = (property: Property) => {
@@ -455,6 +499,15 @@ export default function App() {
     addGameLog(`🔄 【テスト機能】資金を初期値 50,000ギル にリセットしました。`, 'warning');
   };
 
+  const handleNewGame = () => {
+    const accepted = window.confirm(
+      '保存済みの所持金・物件・装備スキル・ALLIANCEを削除して、ニューゲームを始めますか？'
+    );
+    if (!accepted) return;
+    clearGameSave();
+    window.location.reload();
+  };
+
   // Equipped skills object array
   const equippedSkills = useMemo(() => {
     return skills.filter((s) => equippedSkillIds.includes(s.id));
@@ -483,6 +536,7 @@ export default function App() {
         setSoundEnabled={setSoundEnabled}
         onAddFunds={handleAddFunds}
         onResetFunds={handleResetFunds}
+        onNewGame={handleNewGame}
       />
 
       {/* Main View Area */}
@@ -576,6 +630,14 @@ export default function App() {
             <span className="relative z-10 mt-5 inline-block rounded-lg bg-amber-400 px-4 py-2 text-xs font-black text-slate-950">都市マップへ進む</span>
           </span>
         </button>
+      )}
+
+      {offlineIncomeNotice > 0 && (
+        <div className="offline-income-toast" role="status">
+          <small>OFFLINE INCOME</small>
+          <strong>+{formatCurrency(offlineIncomeNotice)}</strong>
+          <span>留守中の商いを回収しました</span>
+        </div>
       )}
 
       {/* Real-time Buyout Battle Modal */}
