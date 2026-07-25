@@ -1,7 +1,7 @@
 import React from 'react';
 import { formatCurrency } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
-import { Volume2, VolumeX, Building2, TrendingUp, ShieldCheck, Zap, MapPin } from 'lucide-react';
+import { Volume2, VolumeX, Building2, TrendingUp, ShieldCheck, Zap, MapPin, RotateCcw } from 'lucide-react';
 import { HELP_TEXT } from '../data/helpText';
 
 interface HeaderProps {
@@ -20,6 +20,7 @@ interface HeaderProps {
   setSoundEnabled: (enabled: boolean) => void;
   onAddFunds?: (amount: number) => void;
   onResetFunds?: () => void;
+  onNewGame: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -38,6 +39,7 @@ export const Header: React.FC<HeaderProps> = ({
   setSoundEnabled,
   onAddFunds,
   onResetFunds,
+  onNewGame,
 }) => {
   const showDebugControls =
     typeof window !== 'undefined' &&
@@ -136,6 +138,14 @@ export const Header: React.FC<HeaderProps> = ({
             title={soundEnabled ? '効果音OFF' : '効果音ON'}
           >
             {soundEnabled ? <Volume2 className="w-4 h-4 text-amber-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
+          </button>
+          <button
+            onClick={onNewGame}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950 border border-slate-700 hover:border-rose-500/60 text-slate-400 hover:text-rose-300 transition-colors cursor-pointer"
+            title="セーブデータを削除してニューゲーム"
+            aria-label="セーブデータを削除してニューゲーム"
+          >
+            <RotateCcw className="w-4 h-4" />
           </button>
         </div>
       </div>
