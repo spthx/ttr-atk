@@ -1,8 +1,9 @@
 import React from 'react';
 import { formatCurrency } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
-import { Volume2, VolumeX, Building2, TrendingUp, ShieldCheck, Zap, MapPin, RotateCcw } from 'lucide-react';
+import { Volume2, VolumeX, Building2, TrendingUp, ShieldCheck, Zap, MapPin, RotateCcw, Swords } from 'lucide-react';
 import { HELP_TEXT } from '../data/helpText';
+import type { AppTab } from '../types';
 
 interface HeaderProps {
   companyName: string;
@@ -12,11 +13,14 @@ interface HeaderProps {
   totalPropertyCount: number;
   conqueredCommunityCount: number;
   totalCommunityCount: number;
-  activeTab: 'market' | 'portfolio' | 'skills' | 'cartels';
-  setActiveTab: (tab: 'market' | 'portfolio' | 'skills' | 'cartels') => void;
+  activeTab: AppTab;
+  setActiveTab: (tab: AppTab) => void;
   activeAllianceName: string | null;
   activeSynergiesCount: number;
   tradeAllianceUnlocked: boolean;
+  savageUnlocked: boolean;
+  savageClearedCount: number;
+  savageTargetCount: number;
   soundEnabled: boolean;
   setSoundEnabled: (enabled: boolean) => void;
   onAddFunds?: (amount: number) => void;
@@ -37,6 +41,9 @@ export const Header: React.FC<HeaderProps> = ({
   activeAllianceName,
   activeSynergiesCount,
   tradeAllianceUnlocked,
+  savageUnlocked,
+  savageClearedCount,
+  savageTargetCount,
   soundEnabled,
   setSoundEnabled,
   onAddFunds,
@@ -203,10 +210,24 @@ export const Header: React.FC<HeaderProps> = ({
             トレード・アライアンス
           </button>
         )}
+
+        {savageUnlocked && (
+          <button
+            onClick={() => setActiveTab('savage')}
+            className={`py-2 px-3 text-xs sm:text-sm font-black border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+              activeTab === 'savage'
+                ? 'border-rose-400 text-rose-300 bg-rose-500/10'
+                : 'border-transparent text-rose-300/75 hover:text-rose-200 hover:bg-rose-950/30'
+            }`}
+          >
+            <Swords className="w-4 h-4" />
+            商戦 零式 <span className="rounded bg-rose-950 px-1.5 py-0.5 text-[9px]">{savageClearedCount}/{savageTargetCount}</span>
+          </button>
+        )}
       </div>
 
       {/* Mobile Sticky Bottom Command Navigation Bar */}
-      <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 grid ${tradeAllianceUnlocked ? 'grid-cols-4' : 'grid-cols-3'} h-14 px-1 shadow-2xl touch-manipulation select-none pb-safe`}>
+      <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 grid ${savageUnlocked ? 'grid-cols-5' : tradeAllianceUnlocked ? 'grid-cols-4' : 'grid-cols-3'} h-14 px-1 shadow-2xl touch-manipulation select-none pb-safe`}>
         <button
           onClick={() => setActiveTab('market')}
           className={`flex flex-col items-center justify-center py-1 transition-colors ${
@@ -251,6 +272,19 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <ShieldCheck className="w-5 h-5 mb-0.5" />
             <span className="text-[10px] leading-none">アライアンス</span>
+          </button>
+        )}
+
+        {savageUnlocked && (
+          <button
+            onClick={() => setActiveTab('savage')}
+            className={`relative flex flex-col items-center justify-center py-1 transition-colors ${
+              activeTab === 'savage' ? 'text-rose-300 font-extrabold' : 'text-rose-300/70'
+            }`}
+          >
+            <Swords className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px] leading-none">零式</span>
+            <span className="absolute right-1 top-1 rounded bg-rose-950 px-1 text-[8px] text-rose-200">{savageClearedCount}/{savageTargetCount}</span>
           </button>
         )}
       </nav>

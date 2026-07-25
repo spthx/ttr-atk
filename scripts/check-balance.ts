@@ -3,7 +3,18 @@ import { INITIAL_CARTELS, INITIAL_PROPERTIES, INITIAL_SKILLS } from '../src/data
 import { ALLIANCE_CANDIDATES, GRAND_COMPANY_NAMES } from '../src/data/allianceData';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
 import { decideEnemyAction, type EnemyDecisionContext } from '../src/utils/enemyAi';
-import { normalizeAllianceState, normalizeLimitBreakCharge } from '../src/utils/saveData';
+import {
+  loadGameSave,
+  normalizeAllianceState,
+  normalizeLimitBreakCharge,
+  SAVE_STORAGE_KEY,
+} from '../src/utils/saveData';
+import {
+  buildSavageProperties,
+  getSavageCommunityProgress,
+  getSavageTargetIds,
+  SAVAGE_CITY_PRICE_FLOORS,
+} from '../src/utils/savage';
 import {
   calculateAllianceSupport,
   shouldBreakAllianceForTarget,
@@ -28,6 +39,8 @@ import {
   LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER,
   LIMIT_BREAK_MULTIPLIERS,
   resolveLivingDeadOutcome,
+  SAVAGE_ENEMY_BUDGET_MULTIPLIER,
+  getEnemyDifficultyLevel,
 } from '../src/utils/gameBalance';
 
 const noInfluence = { enemyBudgetDiscount: 0 };
@@ -72,6 +85,42 @@ for (let index = 4; index <= 8; index += 1) {
     campaignSummary[index].maxPrice > campaignSummary[index - 1].maxPrice,
     `mid-game price curve: stage ${index + 1}`
   );
+}
+
+const savageTargetIds = getSavageTargetIds(INITIAL_PROPERTIES);
+const savageProperties = buildSavageProperties(INITIAL_PROPERTIES, new Set(), '検証商会');
+const savageProgress = getSavageCommunityProgress(savageProperties, new Set());
+assert.equal(savageTargetIds.length, expectedCampaignCounts.reduce((sum, count) => sum + count, 0));
+assert.equal(savageProperties.length, savageTargetIds.length);
+assert.equal(new Set(savageTargetIds).size, savageTargetIds.length);
+assert.equal(savageProgress.length, COMMUNITY_CAMPAIGN_ORDER.length);
+assert.equal(savageProgress.every((city) => !city.conquered), true);
+savageProperties.forEach((property) => {
+  assert.match(property.name, /商戦 零式：第[1-4]層$/);
+  assert.equal(property.annualRevenue, 0);
+  assert.ok(property.marketPrice >= SAVAGE_CITY_PRICE_FLOORS[property.community] * 0.72);
+  assert.match(property.description, /所有権・毎秒収益・通常物件の独立は発生しません/);
+});
+const fullyClearedSavage = buildSavageProperties(
+  INITIAL_PROPERTIES,
+  new Set(savageTargetIds),
+  '検証商会'
+);
+assert.equal(fullyClearedSavage.every((property) => property.owner === 'player'), true);
+assert.equal(
+  getSavageCommunityProgress(fullyClearedSavage, new Set(savageTargetIds))
+    .every((city) => city.conquered),
+  true
+);
+assert.equal(
+  INITIAL_PROPERTIES.some((property) => property.owner === 'player'),
+  false,
+  'savage derivation never mutates normal ownership'
+);
+for (let index = 1; index < COMMUNITY_CAMPAIGN_ORDER.length; index += 1) {
+  const previousMax = Math.max(...getCampaignProperties(savageProperties, COMMUNITY_CAMPAIGN_ORDER[index - 1]).map((property) => property.marketPrice));
+  const currentMax = Math.max(...getCampaignProperties(savageProperties, COMMUNITY_CAMPAIGN_ORDER[index]).map((property) => property.marketPrice));
+  assert.ok(currentMax > previousMax, `savage price curve: stage ${index + 1}`);
 }
 
 const optionalCartelIds = new Set([
@@ -137,6 +186,25 @@ assert.ok(Math.abs(enemyBudgetRatio('prop_casino_grand') - 1.1696) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_coffee_aurora') - 1.271) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_heavy') - 1.6275) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_hq') - 2.3625) < 0.001);
+const savageBudgetTarget = savageProperties[0];
+const savageBudget = calculateEnemyBudget({
+  targetProperty: savageBudgetTarget,
+  industryInfluence: noInfluence,
+  regionalInfluence: noInfluence,
+  isTutorial: false,
+  isSavage: true,
+});
+const sameTargetNormalBudget = calculateEnemyBudget({
+  targetProperty: savageBudgetTarget,
+  industryInfluence: noInfluence,
+  regionalInfluence: noInfluence,
+  isTutorial: false,
+});
+assert.equal(
+  savageBudget,
+  Math.round(sameTargetNormalBudget * SAVAGE_ENEMY_BUDGET_MULTIPLIER)
+);
+assert.equal(getEnemyDifficultyLevel(savageBudgetTarget, false, true), 5);
 
 const baseAiContext: EnemyDecisionContext = {
   enemyOwnership: 50,
@@ -157,6 +225,8 @@ assert.equal(decideEnemyAction({ ...baseAiContext, windType: 'TAILWIND_PLAYER' }
 assert.equal(decideEnemyAction({ ...baseAiContext, effectiveCapitalGap: 200_000 }).intent, 'AGGRESSIVE_DEFENSE');
 assert.equal(decideEnemyAction({ ...baseAiContext, enemyOwnership: 20, enemyReservePercent: 10 }).intent, 'EMERGENCY_DEFENSE');
 const normalEnemyDecision = decideEnemyAction(baseAiContext);
+const savageEnemyDecision = decideEnemyAction({ ...baseAiContext, difficultyLevel: 5 });
+assert.ok(savageEnemyDecision.waitMs <= normalEnemyDecision.waitMs, 'savage AI reacts at least as fast');
 const slowedEnemyDecision = decideEnemyAction({ ...baseAiContext, slowed: true });
 assert.ok(
   Math.abs(
@@ -276,6 +346,45 @@ assert.equal(normalizeLimitBreakCharge(-20), 0);
 assert.equal(normalizeLimitBreakCharge(175), 175);
 assert.equal(normalizeLimitBreakCharge(999), 300);
 
+const originalWindow = globalThis.window;
+let savedPayload = '';
+Object.defineProperty(globalThis, 'window', {
+  configurable: true,
+  value: {
+    localStorage: {
+      getItem: (key: string) => key === SAVE_STORAGE_KEY ? savedPayload : null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    },
+  },
+});
+const legacySchemaThreePayload = {
+  schemaVersion: 3,
+  companyName: '旧セーブ商会',
+  totalFunds: 123_456,
+  properties: [],
+  equippedSkillIds: [],
+  alliance: { allyId: '', allyName: '', active: false },
+  lastSavedAt: 1,
+};
+savedPayload = JSON.stringify(legacySchemaThreePayload);
+const restoredLegacySave = loadGameSave();
+assert.ok(restoredLegacySave);
+assert.deepEqual(restoredLegacySave.savageClearedPropertyIds, []);
+assert.equal(restoredLegacySave.normalEndingSeen, false);
+assert.equal(restoredLegacySave.trueEndingSeen, false);
+savedPayload = JSON.stringify({
+  ...legacySchemaThreePayload,
+  savageClearedPropertyIds: savageTargetIds.slice(0, 3),
+  normalEndingSeen: true,
+  trueEndingSeen: false,
+});
+const restoredSavageSave = loadGameSave();
+assert.deepEqual(restoredSavageSave?.savageClearedPropertyIds, savageTargetIds.slice(0, 3));
+assert.equal(restoredSavageSave?.normalEndingSeen, true);
+assert.equal(restoredSavageSave?.trueEndingSeen, false);
+Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
+
 const preFinalTargets = COMMUNITY_CAMPAIGN_ORDER.slice(0, 9).flatMap((community) =>
   getCampaignProperties(INITIAL_PROPERTIES, community)
 );
@@ -290,6 +399,12 @@ console.log(JSON.stringify({
   campaignSummary,
   preFinalRevenue,
   bridgeToFirstCartelSeconds: Math.round(bridgeToFirstCartelSeconds),
+  savageSummary: {
+    targetCount: savageProperties.length,
+    minPrice: Math.min(...savageProperties.map((property) => property.marketPrice)),
+    maxPrice: Math.max(...savageProperties.map((property) => property.marketPrice)),
+    enemyBudgetMultiplier: SAVAGE_ENEMY_BUDGET_MULTIPLIER,
+  },
   enemyBudgetRatios: {
     tutorial: enemyBudgetRatio('prop_starter_farm', true),
     goldSaucer: enemyBudgetRatio('prop_casino_grand'),

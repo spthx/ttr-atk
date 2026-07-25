@@ -1,9 +1,10 @@
 import React from 'react';
 import { Building2, ClipboardList, MessageSquareText } from 'lucide-react';
 import { GAME_WORLD } from '../data/worldData';
+import type { AppTab } from '../types';
 
 interface TatarAdvisorProps {
-  activeTab: 'market' | 'portfolio' | 'skills' | 'cartels';
+  activeTab: AppTab;
   ownedCount: number;
   conqueredCommunityCount: number;
   totalCommunityCount: number;
@@ -15,8 +16,12 @@ const getAdvice = ({
   conqueredCommunityCount,
   totalCommunityCount,
 }: TatarAdvisorProps) => {
+  if (activeTab === 'savage') {
+    return '商戦 零式は通常商圏の所有権を奪う戦いではありません。層ごとの資金チェックと敵の詠唱を覚えて、何度でも挑むでっす！';
+  }
+
   if (conqueredCommunityCount === totalCommunityCount && totalCommunityCount > 0) {
-    return '全都市の商圏を押さえたでっす！ 数字を確認して、交易網を安定させるでっす！';
+    return '全都市の商圏を押さえたでっす！ 零式レイドで交易網の限界へ挑むでっす！';
   }
 
   if (ownedCount === 0) {

@@ -22,6 +22,9 @@ export type OwnerType = 'player' | 'independent' | 'dofor' | 'abyss';
 
 export type MarketTrendType = 'BULL' | 'BEAR' | 'VOLATILE' | 'STABLE';
 
+export type AppTab = 'market' | 'portfolio' | 'skills' | 'cartels' | 'savage';
+export type BattleMode = 'normal' | 'savage';
+
 export interface MarketCondition {
   trend: MarketTrendType;
   title: string;
