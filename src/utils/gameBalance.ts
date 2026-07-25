@@ -2,6 +2,8 @@ import type { CommunityType, Property, TacticalSkill } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
 
 export const PASSIVE_REVENUE_MULTIPLIER = 2;
+export const BATTLE_GAUGE_SPEED_FACTOR = 4;
+export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
 
 export const LIMIT_BREAK_MULTIPLIERS = {
   1: 1.2,
@@ -10,6 +12,15 @@ export const LIMIT_BREAK_MULTIPLIERS = {
 } as const;
 
 export type LimitBreakTier = 0 | 1 | 2 | 3;
+
+export const LIMIT_BREAK_OWNERSHIP_CAPS: Record<
+  Exclude<LimitBreakTier, 0>,
+  number
+> = {
+  1: 10,
+  2: 20,
+  3: 30,
+};
 
 export const ENEMY_BALANCE_FACTOR = {
   tutorial: 1.08,
@@ -129,6 +140,24 @@ export const calculateLimitBreakAmount = (
     (selfSlot + subsidiarySlots) * LIMIT_BREAK_MULTIPLIERS[tier]
   );
 };
+
+export const calculateLimitBreakOwnershipPush = (
+  amount: number,
+  targetMarketPrice: number,
+  tier: LimitBreakTier,
+  windMultiplier: number
+) => {
+  if (tier === 0) return 0;
+  const rawPush =
+    (amount / Math.max(targetMarketPrice, 1)) * 85 * windMultiplier;
+  return Math.min(LIMIT_BREAK_OWNERSHIP_CAPS[tier], rawPush);
+};
+
+export const calculateLimitBreakOwnershipAfterDefense = (
+  currentOwnership: number,
+  ownershipPush: number,
+  defenseGaugeShock: number
+) => currentOwnership + ownershipPush - defenseGaugeShock / 2;
 
 export const calculateTotalAssetValue = (
   totalFunds: number,

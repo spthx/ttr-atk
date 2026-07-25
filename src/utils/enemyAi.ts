@@ -30,7 +30,7 @@ export interface EnemyDecisionContext {
   windType: WindType;
   windRemainingSeconds: number;
   lastPlayerAction: PlayerBattleAction | null;
-  capitalGap: number;
+  effectiveCapitalGap: number;
   marketPrice: number;
   isCartelHQ: boolean;
   isTutorial: boolean;
@@ -67,7 +67,7 @@ export const decideEnemyAction = ({
   windType,
   windRemainingSeconds,
   lastPlayerAction,
-  capitalGap,
+  effectiveCapitalGap,
   marketPrice,
   isCartelHQ,
   isTutorial,
@@ -78,8 +78,10 @@ export const decideEnemyAction = ({
   const intellect = Math.max(0, Math.min(4, difficultyLevel));
   const enemyWind = windType === 'TAILWIND_ENEMY' || windType === 'HEADWIND_PLAYER';
   const playerWind = windType === 'TAILWIND_PLAYER';
-  const pressured = capitalGap > marketPrice * (0.12 - intellect * 0.008);
-  const severePressure = capitalGap > marketPrice * (0.3 - intellect * 0.018);
+  const pressured =
+    effectiveCapitalGap > marketPrice * (0.12 - intellect * 0.008);
+  const severePressure =
+    effectiveCapitalGap > marketPrice * (0.3 - intellect * 0.018);
   const baitAction = lastPlayerAction === 'SMALL' || lastPlayerAction === 'STEADY';
   const reactedToLarge =
     lastPlayerAction === 'LARGE' ||
@@ -117,7 +119,11 @@ export const decideEnemyAction = ({
     };
   }
 
-  if (enemyOwnership >= 57 && capitalGap <= marketPrice * 0.06 && !reactedToLarge) {
+  if (
+    enemyOwnership >= 57 &&
+    effectiveCapitalGap <= marketPrice * 0.06 &&
+    !reactedToLarge
+  ) {
     return {
       intent: 'CONSERVE',
       waitMs: Math.round(baseWait * 1.25 * slowedMultiplier * randomDelay),
