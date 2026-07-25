@@ -4,6 +4,10 @@ import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
 export const PASSIVE_REVENUE_MULTIPLIER = 2;
 export const BATTLE_GAUGE_SPEED_FACTOR = 4;
 export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
+export const LIMIT_BREAK_CHARGE_PER_BAR = 100;
+export const LIMIT_BREAK_MAX_BARS = 3;
+export const LIMIT_BREAK_MAX_CHARGE =
+  LIMIT_BREAK_CHARGE_PER_BAR * LIMIT_BREAK_MAX_BARS;
 
 export const LIMIT_BREAK_MULTIPLIERS = {
   1: 1.2,
@@ -123,6 +127,29 @@ export const getLimitBreakTier = (
   if (companyCount >= 8) return 2;
   if (companyCount >= 4) return 1;
   return 0;
+};
+
+export const getLimitBreakChargeCapacity = (tier: LimitBreakTier) =>
+  tier * LIMIT_BREAK_CHARGE_PER_BAR;
+
+export const getChargedLimitBreakTier = (
+  charge: number,
+  unlockedTier: LimitBreakTier
+): LimitBreakTier => {
+  const filledBars = Math.floor(
+    Math.max(0, charge) / LIMIT_BREAK_CHARGE_PER_BAR
+  );
+  return Math.min(unlockedTier, filledBars, LIMIT_BREAK_MAX_BARS) as LimitBreakTier;
+};
+
+export const calculateLimitBreakChargeGain = (
+  effectiveCapitalMovement: number,
+  targetMarketPrice: number
+) => {
+  if (effectiveCapitalMovement <= 0) return 0;
+  const movementRatio =
+    effectiveCapitalMovement / Math.max(targetMarketPrice, 1);
+  return Math.max(1, Math.round(Math.min(24, 3 + movementRatio * 48)));
 };
 
 export const calculateLimitBreakAmount = (

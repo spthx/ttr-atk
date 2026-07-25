@@ -66,8 +66,8 @@ const FEATURE_UNLOCKS: Record<
   light_party_limit_break: {
     kicker: 'LIGHT PARTY',
     title: 'LIMIT BREAK I 解放',
-    dialogue: '自社を含む4社がそろって、ライトパーティ完成でっす！ 全社資金を一度だけ総動員できるでっす。',
-    detail: '買収戦の「資金源」から使用できます。4社以上の参加数もSYNERGYとなり、追い風と重なるとBURST TIMEへ入ります。参加各社には独立判定が発生します。',
+    dialogue: '自社を含む4社がそろって、LBゲージ1本が解放でっす！ 攻防を重ねて満タンにするでっす。',
+    detail: 'ゲージは資金投入と敵の防衛の大きさで蓄積。発動すると0に戻り、使わなかった分は次の買収戦へ持ち越せます。',
   },
   guild_synergy: {
     kicker: 'GUILD LINK',
@@ -79,7 +79,7 @@ const FEATURE_UNLOCKS: Record<
     kicker: 'FULL PARTY',
     title: 'フルパーティ結成',
     dialogue: '自社を含む8社のフルパーティでっす。大口案件にも、仲間の役割を見て挑むでっす。',
-    detail: '保有企業が増えるほどLIMIT BREAKの段階と調達力が上がりますが、独立危険度の管理も重要です。',
+    detail: '自社を含む8社でLBゲージ2本、16社で3本まで蓄積。ためた本数に応じてLB I～IIIへ強化されます。',
   },
   trade_alliance: {
     kicker: 'TRADE ALLIANCE',
@@ -98,6 +98,9 @@ export default function App() {
 
   // --- Game Core State ---
   const [totalFunds, setTotalFunds] = useState<number>(initialSave?.totalFunds ?? 50_000);
+  const [limitBreakCharge, setLimitBreakCharge] = useState<number>(
+    initialSave?.limitBreakCharge ?? 0
+  );
   const [properties, setProperties] = useState<Property[]>(() => restoreProperties(initialSave));
   const [skills, setSkills] = useState<TacticalSkill[]>(INITIAL_SKILLS);
   const [equippedSkillIds, setEquippedSkillIds] = useState<string[]>(
@@ -386,10 +389,11 @@ export default function App() {
         equippedSkillIds,
         alliance,
         seenUnlockIds,
+        limitBreakCharge,
       });
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [alliance, companyName, equippedSkillIds, properties, seenUnlockIds, showLaunchIntro, totalFunds]);
+  }, [alliance, companyName, equippedSkillIds, limitBreakCharge, properties, seenUnlockIds, showLaunchIntro, totalFunds]);
 
   // Handlers
   const handleStartBuyout = (property: Property) => {
@@ -797,6 +801,8 @@ export default function App() {
           currentWind={marketWind}
           windCountdown={Math.max(0, Math.ceil(windCountdown))}
           tradeNetworkBonus={tradeNetworkBonus}
+          limitBreakCharge={limitBreakCharge}
+          onLimitBreakChargeChange={setLimitBreakCharge}
           onTimeScaleChange={setBattleTimeScale}
           nextCommunity={(() => {
             const wouldConquer = getCampaignProperties(properties, activeBattleProperty.community)
