@@ -134,7 +134,7 @@ export const restoreProperties = (save: GameSaveData | null): Property[] => {
     return {
       ...property,
       owner: saved.owner,
-      ownerName: saved.ownerName,
+      ownerName: saved.owner === 'player' ? saved.ownerName : property.ownerName,
       loyaltyRisk: Math.max(0, Math.min(100, saved.loyaltyRisk)),
     };
   });

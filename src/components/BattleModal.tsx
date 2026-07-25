@@ -48,6 +48,7 @@ import {
   calculateLimitBreakChargeGain,
   calculateLimitBreakOwnershipAfterDefense,
   calculateLimitBreakOwnershipPush,
+  consumeLimitBreakCharge,
   ENEMY_BALANCE_FACTOR,
   ENEMY_INITIAL_COMMITMENT_RATIO,
   getChargedLimitBreakTier,
@@ -58,6 +59,7 @@ import {
   LIMIT_BREAK_CHARGE_PER_BAR,
   LIMIT_BREAK_MULTIPLIERS,
   LIMIT_BREAK_OWNERSHIP_CAPS,
+  holdGaugeForManualShortFinish,
   resolveLivingDeadOutcome,
   TACTICAL_SKILL_BALANCE,
   type LimitBreakTier,
@@ -288,7 +290,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [subRequestCounts, setSubRequestCounts] = useState<Record<string, number>>({});
   const [rebelled, setRebelled] = useState<Property[]>([]);
   const [allianceUsed, setAllianceUsed] = useState(false);
-  const [limitBreakUsed, setLimitBreakUsed] = useState(false);
   const [activeLimitBreakTier, setActiveLimitBreakTier] = useState<LimitBreakTier>(0);
   const [panel, setPanel] = useState<Panel>('capital');
   const [selectedLevel, setSelectedLevel] = useState(3);
@@ -471,7 +472,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const playerRecastSeconds = commandReady
     ? 0
     : Math.max(0, ((100 - commandProgress) / commandProgressPerTick) * 0.05);
-  const isPaused = battlePhase !== 'active' || showHelp || showLog;
+  const presentationLocked = !!battleAnnouncement || !!conditionAnnouncement;
+  const actionsLocked = !!winner || battlePhase !== 'active' || presentationLocked;
+  const isPaused = battlePhase !== 'active' || showHelp || showLog || presentationLocked;
   const timeScale = isPaused
     ? 0
     : decisiveBlow
@@ -653,13 +656,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       ...current,
     ]);
     soundFx.playDutyStart();
-    announceBattle('start', 1800);
+    announceBattle('start', 2800);
     if (initialWindTimerRef.current) window.clearTimeout(initialWindTimerRef.current);
-    initialWindTimerRef.current = window.setTimeout(announceCurrentWind, 1900);
+    initialWindTimerRef.current = window.setTimeout(announceCurrentWind, 2900);
     if (openingSlowTimerRef.current) window.clearTimeout(openingSlowTimerRef.current);
     openingSlowTimerRef.current = window.setTimeout(
       () => setOpeningSlowActive(false),
-      3600
+      4700
     );
   };
 
@@ -677,7 +680,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   ]);
 
   const consumeCommand = () => {
-    if (!commandReady || endedRef.current || decisiveRef.current || battlePhase !== 'active') {
+    if (
+      !commandReady ||
+      endedRef.current ||
+      decisiveRef.current ||
+      battlePhase !== 'active' ||
+      presentationLocked
+    ) {
       soundFx.playWarning();
       return false;
     }
@@ -795,8 +804,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     shortTimerRef.current = window.setTimeout(() => {
       if (endedRef.current) return;
       setBattlePhase('active');
-      setStatusText('敵は追加防衛不能。自社資金のFINAL PUSHか継続圧力で決着できます');
-    }, 1200);
+      setStatusText('敵は追加防衛不能。自社資金のFINAL PUSHかLIMIT BREAKで決着してください');
+    }, 2200);
   };
 
   const commitEnemyFunds = (
@@ -991,9 +1000,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setGaugeSpeed(velocity);
       setGauge((value) => {
         const next = value + velocity * dt;
+        const heldNext = holdGaugeForManualShortFinish(
+          next,
+          enemyReserveRef.current
+        );
+        if (heldNext !== next) {
+          setGaugeSpeed(0);
+          return heldNext;
+        }
         if (next <= -100) {
-          const method: FinishMethod = enemyReserveRef.current <= 0 ? 'CAPITAL_PRESSURE' : 'NORMAL';
-          finishBattle('player', method, (100 - next) / 2);
+          finishBattle('player', 'NORMAL', (100 - next) / 2);
           return -99.2;
         }
         if (next >= 100) {
@@ -1097,12 +1113,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const demandFromAllies = () => {
-    if (limitBreakTier === 0 || limitBreakUsed || !consumeCommand()) return;
+    if (limitBreakTier === 0 || !consumeCommand()) return;
     setPanel('capital');
     setLastPlayerAction('LIMIT_BREAK');
-    setLimitBreakUsed(true);
     setActiveLimitBreakTier(limitBreakTier);
-    onLimitBreakChargeChange(0);
+    onLimitBreakChargeChange(consumeLimitBreakCharge);
     setBattlePhase('limit_charge');
     setGaugeSpeed(0);
     announceBattle('limit', 2300);
@@ -1341,6 +1356,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setPushMultiplierRemaining(TACTICAL_SKILL_BALANCE.battleLitany.durationMs);
       setStatusText('バトルリタニー――7秒間、所有率の押し込み速度が1.5倍');
     }
+    announceCondition({
+      kind: 'player',
+      kicker:
+        skill.effectType === 'INDEPENDENCE_SABOTAGE' ||
+        skill.effectType === 'DEMORALIZE'
+          ? 'TACTICAL DEBUFF / RIVAL'
+          : 'TACTICAL BUFF / COMPANY',
+      title: skill.name,
+      detail: skill.description,
+    });
     addLog(`${skill.name}を使用。${skill.description}`, 'skill');
   };
 
@@ -1367,7 +1392,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       ? `勝因はカンパニー網の総動員でっす。LIMIT BREAKで${formatCurrency(demandInvested)}を集め、所有率を一気に押し切ったでっす。`
       : demandInvested > companyInvested
         ? `勝因はSYNERGYでっす。傘下から集めた${formatCurrency(demandInvested)}が競り値を押し上げたでっす。`
-        : `勝因は自社資金の決断でっす。SHORT後までギルを残し、${FINISH_LABELS[finishMethod]}で決着したでっす。`
+        : finishMethod === 'FINAL_PUSH'
+          ? `勝因は自社資金の決断でっす。SHORT後までギルを残し、${FINISH_LABELS[finishMethod]}で決着したでっす。`
+          : `勝因は資金差の維持でっす。競合の防衛中も出資優位を保ち、${FINISH_LABELS[finishMethod]}で所有率を押し切ったでっす。`
     : defeatReason === 'WALKING_DEAD_FAILED'
       ? 'リビングデッドは発動したでっすが、10秒以内に所有率30％へ戻せなかったでっす。蘇生猶予では意気衝天や大口出資を温存しておくでっす。'
       : rebelled.length > 0
@@ -1545,17 +1572,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </section>
 
         {limitBreakCapacityTier > 0 && (
-          <section className={`battle-limit-meter ${limitBreakTier > 0 && !limitBreakUsed ? 'battle-limit-meter--ready' : ''} ${limitBreakGaugeFull && !limitBreakUsed ? 'battle-limit-meter--overflowing' : ''}`}>
-            {limitBreakGaugeFull && !limitBreakUsed && (
+          <section className={`battle-limit-meter ${limitBreakTier > 0 ? 'battle-limit-meter--ready' : ''} ${limitBreakGaugeFull ? 'battle-limit-meter--overflowing' : ''}`}>
+            {limitBreakGaugeFull && (
               <div className="battle-limit-overflow" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
             )}
             <div className="battle-limit-meter__heading">
               <span><Zap /><b>LIMIT BREAK GAUGE</b></span>
-              <strong>{limitBreakUsed
-                ? `NEXT BATTLE ${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`
-                : limitBreakGaugeFull
-                  ? `LB ${limitBreakTier} MAX / AETHER OVERFLOW`
-                  : limitBreakTier > 0 ? `LB ${limitBreakTier} READY` : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`}</strong>
+              <strong>{limitBreakGaugeFull
+                ? `LB ${limitBreakTier} MAX / AETHER OVERFLOW`
+                : limitBreakTier > 0 ? `LB ${limitBreakTier} READY` : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`}</strong>
             </div>
             <div className="battle-limit-meter__bars" role="progressbar" aria-label="LIMIT BREAK ゲージ" aria-valuemin={0} aria-valuemax={limitBreakChargeCapacity} aria-valuenow={Math.floor(visibleLimitBreakCharge)}>
               {Array.from({ length: limitBreakCapacityTier }).map((_, index) => {
@@ -1567,10 +1592,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 );
               })}
             </div>
-            <small>{limitBreakUsed
-              ? 'この戦闘では発動済み・ここからの蓄積は次戦へ継承'
-              : limitBreakGaugeFull
-                ? 'MAX――蓄積エネルギーが限界を超えてあふれています'
+            <small>{limitBreakGaugeFull
+              ? 'MAX――蓄積エネルギーが限界を超えてあふれています'
                 : limitBreakTier > 0
                   ? limitBreakTier < limitBreakCapacityTier
                     ? `LB ${limitBreakTier}発動可能・ためれば次の段階へ`
@@ -1584,15 +1607,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <header><span><Zap />SPECIAL ACTIONS</span><small>1タップ実行</small></header>
             <div>
               {limitBreakCapacityTier > 0 && (
-                <button type="button" className={`special-action-hotbar__action special-action-hotbar__action--lb ${limitBreakGaugeFull ? 'is-overflowing' : ''}`} onClick={demandFromAllies} disabled={!commandReady || limitBreakTier === 0 || limitBreakUsed || !!winner || battlePhase !== 'active'} title="カンパニー網の資金を総動員する">
-                  <Zap /><span><b>{limitBreakUsed ? 'LB 使用済み' : limitBreakTier > 0 ? `LIMIT BREAK ${limitBreakTier}` : 'LB CHARGING'}</b><small>{limitBreakUsed ? '次戦へ蓄積中' : limitBreakTier > 0 ? `所有率 最大+${limitBreakOwnershipCap}pt` : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`}</small></span><em>{limitBreakTier > 0 && !limitBreakUsed ? 'READY' : 'WAIT'}</em>
+                <button type="button" className={`special-action-hotbar__action special-action-hotbar__action--lb ${limitBreakGaugeFull ? 'is-overflowing' : ''}`} onClick={demandFromAllies} disabled={!commandReady || limitBreakTier === 0 || actionsLocked} title="カンパニー網の資金を総動員する">
+                  <Zap /><span><b>{limitBreakTier > 0 ? `LIMIT BREAK ${limitBreakTier}` : 'LB CHARGING'}</b><small>{limitBreakTier > 0 ? `所有率 最大+${limitBreakOwnershipCap}pt・発動で全消費` : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`}</small></span><em>{limitBreakTier > 0 ? 'READY' : 'WAIT'}</em>
                 </button>
               )}
               {equippedSkills.map((skill) => {
                 const cooldown = skillCooldowns[skill.id] || 0;
                 const used = !!skill.oncePerBattle && usedSkillIds.has(skill.id);
                 return (
-                  <button type="button" key={`quick-${skill.id}`} className={`special-action-hotbar__action ${skill.effectType === 'LIVING_DEAD' ? 'special-action-hotbar__action--living' : ''}`} onClick={() => useSkill(skill)} disabled={!commandReady || cooldown > 0 || used || !!winner || battlePhase !== 'active'} title={skill.description}>
+                  <button type="button" key={`quick-${skill.id}`} className={`special-action-hotbar__action ${skill.effectType === 'LIVING_DEAD' ? 'special-action-hotbar__action--living' : ''}`} onClick={() => useSkill(skill)} disabled={!commandReady || cooldown > 0 || used || actionsLocked} title={skill.description}>
                     {skill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
                     <span><b>{skill.name}</b><small>{skill.effectType === 'LIVING_DEAD' ? '致死待機 → 蘇生猶予' : skill.description}</small></span>
                     <em>{used ? 'USED' : cooldown > 0 ? `${(cooldown / 1000).toFixed(1)}s` : commandReady ? 'READY' : `${playerRecastSeconds.toFixed(1)}s`}</em>
@@ -1622,7 +1645,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   );
                 })}
               </div>
-              <button type="button" className="command-primary" onClick={investCompanyFunds} disabled={!commandReady || !maxAffordableConfig || cash < selectedCost || !!winner || battlePhase !== 'active'}>
+              <button type="button" className="command-primary" onClick={investCompanyFunds} disabled={!commandReady || !maxAffordableConfig || cash < selectedCost || actionsLocked}>
                 <HandCoins /><span>{!maxAffordableConfig ? '自己資金不足' : commandReady ? `${formatCurrency(selectedCost)}を積む` : '命令待ち…'}</span>
               </button>
               <p className={maxAffordableConfig && maxAffordableConfig.level < 5 ? 'investment-auto-note' : ''}>
@@ -1637,38 +1660,32 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 type="button"
                 className="grand-allied-fund grand-allied-fund--limit"
                 onClick={demandFromAllies}
-                disabled={!commandReady || limitBreakCapacityTier === 0 || limitBreakTier === 0 || limitBreakUsed || !!winner || battlePhase !== 'active'}
+                disabled={!commandReady || limitBreakCapacityTier === 0 || limitBreakTier === 0 || actionsLocked}
               >
                 <Zap />
                 <span>
                   <b>{limitBreakCapacityTier === 0
                     ? 'LIMIT BREAK 未解放'
-                    : limitBreakUsed
-                      ? 'LIMIT BREAK 使用済み'
-                      : limitBreakTier > 0
-                        ? `LIMIT BREAK ${limitBreakTier}`
-                        : 'LIMIT BREAK CHARGING'}</b>
+                    : limitBreakTier > 0
+                      ? `LIMIT BREAK ${limitBreakTier}`
+                      : 'LIMIT BREAK CHARGING'}</b>
                   <small>{limitBreakCapacityTier === 0
                     ? `あと${4 - (battleSubs.length + 1)}社で1本目を解放`
-                    : limitBreakUsed
-                      ? 'この交渉では使用済み・現在の蓄積は次戦へ'
-                      : limitBreakTier === 0
-                        ? `攻防で蓄積 ${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}・次戦へ持ち越し`
-                        : `LB ${limitBreakTier}・所有率最大+${limitBreakOwnershipCap}pt・発動でゲージ0へ`}</small>
+                    : limitBreakTier === 0
+                      ? `攻防で蓄積 ${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}・次戦へ持ち越し`
+                      : `LB ${limitBreakTier}・所有率最大+${limitBreakOwnershipCap}pt・発動で全ゲージ0へ`}</small>
                 </span>
                 <strong>{limitBreakCapacityTier === 0
                   ? '4社必要'
-                  : limitBreakUsed
-                    ? `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`
-                    : limitBreakTier > 0
-                      ? `約+${formatCurrency(alliedMobilizationEstimate)}`
-                      : `あと${LIMIT_BREAK_CHARGE_PER_BAR - (Math.floor(visibleLimitBreakCharge) % LIMIT_BREAK_CHARGE_PER_BAR)}`}</strong>
+                  : limitBreakTier > 0
+                    ? `約+${formatCurrency(alliedMobilizationEstimate)}`
+                    : `あと${LIMIT_BREAK_CHARGE_PER_BAR - (Math.floor(visibleLimitBreakCharge) % LIMIT_BREAK_CHARGE_PER_BAR)}`}</strong>
               </button>
 
               {groups.length > 0 && (
                 <div className="group-funds">
                   {groups.map((group) => (
-                    <button type="button" key={group.key} onClick={() => demandFromGroup(group.key, group.name, group.members)} disabled={!commandReady || !!winner || battlePhase !== 'active'}>
+                    <button type="button" key={group.key} onClick={() => demandFromGroup(group.key, group.name, group.members)} disabled={!commandReady || actionsLocked}>
                       <Sparkles /><span><b>SYNERGY：{group.name}</b><small>{group.members.length}社・グループ資金</small></span>
                     </button>
                   ))}
@@ -1676,7 +1693,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               )}
 
               {alliance.active && (
-                <button type="button" className="alliance-fund" onClick={requestAlliance} disabled={!commandReady || allianceUsed || !!winner || battlePhase !== 'active'}>
+                <button type="button" className="alliance-fund" onClick={requestAlliance} disabled={!commandReady || allianceUsed || actionsLocked}>
                   <Users /><span>{alliancePublicPatronage ? 'PUBLIC PATRONAGE' : 'TRADE PARTY'}：{alliance.allyName}</span><b>{allianceUsed ? '要請済み' : `+${formatCurrency(allianceSupport)}相当`}</b>
                 </button>
               )}
@@ -1685,7 +1702,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 {battleSubs.map((property) => {
                   const risk = riskPresentation(property.loyaltyRisk);
                   return (
-                    <button type="button" key={property.id} onClick={() => demandFromProperty(property)} disabled={!commandReady || !!winner || battlePhase !== 'active'}>
+                    <button type="button" key={property.id} onClick={() => demandFromProperty(property)} disabled={!commandReady || actionsLocked}>
                       <span><b>{property.name}</b><small>要求 {subRequestCounts[property.id] || 0}回</small></span>
                       <em className={risk.className}>{risk.label} {property.loyaltyRisk}%</em>
                       <strong>+{formatCurrency(property.marketPrice * 0.45)}</strong>
@@ -1703,7 +1720,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 const cooldown = skillCooldowns[skill.id] || 0;
                 const used = !!skill.oncePerBattle && usedSkillIds.has(skill.id);
                 return (
-                  <button type="button" key={skill.id} onClick={() => useSkill(skill)} disabled={!commandReady || cooldown > 0 || used || !!winner || battlePhase !== 'active'} title={skill.description}>
+                  <button type="button" key={skill.id} onClick={() => useSkill(skill)} disabled={!commandReady || cooldown > 0 || used || actionsLocked} title={skill.description}>
                     <Zap /><span><b>{skill.name}</b><small>{skill.description}</small></span><em>{used ? '使用済み' : cooldown > 0 ? `${(cooldown / 1000).toFixed(1)}秒` : 'READY'}</em>
                   </button>
                 );
@@ -1824,12 +1841,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <li><b>TACTICAL MODE</b><span>資金源・かけひき・LB選択中は戦闘と商流回復が通常の10%になります。</span></li>
               <li><b>商流回復</b><span>通常時は相場の0.3%/秒、1戦につき相場の15%まで可処分資金が戻ります。</span></li>
               <li><b>風を読む</b><span>自社資金効果上昇は緑、敵大規模防衛出資は赤で表示します。</span></li>
-              <li><b>LIMIT BREAK</b><span>攻防の資金衝突で通常比20％速く蓄積し、動員資金も20％増加。4/8/16社で1/2/3本まで解放され、発動で0、未使用分は次戦へ持ち越します。</span></li>
+              <li><b>LIMIT BREAK</b><span>攻防の資金衝突で通常比20％速く蓄積し、動員資金も20％増加。4/8/16社で1/2/3本まで解放され、発動のたび全ゲージを0にします。同じ戦闘でも再蓄積すれば再発動できます。</span></li>
               <li><b>SPECIAL ACTIONS</b><span>常設のクイック欄からLBとかけひきを1タップで実行できます。実行後は自動で通常速度へ戻ります。</span></li>
               <li><b>リビングデッド</b><span>10秒の待機中に所有率0％へ到達すると1％で耐えます。その後10秒以内に30％以上へ戻せなければ敗北。1交渉1回です。</span></li>
               <li><b>TRADE PARTY</b><span>外部パーティの一回支援です。LBの社数や投入額には含みません。</span></li>
               <li><b>独立リスク</b><span>傘下へ繰り返し要求できますが、独立すると過去支援も崩れます。</span></li>
-              <li><b>SHORT</b><span>敵の追加防衛資金が0になった戦況通知。約1.2秒後に自動再開し、FINAL PUSHか継続圧力で決着します。</span></li>
+              <li><b>SHORT</b><span>敵の追加防衛資金が0になった戦況通知。約2.2秒後に自動再開し、所有率99.5%で踏みとどまります。自社資金のFINAL PUSHかLIMIT BREAKで決着してください。</span></li>
               <li><b>OVERKILL</b><span>所有率100%をどれだけ超えて押し切ったかを示す派手さの評価です。</span></li>
             </ol>
             <button type="button" className="dialog-close" onClick={() => setShowHelp(false)}>商談へ戻る</button>
