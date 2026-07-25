@@ -163,8 +163,8 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
           <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
             <Layers className="w-5 h-5 text-indigo-400" />
-            産業グループシナジー（事業のつながり）
-            <HelpTip term="グループシナジー" description={HELP_TEXT.synergy} />
+            SYNERGY（自社内の事業連携）
+            <HelpTip term="SYNERGY" description={HELP_TEXT.synergy} />
           </h2>
           <p className="text-xs text-slate-400 mt-1">
             原料・加工・輸送・販売など、つながりのある必要物件をすべて所有すると毎秒収益倍率が自動で発動します。
@@ -196,7 +196,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                       <span>{synergy.name}</span>
                       {isActive && (
                         <span className="text-[10px] bg-indigo-600 text-white font-black px-2 py-0.5 rounded animate-pulse">
-                          シナジー発動中!
+                          SYNERGY ACTIVE!
                         </span>
                       )}
                     </h3>
@@ -246,8 +246,8 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
                   <div className="bg-slate-950 p-2 rounded border border-slate-800">
                     <span className="flex items-center gap-1 text-[10px] text-slate-400">
-                      シナジー規模（目安）
-                      <HelpTip term="シナジー規模" description="効果の大きさを示す目安です。実際の収益効果は右の倍率で確認できます。" />
+                      SYNERGY規模（目安）
+                      <HelpTip term="SYNERGY規模" description="効果の大きさを示す目安です。実際の収益効果は右の倍率で確認できます。" />
                     </span>
                     <strong className="text-amber-400 font-bold">{synergy.fundSupplyPower}</strong>
                   </div>

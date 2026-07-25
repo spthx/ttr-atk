@@ -1,0 +1,353 @@
+/* Buyout update v2: briefing, tactical time, finish confirmation and mobile clarity. */
+
+.company-name-compact {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.company-name-full {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.ownership-board { padding-block: .55rem .45rem; }
+.ownership-board__labels { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.ownership-board__labels b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ownership-track { height: 1.72rem; }
+.ownership-track__marker { height: 2.06rem; }
+.ownership-avatar {
+  bottom: -.2rem;
+  width: 3.45rem;
+  height: 3.45rem;
+}
+
+.capital-arena {
+  min-height: 11rem;
+  flex-basis: 12rem;
+  padding: .48rem .6rem;
+}
+
+.capital-arena__side > span {
+  max-width: min(12rem, 100%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.capital-arena__center { width: 3.7rem; }
+.capital-vs {
+  color: #fff4ba !important;
+  font-size: 1.1rem !important;
+  letter-spacing: .08em;
+  text-shadow: 0 0 14px rgba(245, 196, 81, .8);
+}
+
+.gil-tower__coins {
+  width: min(10.5rem, 100%);
+  min-height: 6.3rem;
+}
+
+.gil-coin { transition: bottom .3s ease-out, left .3s ease-out; }
+.gil-coin--falling { animation: gil-coin-drop .62s cubic-bezier(.18, .75, .25, 1.12) both; }
+
+@keyframes gil-coin-drop {
+  from { translate: -50% -5.5rem; opacity: 0; filter: brightness(1.8); }
+  65% { opacity: 1; }
+  to { translate: -50% 0; opacity: 1; }
+}
+
+.active-time > div:first-child { min-width: 0; }
+.active-time > div:first-child em {
+  margin-left: .35rem;
+  padding: .12rem .3rem;
+  border: 1px solid rgba(103, 232, 249, .55);
+  border-radius: 999px;
+  color: #cffafe;
+  background: rgba(8, 47, 73, .9);
+  font: 900 .45rem/1 ui-monospace, monospace;
+  white-space: nowrap;
+}
+
+.active-time__enemy--danger {
+  border-color: #fb7185;
+  box-shadow: 0 0 14px rgba(244, 63, 94, .55), inset 0 0 16px rgba(244, 63, 94, .22);
+  animation: enemy-cast-warning .45s steps(2) infinite;
+}
+
+@keyframes enemy-cast-warning { 50% { filter: brightness(1.45); } }
+.grand-allied-fund--limit:disabled::after { display: none; }
+.buyout-overlay { overscroll-behavior: contain; }
+
+.buyout-briefing-overlay,
+.buyout-short-overlay,
+.buyout-finish-overlay {
+  z-index: 280;
+  padding: clamp(.5rem, 3vw, 1.5rem);
+  background:
+    radial-gradient(circle at center, rgba(26, 55, 93, .35), transparent 55%),
+    rgba(1, 4, 12, .92);
+  backdrop-filter: blur(5px);
+}
+
+.buyout-briefing {
+  width: min(42rem, 100%);
+  max-height: calc(100dvh - 1rem);
+  overflow-y: auto;
+  border-color: rgba(245, 196, 81, .62);
+  box-shadow: 0 0 42px rgba(245, 196, 81, .18), 0 24px 80px rgba(0, 0, 0, .72);
+}
+
+.buyout-briefing > header {
+  color: #fff0a6;
+  letter-spacing: .12em;
+}
+
+.briefing-versus {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: .8rem;
+  margin: .5rem 0 .8rem;
+  padding: .75rem;
+  border: 1px solid rgba(245, 196, 81, .28);
+  border-radius: .7rem;
+  background: linear-gradient(90deg, rgba(8, 90, 120, .22), rgba(2, 6, 23, .8), rgba(159, 18, 57, .2));
+  text-align: center;
+}
+
+.briefing-versus b {
+  color: #f8df8b;
+  font-size: clamp(.82rem, 3vw, 1.08rem);
+}
+.briefing-versus b:last-child { color: #fda4af; }
+.briefing-versus span {
+  color: #fff;
+  font: 1000 1.25rem/1 ui-monospace, monospace;
+  text-shadow: 0 0 16px #f59e0b;
+}
+
+.briefing-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .4rem;
+  margin: 0 0 .65rem;
+}
+
+.briefing-facts > div {
+  min-width: 0;
+  padding: .45rem;
+  border: 1px solid #2b3b52;
+  border-radius: .5rem;
+  background: #09111f;
+}
+
+.briefing-facts dt {
+  color: #8392a8;
+  font-size: .52rem;
+  font-weight: 900;
+}
+
+.briefing-facts dd {
+  margin: .16rem 0 0;
+  overflow-wrap: anywhere;
+  color: #e7edf7;
+  font-size: .68rem;
+  font-weight: 900;
+}
+
+.briefing-section {
+  margin-top: .5rem;
+  padding: .58rem .65rem;
+  border-left: 3px solid #22d3ee;
+  border-radius: .2rem .55rem .55rem .2rem;
+  background: rgba(8, 47, 73, .38);
+}
+
+.briefing-section + .briefing-section {
+  border-left-color: #f5c451;
+  background: rgba(66, 32, 6, .35);
+}
+
+.briefing-section h3 {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  margin: 0 0 .35rem;
+  color: #a5f3fc;
+  font-size: .63rem;
+  letter-spacing: .08em;
+}
+
+.briefing-section h3 svg { width: .9rem; }
+.briefing-section ul {
+  display: grid;
+  gap: .25rem;
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.briefing-section li,
+.briefing-section p {
+  margin: 0;
+  color: #d7e1ee;
+  font-size: .62rem;
+  line-height: 1.5;
+}
+
+.briefing-start {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  min-height: 3rem;
+  margin-top: .8rem;
+  border-color: #ffdf78 !important;
+  color: #1b1203 !important;
+  background: linear-gradient(90deg, #f5c451, #fde68a) !important;
+  box-shadow: 0 -10px 22px rgba(3, 7, 18, .75), 0 0 18px rgba(245, 196, 81, .25);
+  font-weight: 1000;
+}
+
+.buyout-short,
+.buyout-finish {
+  width: min(34rem, 100%);
+  padding: clamp(1rem, 4vw, 2rem);
+  text-align: center;
+}
+
+.buyout-short > small,
+.buyout-finish > small {
+  color: #93c5fd;
+  font: 900 .62rem/1 ui-monospace, monospace;
+  letter-spacing: .24em;
+}
+
+.buyout-short h2 {
+  margin: .3rem 0;
+  color: #ffdf72;
+  font-size: clamp(2.5rem, 12vw, 5rem);
+  line-height: .95;
+  letter-spacing: .08em;
+  text-shadow: 0 0 10px #fff, 0 0 30px #f59e0b;
+  animation: short-impact .55s steps(2) 2;
+}
+
+.buyout-short p,
+.buyout-finish h2 {
+  color: #f8fafc;
+  line-height: 1.6;
+}
+
+@keyframes short-impact { 50% { transform: scale(1.06); filter: brightness(1.6); } }
+
+.finish-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .45rem;
+  margin: .9rem 0;
+}
+
+.finish-summary span {
+  display: flex;
+  min-width: 0;
+  min-height: 4.4rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: .45rem;
+  border: 1px solid #4a3920;
+  border-radius: .55rem;
+  background: #171207;
+}
+
+.finish-summary small {
+  color: #a99772;
+  font: 900 .48rem/1 ui-monospace, monospace;
+}
+
+.finish-summary b {
+  margin-top: .25rem;
+  overflow-wrap: anywhere;
+  color: #ffe58d;
+  font-size: .82rem;
+}
+
+.buyout-finish--opponent { border-color: #9f2947; }
+.overkill-rating {
+  margin: .5rem 0;
+  color: #ffe28a;
+  font-size: .75rem;
+  font-weight: 1000;
+  text-align: center;
+  letter-spacing: .12em;
+}
+.result-numbers { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+@media (max-width: 639px) {
+  .buyout-main { gap: .32rem; padding-inline: .35rem; }
+  .ownership-board { padding-inline: .38rem; }
+  .ownership-board__labels { gap: .18rem; font-size: .54rem; }
+  .ownership-board__labels span {
+    max-width: 5.6rem;
+    overflow: hidden;
+    font-size: .43rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ownership-track { height: 1.58rem; }
+  .ownership-avatar { width: 3.15rem; height: 3.15rem; }
+  .capital-arena {
+    min-height: 8.4rem;
+    flex-basis: 9rem;
+    grid-template-columns: minmax(0, 1fr) 2.7rem minmax(0, 1fr);
+    padding-inline: .22rem;
+  }
+  .capital-arena__center { width: 2.7rem; }
+  .capital-arena__center .capital-clash { scale: .72; }
+  .capital-arena__center strong { font-size: .48rem; }
+  .capital-vs { font-size: .84rem !important; }
+  .gil-tower__coins { min-height: 4.8rem; }
+  .gil-coin { scale: .78; }
+  .gil-tower > strong { font-size: .68rem; }
+  .capital-arena__side > span,
+  .capital-arena__side > small { font-size: .44rem; }
+  .active-time { grid-template-columns: minmax(0, .9fr) minmax(4rem, 1fr); gap: .3rem; }
+  .active-time__enemy { grid-column: 1 / -1; }
+  .active-time > div:first-child { overflow: hidden; }
+  .active-time > div:first-child > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .active-time > div:first-child em { display: none; }
+  .command-deck { padding-bottom: max(.65rem, env(safe-area-inset-bottom)); }
+  .command-deck nav button { min-height: 2.4rem; }
+  .briefing-facts { grid-template-columns: 1fr; }
+  .briefing-versus { gap: .35rem; padding-inline: .4rem; }
+  .finish-summary { grid-template-columns: 1fr; }
+  .finish-summary span { min-height: 3.2rem; }
+  .result-numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 390px) {
+  .ownership-avatar { width: 2.85rem; height: 2.85rem; }
+  .capital-arena { min-height: 7.8rem; }
+  .gil-coin { scale: .68; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gil-coin--falling,
+  .active-time__enemy--danger,
+  .buyout-short h2 { animation: none !important; }
+}
