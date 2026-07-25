@@ -1,3 +1,5 @@
+import { FANKIT_AUDIO } from '../data/fankitAssets';
+
 /**
  * Retro-Modern Web Audio API Synthesizer
  * Generates arcade-style sound effects for the financial simulation game.
@@ -5,7 +7,28 @@
 
 class SoundEffects {
   private ctx: AudioContext | null = null;
+  private mediaCache = new Map<string, HTMLAudioElement>();
   public enabled: boolean = true;
+
+  private playFankitAudio(url: string, volume: number, fallback: () => void) {
+    if (typeof window === 'undefined' || typeof Audio === 'undefined') return false;
+    try {
+      let audio = this.mediaCache.get(url);
+      if (!audio) {
+        audio = new Audio(url);
+        audio.preload = 'auto';
+        this.mediaCache.set(url, audio);
+      }
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = volume;
+      const playback = audio.play();
+      playback?.catch(fallback);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   private initCtx() {
     try {
@@ -211,6 +234,96 @@ class SoundEffects {
       // Audio fallback
     }
   }
+  // Official fan-kit sound first; the synth remains a resilient autoplay/file fallback.
+  playDutyStart() {
+    if (!this.enabled) return;
+    if (!this.playFankitAudio(FANKIT_AUDIO.dutyStart, 0.62, () => this.playDutyStartSynth())) {
+      this.playDutyStartSynth();
+    }
+  }
+
+  playFeatureUnlocked() {
+    if (!this.enabled) return;
+    if (!this.playFankitAudio(FANKIT_AUDIO.featureUnlocked, 0.58, () => this.playSkillSpark())) {
+      this.playSkillSpark();
+    }
+  }
+
+  playLimitBreak() {
+    if (!this.enabled) return;
+    if (!this.playFankitAudio(FANKIT_AUDIO.limitBreak, 0.7, () => this.playFinalPush())) {
+      this.playFinalPush();
+    }
+  }
+
+  private playDutyStartSynth() {
+    if (!this.enabled) return;
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+      [164.81, 246.94, 329.63, 493.88].forEach((frequency, index) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = index < 2 ? 'square' : 'triangle';
+        osc.frequency.setValueAtTime(frequency, now + index * 0.055);
+        osc.frequency.exponentialRampToValueAtTime(frequency * 1.22, now + 0.3 + index * 0.04);
+        gain.gain.setValueAtTime(0.001, now + index * 0.055);
+        gain.gain.linearRampToValueAtTime(index < 2 ? 0.1 : 0.075, now + 0.035 + index * 0.055);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.42 + index * 0.05);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + index * 0.055);
+        osc.stop(now + 0.46 + index * 0.05);
+      });
+    } catch {
+      // Audio fallback
+    }
+  }
+
+  // Heavy last-hit cue for the brief decisive slowdown.
+  playDecisiveBlow(side: 'player' | 'opponent') {
+    if (!this.enabled) return;
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.34, now);
+      master.gain.exponentialRampToValueAtTime(0.001, now + 0.62);
+      master.connect(ctx.destination);
+
+      const impact = ctx.createOscillator();
+      const impactGain = ctx.createGain();
+      impact.type = side === 'player' ? 'triangle' : 'sawtooth';
+      impact.frequency.setValueAtTime(side === 'player' ? 148 : 118, now);
+      impact.frequency.exponentialRampToValueAtTime(34, now + 0.42);
+      impactGain.gain.setValueAtTime(0.95, now);
+      impactGain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+      impact.connect(impactGain);
+      impactGain.connect(master);
+      impact.start(now);
+      impact.stop(now + 0.5);
+
+      [440, 660, 990].forEach((frequency, index) => {
+        const flash = ctx.createOscillator();
+        const flashGain = ctx.createGain();
+        flash.type = 'square';
+        flash.frequency.setValueAtTime(frequency * (side === 'player' ? 1 : 0.72), now + index * 0.018);
+        flashGain.gain.setValueAtTime(0.13 / (index + 1), now + index * 0.018);
+        flashGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09 + index * 0.025);
+        flash.connect(flashGain);
+        flashGain.connect(master);
+        flash.start(now + index * 0.018);
+        flash.stop(now + 0.12 + index * 0.025);
+      });
+    } catch {
+      // Audio fallback
+    }
+  }
+
   // Rising, original fantasy-game cue played while the final capital push is visible.
   playFinalPush() {
     if (!this.enabled) return;
@@ -238,8 +351,15 @@ class SoundEffects {
       // Audio fallback
     }
   }
-  // Original high-fantasy victory fanfare (not based on an existing game melody).
   playVictory() {
+    if (!this.enabled) return;
+    if (!this.playFankitAudio(FANKIT_AUDIO.victory, 0.64, () => this.playVictorySynth())) {
+      this.playVictorySynth();
+    }
+  }
+
+  // Original high-fantasy fallback fanfare (not based on an existing game melody).
+  private playVictorySynth() {
     if (!this.enabled) return;
     try {
       this.initCtx();
@@ -284,8 +404,15 @@ class SoundEffects {
     }
   }
 
-  // Defeat / Loss Sound
   playDefeat() {
+    if (!this.enabled) return;
+    if (!this.playFankitAudio(FANKIT_AUDIO.defeat, 0.64, () => this.playDefeatSynth())) {
+      this.playDefeatSynth();
+    }
+  }
+
+  // Defeat / loss fallback synth.
+  private playDefeatSynth() {
     if (!this.enabled) return;
     try {
       this.initCtx();

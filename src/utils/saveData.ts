@@ -20,6 +20,8 @@ export interface GameSaveData {
   properties: SavedPropertyState[];
   equippedSkillIds: string[];
   alliance: AllianceState;
+  /** Optional so schema v3 saves created before staged unlocks stay compatible. */
+  seenUnlockIds?: string[];
   lastSavedAt: number;
 }
 
@@ -80,6 +82,9 @@ export const loadGameSave = (): GameSaveData | null => {
       properties: parsed.properties,
       equippedSkillIds: parsed.equippedSkillIds,
       alliance: parsed.alliance,
+      seenUnlockIds: Array.isArray(parsed.seenUnlockIds)
+        ? parsed.seenUnlockIds.filter((id): id is string => typeof id === 'string')
+        : [],
       lastSavedAt: parsed.lastSavedAt,
     };
   } catch (error) {

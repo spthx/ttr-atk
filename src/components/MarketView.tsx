@@ -9,6 +9,11 @@ import { BeginnerGuide } from './BeginnerGuide';
 import { HelpTip } from './HelpTip';
 import { HELP_TEXT } from '../data/helpText';
 import { FANKIT_ART, getFankitJobArt } from '../data/fankitAssets';
+import {
+  countsTowardCityConquest,
+  getCampaignProperties,
+  PASSIVE_REVENUE_MULTIPLIER,
+} from '../utils/gameBalance';
 
 interface MarketViewProps {
   properties: Property[];
@@ -55,7 +60,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
   const newsItems = [
     '【市場ニュース】中央銀行の金利政策により、不動産・農業株に買気集中！',
     '【底値気配】一部の独立物件で一時的な価格下落！安値買いの仕込みチャンス！',
-    '【企業連合動向】東アルデナード商会圏が交渉資金を積み増した模様。',
+    '【アライアンス動向】東アルデナード商会圏が交渉資金を積み増した模様。',
     '【産業トピックス】馬・畜産業で需要が急増。毎秒収益への期待が高まる。',
     '【市場気配】全体的に押し目買いが優勢。買収工作の絶好のタイミング！',
   ];
@@ -109,7 +114,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
   const communityProgress = useMemo(
     () =>
       COMMUNITY_CAMPAIGN_ORDER.map((communityId) => TRADE_COMMUNITIES.find((community) => community.id === communityId)!).map((community) => {
-        const targets = properties.filter((property) => property.community === community.id);
+        const targets = getCampaignProperties(properties, community.id);
         const owned = targets.filter((property) => property.owner === 'player').length;
         return {
           ...community,
@@ -306,14 +311,14 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
           <select
             aria-label="所有者で絞り込む"
-            title="独立物件、企業連合、自社所有で絞り込みます"
+            title="独立物件、トレード・アライアンス、自社所有で絞り込みます"
             value={selectedOwnerFilter}
             onChange={(e) => setSelectedOwnerFilter(e.target.value)}
             className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
           >
             <option value="ALL">全所有者</option>
             <option value="INDEPENDENT">独立（未所属）</option>
-            <option value="CARTEL">企業連合</option>
+            <option value="CARTEL">アライアンス</option>
             <option value="PLAYER">自社所有</option>
           </select>
         </div>
@@ -396,7 +401,12 @@ export const MarketView: React.FC<MarketViewProps> = ({
                   )}
                   {prop.isCartelHQ && (
                     <span className="text-[10px] bg-red-600 text-white font-black px-1.5 py-0.5 rounded uppercase">
-                      企業連合本部
+                      アライアンス本部
+                    </span>
+                  )}
+                  {!countsTowardCityConquest(prop) && (
+                    <span className="shrink-0 rounded border border-violet-400/40 bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-black text-violet-200">
+                      任意の連合戦
                     </span>
                   )}
                 </h3>
@@ -442,7 +452,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       毎秒収益
                       <HelpTip term="毎秒収益" description={HELP_TEXT.passiveRevenue} />
                     </span>
-                    <span className="font-bold text-emerald-400">+{formatCurrency(prop.annualRevenue)}/s</span>
+                    <span className="font-bold text-emerald-400">+{formatCurrency(prop.annualRevenue * PASSIVE_REVENUE_MULTIPLIER)}/s</span>
                   </div>
                 </div>
               </div>

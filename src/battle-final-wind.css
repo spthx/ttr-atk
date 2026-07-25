@@ -328,3 +328,232 @@
     animation: none !important;
   }
 }
+/* Full-screen market-condition cue: wind is announced outside the ownership bar. */
+.battle-condition-announcement {
+  position: fixed;
+  inset: 0;
+  z-index: 255;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(59, 130, 246, .3), transparent 34%),
+    linear-gradient(180deg, transparent 11%, rgba(4, 18, 46, .9) 34%, rgba(3, 12, 33, .96) 68%, transparent 89%);
+  animation: battle-condition-screen 1.65s ease both;
+}
+
+.battle-condition-announcement > div:last-child {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  width: min(94vw, 46rem);
+  gap: .35rem;
+  padding: 1rem;
+  text-align: center;
+  animation: battle-condition-title 1.55s cubic-bezier(.15, .8, .2, 1) both;
+}
+
+.battle-condition-announcement small {
+  color: #93c5fd;
+  font: 1000 .65rem/1 ui-monospace, monospace;
+  letter-spacing: .28em;
+}
+
+.battle-condition-announcement strong {
+  color: #eff6ff;
+  font-size: clamp(2rem, 8vw, 4.4rem);
+  font-weight: 1000;
+  letter-spacing: .1em;
+  line-height: .96;
+  text-shadow: 0 0 .35rem #fff, 0 0 1.8rem rgba(59, 130, 246, .95), 0 .2rem .8rem #000;
+}
+
+.battle-condition-announcement span {
+  color: #dbeafe;
+  font-size: clamp(.66rem, 2.4vw, 1rem);
+  font-weight: 900;
+  letter-spacing: .08em;
+  line-height: 1.45;
+  text-shadow: 0 .1rem .5rem #000;
+}
+
+.battle-condition-announcement__wind {
+  position: absolute !important;
+  inset: 0;
+  width: auto !important;
+  pointer-events: none;
+}
+
+.battle-condition-announcement__wind i {
+  position: absolute;
+  top: calc(20% + var(--condition-y, 0%));
+  left: -35%;
+  width: 45%;
+  height: .18rem;
+  opacity: .8;
+  background: linear-gradient(90deg, transparent, #60a5fa, #fff);
+  filter: drop-shadow(0 0 .55rem #3b82f6);
+  transform: skewX(-18deg);
+  animation: battle-condition-wind 1s linear infinite;
+}
+
+.battle-condition-announcement__wind i:nth-child(2) { --condition-y: 15%; animation-delay: -.18s; }
+.battle-condition-announcement__wind i:nth-child(3) { --condition-y: 30%; animation-delay: -.42s; }
+.battle-condition-announcement__wind i:nth-child(4) { --condition-y: 45%; animation-delay: -.64s; }
+.battle-condition-announcement__wind i:nth-child(5) { --condition-y: 60%; animation-delay: -.86s; }
+
+.battle-condition-announcement--enemy {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(225, 29, 72, .36), transparent 36%),
+    linear-gradient(180deg, transparent 10%, rgba(69, 4, 23, .92) 33%, rgba(31, 2, 14, .97) 69%, transparent 90%);
+}
+
+.battle-condition-announcement--enemy small,
+.battle-condition-announcement--enemy span { color: #fecdd3; }
+.battle-condition-announcement--enemy strong {
+  color: #fff1f2;
+  text-shadow: 0 0 .3rem #fff, 0 0 2rem rgba(244, 63, 94, 1), 0 .2rem .8rem #000;
+}
+.battle-condition-announcement--enemy .battle-condition-announcement__wind i {
+  left: auto;
+  right: -35%;
+  background: linear-gradient(90deg, #fff, #fb7185, transparent);
+  filter: drop-shadow(0 0 .6rem #e11d48);
+  animation-name: battle-condition-wind-enemy;
+}
+
+.battle-condition-announcement--cross {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(234, 179, 8, .3), transparent 38%),
+    linear-gradient(180deg, transparent 10%, rgba(54, 35, 3, .92) 34%, rgba(25, 16, 2, .97) 68%, transparent 90%);
+}
+.battle-condition-announcement--cross small,
+.battle-condition-announcement--cross span { color: #fef08a; }
+.battle-condition-announcement--cross strong { color: #fffbeb; text-shadow: 0 0 .35rem #fff, 0 0 1.8rem #eab308; }
+.battle-condition-announcement--cross .battle-condition-announcement__wind i { background: linear-gradient(90deg, transparent, #fde047, #fff); filter: drop-shadow(0 0 .55rem #eab308); }
+
+.battle-condition-announcement--calm {
+  background: linear-gradient(180deg, transparent 12%, rgba(8, 47, 73, .88) 36%, rgba(2, 20, 34, .94) 65%, transparent 88%);
+}
+.battle-condition-announcement--calm .battle-condition-announcement__wind { opacity: .2; }
+
+.battle-condition-announcement--synergy {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(34, 211, 238, .34), transparent 34%),
+    linear-gradient(180deg, transparent 10%, rgba(8, 47, 73, .93) 33%, rgba(12, 27, 58, .97) 70%, transparent 90%);
+}
+.battle-condition-announcement--synergy strong { color: #ecfeff; text-shadow: 0 0 .35rem #fff, 0 0 2rem #06b6d4; }
+
+.battle-condition-announcement--burst {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(250, 204, 21, .3), transparent 24%),
+    radial-gradient(circle at 50% 50%, rgba(37, 99, 235, .48), transparent 46%),
+    linear-gradient(180deg, transparent 8%, rgba(9, 32, 86, .96) 31%, rgba(25, 19, 4, .98) 71%, transparent 92%);
+}
+.battle-condition-announcement--burst small { color: #93c5fd; }
+.battle-condition-announcement--burst strong {
+  color: #fff7c2;
+  text-shadow: 0 0 .35rem #fff, 0 0 1.15rem #3b82f6, 0 0 2.4rem #f59e0b;
+  animation: battle-burst-title .32s steps(2) infinite alternate;
+}
+.battle-condition-announcement--burst span { color: #fef3c7; }
+.battle-condition-announcement--burst .battle-condition-announcement__wind i {
+  background: linear-gradient(90deg, transparent, #60a5fa, #fff, #facc15);
+  filter: drop-shadow(0 0 .65rem #3b82f6) drop-shadow(0 0 .35rem #facc15);
+}
+
+.buyout-screen--burst .ownership-board {
+  box-shadow: inset 0 0 1.25rem rgba(59, 130, 246, .3), 0 0 1.3rem rgba(250, 204, 21, .2);
+}
+
+/* Fighting-game-style final hit: the simulation drops to 0.16x before result. */
+.battle-decisive-blow {
+  position: fixed;
+  inset: 0;
+  z-index: 290;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 1rem;
+  pointer-events: none;
+  color: #eff6ff;
+  background:
+    linear-gradient(112deg, transparent 0 44%, rgba(96, 165, 250, .28) 44.5% 45.5%, transparent 46% 100%),
+    rgba(1, 8, 24, .24);
+  text-align: center;
+  backdrop-filter: saturate(.55) contrast(1.3);
+  animation: decisive-slow-screen .76s steps(2) both;
+}
+
+.battle-decisive-blow--opponent {
+  color: #fff1f2;
+  background:
+    linear-gradient(68deg, transparent 0 44%, rgba(244, 63, 94, .38) 44.5% 45.5%, transparent 46% 100%),
+    rgba(35, 2, 14, .3);
+}
+
+.battle-decisive-blow > i {
+  width: min(44rem, 92vw);
+  height: .12rem;
+  margin: .6rem;
+  background: linear-gradient(90deg, transparent, #60a5fa, #fff, #60a5fa, transparent);
+  box-shadow: 0 0 1rem #3b82f6;
+  transform: scaleX(.2);
+  transition: transform .12s steps(2);
+}
+.battle-decisive-blow--opponent > i { background: linear-gradient(90deg, transparent, #fb7185, #fff, #fb7185, transparent); box-shadow: 0 0 1rem #e11d48; }
+.battle-decisive-blow--impact > i { transform: scaleX(1); }
+
+.battle-decisive-blow small { font: 1000 .62rem/1 ui-monospace, monospace; letter-spacing: .3em; }
+.battle-decisive-blow strong {
+  margin: .2rem 0;
+  font: 1000 clamp(2.35rem, 12vw, 6rem)/.9 ui-monospace, monospace;
+  letter-spacing: .05em;
+  text-shadow: 0 0 .3rem #fff, 0 0 1.8rem #2563eb;
+  transform: scale(1.12);
+  transition: transform .12s steps(2), filter .12s steps(2);
+}
+.battle-decisive-blow--opponent strong { text-shadow: 0 0 .3rem #fff, 0 0 1.8rem #e11d48; }
+.battle-decisive-blow--impact strong { transform: scale(1); filter: brightness(1.75); }
+.battle-decisive-blow span { font-size: clamp(.68rem, 2.5vw, 1rem); font-weight: 1000; letter-spacing: .1em; }
+
+.buyout-screen--decisive .buyout-main,
+.buyout-screen--decisive .buyout-header,
+.buyout-screen--decisive .buyout-footer {
+  animation: decisive-world-slow .76s cubic-bezier(.12, .72, .2, 1) both;
+}
+.buyout-screen--decisive-opponent .buyout-main { filter: saturate(.65) contrast(1.2) sepia(.15); }
+
+@keyframes battle-condition-screen { 0%, 100% { opacity: 0; } 9%, 84% { opacity: 1; } }
+@keyframes battle-condition-title { 0% { opacity: 0; transform: scale(1.5); filter: blur(.7rem); } 17%, 78% { opacity: 1; transform: scale(1); filter: none; } 100% { opacity: 0; transform: scale(.92); filter: blur(.25rem); } }
+@keyframes battle-condition-wind { to { transform: translateX(310%) skewX(-18deg); } }
+@keyframes battle-condition-wind-enemy { to { transform: translateX(-310%) skewX(18deg); } }
+@keyframes battle-burst-title { to { filter: brightness(1.34); transform: scale(1.025); } }
+@keyframes decisive-slow-screen { 0% { opacity: 0; filter: brightness(2.2); } 10%, 76% { opacity: 1; } 100% { opacity: 0; filter: brightness(1); } }
+@keyframes decisive-world-slow { 0% { transform: scale(1); } 26% { transform: scale(1.018); } 100% { transform: scale(1.006); } }
+
+@media (max-width: 639px) {
+  .battle-condition-announcement > div:last-child { width: 96vw; padding-inline: .45rem; }
+  .battle-condition-announcement small { font-size: .5rem; letter-spacing: .18em; }
+  .battle-condition-announcement strong { font-size: clamp(1.65rem, 11vw, 3rem); letter-spacing: .04em; }
+  .battle-condition-announcement span { font-size: .62rem; padding-inline: .35rem; }
+  .battle-decisive-blow small { font-size: .48rem; letter-spacing: .2em; }
+  .battle-decisive-blow strong { font-size: clamp(2rem, 12vw, 3.5rem); }
+  .battle-decisive-blow span { font-size: .62rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battle-condition-announcement,
+  .battle-condition-announcement > div:last-child,
+  .battle-condition-announcement__wind i,
+  .battle-condition-announcement--burst strong,
+  .battle-decisive-blow,
+  .buyout-screen--decisive .buyout-main,
+  .buyout-screen--decisive .buyout-header,
+  .buyout-screen--decisive .buyout-footer {
+    animation: none !important;
+  }
+}

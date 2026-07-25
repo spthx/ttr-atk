@@ -41,3 +41,10 @@ export const FANKIT_ART = {
     windUp: publicAsset('ff14-fankit/minion-wind-up-tataru.png'),
   },
 } as const;
+export const FANKIT_AUDIO = {
+  dutyStart: publicAsset('ff14-fankit/audio/FFXIV_Enter_Instance.mp3'),
+  featureUnlocked: publicAsset('ff14-fankit/audio/FFXIV_Feature_Unlocked.mp3'),
+  limitBreak: publicAsset('ff14-fankit/audio/FFXIV_Limit_Break_Activated.mp3'),
+  victory: publicAsset('ff14-fankit/audio/FFXIV_FATE01_Complete.mp3'),
+  defeat: publicAsset('ff14-fankit/audio/FFXIV_Instance_Failed.mp3'),
+} as const;

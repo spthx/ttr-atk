@@ -90,7 +90,7 @@ export const decideEnemyAction = ({
     lastPlayerAction === 'ALL_IN' ||
     lastPlayerAction === 'LIMIT_BREAK' ||
     (isCartelHQ && enemyOwnership < 38);
-  const reserveFloor = 15 + intellect * 2;
+  const reserveFloor = 15;
   const reserveProtected = enemyReservePercent <= reserveFloor && !trueEmergency;
   const baseWait = isTutorial ? 3400 : Math.max(1780, 3020 - intellect * 245 - (isCartelHQ ? 140 : 0));
   const slowedMultiplier = slowed ? 1.6 : 1;

@@ -1,0 +1,160 @@
+import assert from 'node:assert/strict';
+import { INITIAL_PROPERTIES, INITIAL_SKILLS } from '../src/data/initialData';
+import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
+import { decideEnemyAction, type EnemyDecisionContext } from '../src/utils/enemyAi';
+import {
+  PASSIVE_REVENUE_MULTIPLIER,
+  calculateEnemyBudget,
+  calculateLimitBreakAmount,
+  countsTowardCityConquest,
+  getCampaignProperties,
+  getLimitBreakTier,
+  isSkillUnlocked,
+} from '../src/utils/gameBalance';
+
+const noInfluence = { enemyBudgetDiscount: 0 };
+const expectedCampaignCounts = [3, 2, 3, 4, 2, 1, 1, 1, 1, 2];
+const expectedStageMaxPrices = [
+  15_000,
+  60_000,
+  800_000,
+  700_000,
+  1_400_000,
+  2_000_000,
+  3_000_000,
+  4_500_000,
+  6_500_000,
+  450_000_000,
+];
+
+const campaignSummary = COMMUNITY_CAMPAIGN_ORDER.map((community, index) => {
+  const targets = getCampaignProperties(INITIAL_PROPERTIES, community);
+  assert.equal(targets.length, expectedCampaignCounts[index], `campaign target count: stage ${index + 1}`);
+  const maxPrice = Math.max(...targets.map((property) => property.marketPrice));
+  assert.equal(maxPrice, expectedStageMaxPrices[index], `stage max price: stage ${index + 1}`);
+  targets.forEach((property) => {
+    const paybackSeconds = property.marketPrice /
+      Math.max(1, property.annualRevenue * PASSIVE_REVENUE_MULTIPLIER);
+    assert.ok(paybackSeconds >= 45 && paybackSeconds <= 210, `payback range: ${property.id}`);
+  });
+  return {
+    stage: index + 1,
+    targetCount: targets.length,
+    minPrice: Math.min(...targets.map((property) => property.marketPrice)),
+    maxPrice,
+    revenuePerSecond: targets.reduce(
+      (total, property) => total + property.annualRevenue * PASSIVE_REVENUE_MULTIPLIER,
+      0
+    ),
+  };
+});
+
+for (let index = 4; index <= 8; index += 1) {
+  assert.ok(
+    campaignSummary[index].maxPrice > campaignSummary[index - 1].maxPrice,
+    `mid-game price curve: stage ${index + 1}`
+  );
+}
+
+const optionalCartelIds = new Set([
+  'prop_dofor_ship',
+  'prop_dofor_bank',
+  'prop_dofor_shipping',
+  'prop_dofor_hq',
+  'prop_abyss_dark',
+  'prop_abyss_hq',
+]);
+INITIAL_PROPERTIES.filter((property) => optionalCartelIds.has(property.id)).forEach((property) => {
+  assert.equal(countsTowardCityConquest(property), false, `optional cartel gate: ${property.id}`);
+});
+assert.equal(countsTowardCityConquest(INITIAL_PROPERTIES.find((property) => property.id === 'prop_abyss_heavy')!), true);
+assert.equal(countsTowardCityConquest(INITIAL_PROPERTIES.find((property) => property.id === 'prop_abyss_mine')!), true);
+
+const enemyBudgetRatio = (propertyId: string, isTutorial = false) => {
+  const property = INITIAL_PROPERTIES.find((candidate) => candidate.id === propertyId)!;
+  return calculateEnemyBudget({
+    targetProperty: property,
+    industryInfluence: noInfluence,
+    regionalInfluence: noInfluence,
+    isTutorial,
+  }) / property.marketPrice;
+};
+assert.ok(Math.abs(enemyBudgetRatio('prop_starter_farm', true) - 0.5832) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_casino_grand') - 1.1696) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_coffee_aurora') - 1.271) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_heavy') - 1.6275) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_hq') - 2.3625) < 0.001);
+
+const baseAiContext: EnemyDecisionContext = {
+  enemyOwnership: 50,
+  enemyReservePercent: 80,
+  windType: 'CALM',
+  windRemainingSeconds: 5,
+  lastPlayerAction: null,
+  capitalGap: 0,
+  marketPrice: 1_000_000,
+  isCartelHQ: false,
+  isTutorial: false,
+  slowed: false,
+  cycle: 0,
+  difficultyLevel: 4,
+};
+assert.equal(decideEnemyAction({ ...baseAiContext, enemyOwnership: 70, lastPlayerAction: 'SMALL' }).intent, 'CONSERVE');
+assert.equal(decideEnemyAction({ ...baseAiContext, windType: 'TAILWIND_PLAYER' }).intent, 'WAIT_FOR_WIND');
+assert.equal(decideEnemyAction({ ...baseAiContext, enemyOwnership: 20, enemyReservePercent: 10 }).intent, 'EMERGENCY_DEFENSE');
+const protectedReserve = decideEnemyAction({ ...baseAiContext, enemyReservePercent: 14 });
+assert.equal(protectedReserve.intent, 'CONSERVE');
+assert.equal(protectedReserve.reserveProtected, true);
+const allInCounter = decideEnemyAction({ ...baseAiContext, enemyReservePercent: 14, lastPlayerAction: 'ALL_IN' });
+assert.equal(allInCounter.reserveProtected, false);
+assert.equal(allInCounter.intent, 'COUNTER_ATTACK');
+
+const snsSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_sns_blitz')!;
+const fastHorseSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_fast_horse')!;
+const capitalBoostSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_capital_boost')!;
+const synergyPushSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_synergy_push')!;
+const noAssets = { ownedProperties: [], totalFunds: 50_000, activeSynergyCount: 0 };
+assert.equal(isSkillUnlocked({ skill: snsSkill, ...noAssets }), true);
+assert.equal(isSkillUnlocked({ skill: fastHorseSkill, ...noAssets }), false);
+assert.equal(isSkillUnlocked({ skill: capitalBoostSkill, ...noAssets }), false);
+assert.equal(isSkillUnlocked({ skill: synergyPushSkill, ...noAssets }), false);
+assert.equal(isSkillUnlocked({ skill: capitalBoostSkill, ...noAssets, totalFunds: 1_000_000 }), true);
+assert.equal(isSkillUnlocked({ skill: synergyPushSkill, ...noAssets, activeSynergyCount: 1 }), true);
+assert.equal(isSkillUnlocked({
+  skill: fastHorseSkill,
+  ...noAssets,
+  ownedProperties: [INITIAL_PROPERTIES.find((property) => property.id === 'prop_ranch_1')!],
+}), true);
+assert.equal(capitalBoostSkill.oncePerBattle, true);
+
+const lbSubs = [
+  { ...INITIAL_PROPERTIES[0], marketPrice: 1_000 },
+  { ...INITIAL_PROPERTIES[1], marketPrice: 2_000 },
+  { ...INITIAL_PROPERTIES[2], marketPrice: 3_000 },
+];
+const lbTier = getLimitBreakTier(lbSubs.length + 1);
+assert.equal(lbTier, 1);
+assert.equal(calculateLimitBreakAmount(1_000, lbSubs, lbTier), 2_352);
+
+const preFinalTargets = COMMUNITY_CAMPAIGN_ORDER.slice(0, 9).flatMap((community) =>
+  getCampaignProperties(INITIAL_PROPERTIES, community)
+);
+const preFinalRevenue = preFinalTargets.reduce(
+  (total, property) => total + property.annualRevenue * PASSIVE_REVENUE_MULTIPLIER,
+  0
+);
+const bridgeToFirstCartelSeconds = 40_000_000 / preFinalRevenue;
+assert.ok(bridgeToFirstCartelSeconds >= 120 && bridgeToFirstCartelSeconds <= 300);
+
+console.log(JSON.stringify({
+  campaignSummary,
+  preFinalRevenue,
+  bridgeToFirstCartelSeconds: Math.round(bridgeToFirstCartelSeconds),
+  enemyBudgetRatios: {
+    tutorial: enemyBudgetRatio('prop_starter_farm', true),
+    goldSaucer: enemyBudgetRatio('prop_casino_grand'),
+    lateNormal: enemyBudgetRatio('prop_coffee_aurora'),
+    cartelMember: enemyBudgetRatio('prop_abyss_heavy'),
+    cartelHq: enemyBudgetRatio('prop_abyss_hq'),
+  },
+}, null, 2));

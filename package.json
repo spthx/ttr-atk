@@ -13,7 +13,8 @@
     "dev": "vinext dev",
     "build": "pnpm run build:game && vinext build",
     "start": "vinext start",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "check:balance": "tsx scripts/check-balance.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

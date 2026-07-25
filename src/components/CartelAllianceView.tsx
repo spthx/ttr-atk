@@ -43,8 +43,8 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
           <div>
             <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
               <Users className="w-5 h-5 text-indigo-400" />
-              ALLIANCE（外部同盟）協定
-              <HelpTip term="同盟" description={HELP_TEXT.alliance} />
+              TRADE PARTY（外部協力）協定
+              <HelpTip term="トレード・パーティ" description={HELP_TEXT.alliance} />
             </h2>
           </div>
 
@@ -52,13 +52,13 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
             <div className="flex items-center gap-3">
               <div className="bg-indigo-950/80 border border-indigo-500/40 px-3 py-1.5 rounded-lg text-indigo-300 text-xs font-bold flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-indigo-400" />
-                同盟締結中: {alliance.allyName}
+                パーティ協定中: {alliance.allyName}
               </div>
               <button
                 onClick={onBreakAlliance}
                 className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-xs font-bold transition-all cursor-pointer"
               >
-                同盟破棄
+                協定解除
               </button>
             </div>
           ) : (
@@ -70,7 +70,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
               className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-indigo-600/20"
             >
               <ShieldCheck className="w-4 h-4" />
-              ガーロンド・アイアンワークスと同盟締結（無料）
+              ガーロンド・アイアンワークスをパーティに招く（無料）
             </button>
           )}
         </div>
@@ -78,15 +78,15 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
         <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
           <div className="flex items-start gap-2">
             <span className="text-indigo-400 font-bold">1. 不可侵契約:</span>
-            <span>同盟企業から{companyName}への対抗買収が一切仕掛けられなくなります。</span>
+            <span>パーティ企業から{companyName}への対抗買収が一切仕掛けられなくなります。</span>
           </div>
           <div className="flex items-start gap-2">
-            <span className="text-indigo-400 font-bold">2. 同盟資金要求:</span>
+            <span className="text-indigo-400 font-bold">2. パーティ支援要請:</span>
             <span>買収交渉ごとに1回、対象相場の32%相当を要請できます。LIMIT BREAKには含まれません。</span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-rose-400 font-bold">3. 破棄条件:</span>
-            <span>同盟傘下物件に買収工作を仕掛けた瞬間に同盟は永久破棄されます。</span>
+            <span>パーティ企業の傘下へ買収を仕掛けると、協定は永久解除されます。</span>
           </div>
         </div>
       </div>
@@ -96,11 +96,11 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
           <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
             <Swords className="w-5 h-5 text-rose-400" />
-            企業連合の段階交渉ルール
+            トレード・アライアンス攻略
             <HelpTip term="本部防衛資本" description={HELP_TEXT.defenseCapital} />
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            大規模な企業連合の本部は、参加組織から防衛資本を得ています。参加組織との提携を先に成立させ、本部の防衛資本を段階的に減らしましょう。
+            大規模なトレード・アライアンス本部は、参加カンパニーから防衛資本を得ています。各社との交渉を先に成立させ、本部の防衛資本を段階的に減らしましょう。
           </p>
         </div>
 
@@ -141,7 +141,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-black px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40">
-                        大規模企業連合
+                        TRADE ALLIANCE
                       </span>
                       <h3 className="text-lg font-bold text-slate-100">{cartel.name}</h3>
                     </div>
@@ -215,7 +215,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                                     : 'bg-rose-500/20 text-rose-300'
                                 }`}
                               >
-                                {isOwnedByPlayer ? '提携成立' : '連合所属'}
+                                {isOwnedByPlayer ? '提携成立' : '参加中'}
                               </span>
                             </div>
 
@@ -272,7 +272,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
 
                         <div>
                           <div className="text-xs text-slate-400 font-semibold">
-                            【最終ステップ】企業連合本部との参加交渉
+                            【最終ステップ】アライアンス本部との交渉
                           </div>
                           <h4 className="text-base font-bold text-slate-100">{hqProp.name}</h4>
                           <p className="text-xs text-slate-400 mt-0.5">
@@ -287,7 +287,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                         {isHqOwned ? (
                           <div className="px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black text-xs flex items-center gap-2">
                             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                            企業連合との最終提携成立
+                            アライアンス攻略完了
                           </div>
                         ) : (
                           <button

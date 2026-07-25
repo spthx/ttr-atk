@@ -38,8 +38,56 @@ import {
   restoreProperties,
   saveGame,
 } from './utils/saveData';
+import {
+  getCampaignProperties,
+  isSkillUnlocked,
+  PASSIVE_REVENUE_MULTIPLIER,
+} from './utils/gameBalance';
 
-export const PASSIVE_REVENUE_MULTIPLIER = 2;
+export { PASSIVE_REVENUE_MULTIPLIER };
+
+type FeatureUnlockId =
+  | 'subsidiary_support'
+  | 'light_party_limit_break'
+  | 'guild_synergy'
+  | 'full_party'
+  | 'trade_alliance';
+
+const FEATURE_UNLOCKS: Record<
+  FeatureUnlockId,
+  { kicker: string; title: string; dialogue: string; detail: string }
+> = {
+  subsidiary_support: {
+    kicker: 'TRADE PARTY',
+    title: '傘下カンパニー支援 解放',
+    dialogue: '買収戦の「資金源」から、仲間になった会社へ一社ずつ支援を頼めるでっす。',
+    detail: '支援は自動ではありません。毎回会社を選び、独立危険度と引き換えにギルを積みます。',
+  },
+  light_party_limit_break: {
+    kicker: 'LIGHT PARTY',
+    title: 'LIMIT BREAK I 解放',
+    dialogue: '自社を含む4社がそろって、ライトパーティ完成でっす！ 全社資金を一度だけ総動員できるでっす。',
+    detail: '買収戦の「資金源」から使用できます。4社以上の参加数もSYNERGYとなり、追い風と重なるとBURST TIMEへ入ります。参加各社には独立判定が発生します。',
+  },
+  guild_synergy: {
+    kicker: 'GUILD LINK',
+    title: 'SYNERGY 解放',
+    dialogue: '同じ商流で働く仲間がつながりましたな。これがギルド・シナジーでっす！',
+    detail: '対象企業の組み合わせや地域・業界の影響力で、収益・押し込み・一斉支援が強化されます。',
+  },
+  full_party: {
+    kicker: 'FULL PARTY',
+    title: 'フルパーティ結成',
+    dialogue: '自社を含む8社のフルパーティでっす。大口案件にも、仲間の役割を見て挑むでっす。',
+    detail: '保有企業が増えるほどLIMIT BREAKの段階と調達力が上がりますが、独立危険度の管理も重要です。',
+  },
+  trade_alliance: {
+    kicker: 'TRADE ALLIANCE',
+    title: 'アライアンス航路 解放',
+    dialogue: 'ウルダハでの実績が認められましたな。ここからは複数カンパニーが組む大規模案件でっす！',
+    detail: '参加カンパニーを先に攻略して本部防衛資本を削る、段階式の買収戦と外部パーティ協定が開放されます。',
+  },
+};
 
 export default function App() {
   const initialSaveRef = useRef<ReturnType<typeof loadGameSave> | undefined>(undefined);
@@ -53,12 +101,7 @@ export default function App() {
   const [properties, setProperties] = useState<Property[]>(() => restoreProperties(initialSave));
   const [skills, setSkills] = useState<TacticalSkill[]>(INITIAL_SKILLS);
   const [equippedSkillIds, setEquippedSkillIds] = useState<string[]>(
-    initialSave?.equippedSkillIds ?? [
-      'skill_fast_horse',
-      'skill_nemawashi',
-      'skill_capital_boost',
-      'skill_sns_blitz',
-    ]
+    initialSave?.equippedSkillIds ?? ['skill_sns_blitz']
   );
   const [groupSynergies, setGroupSynergies] =
     useState<GroupSynergy[]>(INITIAL_GROUP_SYNERGIES);
@@ -83,6 +126,12 @@ export default function App() {
   const [showLaunchIntro, setShowLaunchIntro] = useState(!initialSave);
   const [offlineIncomeNotice, setOfflineIncomeNotice] = useState(0);
   const [unlockNotice, setUnlockNotice] = useState<CommunityType | null>(null);
+  const [seenUnlockIds, setSeenUnlockIds] = useState<FeatureUnlockId[]>(
+    () => (initialSave?.seenUnlockIds || []).filter(
+      (id): id is FeatureUnlockId => Object.prototype.hasOwnProperty.call(FEATURE_UNLOCKS, id)
+    )
+  );
+  const [featureUnlockNoticeId, setFeatureUnlockNoticeId] = useState<FeatureUnlockId | null>(null);
   const [marketNavigationRequest, setMarketNavigationRequest] = useState<{
     id: number;
     mode: 'map' | 'targets';
@@ -141,9 +190,7 @@ export default function App() {
 
   const communityProgress = useMemo(() => {
     return TRADE_COMMUNITIES.map((community) => {
-      const communityProperties = properties.filter(
-        (property) => property.community === community.id
-      );
+      const communityProperties = getCampaignProperties(properties, community.id);
       const owned = communityProperties.filter(
         (property) => property.owner === 'player'
       ).length;
@@ -173,11 +220,13 @@ export default function App() {
     return unlocked;
   }, [communityProgress]);
 
+  const tradeAllianceUnlocked = !!communityProgress.find(
+    (community) => community.id === 'ウルダハ'
+  )?.conquered;
+
   useEffect(() => {
-    if (!unlockNotice) return;
-    const timer = window.setTimeout(() => setUnlockNotice(null), 4200);
-    return () => window.clearTimeout(timer);
-  }, [unlockNotice]);
+    if (!tradeAllianceUnlocked && activeTab === 'cartels') setActiveTab('market');
+  }, [activeTab, tradeAllianceUnlocked]);
 
   // 業界掌握の第一段階。保有数に応じて、同業界の買収を少し有利にする。
   const industryInfluence = useMemo(() => {
@@ -242,6 +291,61 @@ export default function App() {
     };
   }, [groupSynergies, ownedPropertyIds]);
 
+  const reachedFeatureUnlockIds = useMemo(() => {
+    const reached: FeatureUnlockId[] = [];
+    if (ownedProperties.length >= 1) reached.push('subsidiary_support');
+    if (ownedProperties.length + 1 >= 4) reached.push('light_party_limit_break');
+    if (activeSynergiesCount > 0) reached.push('guild_synergy');
+    if (ownedProperties.length + 1 >= 8) reached.push('full_party');
+    if (tradeAllianceUnlocked) reached.push('trade_alliance');
+    return reached;
+  }, [activeSynergiesCount, ownedProperties.length, tradeAllianceUnlocked]);
+
+  useEffect(() => {
+    if (
+      showLaunchIntro ||
+      activeBattleProperty ||
+      unlockNotice ||
+      featureUnlockNoticeId
+    ) return;
+    const nextUnlock = reachedFeatureUnlockIds.find((id) => !seenUnlockIds.includes(id));
+    if (!nextUnlock) return;
+    setFeatureUnlockNoticeId(nextUnlock);
+    soundFx.playFeatureUnlocked();
+  }, [
+    activeBattleProperty,
+    featureUnlockNoticeId,
+    reachedFeatureUnlockIds,
+    seenUnlockIds,
+    showLaunchIntro,
+    unlockNotice,
+  ]);
+
+  const acknowledgeFeatureUnlock = () => {
+    if (!featureUnlockNoticeId) return;
+    setSeenUnlockIds((current) =>
+      current.includes(featureUnlockNoticeId) ? current : [...current, featureUnlockNoticeId]
+    );
+    setFeatureUnlockNoticeId(null);
+    soundFx.playCoin();
+  };
+
+  const featureUnlockNotice = featureUnlockNoticeId
+    ? FEATURE_UNLOCKS[featureUnlockNoticeId]
+    : null;
+
+  const unlockedSkillIds = useMemo(
+    () =>
+      new Set(
+        skills
+          .filter((skill) =>
+            isSkillUnlocked({ skill, ownedProperties, totalFunds, activeSynergyCount: activeSynergiesCount })
+          )
+          .map((skill) => skill.id)
+      ),
+    [activeSynergiesCount, ownedProperties, skills, totalFunds]
+  );
+
   // Total Passive Revenue Yield per second (I_net)
   const passiveRevenue = useMemo(() => {
     const base = ownedProperties.reduce((sum, p) => sum + p.annualRevenue, 0);
@@ -281,10 +385,11 @@ export default function App() {
         properties,
         equippedSkillIds,
         alliance,
+        seenUnlockIds,
       });
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [alliance, companyName, equippedSkillIds, properties, showLaunchIntro, totalFunds]);
+  }, [alliance, companyName, equippedSkillIds, properties, seenUnlockIds, showLaunchIntro, totalFunds]);
 
   // Handlers
   const handleStartBuyout = (property: Property) => {
@@ -315,8 +420,7 @@ export default function App() {
     setTotalFunds((prev) => Math.max(0, prev - brokerageFee - settlementCost + battleCashDelta + (winner === 'player' ? victoryReward : 0)));
 
     if (winner === 'player') {
-      const conquersCity = properties
-        .filter((property) => property.community === targetProperty.community)
+      const conquersCity = getCampaignProperties(properties, targetProperty.community)
         .every((property) => property.owner === 'player' || property.id === targetProperty.id);
       const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
       const nextCommunity = COMMUNITY_CAMPAIGN_ORDER[campaignIndex + 1];
@@ -352,14 +456,14 @@ export default function App() {
         'success'
       );
 
-      // Check if this property belonged to an enemy alliance - breaks alliance if attacked
+      // Attacking a trade-party partner permanently ends the cooperation pact.
       if (
         alliance.active &&
         targetProperty.ownerName.includes(alliance.allyName)
       ) {
         setAlliance({ allyId: '', allyName: '', active: false });
         addGameLog(
-          `【同盟破棄】同盟企業の所有物件を攻めたため、${alliance.allyName} との同盟が永久破棄されました！`,
+          `【パーティ協定解除】協定企業の所有物件を攻めたため、${alliance.allyName} との協定が永久解除されました！`,
           'danger'
         );
       }
@@ -471,21 +575,21 @@ export default function App() {
       if (prev.includes(skillId)) {
         return prev.filter((id) => id !== skillId);
       } else {
-        if (prev.length >= 8) return prev;
+        if (!unlockedSkillIds.has(skillId) || prev.length >= 8) return prev;
         return [...prev, skillId];
       }
     });
   };
 
-  // Alliance management
+  // Trade-party cooperation management
   const handleFormAlliance = (allyName: string) => {
     setAlliance({ allyId: 'garland_ironworks', allyName, active: true });
-    addGameLog(`【アライアンス締結】${allyName} との同盟が成立しました！`, 'success');
+    addGameLog(`【トレード・パーティ結成】${allyName} との協力協定が成立しました！`, 'success');
   };
 
   const handleBreakAlliance = () => {
     setAlliance({ allyId: '', allyName: '', active: false });
-    addGameLog(`【アライアンス破棄】同盟関係を解消しました。`, 'info');
+    addGameLog(`【パーティ解散】外部協力協定を解消しました。`, 'info');
   };
 
   // Debug / Test Fund Handlers
@@ -501,7 +605,7 @@ export default function App() {
 
   const handleNewGame = () => {
     const accepted = window.confirm(
-      '保存済みの所持金・物件・装備スキル・ALLIANCEを削除して、ニューゲームを始めますか？'
+      '保存済みの所持金・物件・装備スキル・パーティ協定を削除して、ニューゲームを始めますか？'
     );
     if (!accepted) return;
     clearGameSave();
@@ -510,8 +614,8 @@ export default function App() {
 
   // Equipped skills object array
   const equippedSkills = useMemo(() => {
-    return skills.filter((s) => equippedSkillIds.includes(s.id));
-  }, [skills, equippedSkillIds]);
+    return skills.filter((s) => equippedSkillIds.includes(s.id) && unlockedSkillIds.has(s.id));
+  }, [skills, equippedSkillIds, unlockedSkillIds]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950 flex flex-col">
@@ -532,6 +636,7 @@ export default function App() {
         setActiveTab={setActiveTab}
         activeAllianceName={alliance.active ? alliance.allyName : null}
         activeSynergiesCount={activeSynergiesCount}
+        tradeAllianceUnlocked={tradeAllianceUnlocked}
         soundEnabled={soundEnabled}
         setSoundEnabled={setSoundEnabled}
         onAddFunds={handleAddFunds}
@@ -578,11 +683,13 @@ export default function App() {
             equippedSkillIds={equippedSkillIds}
             groupSynergies={groupSynergies}
             ownedProperties={ownedProperties}
+            totalFunds={totalFunds}
+            activeSynergyCount={activeSynergiesCount}
             onToggleEquipSkill={handleToggleEquipSkill}
           />
         )}
 
-        {activeTab === 'cartels' && (
+        {activeTab === 'cartels' && tradeAllianceUnlocked && (
           <CartelAllianceView
             companyName={companyName}
             cartels={cartels}
@@ -627,14 +734,42 @@ export default function App() {
         <strong>© SQUARE ENIX</strong>
       </footer>
 
+      {featureUnlockNotice && (
+        <button
+          type="button"
+          onClick={acknowledgeFeatureUnlock}
+          className="city-unlock fixed inset-0 z-[185] flex items-center justify-center bg-slate-950/92 p-4 text-left"
+          aria-label={`${featureUnlockNotice.title}の説明を閉じる`}
+        >
+          <span className="city-unlock__card relative block w-full max-w-2xl overflow-hidden rounded-2xl border border-cyan-300/60 bg-slate-900 p-5 shadow-2xl sm:p-7">
+            <img src={FANKIT_ART.marketBackdrop} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover opacity-20" />
+            <span className="relative z-10 flex items-end gap-4">
+              <img src={FANKIT_ART.tataru.dressUp} alt="タタル" className="h-28 w-24 shrink-0 object-contain object-bottom drop-shadow-[0_0_16px_rgba(103,232,249,.5)] sm:h-36 sm:w-32" />
+              <span className="min-w-0 pb-1">
+                <span className="block text-[10px] font-black tracking-[.28em] text-cyan-300">{featureUnlockNotice.kicker} UNLOCKED</span>
+                <span className="mt-1 block text-xl font-black text-white sm:text-3xl">{featureUnlockNotice.title}</span>
+                <span className="mt-3 block rounded-xl border border-cyan-200/25 bg-slate-950/75 p-3 text-sm font-bold leading-relaxed text-cyan-50">「{featureUnlockNotice.dialogue}」</span>
+              </span>
+            </span>
+            <span className="relative z-10 mt-3 block text-xs leading-relaxed text-slate-300 sm:text-sm">{featureUnlockNotice.detail}</span>
+            <span className="relative z-10 mt-4 inline-block rounded-lg bg-cyan-300 px-4 py-2 text-xs font-black text-slate-950">わかったでっす！</span>
+          </span>
+        </button>
+      )}
+
       {unlockNotice && (
-        <button type="button" onClick={() => setUnlockNotice(null)} className="city-unlock fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/90 p-5 text-left">
-          <span className="city-unlock__card relative block w-full max-w-xl overflow-hidden rounded-2xl border border-amber-300/60 bg-slate-900 p-7 shadow-2xl">
+        <button type="button" onClick={() => setUnlockNotice(null)} className="city-unlock fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/90 p-4 text-left">
+          <span className="city-unlock__card relative block w-full max-w-2xl overflow-hidden rounded-2xl border border-amber-300/60 bg-slate-900 p-5 shadow-2xl sm:p-7">
             <img src={FANKIT_ART.marketBackdrop} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover opacity-25" />
-            <span className="relative z-10 block text-[10px] font-black tracking-[.3em] text-cyan-300">NEW TRADE ROUTE</span>
-            <span className="relative z-10 mt-2 flex items-center gap-2 text-3xl font-black text-white"><MapPinned className="h-7 w-7 text-amber-300" /> {unlockNotice}</span>
-            <span className="relative z-10 mt-3 block text-sm text-slate-200">前の都市を制覇し、新たな交易都市への航路が開通しました。</span>
-            <span className="relative z-10 mt-5 inline-block rounded-lg bg-amber-400 px-4 py-2 text-xs font-black text-slate-950">都市マップへ進む</span>
+            <span className="relative z-10 flex items-end gap-4">
+              <img src={FANKIT_ART.tataru.windUp} alt="タタル" className="h-28 w-24 shrink-0 object-contain object-bottom sm:h-36 sm:w-32" />
+              <span className="min-w-0 pb-1">
+                <span className="block text-[10px] font-black tracking-[.3em] text-cyan-300">NEW TRADE ROUTE</span>
+                <span className="mt-1 flex items-center gap-2 text-2xl font-black text-white sm:text-3xl"><MapPinned className="h-7 w-7 shrink-0 text-amber-300" /> {unlockNotice}</span>
+                <span className="mt-3 block rounded-xl border border-amber-200/25 bg-slate-950/75 p-3 text-sm font-bold leading-relaxed text-amber-50">「前の都市での商いが実を結び、新しい航路が開きましたな。次の市場へ進むでっす！」</span>
+              </span>
+            </span>
+            <span className="relative z-10 mt-4 inline-block rounded-lg bg-amber-400 px-4 py-2 text-xs font-black text-slate-950">都市マップへ進む</span>
           </span>
         </button>
       )}
@@ -664,8 +799,7 @@ export default function App() {
           tradeNetworkBonus={tradeNetworkBonus}
           onTimeScaleChange={setBattleTimeScale}
           nextCommunity={(() => {
-            const wouldConquer = properties
-              .filter((property) => property.community === activeBattleProperty.community)
+            const wouldConquer = getCampaignProperties(properties, activeBattleProperty.community)
               .every((property) => property.owner === 'player' || property.id === activeBattleProperty.id);
             if (!wouldConquer) return null;
             const currentIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(activeBattleProperty.community);

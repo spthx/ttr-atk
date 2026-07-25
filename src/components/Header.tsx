@@ -16,6 +16,7 @@ interface HeaderProps {
   setActiveTab: (tab: 'market' | 'portfolio' | 'skills' | 'cartels') => void;
   activeAllianceName: string | null;
   activeSynergiesCount: number;
+  tradeAllianceUnlocked: boolean;
   soundEnabled: boolean;
   setSoundEnabled: (enabled: boolean) => void;
   onAddFunds?: (amount: number) => void;
@@ -35,6 +36,7 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   activeAllianceName,
   activeSynergiesCount,
+  tradeAllianceUnlocked,
   soundEnabled,
   setSoundEnabled,
   onAddFunds,
@@ -161,7 +163,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <Building2 className="w-4 h-4" />
-          市場・物件一覧
+          マーケットボード
         </button>
 
         <button
@@ -188,21 +190,23 @@ export const Header: React.FC<HeaderProps> = ({
           かけひき技 & シナジー
         </button>
 
-        <button
-          onClick={() => setActiveTab('cartels')}
-          className={`py-2 px-3 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
-            activeTab === 'cartels'
-              ? 'border-amber-400 text-amber-400 bg-amber-500/5'
-              : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-          }`}
-        >
-          <ShieldCheck className="w-4 h-4" />
-          同盟 & 企業連合
-        </button>
+        {tradeAllianceUnlocked && (
+          <button
+            onClick={() => setActiveTab('cartels')}
+            className={`py-2 px-3 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+              activeTab === 'cartels'
+                ? 'border-amber-400 text-amber-400 bg-amber-500/5'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            トレード・アライアンス
+          </button>
+        )}
       </div>
 
       {/* Mobile Sticky Bottom Command Navigation Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 grid grid-cols-4 h-14 px-1 shadow-2xl touch-manipulation select-none pb-safe">
+      <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 grid ${tradeAllianceUnlocked ? 'grid-cols-4' : 'grid-cols-3'} h-14 px-1 shadow-2xl touch-manipulation select-none pb-safe`}>
         <button
           onClick={() => setActiveTab('market')}
           className={`flex flex-col items-center justify-center py-1 transition-colors ${
@@ -210,7 +214,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <Building2 className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] leading-none">市場・物件</span>
+          <span className="text-[10px] leading-none">マーケット</span>
         </button>
 
         <button
@@ -238,15 +242,17 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="text-[10px] leading-none">かけひき技</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('cartels')}
-          className={`flex flex-col items-center justify-center py-1 transition-colors ${
-            activeTab === 'cartels' ? 'text-amber-400 font-extrabold' : 'text-slate-400'
-          }`}
-        >
-          <ShieldCheck className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] leading-none">同盟・連合</span>
-        </button>
+        {tradeAllianceUnlocked && (
+          <button
+            onClick={() => setActiveTab('cartels')}
+            className={`flex flex-col items-center justify-center py-1 transition-colors ${
+              activeTab === 'cartels' ? 'text-amber-400 font-extrabold' : 'text-slate-400'
+            }`}
+          >
+            <ShieldCheck className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px] leading-none">アライアンス</span>
+          </button>
+        )}
       </nav>
     </header>
   );
