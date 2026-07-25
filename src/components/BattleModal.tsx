@@ -97,6 +97,7 @@ interface BattleModalProps {
   windCountdown: number;
   nextCommunity?: string | null;
   isTutorial?: boolean;
+  isSavage?: boolean;
   onAddFunds?: (amount: number) => void;
   onResetFunds?: () => void;
   onTimeScaleChange?: (scale: number) => void;
@@ -243,13 +244,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   windCountdown,
   nextCommunity = null,
   isTutorial = false,
+  isSavage = false,
   onTimeScaleChange,
   onBattleEnd,
   onClose,
 }) => {
   const brokerageFee = Math.round(targetProperty.marketPrice * 0.03);
   const influenceBonus = industryInfluence.playerBonus + regionalInfluence.playerBonus + tradeNetworkBonus;
-  const enemyDifficultyLevel = getEnemyDifficultyLevel(targetProperty, isTutorial);
+  const enemyDifficultyLevel = getEnemyDifficultyLevel(targetProperty, isTutorial, isSavage);
 
   const enemyBudget = useMemo(
     () =>
@@ -258,8 +260,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         industryInfluence,
         regionalInfluence,
         isTutorial,
+        isSavage,
       }),
-    [industryInfluence, isTutorial, regionalInfluence, targetProperty]
+    [industryInfluence, isSavage, isTutorial, regionalInfluence, targetProperty]
   );
 
   const initialEnemyCommitment = Math.round(
@@ -1733,7 +1736,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       {battlePhase === 'briefing' && (
         <div className="buyout-overlay buyout-briefing-overlay">
           <article className="buyout-dialog buyout-briefing">
-            <header><Swords /><strong>BUYOUT DUTY</strong></header>
+            <header><Swords /><strong>{isSavage ? 'SAVAGE TRADE RAID' : 'BUYOUT DUTY'}</strong></header>
             <div className="briefing-versus">
               <b className="company-name-full" title={companyName}>{companyName}</b>
               <span>VS</span>
@@ -1744,7 +1747,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <div><dt>現在相場</dt><dd>{formatCurrency(targetProperty.marketPrice)}</dd></div>
               <div><dt>仲介手数料</dt><dd>{formatCurrency(brokerageFee)}</dd></div>
               <div><dt>競合想定予算</dt><dd>{formatCurrency(enemyBudget)}</dd></div>
-              <div><dt>競合戦術</dt><dd>AI LEVEL {enemyDifficultyLevel}</dd></div>
+              <div><dt>競合戦術</dt><dd>{isSavage ? '零式レイド' : 'AI'} LEVEL {enemyDifficultyLevel}</dd></div>
               <div><dt>LBゲージ</dt><dd>{limitBreakCapacityTier === 0 ? '未解放（自社含む4社で解放）' : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}（最大${limitBreakCapacityTier}本・次戦へ継承）`}</dd></div>
               <div><dt>準備診断</dt><dd>{preparationLabel}<small>（自社＋一巡支援 約{formatCurrency(preparationCapital)}）</small></dd></div>
             </dl>
@@ -1762,6 +1765,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   : `協力協定：${alliance.allyName}／パーティ支援1回 +${formatCurrency(allianceSupport)}`
                 : '今回利用できる外部協力・公的後援はありません。'}</p>
             </section>
+            {isSavage && (
+              <section className="briefing-section briefing-savage">
+                <h3><Swords />零式ルール</h3>
+                <p>通常編の地域・業界・交易網補正は無効。通常物件の所有権・収益・独立危険度は変化せず、失敗後も同じ層へ再挑戦できます。</p>
+              </section>
+            )}
             <section className="briefing-section">
               <h3><ShieldAlert />勝敗条件</h3>
               <p>未投入資金や追加防衛枠が残っていても、所有率0％になった側は敗北します。</p>
@@ -1769,7 +1778,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <p className="briefing-living-dead">例外：リビングデッド待機中は1％で踏みとどまり、10秒以内に正規化所有率30％へ戻せば続行できます。</p>
               )}
             </section>
-            <button type="button" className="dialog-close briefing-start" onClick={startBattle}>効果を確認して討滅戦開始</button>
+            <button type="button" className="dialog-close briefing-start" onClick={startBattle}>{isSavage ? '零式レイド開始' : '効果を確認して討滅戦開始'}</button>
           </article>
         </div>
       )}

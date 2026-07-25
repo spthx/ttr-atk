@@ -25,6 +25,10 @@ export interface GameSaveData {
   seenUnlockIds?: string[];
   /** Optional so older schema v3 saves begin with an empty persistent LB gauge. */
   limitBreakCharge?: number;
+  /** Optional schema-v3 additions. Old completed saves unlock the normal ending automatically. */
+  savageClearedPropertyIds?: string[];
+  normalEndingSeen?: boolean;
+  trueEndingSeen?: boolean;
   lastSavedAt: number;
 }
 
@@ -107,6 +111,11 @@ export const loadGameSave = (): GameSaveData | null => {
         ? parsed.seenUnlockIds.filter((id): id is string => typeof id === 'string')
         : [],
       limitBreakCharge: normalizeLimitBreakCharge(parsed.limitBreakCharge),
+      savageClearedPropertyIds: Array.isArray(parsed.savageClearedPropertyIds)
+        ? parsed.savageClearedPropertyIds.filter((id): id is string => typeof id === 'string')
+        : [],
+      normalEndingSeen: parsed.normalEndingSeen === true,
+      trueEndingSeen: parsed.trueEndingSeen === true,
       lastSavedAt: parsed.lastSavedAt,
     };
   } catch (error) {

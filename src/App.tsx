@@ -8,6 +8,8 @@ import {
   GameLog,
   CommunityType,
   BattleResult,
+  AppTab,
+  BattleMode,
 } from './types';
 import {
   INITIAL_PROPERTIES,
@@ -26,6 +28,7 @@ import { CartelAllianceView } from './components/CartelAllianceView';
 import { BattleModal } from './components/BattleModal';
 import { TatarAdvisor } from './components/TatarAdvisor';
 import { LaunchIntro } from './components/LaunchIntro';
+import { EndingModal } from './components/EndingModal';
 import { WIND_CONDITIONS, WindCondition, WindType } from './components/WindIndicator';
 import { FANKIT_ART } from './data/fankitAssets';
 import { COMMUNITY_CAMPAIGN_ORDER, GAME_WORLD, TRADE_COMMUNITIES } from './data/worldData';
@@ -46,6 +49,10 @@ import {
   TACTICAL_SKILL_BALANCE,
 } from './utils/gameBalance';
 import { isPublicPatronage, shouldBreakAllianceForTarget } from './utils/alliance';
+import {
+  buildSavageProperties,
+  getSavageTargetIds,
+} from './utils/savage';
 
 export { PASSIVE_REVENUE_MULTIPLIER };
 
@@ -128,10 +135,21 @@ export default function App() {
       relationType: 'commercial_alliance',
     }
   );
+  const savageTargetIdSet = useMemo(
+    () => new Set(getSavageTargetIds(INITIAL_PROPERTIES)),
+    []
+  );
+  const [savageClearedPropertyIds, setSavageClearedPropertyIds] = useState<string[]>(
+    () => (initialSave?.savageClearedPropertyIds || []).filter((id) => savageTargetIdSet.has(id))
+  );
+  const [normalEndingSeen, setNormalEndingSeen] = useState(initialSave?.normalEndingSeen === true);
+  const [trueEndingSeen, setTrueEndingSeen] = useState(initialSave?.trueEndingSeen === true);
 
   // UI States
-  const [activeTab, setActiveTab] = useState<'market' | 'portfolio' | 'skills' | 'cartels'>('market');
+  const [activeTab, setActiveTab] = useState<AppTab>('market');
   const [activeBattleProperty, setActiveBattleProperty] = useState<Property | null>(null);
+  const [activeBattleMode, setActiveBattleMode] = useState<BattleMode>('normal');
+  const [endingNotice, setEndingNotice] = useState<'normal' | 'true' | null>(null);
   const [battleTimeScale, setBattleTimeScale] = useState(1);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [logs, setLogs] = useState<GameLog[]>([]);
@@ -148,6 +166,11 @@ export default function App() {
   );
   const [featureUnlockNoticeId, setFeatureUnlockNoticeId] = useState<FeatureUnlockId | null>(null);
   const [marketNavigationRequest, setMarketNavigationRequest] = useState<{
+    id: number;
+    mode: 'map' | 'targets';
+    community: CommunityType | 'ALL';
+  } | null>(null);
+  const [savageNavigationRequest, setSavageNavigationRequest] = useState<{
     id: number;
     mode: 'map' | 'targets';
     community: CommunityType | 'ALL';
@@ -238,10 +261,29 @@ export default function App() {
   const tradeAllianceUnlocked = !!communityProgress.find(
     (community) => community.id === 'ウルダハ'
   )?.conquered;
+  const normalCampaignComplete =
+    conqueredCommunityCount === COMMUNITY_CAMPAIGN_ORDER.length;
+  const savageUnlocked = normalCampaignComplete || normalEndingSeen;
+  const savageClearedSet = useMemo(
+    () => new Set(savageClearedPropertyIds),
+    [savageClearedPropertyIds]
+  );
+  const savageProperties = useMemo(
+    () => buildSavageProperties(INITIAL_PROPERTIES, savageClearedSet, companyName),
+    [companyName, savageClearedSet]
+  );
+  const savageTargetCount = savageProperties.length;
+  const savageComplete =
+    savageTargetCount > 0 && savageClearedSet.size === savageTargetCount;
+  const allCommunityIds = useMemo(
+    () => new Set<CommunityType>(COMMUNITY_CAMPAIGN_ORDER),
+    []
+  );
 
   useEffect(() => {
     if (!tradeAllianceUnlocked && activeTab === 'cartels') setActiveTab('market');
-  }, [activeTab, tradeAllianceUnlocked]);
+    if (!savageUnlocked && activeTab === 'savage') setActiveTab('market');
+  }, [activeTab, savageUnlocked, tradeAllianceUnlocked]);
 
   // 業界掌握の第一段階。保有数に応じて、同業界の買収を少し有利にする。
   const industryInfluence = useMemo(() => {
@@ -356,6 +398,42 @@ export default function App() {
     ? FEATURE_UNLOCKS[featureUnlockNoticeId]
     : null;
 
+  useEffect(() => {
+    if (
+      showLaunchIntro ||
+      activeBattleProperty ||
+      unlockNotice ||
+      featureUnlockNoticeId ||
+      endingNotice
+    ) return;
+    if (normalCampaignComplete && !normalEndingSeen) {
+      setEndingNotice('normal');
+      soundFx.playVictory();
+      return;
+    }
+    if (savageComplete && !trueEndingSeen) {
+      setEndingNotice('true');
+      soundFx.playVictory();
+    }
+  }, [
+    activeBattleProperty, endingNotice, featureUnlockNoticeId, normalCampaignComplete,
+    normalEndingSeen, savageComplete, showLaunchIntro, trueEndingSeen, unlockNotice,
+  ]);
+
+  const acknowledgeEnding = () => {
+    if (endingNotice === 'normal') {
+      setNormalEndingSeen(true);
+      setActiveTab('savage');
+      addGameLog('【商戦 零式 解放】通常交易網の全制覇を達成。高難度交易レイドへの航路が開きました！', 'success');
+    } else if (endingNotice === 'true') {
+      setTrueEndingSeen(true);
+      setActiveTab('savage');
+      addGameLog('【真・全商戦制覇】すべての商戦 零式を踏破しました！', 'success');
+    }
+    setEndingNotice(null);
+    soundFx.playFeatureUnlocked();
+  };
+
   const unlockedSkillIds = useMemo(
     () =>
       new Set(
@@ -409,10 +487,13 @@ export default function App() {
         alliance,
         seenUnlockIds,
         limitBreakCharge,
+        savageClearedPropertyIds,
+        normalEndingSeen,
+        trueEndingSeen,
       });
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [alliance, companyName, equippedSkillIds, limitBreakCharge, properties, seenUnlockIds, showLaunchIntro, totalFunds]);
+  }, [alliance, companyName, equippedSkillIds, limitBreakCharge, normalEndingSeen, properties, savageClearedPropertyIds, seenUnlockIds, showLaunchIntro, totalFunds, trueEndingSeen]);
 
   // Handlers
   const handleStartBuyout = (property: Property) => {
@@ -424,6 +505,15 @@ export default function App() {
     }
     soundFx.playCoin();
     setBattleTimeScale(0);
+    setActiveBattleMode('normal');
+    setActiveBattleProperty(property);
+  };
+
+  const handleStartSavageBuyout = (property: Property) => {
+    if (!savageUnlocked) return;
+    soundFx.playCoin();
+    setBattleTimeScale(0);
+    setActiveBattleMode('savage');
     setActiveBattleProperty(property);
   };
 
@@ -442,7 +532,39 @@ export default function App() {
     // 仲介手数料に加え、直接出資の一部が買収費用・撤退損として確定する。
     setTotalFunds((prev) => Math.max(0, prev - brokerageFee - settlementCost + battleCashDelta + (winner === 'player' ? victoryReward : 0)));
 
-    if (winner === 'player') {
+    if (activeBattleMode === 'savage') {
+      const clearedAfterBattle = new Set(savageClearedPropertyIds);
+      if (winner === 'player') clearedAfterBattle.add(targetProperty.id);
+      const cityTargets = getCampaignProperties(savageProperties, targetProperty.community);
+      const clearsSavageCity =
+        winner === 'player' && cityTargets.every((property) => clearedAfterBattle.has(property.id));
+      const cityIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
+      const nextCommunity = COMMUNITY_CAMPAIGN_ORDER[cityIndex + 1];
+
+      if (winner === 'player') {
+        setSavageClearedPropertyIds(Array.from(clearedAfterBattle));
+        addGameLog(
+          `【零式踏破】${targetProperty.name} を攻略しました！（手数料・精算 ${formatCurrency(
+            brokerageFee + settlementCost
+          )}、攻略報酬 ${formatCurrency(victoryReward)}）`,
+          'success'
+        );
+      } else {
+        addGameLog(
+          `【零式ワイプ】${targetProperty.name} の攻略に失敗。通常物件の所有権と独立危険度は保護され、同じ層へ再挑戦できます。`,
+          'warning'
+        );
+      }
+      if (rebelledProperties.length > 0) {
+        addGameLog('【零式保護規定】記録戦中の離反判定は通常市場へ持ち越されません。', 'info');
+      }
+      setSavageNavigationRequest((previous) => ({
+        id: (previous?.id || 0) + 1,
+        mode: clearsSavageCity && nextCommunity ? 'map' : 'targets',
+        community: clearsSavageCity && nextCommunity ? nextCommunity : targetProperty.community,
+      }));
+      setActiveTab('savage');
+    } else if (winner === 'player') {
       const conquersCity = getCampaignProperties(properties, targetProperty.community)
         .every((property) => property.owner === 'player' || property.id === targetProperty.id);
       const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
@@ -509,7 +631,7 @@ export default function App() {
     }
 
     // 2. Handle Rebellion & Strategic Bankruptcy Liquidation Cashback
-    if (rebelledProperties.length > 0) {
+    if (activeBattleMode === 'normal' && rebelledProperties.length > 0) {
       let totalCashback = 0;
 
       const rebelIds = new Set(rebelledProperties.map((r) => r.id));
@@ -543,6 +665,7 @@ export default function App() {
     }
 
     setActiveBattleProperty(null);
+    setActiveBattleMode('normal');
     setBattleTimeScale(1);
   };
 
@@ -682,6 +805,9 @@ export default function App() {
         activeAllianceName={alliance.active ? alliance.allyName : null}
         activeSynergiesCount={activeSynergiesCount}
         tradeAllianceUnlocked={tradeAllianceUnlocked}
+        savageUnlocked={savageUnlocked}
+        savageClearedCount={savageClearedSet.size}
+        savageTargetCount={savageTargetCount}
         soundEnabled={soundEnabled}
         setSoundEnabled={setSoundEnabled}
         onAddFunds={handleAddFunds}
@@ -710,6 +836,35 @@ export default function App() {
             navigationRequest={marketNavigationRequest}
             onStartBuyout={handleStartBuyout}
           />
+        )}
+
+        {activeTab === 'savage' && savageUnlocked && (
+          <div className="savage-raid-view space-y-3">
+            <section className="savage-raid-status">
+              <div className="savage-raid-status__jobs" aria-hidden="true">
+                {FANKIT_ART.jobs.map((src) => <img key={src} src={src} alt="" />)}
+              </div>
+              <div className="savage-raid-status__copy">
+                <small>HIGH-END TRADE RAID</small>
+                <h2>商戦 零式</h2>
+                <p>通常編の全都市を題材にした高難度版。全{ savageTargetCount }層を踏破すると真のエンディングです。</p>
+                <strong>{savageClearedSet.size}/{savageTargetCount} LAYERS CLEARED</strong>
+                {savageComplete && (
+                  <button type="button" onClick={() => { setEndingNotice('true'); soundFx.playVictory(); }} className="savage-ending-replay">お祝いの集合絵を見る</button>
+                )}
+              </div>
+            </section>
+            <MarketView
+              properties={savageProperties}
+              totalFunds={totalFunds}
+              unlockedCommunityIds={allCommunityIds}
+              currentWind={marketWind}
+              windCountdown={windCountdown}
+              navigationRequest={savageNavigationRequest}
+              campaignMode="savage"
+              onStartBuyout={handleStartSavageBuyout}
+            />
+          </div>
         )}
 
         {activeTab === 'portfolio' && (
@@ -779,6 +934,10 @@ export default function App() {
         <strong>© SQUARE ENIX</strong>
       </footer>
 
+      {endingNotice && (
+        <EndingModal ending={endingNotice} companyName={companyName} onContinue={acknowledgeEnding} />
+      )}
+
       {featureUnlockNotice && (
         <button
           type="button"
@@ -837,27 +996,35 @@ export default function App() {
           equippedSkills={equippedSkills}
           alliance={alliance}
           activeSynergies={activeGroupSynergies}
-          industryInfluence={industryInfluence[activeBattleProperty.industry] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
-          regionalInfluence={regionalInfluence[activeBattleProperty.community] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
+          industryInfluence={activeBattleMode === 'savage' ? { owned: 0, total: 0, label: '零式では無効', playerBonus: 0, enemyBudgetDiscount: 0 } : industryInfluence[activeBattleProperty.industry] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
+          regionalInfluence={activeBattleMode === 'savage' ? { owned: 0, total: 0, label: '零式では無効', playerBonus: 0, enemyBudgetDiscount: 0 } : regionalInfluence[activeBattleProperty.community] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
           currentWind={marketWind}
           windCountdown={Math.max(0, Math.ceil(windCountdown))}
-          tradeNetworkBonus={tradeNetworkBonus}
+          tradeNetworkBonus={activeBattleMode === 'savage' ? 0 : tradeNetworkBonus}
           limitBreakCharge={limitBreakCharge}
           onLimitBreakChargeChange={setLimitBreakCharge}
           onTimeScaleChange={setBattleTimeScale}
           nextCommunity={(() => {
-            const wouldConquer = getCampaignProperties(properties, activeBattleProperty.community)
-              .every((property) => property.owner === 'player' || property.id === activeBattleProperty.id);
-            if (!wouldConquer) return null;
+            if (activeBattleMode === 'savage') {
+              const wouldClear = getCampaignProperties(savageProperties, activeBattleProperty.community)
+                .every((property) => savageClearedSet.has(property.id) || property.id === activeBattleProperty.id);
+              if (!wouldClear) return null;
+            } else {
+              const wouldConquer = getCampaignProperties(properties, activeBattleProperty.community)
+                .every((property) => property.owner === 'player' || property.id === activeBattleProperty.id);
+              if (!wouldConquer) return null;
+            }
             const currentIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(activeBattleProperty.community);
             return COMMUNITY_CAMPAIGN_ORDER[currentIndex + 1] || null;
           })()}
-          isTutorial={ownedProperties.length === 0 && activeBattleProperty.id.startsWith('prop_starter_')}
+          isTutorial={activeBattleMode === 'normal' && ownedProperties.length === 0 && activeBattleProperty.id.startsWith('prop_starter_')}
+          isSavage={activeBattleMode === 'savage'}
           onAddFunds={handleAddFunds}
           onResetFunds={handleResetFunds}
           onBattleEnd={handleBattleEnd}
           onClose={() => {
             setActiveBattleProperty(null);
+            setActiveBattleMode('normal');
             setBattleTimeScale(1);
           }}
         />

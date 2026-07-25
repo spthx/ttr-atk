@@ -4,6 +4,7 @@ import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
 export const PASSIVE_REVENUE_MULTIPLIER = 2;
 export const BATTLE_GAUGE_SPEED_FACTOR = 4;
 export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
+export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.45;
 export const LIMIT_BREAK_CHARGE_PER_BAR = 100;
 export const LIMIT_BREAK_MAX_BARS = 3;
 export const LIMIT_BREAK_MAX_CHARGE =
@@ -120,6 +121,7 @@ interface EnemyBudgetContext {
   industryInfluence: InfluenceBudgetModifier;
   regionalInfluence: InfluenceBudgetModifier;
   isTutorial: boolean;
+  isSavage?: boolean;
 }
 
 interface SkillUnlockContext {
@@ -143,9 +145,11 @@ export const getCampaignProperties = (
 
 export const getEnemyDifficultyLevel = (
   targetProperty: Property,
-  isTutorial: boolean
+  isTutorial: boolean,
+  isSavage = false
 ) => {
   if (isTutorial) return 0;
+  if (isSavage) return 5;
   if (targetProperty.id === 'prop_casino_grand') return 4;
   const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
   if (campaignIndex === 0) return 1;
@@ -159,6 +163,7 @@ export const calculateEnemyBudget = ({
   industryInfluence,
   regionalInfluence,
   isTutorial,
+  isSavage = false,
 }: EnemyBudgetContext) => {
   const price = targetProperty.marketPrice;
   const rankFactor =
@@ -192,7 +197,10 @@ export const calculateEnemyBudget = ({
               ? ENEMY_BALANCE_FACTOR.uldah
               : ENEMY_BALANCE_FACTOR.advanced;
 
-  return Math.round(baseBudget * balanceFactor);
+  return Math.round(
+    baseBudget * balanceFactor *
+    (isSavage ? SAVAGE_ENEMY_BUDGET_MULTIPLIER : 1)
+  );
 };
 
 export const getLimitBreakTier = (
