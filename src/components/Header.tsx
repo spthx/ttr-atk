@@ -193,7 +193,9 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <TrendingUp className="w-4 h-4" />
-          {companyName}の保有事業・契約 ({ownedCount})
+          <span title={`${companyName}の保有事業・契約`}>
+            保有事業・契約 ({ownedCount})
+          </span>
         </button>
 
         <button

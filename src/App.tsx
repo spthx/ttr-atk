@@ -1363,7 +1363,7 @@ export default function App() {
         </button>
       )}
 
-      {offlineIncomeNotice > 0 && (
+      {offlineIncomeNotice > 0 && !activeBattleProperty && (
         <div className="offline-income-toast" role="status">
           <small>OFFLINE INCOME</small>
           <strong>+{formatCurrency(offlineIncomeNotice)}</strong>
