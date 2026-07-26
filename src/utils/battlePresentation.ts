@@ -261,6 +261,55 @@ export const getCapitalVisualBundleCountForAmount = (amount: number) => {
   );
 };
 
+const BATTLE_CAPITAL_RATIO_THRESHOLDS = [
+  0.12,
+  0.28,
+  0.5,
+  0.8,
+  1.15,
+  1.55,
+  2,
+  2.6,
+  3.4,
+  4.4,
+  5.7,
+  7.5,
+] as const;
+
+/**
+ * Live battles need to show the act of stacking capital, not the campaign's
+ * nominal gil scale. A first offer therefore starts with one visible bundle
+ * in every chapter, while a pre-funded opponent remains a modest pile.
+ * Repeated over-investment can still grow into the full thirteen-piece wall.
+ */
+export const getBattleCapitalVisualBundleCount = (
+  amount: number,
+  marketPrice: number
+) => {
+  const normalizedAmount = Math.max(0, amount);
+  if (normalizedAmount <= 0) return 0;
+
+  const ratio = normalizedAmount / Math.max(1, marketPrice);
+  const thresholdIndex = BATTLE_CAPITAL_RATIO_THRESHOLDS.findIndex(
+    (threshold) => ratio <= threshold
+  );
+  return thresholdIndex < 0
+    ? CAPITAL_VISUAL_BUNDLE_COUNTS.at(-1) ?? 13
+    : thresholdIndex + 1;
+};
+
+export const getCapitalVisualStageForBundleCount = (bundleCount: number) => {
+  const normalized = Math.max(0, Math.floor(bundleCount));
+  if (normalized === 0) return 0;
+  if (normalized === 1) return 1;
+  if (normalized <= 2) return 2;
+  if (normalized <= 4) return 3;
+  if (normalized <= 6) return 4;
+  if (normalized <= 8) return 5;
+  if (normalized <= 11) return 6;
+  return 7;
+};
+
 export const shouldInertBattleFooter = (
   backgroundInert: boolean,
   hasWinner: boolean,
