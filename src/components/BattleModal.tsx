@@ -986,6 +986,25 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   }, [battlePhase, commandReady, winner]);
 
   useEffect(() => {
+    if (
+      battlePhase !== 'active' ||
+      winner ||
+      presentationLocked ||
+      timeScale < 0.5 ||
+      Math.abs(gaugeSpeed) < 0.03
+    ) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      soundFx.playBattlePulse(
+        gaugeSpeed < 0 ? 'player' : 'opponent',
+        Math.min(1, 0.35 + Math.abs(gaugeSpeed) / 2.5)
+      );
+    }, 720);
+    return () => window.clearInterval(timer);
+  }, [battlePhase, gaugeSpeed, presentationLocked, timeScale, winner]);
+
+  useEffect(() => {
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;
     const root = document.getElementById('root');
@@ -1355,11 +1374,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       updateGauge(result === 'player' ? -100 : 100);
       setDecisiveBlow({ winner: result, impacted: true });
       soundFx.playCapitalImpact(result === 'player' ? 'player' : 'opponent', 1);
-    }, 190);
+    }, 380);
     decisiveResolveTimerRef.current = window.setTimeout(() => {
       decisiveRef.current = false;
       finalizeBattle(result, method, rawOwnership, resolvedDefeatReason);
-    }, 760);
+    }, 1500);
   };
 
   const triggerWalkingDead = () => {
@@ -1750,6 +1769,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       affordableLevels.length;
     const next = affordableLevels[nextIndex];
     setSelectedLevel(next.level);
+    soundFx.playGaugeTick(0.82 + next.level * 0.1);
     setStatusText(
       `投入額「${next.label}」${formatCurrency(
         getInvestmentCost(targetProperty.marketPrice, next.level)
@@ -2321,9 +2341,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           <div className="ownership-board__labels">
             <b
               className="company-name-compact"
+              title={companyName}
               aria-label={`${companyName} 所有率 ${ownership.toFixed(1)}%`}
             >
-              <MarqueeText text={companyName} />
+              <span className="battle-side-label">自社</span>
             </b>
             <span className={gaugeSpeed < -0.02 ? 'push-player' : gaugeSpeed > 0.02 ? 'push-enemy' : ''}>
               {isTraining

@@ -178,6 +178,51 @@ class SoundEffects {
     }
   }
 
+  // Low rhythmic pressure cue while capital is actively pushing the front.
+  playBattlePulse(side: 'player' | 'opponent', intensity: number = 0.5) {
+    if (!this.enabled) return;
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+      const power = Math.max(0.2, Math.min(1, intensity));
+      const panValue = side === 'player' ? -0.42 : 0.42;
+      const gain = ctx.createGain();
+      const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+      gain.gain.setValueAtTime(0.045 * power, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      if (panner) {
+        panner.pan.setValueAtTime(panValue, now);
+        gain.connect(panner);
+        panner.connect(ctx.destination);
+      } else {
+        gain.connect(ctx.destination);
+      }
+
+      const throb = ctx.createOscillator();
+      throb.type = 'triangle';
+      throb.frequency.setValueAtTime(side === 'player' ? 132 : 112, now);
+      throb.frequency.exponentialRampToValueAtTime(side === 'player' ? 82 : 68, now + 0.16);
+      throb.connect(gain);
+      throb.start(now);
+      throb.stop(now + 0.19);
+
+      const coin = ctx.createOscillator();
+      const coinGain = ctx.createGain();
+      coin.type = 'square';
+      coin.frequency.setValueAtTime(side === 'player' ? 720 : 520, now + 0.025);
+      coinGain.gain.setValueAtTime(0.012 * power, now + 0.025);
+      coinGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      coin.connect(coinGain);
+      coinGain.connect(gain);
+      coin.start(now + 0.025);
+      coin.stop(now + 0.1);
+    } catch {
+      // Audio fallback
+    }
+  }
+
   // Tactical Skill Spark (Flash / Chime)
   playSkillSpark() {
     if (!this.enabled) return;
@@ -339,7 +384,8 @@ class SoundEffects {
       const now = ctx.currentTime;
       const master = ctx.createGain();
       master.gain.setValueAtTime(0.34, now);
-      master.gain.exponentialRampToValueAtTime(0.001, now + 0.62);
+      master.gain.setValueAtTime(0.2, now + 0.58);
+      master.gain.exponentialRampToValueAtTime(0.001, now + 1.28);
       master.connect(ctx.destination);
 
       const impact = ctx.createOscillator();
@@ -365,6 +411,23 @@ class SoundEffects {
         flashGain.connect(master);
         flash.start(now + index * 0.018);
         flash.stop(now + 0.12 + index * 0.025);
+      });
+
+      [0.38, 0.76].forEach((delay, index) => {
+        const suspense = ctx.createOscillator();
+        const suspenseGain = ctx.createGain();
+        suspense.type = 'triangle';
+        suspense.frequency.setValueAtTime(
+          (side === 'player' ? 220 : 174) * (index === 0 ? 1 : 0.72),
+          now + delay
+        );
+        suspense.frequency.exponentialRampToValueAtTime(58, now + delay + 0.28);
+        suspenseGain.gain.setValueAtTime(0.12, now + delay);
+        suspenseGain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.3);
+        suspense.connect(suspenseGain);
+        suspenseGain.connect(master);
+        suspense.start(now + delay);
+        suspense.stop(now + delay + 0.32);
       });
     } catch {
       // Audio fallback
