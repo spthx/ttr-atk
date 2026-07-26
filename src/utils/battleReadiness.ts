@@ -207,7 +207,7 @@ const getGradeForRatio = (ratio: number) => {
     return {
       grade: 'advantage',
       symbol: '◎',
-      label: '自社優勢',
+      label: '余力あり',
       advice: '基礎資本は上回っています。残金と独立危険度を守れば安定圏です。',
     } as const;
   }
@@ -215,7 +215,7 @@ const getGradeForRatio = (ratio: number) => {
     return {
       grade: 'even',
       symbol: '＝',
-      label: '互角',
+      label: '接戦',
       advice: '投入順と競合の追加防衛を見れば、十分に勝負できます。',
     } as const;
   }
@@ -223,14 +223,14 @@ const getGradeForRatio = (ratio: number) => {
     return {
       grade: 'challenge',
       symbol: '△',
-      label: '競合優勢',
+      label: '要工夫',
       advice: '妨害・LB・追い風など、明確な一手を用意して挑む相手です。',
     } as const;
   }
   return {
     grade: 'danger',
     symbol: '！',
-    label: '危険',
+    label: '準備不足',
     advice: '先に安い対象を取得し、現金と安全な支援元を増やすのが堅実です。',
   } as const;
 };
@@ -297,7 +297,7 @@ export const calculateBattleReadiness = ({
     supportShare >= 0.2 &&
     expectedEnemyResponsesDuringSupport >= 1;
   // 一巡総額は得られても、その操作中に競合が反応する場合は「安定圏」と断定しない。
-  // 金額自体を架空に減らさず、等級だけを最大「互角」へ抑える。
+  // 金額自体を架空に減らさず、等級だけを最大「接戦」へ抑える。
   const assessmentRatio = sequentialSupportGradeCapped
     ? Math.min(ratio, 1.149)
     : ratio;
