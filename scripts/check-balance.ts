@@ -18,6 +18,7 @@ import {
   calculateLiquidationCashback,
 } from '../src/utils/battleSettlement';
 import {
+  getCapitalVisualBundleCount,
   getCapitalVisualStage,
   shouldInertBattleFooter,
 } from '../src/utils/battlePresentation';
@@ -286,6 +287,18 @@ assert.ok(
 );
 assert.equal(capitalPresentationStages[0], 0);
 assert.equal(capitalPresentationStages.at(-1), 7);
+const capitalBundleCounts = capitalPresentationStages.map(
+  getCapitalVisualBundleCount
+);
+assert.ok(
+  capitalBundleCounts.every(
+    (count, index) =>
+      index === 0 || count >= capitalBundleCounts[index - 1]
+  ),
+  'capital bundle counts grow monotonically with absolute capital'
+);
+assert.equal(getCapitalVisualBundleCount(0), 0);
+assert.equal(getCapitalVisualBundleCount(7), 13);
 assert.equal(
   shouldInertBattleFooter(true, true, 'result'),
   true,

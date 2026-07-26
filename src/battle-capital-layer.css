@@ -1,0 +1,123 @@
+/*
+ * Final capital-layer composition.
+ * Loaded after the integrated field so the pile owns the whole visual row
+ * behind the actor instead of reserving a quarter of it for the portrait.
+ */
+.integrated-battlefield .capital-visual-row > .gil-tower {
+  z-index: 1;
+}
+
+.integrated-battlefield .capital-visual-row .gil-tower__chips,
+.integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips,
+.integrated-battlefield .capital-visual-row .gil-tower--enemy .gil-tower__chips {
+  top: -1.4rem;
+  right: -.55rem;
+  bottom: .35rem;
+  left: -.55rem;
+  width: auto;
+  max-width: none;
+}
+
+.integrated-battlefield .capital-visual-row .ownership-fighter {
+  z-index: 22;
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image {
+  max-width: calc(100% - .2rem);
+  max-height: calc(100% - 2rem);
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image--medallion {
+  max-width: calc(100% - .2rem);
+  max-height: calc(100% - .35rem);
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image:nth-of-type(8) {
+  z-index: 3;
+  bottom: 1.9rem;
+  left: 22%;
+  width: min(2.45rem, 24%);
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image:nth-of-type(9) {
+  z-index: 3;
+  bottom: 2rem;
+  left: 78%;
+  width: min(2.35rem, 23%);
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image:nth-of-type(10) {
+  z-index: 2;
+  bottom: 2.35rem;
+  left: 49%;
+  width: min(2.3rem, 22%);
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image:nth-of-type(11) {
+  z-index: 2;
+  bottom: 1.15rem;
+  left: 10%;
+  width: min(2.2rem, 21%);
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image:nth-of-type(12) {
+  z-index: 2;
+  bottom: 1.25rem;
+  left: 90%;
+  width: min(2.15rem, 21%);
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image:nth-of-type(13) {
+  z-index: 1;
+  bottom: 2.55rem;
+  left: 67%;
+  width: min(2rem, 20%);
+}
+
+.integrated-battlefield .gil-tower--stage-5 .gil-tower__chips::after,
+.integrated-battlefield .gil-tower--stage-6 .gil-tower__chips::after,
+.integrated-battlefield .gil-tower--stage-7 .gil-tower__chips::after {
+  position: absolute;
+  z-index: 0;
+  right: 0;
+  bottom: .1rem;
+  left: 0;
+  height: 58%;
+  opacity: .72;
+  background:
+    radial-gradient(ellipse, #fff2a3 0 28%, #d69b06 31% 47%, transparent 50%)
+      0 100% / 1.05rem .48rem repeat;
+  clip-path: polygon(0 100%, 4% 66%, 17% 43%, 31% 27%, 47% 8%, 62% 23%, 78% 36%, 94% 64%, 100% 100%);
+  content: "";
+  filter: drop-shadow(0 .28rem .24rem rgba(0, 0, 0, .5));
+}
+
+.integrated-battlefield .gil-tower--enemy.gil-tower--stage-5 .gil-tower__chips::after,
+.integrated-battlefield .gil-tower--enemy.gil-tower--stage-6 .gil-tower__chips::after,
+.integrated-battlefield .gil-tower--enemy.gil-tower--stage-7 .gil-tower__chips::after {
+  background:
+    radial-gradient(ellipse, #fecdd3 0 28%, #e11d48 31% 47%, transparent 50%)
+      0 100% / 1.05rem .48rem repeat;
+}
+
+.integrated-battlefield .gil-tower--stage-6 .gil-tower__chips::after {
+  height: 70%;
+  opacity: .82;
+}
+
+.integrated-battlefield .gil-tower--stage-7 .gil-tower__chips::after {
+  height: 82%;
+  opacity: .92;
+}
+
+@media (max-width: 639px) {
+  .integrated-battlefield .capital-visual-row .gil-chip-image:nth-of-type(n + 8) {
+    max-height: 46%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .integrated-battlefield .capital-visual-row .gil-chip-image {
+    animation: none !important;
+  }
+}
