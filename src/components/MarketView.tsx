@@ -3,7 +3,7 @@ import { Property, IndustryType, CommunityType } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER, TRADE_COMMUNITIES } from '../data/worldData';
 import { formatCurrency } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
-import { ArrowRight, ShieldAlert, CheckCircle2, TrendingUp, TrendingDown, Newspaper, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole, Dumbbell } from 'lucide-react';
+import { ArrowRight, ShieldAlert, CheckCircle2, TrendingUp, TrendingDown, Newspaper, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole, Dumbbell, Gauge } from 'lucide-react';
 import {
   WindIndicator,
   type WindCondition,
@@ -191,6 +191,45 @@ export const MarketView: React.FC<MarketViewProps> = ({
   const showOwnedCards = showOwnedProperties || selectedOwnerFilter === 'PLAYER';
   const visibleProperties = filteredProperties.filter((property) => showOwnedCards || property.owner !== 'player');
   const activeTargetCount = filteredProperties.length - ownedFilteredCount;
+  const ownedProperties = properties.filter((property) => property.owner === 'player');
+  const companyPassiveRevenue = ownedProperties.reduce(
+    (total, property) =>
+      total +
+      Math.round(
+        property.annualRevenue *
+          PASSIVE_REVENUE_MULTIPLIER *
+          (propertyRevenueMultipliers?.get(property.id) ?? 1)
+      ),
+    0
+  );
+  const companyStrengthSummary = (
+    <section
+      className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 rounded-xl border border-cyan-400/25 bg-slate-950/85 px-3 py-2.5 shadow-lg sm:grid-cols-[auto_repeat(3,minmax(0,1fr))]"
+      aria-label={`現在の商会戦力。自社資金${formatCurrency(totalFunds)}、支援元${ownedProperties.length}件、毎秒収益${formatCurrency(companyPassiveRevenue)}`}
+    >
+      <div className="flex items-center gap-2 text-xs font-black text-cyan-100">
+        <Gauge className="h-4 w-4 text-cyan-300" />
+        <span>現在の商会戦力</span>
+      </div>
+      <dl className="col-span-1 grid grid-cols-3 gap-1.5 sm:contents">
+        <div className="rounded-lg bg-slate-900/90 px-2 py-1.5 text-center">
+          <dt className="text-[10px] text-slate-500">自社資金</dt>
+          <dd className="truncate text-xs font-black text-amber-200">{formatCurrency(totalFunds)}</dd>
+        </div>
+        <div className="rounded-lg bg-slate-900/90 px-2 py-1.5 text-center">
+          <dt className="text-[10px] text-slate-500">支援元</dt>
+          <dd className="text-xs font-black text-cyan-200">{ownedProperties.length}件</dd>
+        </div>
+        <div className="rounded-lg bg-slate-900/90 px-2 py-1.5 text-center">
+          <dt className="text-[10px] text-slate-500">毎秒収益</dt>
+          <dd className="truncate text-xs font-black text-emerald-300">+{formatCurrency(companyPassiveRevenue)}/秒</dd>
+        </div>
+      </dl>
+      <p className="col-span-2 text-[10px] leading-4 text-slate-500 sm:col-start-2 sm:col-end-5">
+        敵カードの「自社・動員見込」と「競合・総防衛予算」で挑戦しやすさを比較できます。
+      </p>
+    </section>
+  );
 
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
@@ -244,6 +283,8 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
         {showGuide && <BeginnerGuide defaultOpen />}
 
+        {companyStrengthSummary}
+
         <section className="rounded-2xl border border-cyan-500/20 bg-slate-900/85 p-3 shadow-xl">
           <div className="mb-3 flex items-center justify-between">
             <div>
@@ -259,7 +300,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
             {communityProgress.map((community, index) => {
               const unlocked = unlockedCommunityIds.has(community.id);
               const prerequisite = COMMUNITY_CAMPAIGN_ORDER[index - 1];
-              const regionalBonus = community.owned === 0 ? 0 : community.conquered ? 12 : community.owned / community.total >= 0.5 ? 8 : 3;
               return (
               <button key={community.id} type="button" disabled={!unlocked} onClick={() => { setSelectedCommunity(community.id); setViewMode('targets'); }} className={`group relative min-h-24 overflow-hidden rounded-xl border p-3 text-left transition-all ${unlocked ? 'active:scale-95' : 'cursor-not-allowed opacity-55'} ${community.conquered ? 'border-emerald-400/50 bg-emerald-950/45' : unlocked ? 'border-cyan-500/35 bg-slate-950 hover:border-cyan-300/70' : 'border-slate-800 bg-slate-950/80'}`} style={{ animationDelay: `${index * 28}ms` }}>
                 <img src={getFankitJobArt(community.id)} alt="" aria-hidden="true" className="absolute -bottom-5 -right-4 h-24 w-24 object-contain opacity-20 transition-transform group-hover:scale-110" />
@@ -268,7 +308,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 <span className={`relative z-10 mt-3 inline-block rounded px-1.5 py-0.5 text-[11px] font-black ${community.conquered ? 'bg-emerald-400/20 text-emerald-200' : 'bg-slate-800 text-slate-300'}`}>
                   {community.conquered ? (campaignMode === 'savage' ? '零式踏破済み' : '制覇済み') : unlocked ? `${community.owned}/${community.total} ${campaignMode === 'savage' ? '層踏破' : '取得'}` : `${prerequisite}制覇で解放`}
                 </span>
-                {unlocked && <span className="relative z-10 mt-1 block text-xs font-bold text-amber-300">{campaignMode === 'savage' ? '通常の地域補正は無効' : `地域補正 +${regionalBonus}%`}</span>}
               </button>
               );
             })}
@@ -302,6 +341,8 @@ export const MarketView: React.FC<MarketViewProps> = ({
           )}
         </div>
       </section>
+
+      {companyStrengthSummary}
 
       {/* Insufficient Funds Warning Banner */}
       {noticeMessage && (
@@ -449,7 +490,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
               }`}
             >
               <img
-                src={getFankitJobArt(`${prop.community}-${prop.industry}`)}
+                src={getFankitJobArt(`${prop.id}-${prop.community}-${prop.industry}`)}
                 alt=""
                 aria-hidden="true"
                 className="pointer-events-none absolute -right-8 -top-7 h-36 w-36 object-contain opacity-[0.14] saturate-150"
@@ -513,20 +554,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       現在相場価格
                       <HelpTip term="現在相場価格" description={HELP_TEXT.marketPrice} />
                     </span>
-                    <div className="flex items-center gap-1.5 font-bold">
-                      <span className="text-amber-300 text-sm">{formatCurrency(activePrice)}</span>
-                      {rateInfo.change < 0 ? (
-                        <span className="text-[11px] text-emerald-400 font-bold flex items-center bg-emerald-950/60 px-1 rounded border border-emerald-500/30">
-                          <TrendingDown className="w-3 h-3 mr-0.5" />
-                          {rateInfo.change}% (下落)
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-rose-400 font-bold flex items-center bg-rose-950/60 px-1 rounded border border-rose-500/30">
-                          <TrendingUp className="w-3 h-3 mr-0.5" />
-                          +{rateInfo.change}%
-                        </span>
-                      )}
-                    </div>
+                    <span className="text-amber-300 text-sm font-bold">{formatCurrency(activePrice)}</span>
                   </div>
 
                   <div className="flex items-center justify-between text-xs">
@@ -537,26 +565,49 @@ export const MarketView: React.FC<MarketViewProps> = ({
                     <span className="font-semibold text-rose-300">{formatCurrency(fee)}</span>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs border-t border-slate-800/80 pt-1.5">
-                    <span className="flex items-center gap-1 text-slate-400">
-                      {campaignMode === 'savage' ? '通常編の毎秒収益' : '毎秒収益'}
-                      <HelpTip term="毎秒収益" description={HELP_TEXT.passiveRevenue} />
-                    </span>
-                    <span className="text-right font-bold text-emerald-400">
-                      +{formatCurrency(displayedRevenue)}/秒
-                      {savageRevenueMultiplier > 1 && (
-                        <small className="ml-1 block text-[11px] text-violet-300">
-                          零式強化 +{Math.round((savageRevenueMultiplier - 1) * 100)}%
-                        </small>
-                      )}
-                    </span>
-                  </div>
+                  <details className="group border-t border-slate-800/80 pt-1.5 text-xs">
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between text-slate-400">
+                      <span>相場変動・収益の詳細</span>
+                      <span className="text-[10px] text-cyan-300 group-open:hidden">開く ▼</span>
+                      <span className="hidden text-[10px] text-cyan-300 group-open:inline">畳む ▲</span>
+                    </summary>
+                    <div className="mt-1.5 space-y-2 border-t border-slate-800/60 pt-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">相場変動</span>
+                        {rateInfo.change < 0 ? (
+                          <span className="flex items-center font-bold text-emerald-400">
+                            <TrendingDown className="mr-0.5 h-3 w-3" />
+                            {rateInfo.change}%（下落）
+                          </span>
+                        ) : (
+                          <span className="flex items-center font-bold text-rose-400">
+                            <TrendingUp className="mr-0.5 h-3 w-3" />
+                            +{rateInfo.change}%
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="flex items-center gap-1 text-slate-500">
+                          {campaignMode === 'savage' ? '通常編の毎秒収益' : '毎秒収益'}
+                          <HelpTip term="毎秒収益" description={HELP_TEXT.passiveRevenue} />
+                        </span>
+                        <span className="text-right font-bold text-emerald-400">
+                          +{formatCurrency(displayedRevenue)}/秒
+                          {savageRevenueMultiplier > 1 && (
+                            <small className="ml-1 block text-[11px] text-violet-300">
+                              零式強化 +{Math.round((savageRevenueMultiplier - 1) * 100)}%
+                            </small>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </details>
                 </div>
               </div>
 
               {strengthComparison && (
                 <div className="relative z-10 mt-3">
-                  <StrengthComparison result={strengthComparison} compact />
+                  <StrengthComparison result={strengthComparison} compact summaryOnly />
                 </div>
               )}
 

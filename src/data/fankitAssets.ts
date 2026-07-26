@@ -23,11 +23,23 @@ const COMMERCE_ICONS = [
   publicAsset('ff14-fankit/icon-botanist.png'),
 ] as const;
 
+const TRAINING_DUMMY_ART = [
+  publicAsset('ff14-fankit/training-cactuar-1.png'),
+  publicAsset('ff14-fankit/training-cactuar-2.png'),
+  publicAsset('ff14-fankit/training-cactuar-3.png'),
+  publicAsset('ff14-fankit/training-cactuar-4.png'),
+  publicAsset('ff14-fankit/training-cactuar-5.png'),
+] as const;
+
 const hashText = (value: string) =>
   Array.from(value).reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7);
 
 export const getFankitJobArt = (seed: string) => JOB_ART[hashText(seed) % JOB_ART.length];
 export const getFankitCommerceIcon = (seed: string) => COMMERCE_ICONS[hashText(seed) % COMMERCE_ICONS.length];
+export const getFankitTrainingDummyArt = (level: number) =>
+  TRAINING_DUMMY_ART[
+    Math.min(TRAINING_DUMMY_ART.length - 1, Math.max(0, level - 1))
+  ];
 
 export const FANKIT_ART = {
   titleHero: publicAsset('title-hero-v1.png'),
@@ -36,6 +48,7 @@ export const FANKIT_ART = {
   battleBackdrop: publicAsset('ff14-fankit/stormblood-fankit.jpg'),
   jobs: JOB_ART,
   commerceIcons: COMMERCE_ICONS,
+  trainingDummies: TRAINING_DUMMY_ART,
   tataru: {
     dressUp: publicAsset('ff14-fankit/minion-dress-up-tataru.png'),
     windUp: publicAsset('ff14-fankit/minion-wind-up-tataru.png'),

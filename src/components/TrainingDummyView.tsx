@@ -8,7 +8,10 @@ import {
   X,
 } from 'lucide-react';
 import type { Property } from '../types';
-import { FANKIT_ART } from '../data/fankitAssets';
+import {
+  FANKIT_ART,
+  getFankitTrainingDummyArt,
+} from '../data/fankitAssets';
 import type { BattleReadinessResult } from '../utils/battleReadiness';
 import { formatCurrency } from '../utils/formatter';
 import {
@@ -226,13 +229,21 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
                   }`}
                 >
                   <header className="flex items-start justify-between gap-3">
-                    <div>
+                    <div className="flex min-w-0 items-start gap-3">
+                      <img
+                        src={getFankitTrainingDummyArt(definition.level)}
+                        alt=""
+                        aria-hidden="true"
+                        className="h-12 w-12 shrink-0 rounded-lg object-contain [image-rendering:pixelated]"
+                      />
+                      <div className="min-w-0">
                       <small className="font-black tracking-[0.2em] text-cyan-300">
                         木人 LEVEL {definition.level}
                       </small>
                       <h3 className="mt-1 text-xl font-black text-white">
                         {definition.name}
                       </h3>
+                      </div>
                     </div>
                     <span
                       className={`rounded-lg px-2.5 py-1 text-[11px] font-black ${

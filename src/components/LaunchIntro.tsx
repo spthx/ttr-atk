@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowRight, Building2, Coins, MapPinned, PencilLine, ShieldCheck } from 'lucide-react';
 import { FANKIT_ART } from '../data/fankitAssets';
 import { soundFx } from '../utils/audio';
@@ -36,8 +36,30 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
   onComplete,
 }) => {
   const [step, setStep] = useState(0);
+  const [visualViewport, setVisualViewport] = useState<{
+    height: number;
+    offsetTop: number;
+  } | null>(null);
   const current = INTRO_STEPS[step];
   const StepIcon = current.icon;
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const syncViewport = () => {
+      setVisualViewport({
+        height: viewport.height,
+        offsetTop: viewport.offsetTop,
+      });
+    };
+    syncViewport();
+    viewport.addEventListener('resize', syncViewport);
+    viewport.addEventListener('scroll', syncViewport);
+    return () => {
+      viewport.removeEventListener('resize', syncViewport);
+      viewport.removeEventListener('scroll', syncViewport);
+    };
+  }, []);
 
   const next = () => {
     soundFx.playCoin();
@@ -50,7 +72,16 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
   };
 
   return (
-    <div className="launch-intro fixed inset-0 z-[200] overflow-y-auto overscroll-contain bg-slate-950 text-white">
+    <div
+      className="launch-intro fixed inset-0 z-[200] overflow-y-auto overscroll-contain bg-slate-950 text-white"
+      style={visualViewport
+        ? {
+            top: `${visualViewport.offsetTop}px`,
+            bottom: 'auto',
+            height: `${visualViewport.height}px`,
+          }
+        : undefined}
+    >
       <img
         src={step === 0 ? FANKIT_ART.titleHero : step === 2 ? FANKIT_ART.launchWallpaperMobile : FANKIT_ART.battleBackdrop}
         alt=""
@@ -59,7 +90,7 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
       />
       <div className="fixed inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-slate-950/35" />
       <div className="fixed inset-0 bg-[radial-gradient(circle_at_75%_25%,rgba(251,191,36,.18),transparent_40%)]" />
-      <div className="launch-intro__content relative z-10 mx-auto flex min-h-[100dvh] max-w-6xl flex-col justify-between px-5 py-5 sm:px-10 sm:py-10">
+      <div className="launch-intro__content relative z-10 mx-auto flex min-h-full max-w-6xl flex-col justify-between px-5 py-5 sm:px-10 sm:py-10">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-[10px] font-black tracking-[.28em] text-amber-300">
             <ShieldCheck className="h-4 w-4" /> タタルの大繁盛店
@@ -85,7 +116,7 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
                 onChange={(event) => onCompanyNameChange(event.target.value.slice(0, 24))}
                 onFocus={(event) => {
                   const input = event.currentTarget;
-                  window.setTimeout(() => input.scrollIntoView({ block: 'center', behavior: 'smooth' }), 180);
+                  window.setTimeout(() => input.scrollIntoView({ block: 'center', behavior: 'smooth' }), 320);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') next();

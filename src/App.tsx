@@ -106,7 +106,7 @@ const FEATURE_UNLOCKS: Record<
     kicker: 'MARKET WIND',
     title: '市場の風 解放',
     dialogue: '基本の商戦を覚えたので、市場の潮目も読んでいくでっす！ まずは味方への追い風だけでっす。',
-    detail: '風は常時ではありません。静穏16秒の後に10秒だけ発生します。青い追い風の間は自社の出資・支援が1.35倍です。',
+    detail: '風は常時ではありません。商戦開始から最低10秒は静穏で、その後も予兆を経て低頻度で発生します。青い追い風の間は自社の出資・支援が1.35倍です。',
   },
   rival_wind: {
     kicker: 'RIVAL WIND',
@@ -318,13 +318,7 @@ export default function App() {
         !!unlockNotice ||
         !!featureUnlockNoticeId ||
         !!endingNotice;
-      const scale = activeBattleProperty
-        ? activeBattleMode === 'training'
-          ? 0
-          : battleTimeScale
-        : overlayPaused
-          ? 0
-          : 1;
+      const scale = activeBattleProperty || overlayPaused ? 0 : 1;
       if (scale <= 0) return;
       const next = windCountdownRef.current - 0.25 * scale;
       if (next > 0) {
@@ -348,8 +342,6 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [
     activeBattleProperty,
-    activeBattleMode,
-    battleTimeScale,
     endingNotice,
     featureUnlockNoticeId,
     showLaunchIntro,
@@ -1392,8 +1384,6 @@ export default function App() {
           selectedBattleSynergy={selectedBattleSynergy}
           industryInfluence={activeBattleMode !== 'normal' ? { owned: 0, total: 0, label: activeBattleMode === 'training' ? '木人訓練では無効' : '高難度記録戦では無効', playerBonus: 0, enemyBudgetDiscount: 0 } : industryInfluence[activeBattleProperty.industry] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
           regionalInfluence={activeBattleMode !== 'normal' ? { owned: 0, total: 0, label: activeBattleMode === 'training' ? '木人訓練では無効' : '高難度記録戦では無効', playerBonus: 0, enemyBudgetDiscount: 0 } : regionalInfluence[activeBattleProperty.community] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
-          currentWind={activeBattleMode === 'training' ? WIND_CONDITIONS.CALM : marketWind}
-          windCountdown={activeBattleMode === 'training' ? 0 : Math.max(0, Math.ceil(windCountdown))}
           windProgressionStage={activeBattleMode === 'training' ? 0 : windProgressionStage}
           battleContextLabel={
             activeBattleMode === 'savage'

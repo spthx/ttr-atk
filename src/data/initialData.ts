@@ -448,6 +448,20 @@ export const INITIAL_SKILLS: TacticalSkill[] = [
     unlockRequirements: 'いずれかのSYNERGYを発動中',
     requiresActiveSynergy: true,
   },
+  {
+    id: 'skill_era_wind',
+    name: '時代の風',
+    costType: 'high',
+    cooldownMs: TACTICAL_SKILL_BALANCE.eraWind.cooldownMs,
+    description: '敵の投入資金を消さずに12秒間、自社側へ独立した時流を加える。使用コストは1回目から1倍・1.5倍・2倍と上がり、1交渉につき最大3回。',
+    effectType: 'ERA_WIND',
+    unlockRequirements: '事業連携「東方交易中継網」を成立',
+    requiredAllPropertyIds: [
+      'prop_land_transport',
+      'prop_info_broker',
+      'prop_dofor_shipping',
+    ],
+  },
 ];
 
 export const INITIAL_GROUP_SYNERGIES: GroupSynergy[] = [

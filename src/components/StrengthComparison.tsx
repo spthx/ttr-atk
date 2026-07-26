@@ -8,12 +8,14 @@ interface StrengthComparisonProps {
   result: BattleReadinessResult;
   compact?: boolean;
   isTraining?: boolean;
+  summaryOnly?: boolean;
 }
 
 export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
   result,
   compact = false,
   isTraining = false,
+  summaryOnly = false,
 }) => {
   const trainingPresentation = {
     advantage: {
@@ -76,51 +78,69 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
         <i><u style={{ width: `${playerWidth}%` }} /></i>
         <i><u style={{ width: `${enemyWidth}%` }} /></i>
       </div>
-      <div className="strength-comparison__meta">
-        <span>実効資本比 {result.ratioPercent}%</span>
-        <span>{isTraining
-          ? '木人は追加行動なし'
-          : `AI Lv${result.enemyDifficultyLevel}・基準反応 約${result.enemyBaseReactionSeconds.toFixed(1)}秒`}</span>
-        {result.playerPushBonus > 0 && (
-          <span title="資本額と等級には加算しません">
-            <Sparkles />押込 +{Math.round(result.playerPushBonus * 100)}%（資本外）
-          </span>
-        )}
-        {!result.directInvestmentAvailable && (
-          <span className="strength-comparison__risk">
-            <ShieldAlert />直接出資不可（小口 {formatCurrency(result.minimumInvestment)}）
-          </span>
-        )}
-        {result.cumulativeSupportFailureProbability > 0 && (
-          <span className={result.supportVolatile ? 'strength-comparison__risk' : ''}>
-            <ShieldAlert />
-            {result.supportRoute === '支援元一巡' ? '一巡離反' : '支援離反'}{' '}
-            {Math.round(result.cumulativeSupportFailureProbability * 100)}%
-          </span>
-        )}
-        {!isTraining && result.supportRoute === '支援元一巡' &&
-          result.expectedEnemyResponsesDuringSupport >= 1 && (
+      {!summaryOnly && (
+        <>
+          <div className="strength-comparison__meta">
+            <span>実効資本比 {result.ratioPercent}%</span>
+            <span>{isTraining
+              ? '木人は追加行動なし'
+              : `AI Lv${result.enemyDifficultyLevel}・基準反応 約${result.enemyBaseReactionSeconds.toFixed(1)}秒`}</span>
+            {result.playerPushBonus > 0 && (
+              <span title="資本額と等級には加算しません">
+                <Sparkles />押込 +{Math.round(result.playerPushBonus * 100)}%（資本外）
+              </span>
+            )}
+            {!result.directInvestmentAvailable && (
+              <span className="strength-comparison__risk">
+                <ShieldAlert />直接出資不可（小口 {formatCurrency(result.minimumInvestment)}）
+              </span>
+            )}
+            {result.cumulativeSupportFailureProbability > 0 && (
+              <span className={result.supportVolatile ? 'strength-comparison__risk' : ''}>
+                <ShieldAlert />
+                {result.supportRoute === '支援元一巡' ? '一巡離反' : '支援離反'}{' '}
+                {Math.round(result.cumulativeSupportFailureProbability * 100)}%
+              </span>
+            )}
+            {!isTraining && result.supportRoute === '支援元一巡' &&
+              result.expectedEnemyResponsesDuringSupport >= 1 && (
+                <span className="strength-comparison__risk">
+                  <ShieldAlert />一巡中に競合 約{result.expectedEnemyResponsesDuringSupport.toFixed(1)}回
+                </span>
+              )}
+          </div>
+          <div className="strength-comparison__components" aria-label="動員見込みの内訳">
+            <small>採用内訳</small>
+            {compact ? (
+              <span className="strength-comparison__components-summary">
+                {result.capitalComponents.map((component) => component.label).join('・')}
+              </span>
+            ) : (
+              <span>
+                {result.capitalComponents.map((component) => (
+                  <em key={component.key}>
+                    {component.label} {formatCurrency(component.amount)}
+                  </em>
+                ))}
+              </span>
+            )}
+          </div>
+        </>
+      )}
+      {summaryOnly && (!result.directInvestmentAvailable || result.supportVolatile) && (
+        <div className="strength-comparison__meta strength-comparison__meta--critical">
+          {!result.directInvestmentAvailable && (
             <span className="strength-comparison__risk">
-              <ShieldAlert />一巡中に競合 約{result.expectedEnemyResponsesDuringSupport.toFixed(1)}回
+              <ShieldAlert />小口出資不可
             </span>
           )}
-      </div>
-      <div className="strength-comparison__components" aria-label="動員見込みの内訳">
-        <small>採用内訳</small>
-        {compact ? (
-          <span className="strength-comparison__components-summary">
-            {result.capitalComponents.map((component) => component.label).join('・')}
-          </span>
-        ) : (
-          <span>
-            {result.capitalComponents.map((component) => (
-              <em key={component.key}>
-                {component.label} {formatCurrency(component.amount)}
-              </em>
-            ))}
-          </span>
-        )}
-      </div>
+          {result.supportVolatile && (
+            <span className="strength-comparison__risk">
+              <ShieldAlert />支援離反 {Math.round(result.cumulativeSupportFailureProbability * 100)}%
+            </span>
+          )}
+        </div>
+      )}
       {!compact && (
         <>
           <p>{isTraining ? trainingPresentation.advice : result.advice}</p>

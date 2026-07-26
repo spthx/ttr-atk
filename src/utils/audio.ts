@@ -7,30 +7,49 @@ import { FANKIT_AUDIO } from '../data/fankitAssets';
 
 class SoundEffects {
   private ctx: AudioContext | null = null;
-  private mediaCache = new Map<string, HTMLAudioElement>();
+  private bufferCache = new Map<string, Promise<AudioBuffer>>();
   public enabled: boolean = true;
 
   private playFankitAudio(url: string, volume: number, fallback: () => void) {
-    if (typeof window === 'undefined' || typeof Audio === 'undefined') return false;
+    if (typeof window === 'undefined' || typeof fetch === 'undefined') return false;
     try {
-      let audio = this.mediaCache.get(url);
-      if (!audio) {
-        audio = new Audio(url);
-        audio.preload = 'auto';
-        this.mediaCache.set(url, audio);
+      const ctx = this.initCtx();
+      if (!ctx) return false;
+      let pendingBuffer = this.bufferCache.get(url);
+      if (!pendingBuffer) {
+        pendingBuffer = fetch(url)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`audio fetch failed: ${response.status}`);
+            }
+            return response.arrayBuffer();
+          })
+          .then((data) => ctx.decodeAudioData(data.slice(0)));
+        this.bufferCache.set(url, pendingBuffer);
       }
-      audio.pause();
-      audio.currentTime = 0;
-      audio.volume = volume;
-      const playback = audio.play();
-      playback?.catch(fallback);
+      void pendingBuffer
+        .then(async (buffer) => {
+          if (!this.enabled) return;
+          if (ctx.state === 'suspended') await ctx.resume();
+          const source = ctx.createBufferSource();
+          const gain = ctx.createGain();
+          source.buffer = buffer;
+          gain.gain.setValueAtTime(volume, ctx.currentTime);
+          source.connect(gain);
+          gain.connect(ctx.destination);
+          source.start();
+        })
+        .catch(() => {
+          this.bufferCache.delete(url);
+          fallback();
+        });
       return true;
     } catch {
       return false;
     }
   }
 
-  private initCtx() {
+  private initCtx(): AudioContext | null {
     try {
       if (!this.ctx && typeof window !== 'undefined') {
         const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -44,6 +63,7 @@ class SoundEffects {
     } catch {
       // Ignore audio context errors gracefully
     }
+    return this.ctx;
   }
 
   // Coin / Investment Chime
