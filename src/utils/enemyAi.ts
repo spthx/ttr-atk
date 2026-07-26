@@ -77,7 +77,7 @@ export const decideEnemyAction = ({
   cycle,
   difficultyLevel,
 }: EnemyDecisionContext): EnemyDecision => {
-  const intellect = Math.max(0, Math.min(5, difficultyLevel));
+  const intellect = Math.max(0, Math.min(6, difficultyLevel));
   const enemyWind = windType === 'TAILWIND_ENEMY' || windType === 'HEADWIND_PLAYER';
   const playerWind = windType === 'TAILWIND_PLAYER';
   const pressured =

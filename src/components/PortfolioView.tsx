@@ -8,6 +8,7 @@ import {
   calculateRebellionProbability,
 } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
+import { PASSIVE_REVENUE_MULTIPLIER } from '../utils/gameBalance';
 import {
   Building2,
   RefreshCw,
@@ -19,6 +20,7 @@ interface PortfolioViewProps {
   companyName: string;
   properties: Property[];
   totalFunds: number;
+  propertyRevenueMultipliers?: ReadonlyMap<string, number>;
   onReduceLoyaltyRisk: (propertyId: string, amount: number, cost: number) => void;
   onGlobalNemawashi: () => void;
 }
@@ -27,13 +29,21 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
   companyName,
   properties,
   totalFunds,
+  propertyRevenueMultipliers,
   onReduceLoyaltyRisk,
   onGlobalNemawashi,
 }) => {
   const ownedProperties = properties.filter((p) => p.owner === 'player');
 
   const totalAssetValue = ownedProperties.reduce((sum, p) => sum + p.marketPrice, 0);
-  const totalRevenue = ownedProperties.reduce((sum, p) => sum + p.annualRevenue, 0);
+  const totalRevenue = ownedProperties.reduce(
+    (sum, property) =>
+      sum +
+      property.annualRevenue *
+        PASSIVE_REVENUE_MULTIPLIER *
+        (propertyRevenueMultipliers?.get(property.id) ?? 1),
+    0
+  );
   const avgLoyaltyRisk =
     ownedProperties.length > 0
       ? Math.round(
@@ -94,7 +104,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
 
           <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
             <span className="flex items-center gap-1 text-[11px] text-slate-400">
-              合計毎秒収益
+              合計基礎収益（連携前）
               <HelpTip term="毎秒収益" description={HELP_TEXT.passiveRevenue} />
             </span>
             <div className="text-lg font-black text-emerald-400 mt-1">
@@ -131,12 +141,9 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
       <div className="flex items-start gap-3 rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-4 text-xs text-indigo-200">
         <Info className="mt-0.5 h-5 w-5 shrink-0 text-indigo-400" />
         <div className="space-y-1">
-          <strong className="flex items-center gap-1 font-bold text-indigo-300">
-            独立した物件の精算
-            <HelpTip term="独立時の精算" description="独立した物件は失いますが、その時点の評価額は商会資金へ戻ります。" />
-          </strong>
+          <strong className="font-bold text-indigo-300">独立した事業の精算</strong>
           <p className="leading-relaxed text-indigo-200/80">
-            独立した物件は保有一覧から外れ、現在評価額が商会資金へ戻ります。以後の毎秒収益と支援元は失うため、まずはネマワシで予防するのが安全です。
+            独立すると収益・支援元を失います。現在評価額は商会資金へ戻ります。
           </p>
           <details className="pt-1 text-[11px] text-indigo-300/75">
             <summary className="cursor-pointer font-semibold">上級者向け：清算を利用する場合</summary>
@@ -164,6 +171,13 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
               const status = getLoyaltyRiskStatus(prop.loyaltyRisk);
               const rebellionProb = (calculateRebellionProbability(prop.loyaltyRisk) * 100).toFixed(1);
               const singleCost = Math.round(prop.marketPrice * 0.02);
+              const savageRevenueMultiplier =
+                propertyRevenueMultipliers?.get(prop.id) ?? 1;
+              const displayedRevenue = Math.round(
+                prop.annualRevenue *
+                  PASSIVE_REVENUE_MULTIPLIER *
+                  savageRevenueMultiplier
+              );
 
               return (
                 <div
@@ -193,12 +207,21 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
                   {/* Financials */}
                   <div className="flex items-center justify-between text-xs bg-slate-950 p-2.5 rounded-lg border border-slate-800">
                     <div>
-                      <span className="text-slate-400 block text-[10px]">現在評価価値</span>
+                      <span className="text-slate-400 block text-[10px]">現在評価額</span>
                       <span className="font-bold text-amber-400">{formatCurrency(prop.marketPrice)}</span>
                     </div>
                     <div className="text-right">
-                      <span className="text-slate-400 block text-[10px]">毎秒収益</span>
-                      <span className="font-bold text-emerald-400">+{formatCurrency(prop.annualRevenue)}/s</span>
+                      <span className="block text-[11px] text-slate-400">
+                        基礎収益（連携前）
+                      </span>
+                      <span className="font-bold text-emerald-400">
+                        +{formatCurrency(displayedRevenue)}/秒
+                      </span>
+                      {savageRevenueMultiplier > 1 && (
+                        <small className="block text-[11px] font-bold text-violet-300">
+                          零式強化 +{Math.round((savageRevenueMultiplier - 1) * 100)}%
+                        </small>
+                      )}
                     </div>
                   </div>
 

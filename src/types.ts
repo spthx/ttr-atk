@@ -23,7 +23,7 @@ export type OwnerType = 'player' | 'independent' | 'dofor' | 'abyss';
 export type MarketTrendType = 'BULL' | 'BEAR' | 'VOLATILE' | 'STABLE';
 
 export type AppTab = 'market' | 'portfolio' | 'skills' | 'cartels' | 'savage';
-export type BattleMode = 'normal' | 'savage';
+export type BattleMode = 'normal' | 'savage' | 'ultimate';
 
 export interface MarketCondition {
   trend: MarketTrendType;
@@ -83,6 +83,10 @@ export interface GroupSynergy {
   fundSupplyPower: '極大' | '高' | '中';
   systemRisk: '危険度急上昇' | '中程度' | '低（耐えうる）';
   bonusYieldMultiplier: number;
+  /** Derived from cleared Savage encounters. Not stored independently. */
+  savageRank?: number;
+  /** Effective group-support multiplier used by the single battle synergy slot. */
+  battleGroupMultiplier?: number;
   skillId?: string;
 }
 

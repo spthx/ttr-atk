@@ -29,6 +29,7 @@ import { BattleModal } from './components/BattleModal';
 import { TatarAdvisor } from './components/TatarAdvisor';
 import { LaunchIntro } from './components/LaunchIntro';
 import { EndingModal } from './components/EndingModal';
+import { HighEndRaidView } from './components/HighEndRaidView';
 import { WIND_CONDITIONS, WindCondition, WindType } from './components/WindIndicator';
 import { FANKIT_ART } from './data/fankitAssets';
 import { COMMUNITY_CAMPAIGN_ORDER, GAME_WORLD, TRADE_COMMUNITIES } from './data/worldData';
@@ -50,8 +51,15 @@ import {
 } from './utils/gameBalance';
 import { isPublicPatronage, shouldBreakAllianceForTarget } from './utils/alliance';
 import {
+  applySavageSynergyUpgrades,
+  buildUltimateProperty,
   buildSavageProperties,
-  getSavageTargetIds,
+  getSavageRaidDefinition,
+  getSavagePropertyYieldMultiplier,
+  getUnlockedSavageRaidIds,
+  normalizeSavageClearedRaidIds,
+  SAVAGE_RAID_DEFINITIONS,
+  ULTIMATE_RAID_DEFINITION,
 } from './utils/savage';
 
 export { PASSIVE_REVENUE_MULTIPLIER };
@@ -123,8 +131,6 @@ export default function App() {
   const [equippedSkillIds, setEquippedSkillIds] = useState<string[]>(
     initialSave?.equippedSkillIds ?? []
   );
-  const [groupSynergies, setGroupSynergies] =
-    useState<GroupSynergy[]>(INITIAL_GROUP_SYNERGIES);
   const [cartels, setCartels] = useState<Cartel[]>(INITIAL_CARTELS);
   const [alliance, setAlliance] = useState<AllianceState>(
     initialSave?.alliance ?? {
@@ -135,21 +141,34 @@ export default function App() {
       relationType: 'commercial_alliance',
     }
   );
-  const savageTargetIdSet = useMemo(
-    () => new Set(getSavageTargetIds(INITIAL_PROPERTIES)),
-    []
+  const normalizedInitialSavageClears = normalizeSavageClearedRaidIds(
+    initialSave?.savageClearedPropertyIds ?? [],
+    initialSave?.savageProgressVersion === 2,
+    initialSave?.savageEndingSeen === true
   );
-  const [savageClearedPropertyIds, setSavageClearedPropertyIds] = useState<string[]>(
-    () => (initialSave?.savageClearedPropertyIds || []).filter((id) => savageTargetIdSet.has(id))
-  );
+  const initialSavageComplete =
+    normalizedInitialSavageClears.length === SAVAGE_RAID_DEFINITIONS.length;
+  const initialUltimateCleared =
+    initialSave?.ultimateCleared === true && initialSavageComplete;
+  const [savageClearedPropertyIds, setSavageClearedPropertyIds] =
+    useState<string[]>(normalizedInitialSavageClears);
   const [normalEndingSeen, setNormalEndingSeen] = useState(initialSave?.normalEndingSeen === true);
-  const [trueEndingSeen, setTrueEndingSeen] = useState(initialSave?.trueEndingSeen === true);
+  const [savageEndingSeen, setSavageEndingSeen] = useState(
+    initialSave?.savageEndingSeen === true && initialSavageComplete
+  );
+  const [ultimateCleared, setUltimateCleared] = useState(initialUltimateCleared);
+  const [trueEndingSeen, setTrueEndingSeen] = useState(
+    initialSave?.trueEndingSeen === true && initialUltimateCleared
+  );
+  const [selectedBattleSynergyId, setSelectedBattleSynergyId] = useState<string | null>(
+    initialSave?.selectedBattleSynergyId ?? null
+  );
 
   // UI States
   const [activeTab, setActiveTab] = useState<AppTab>('market');
   const [activeBattleProperty, setActiveBattleProperty] = useState<Property | null>(null);
   const [activeBattleMode, setActiveBattleMode] = useState<BattleMode>('normal');
-  const [endingNotice, setEndingNotice] = useState<'normal' | 'true' | null>(null);
+  const [endingNotice, setEndingNotice] = useState<'normal' | 'savage' | 'true' | null>(null);
   const [battleTimeScale, setBattleTimeScale] = useState(1);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [logs, setLogs] = useState<GameLog[]>([]);
@@ -166,11 +185,6 @@ export default function App() {
   );
   const [featureUnlockNoticeId, setFeatureUnlockNoticeId] = useState<FeatureUnlockId | null>(null);
   const [marketNavigationRequest, setMarketNavigationRequest] = useState<{
-    id: number;
-    mode: 'map' | 'targets';
-    community: CommunityType | 'ALL';
-  } | null>(null);
-  const [savageNavigationRequest, setSavageNavigationRequest] = useState<{
     id: number;
     mode: 'map' | 'targets';
     community: CommunityType | 'ALL';
@@ -275,9 +289,28 @@ export default function App() {
   const savageTargetCount = savageProperties.length;
   const savageComplete =
     savageTargetCount > 0 && savageClearedSet.size === savageTargetCount;
-  const allCommunityIds = useMemo(
-    () => new Set<CommunityType>(COMMUNITY_CAMPAIGN_ORDER),
-    []
+  const savageUnlockedIds = useMemo(
+    () => getUnlockedSavageRaidIds(savageClearedSet),
+    [savageClearedSet]
+  );
+  const groupSynergies = useMemo(
+    () => applySavageSynergyUpgrades(INITIAL_GROUP_SYNERGIES, savageClearedSet),
+    [savageClearedSet]
+  );
+  const ultimateUnlocked = savageComplete;
+  const ultimateProperty = useMemo(
+    () => buildUltimateProperty(ultimateCleared, companyName),
+    [companyName, ultimateCleared]
+  );
+  const savagePropertyRevenueMultipliers = useMemo(
+    () =>
+      new Map(
+        INITIAL_PROPERTIES.map((property) => [
+          property.id,
+          getSavagePropertyYieldMultiplier(property.id, savageClearedSet),
+        ])
+      ),
+    [savageClearedSet]
   );
 
   useEffect(() => {
@@ -352,6 +385,43 @@ export default function App() {
     };
   }, [groupSynergies, ownedPropertyIds]);
 
+  const selectedBattleSynergy =
+    activeGroupSynergies.find((synergy) => synergy.id === selectedBattleSynergyId) ??
+    null;
+  const previousActiveSynergyIdsRef = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    const activeIds = new Set(activeGroupSynergies.map((synergy) => synergy.id));
+    const previousIds = previousActiveSynergyIdsRef.current;
+    const newlyLearned = previousIds
+      ? activeGroupSynergies.filter((synergy) => !previousIds.has(synergy.id))
+      : [];
+
+    setSelectedBattleSynergyId((current) => {
+      if (newlyLearned.length > 0) {
+        return newlyLearned[newlyLearned.length - 1].id;
+      }
+      if (current && activeIds.has(current)) return current;
+      return activeGroupSynergies.reduce<GroupSynergy | null>(
+        (best, synergy) =>
+          !best || synergy.bonusYieldMultiplier >= best.bonusYieldMultiplier
+            ? synergy
+            : best,
+        null
+      )?.id ?? null;
+    });
+
+    if (previousIds && newlyLearned.length > 0) {
+      const learned = newlyLearned[newlyLearned.length - 1];
+      addGameLog(
+        `【戦闘連携更新】${learned.name}を修得。バトル用SYNERGY 1枠へ自動装備しました。`,
+        'success'
+      );
+      soundFx.playFeatureUnlocked();
+    }
+    previousActiveSynergyIdsRef.current = activeIds;
+  }, [activeGroupSynergies]);
+
   const reachedFeatureUnlockIds = useMemo(() => {
     const reached: FeatureUnlockId[] = [];
     if (ownedProperties.length >= 1) reached.push('subsidiary_support');
@@ -411,13 +481,19 @@ export default function App() {
       soundFx.playVictory();
       return;
     }
-    if (savageComplete && !trueEndingSeen) {
+    if (savageComplete && !savageEndingSeen) {
+      setEndingNotice('savage');
+      soundFx.playVictory();
+      return;
+    }
+    if (ultimateCleared && !trueEndingSeen) {
       setEndingNotice('true');
       soundFx.playVictory();
     }
   }, [
     activeBattleProperty, endingNotice, featureUnlockNoticeId, normalCampaignComplete,
-    normalEndingSeen, savageComplete, showLaunchIntro, trueEndingSeen, unlockNotice,
+    normalEndingSeen, savageComplete, savageEndingSeen, showLaunchIntro,
+    trueEndingSeen, ultimateCleared, unlockNotice,
   ]);
 
   const acknowledgeEnding = () => {
@@ -425,10 +501,14 @@ export default function App() {
       setNormalEndingSeen(true);
       setActiveTab('savage');
       addGameLog('【商戦 零式 解放】通常交易網の全制覇を達成。高難度交易レイドへの航路が開きました！', 'success');
+    } else if (endingNotice === 'savage') {
+      setSavageEndingSeen(true);
+      setActiveTab('savage');
+      addGameLog('【絶商戦 解放】商戦 零式4層を踏破。別枠の最終高難度交易戦への挑戦資格を得ました！', 'success');
     } else if (endingNotice === 'true') {
       setTrueEndingSeen(true);
       setActiveTab('savage');
-      addGameLog('【真・全商戦制覇】すべての商戦 零式を踏破しました！', 'success');
+      addGameLog('【真・全商戦制覇】絶商戦を踏破し、星海交易の最終記録を達成しました！', 'success');
     }
     setEndingNotice(null);
     soundFx.playFeatureUnlocked();
@@ -448,9 +528,15 @@ export default function App() {
 
   // Total Passive Revenue Yield per second (I_net)
   const passiveRevenue = useMemo(() => {
-    const base = ownedProperties.reduce((sum, p) => sum + p.annualRevenue, 0);
+    const base = ownedProperties.reduce(
+      (sum, property) =>
+        sum +
+        property.annualRevenue *
+          getSavagePropertyYieldMultiplier(property.id, savageClearedSet),
+      0
+    );
     return Math.round(base * bonusMultiplier * PASSIVE_REVENUE_MULTIPLIER);
-  }, [ownedProperties, bonusMultiplier]);
+  }, [bonusMultiplier, ownedProperties, savageClearedSet]);
 
   const offlineIncomeAppliedRef = useRef(false);
   useEffect(() => {
@@ -488,12 +574,31 @@ export default function App() {
         seenUnlockIds,
         limitBreakCharge,
         savageClearedPropertyIds,
+        savageProgressVersion: 2,
         normalEndingSeen,
+        savageEndingSeen,
+        ultimateCleared,
         trueEndingSeen,
+        selectedBattleSynergyId,
       });
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [alliance, companyName, equippedSkillIds, limitBreakCharge, normalEndingSeen, properties, savageClearedPropertyIds, seenUnlockIds, showLaunchIntro, totalFunds, trueEndingSeen]);
+  }, [
+    alliance,
+    companyName,
+    equippedSkillIds,
+    limitBreakCharge,
+    normalEndingSeen,
+    properties,
+    savageClearedPropertyIds,
+    savageEndingSeen,
+    seenUnlockIds,
+    selectedBattleSynergyId,
+    showLaunchIntro,
+    totalFunds,
+    trueEndingSeen,
+    ultimateCleared,
+  ]);
 
   // Handlers
   const handleStartBuyout = (property: Property) => {
@@ -510,10 +615,18 @@ export default function App() {
   };
 
   const handleStartSavageBuyout = (property: Property) => {
-    if (!savageUnlocked) return;
+    if (!savageUnlocked || !savageUnlockedIds.has(property.id)) return;
     soundFx.playCoin();
     setBattleTimeScale(0);
     setActiveBattleMode('savage');
+    setActiveBattleProperty(property);
+  };
+
+  const handleStartUltimateBuyout = (property: Property) => {
+    if (!ultimateUnlocked) return;
+    soundFx.playCoin();
+    setBattleTimeScale(0);
+    setActiveBattleMode('ultimate');
     setActiveBattleProperty(property);
   };
 
@@ -534,19 +647,29 @@ export default function App() {
 
     if (activeBattleMode === 'savage') {
       const clearedAfterBattle = new Set(savageClearedPropertyIds);
+      const firstClear =
+        winner === 'player' && !clearedAfterBattle.has(targetProperty.id);
       if (winner === 'player') clearedAfterBattle.add(targetProperty.id);
-      const cityTargets = getCampaignProperties(savageProperties, targetProperty.community);
-      const clearsSavageCity =
-        winner === 'player' && cityTargets.every((property) => clearedAfterBattle.has(property.id));
-      const cityIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
-      const nextCommunity = COMMUNITY_CAMPAIGN_ORDER[cityIndex + 1];
 
       if (winner === 'player') {
         setSavageClearedPropertyIds(Array.from(clearedAfterBattle));
+        const raid = getSavageRaidDefinition(targetProperty.id);
+        const rewardNames = raid?.rewardSynergyIds
+          .map((id) => INITIAL_GROUP_SYNERGIES.find((synergy) => synergy.id === id)?.name)
+          .filter((name): name is string => !!name)
+          .join('・');
         addGameLog(
           `【零式踏破】${targetProperty.name} を攻略しました！（手数料・精算 ${formatCurrency(
             brokerageFee + settlementCost
-          )}、攻略報酬 ${formatCurrency(victoryReward)}）`,
+          )}、攻略報酬 ${formatCurrency(victoryReward)}）${
+            firstClear && raid
+              ? ` 通常編の地域事業${raid.memberPropertyIds.length}件を+10%強化。${
+                  rewardNames
+                    ? ` 事業連携「${rewardNames}」も1段階強化。`
+                    : ''
+                }`
+              : ''
+          }`,
           'success'
         );
       } else {
@@ -558,11 +681,23 @@ export default function App() {
       if (rebelledProperties.length > 0) {
         addGameLog('【零式保護規定】記録戦中の離反判定は通常市場へ持ち越されません。', 'info');
       }
-      setSavageNavigationRequest((previous) => ({
-        id: (previous?.id || 0) + 1,
-        mode: clearsSavageCity && nextCommunity ? 'map' : 'targets',
-        community: clearsSavageCity && nextCommunity ? nextCommunity : targetProperty.community,
-      }));
+      setActiveTab('savage');
+    } else if (activeBattleMode === 'ultimate') {
+      if (winner === 'player') {
+        setUltimateCleared(true);
+        addGameLog(
+          `【絶商戦踏破】${targetProperty.name} を攻略しました。最終記録と称号を獲得しました！`,
+          'success'
+        );
+      } else {
+        addGameLog(
+          `【絶商戦ワイプ】${targetProperty.name} の攻略に失敗。通常物件は保護され、最初から再挑戦できます。`,
+          'warning'
+        );
+      }
+      if (rebelledProperties.length > 0) {
+        addGameLog('【絶保護規定】記録戦中の離反判定は通常市場へ持ち越されません。', 'info');
+      }
       setActiveTab('savage');
     } else if (winner === 'player') {
       const conquersCity = getCampaignProperties(properties, targetProperty.community)
@@ -808,6 +943,8 @@ export default function App() {
         savageUnlocked={savageUnlocked}
         savageClearedCount={savageClearedSet.size}
         savageTargetCount={savageTargetCount}
+        ultimateUnlocked={ultimateUnlocked}
+        ultimateCleared={ultimateCleared}
         soundEnabled={soundEnabled}
         setSoundEnabled={setSoundEnabled}
         onAddFunds={handleAddFunds}
@@ -823,6 +960,10 @@ export default function App() {
             ownedCount={ownedProperties.length}
             conqueredCommunityCount={conqueredCommunityCount}
             totalCommunityCount={TRADE_COMMUNITIES.length}
+            savageClearedCount={savageClearedSet.size}
+            savageTargetCount={savageTargetCount}
+            ultimateUnlocked={ultimateUnlocked}
+            ultimateCleared={ultimateCleared}
           />
         )}
 
@@ -834,37 +975,28 @@ export default function App() {
             currentWind={marketWind}
             windCountdown={windCountdown}
             navigationRequest={marketNavigationRequest}
+            propertyRevenueMultipliers={savagePropertyRevenueMultipliers}
             onStartBuyout={handleStartBuyout}
           />
         )}
 
         {activeTab === 'savage' && savageUnlocked && (
-          <div className="savage-raid-view space-y-3">
-            <section className="savage-raid-status">
-              <div className="savage-raid-status__jobs" aria-hidden="true">
-                {FANKIT_ART.jobs.map((src) => <img key={src} src={src} alt="" />)}
-              </div>
-              <div className="savage-raid-status__copy">
-                <small>HIGH-END TRADE RAID</small>
-                <h2>商戦 零式</h2>
-                <p>通常編の全都市を題材にした高難度版。全{ savageTargetCount }層を踏破すると真のエンディングです。</p>
-                <strong>{savageClearedSet.size}/{savageTargetCount} LAYERS CLEARED</strong>
-                {savageComplete && (
-                  <button type="button" onClick={() => { setEndingNotice('true'); soundFx.playVictory(); }} className="savage-ending-replay">お祝いの集合絵を見る</button>
-                )}
-              </div>
-            </section>
-            <MarketView
-              properties={savageProperties}
-              totalFunds={totalFunds}
-              unlockedCommunityIds={allCommunityIds}
-              currentWind={marketWind}
-              windCountdown={windCountdown}
-              navigationRequest={savageNavigationRequest}
-              campaignMode="savage"
-              onStartBuyout={handleStartSavageBuyout}
-            />
-          </div>
+          <HighEndRaidView
+            savageProperties={savageProperties}
+            savageClearedIds={savageClearedSet}
+            savageUnlockedIds={savageUnlockedIds}
+            groupSynergies={groupSynergies}
+            totalFunds={totalFunds}
+            ultimateProperty={ultimateProperty}
+            ultimateUnlocked={ultimateUnlocked}
+            ultimateCleared={ultimateCleared}
+            onStartSavage={handleStartSavageBuyout}
+            onStartUltimate={handleStartUltimateBuyout}
+            onReplayEnding={() => {
+              setEndingNotice('true');
+              soundFx.playVictory();
+            }}
+          />
         )}
 
         {activeTab === 'portfolio' && (
@@ -872,6 +1004,7 @@ export default function App() {
             companyName={companyName}
             properties={properties}
             totalFunds={totalFunds}
+            propertyRevenueMultipliers={savagePropertyRevenueMultipliers}
             onReduceLoyaltyRisk={handleReduceLoyaltyRisk}
             onGlobalNemawashi={handleGlobalNemawashi}
           />
@@ -885,7 +1018,9 @@ export default function App() {
             ownedProperties={ownedProperties}
             totalFunds={totalFunds}
             activeSynergyCount={activeSynergiesCount}
+            selectedBattleSynergyId={selectedBattleSynergyId}
             onToggleEquipSkill={handleToggleEquipSkill}
+            onSelectBattleSynergy={setSelectedBattleSynergyId}
           />
         )}
 
@@ -996,29 +1131,40 @@ export default function App() {
           equippedSkills={equippedSkills}
           alliance={alliance}
           activeSynergies={activeGroupSynergies}
-          industryInfluence={activeBattleMode === 'savage' ? { owned: 0, total: 0, label: '零式では無効', playerBonus: 0, enemyBudgetDiscount: 0 } : industryInfluence[activeBattleProperty.industry] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
-          regionalInfluence={activeBattleMode === 'savage' ? { owned: 0, total: 0, label: '零式では無効', playerBonus: 0, enemyBudgetDiscount: 0 } : regionalInfluence[activeBattleProperty.community] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
+          selectedBattleSynergy={selectedBattleSynergy}
+          industryInfluence={activeBattleMode !== 'normal' ? { owned: 0, total: 0, label: '高難度記録戦では無効', playerBonus: 0, enemyBudgetDiscount: 0 } : industryInfluence[activeBattleProperty.industry] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
+          regionalInfluence={activeBattleMode !== 'normal' ? { owned: 0, total: 0, label: '高難度記録戦では無効', playerBonus: 0, enemyBudgetDiscount: 0 } : regionalInfluence[activeBattleProperty.community] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
           currentWind={marketWind}
           windCountdown={Math.max(0, Math.ceil(windCountdown))}
-          tradeNetworkBonus={activeBattleMode === 'savage' ? 0 : tradeNetworkBonus}
+          battleContextLabel={
+            activeBattleMode === 'savage'
+              ? getSavageRaidDefinition(activeBattleProperty.id)?.coalitionName
+              : activeBattleMode === 'ultimate'
+                ? ULTIMATE_RAID_DEFINITION.coalitionName
+                : undefined
+          }
+          battleRegionLabel={
+            activeBattleMode === 'savage'
+              ? getSavageRaidDefinition(activeBattleProperty.id)?.communities.join('・')
+              : activeBattleMode === 'ultimate'
+                ? `全${ULTIMATE_RAID_DEFINITION.communities.length}地域`
+                : undefined
+          }
+          tradeNetworkBonus={activeBattleMode !== 'normal' ? 0 : tradeNetworkBonus}
           limitBreakCharge={limitBreakCharge}
           onLimitBreakChargeChange={setLimitBreakCharge}
           onTimeScaleChange={setBattleTimeScale}
           nextCommunity={(() => {
-            if (activeBattleMode === 'savage') {
-              const wouldClear = getCampaignProperties(savageProperties, activeBattleProperty.community)
-                .every((property) => savageClearedSet.has(property.id) || property.id === activeBattleProperty.id);
-              if (!wouldClear) return null;
-            } else {
-              const wouldConquer = getCampaignProperties(properties, activeBattleProperty.community)
-                .every((property) => property.owner === 'player' || property.id === activeBattleProperty.id);
-              if (!wouldConquer) return null;
-            }
+            if (activeBattleMode !== 'normal') return null;
+            const wouldConquer = getCampaignProperties(properties, activeBattleProperty.community)
+              .every((property) => property.owner === 'player' || property.id === activeBattleProperty.id);
+            if (!wouldConquer) return null;
             const currentIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(activeBattleProperty.community);
             return COMMUNITY_CAMPAIGN_ORDER[currentIndex + 1] || null;
           })()}
           isTutorial={activeBattleMode === 'normal' && ownedProperties.length === 0 && activeBattleProperty.id.startsWith('prop_starter_')}
           isSavage={activeBattleMode === 'savage'}
+          isUltimate={activeBattleMode === 'ultimate'}
           onAddFunds={handleAddFunds}
           onResetFunds={handleResetFunds}
           onBattleEnd={handleBattleEnd}

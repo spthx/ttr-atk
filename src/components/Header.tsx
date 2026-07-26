@@ -21,6 +21,8 @@ interface HeaderProps {
   savageUnlocked: boolean;
   savageClearedCount: number;
   savageTargetCount: number;
+  ultimateUnlocked: boolean;
+  ultimateCleared: boolean;
   soundEnabled: boolean;
   setSoundEnabled: (enabled: boolean) => void;
   onAddFunds?: (amount: number) => void;
@@ -44,6 +46,8 @@ export const Header: React.FC<HeaderProps> = ({
   savageUnlocked,
   savageClearedCount,
   savageTargetCount,
+  ultimateUnlocked,
+  ultimateCleared,
   soundEnabled,
   setSoundEnabled,
   onAddFunds,
@@ -117,7 +121,7 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <TrendingUp className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
             <span className="text-xs font-bold text-emerald-400 font-mono">
-              +{formatCurrency(passiveRevenue)}/s
+              +{formatCurrency(passiveRevenue)}/秒
             </span>
           </div>
 
@@ -170,7 +174,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <Building2 className="w-4 h-4" />
-          マーケットボード
+          交易市場
         </button>
 
         <button
@@ -194,7 +198,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <Zap className="w-4 h-4" />
-          かけひき技 & シナジー
+          スキル・事業連携
         </button>
 
         {tradeAllianceUnlocked && (
@@ -221,7 +225,11 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Swords className="w-4 h-4" />
-            商戦 零式 <span className="rounded bg-rose-950 px-1.5 py-0.5 text-[9px]">{savageClearedCount}/{savageTargetCount}</span>
+            {ultimateUnlocked ? '零式・絶' : '商戦 零式'}
+            <span className="rounded bg-rose-950 px-1.5 py-0.5 text-[9px]">
+              {savageClearedCount}/{savageTargetCount}
+              {ultimateUnlocked ? ultimateCleared ? ' 絶✓' : ' 絶OPEN' : ''}
+            </span>
           </button>
         )}
       </div>
@@ -235,7 +243,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <Building2 className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] leading-none">マーケット</span>
+          <span className="text-[11px] leading-none">市場</span>
         </button>
 
         <button
@@ -245,7 +253,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <TrendingUp className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] leading-none">自社傘下</span>
+          <span className="text-[11px] leading-none">自社傘下</span>
           {ownedCount > 0 && (
             <span className="absolute top-1 right-2 w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-black text-[9px] flex items-center justify-center">
               {ownedCount}
@@ -260,7 +268,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <Zap className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] leading-none">かけひき技</span>
+          <span className="text-[11px] leading-none">スキル</span>
         </button>
 
         {tradeAllianceUnlocked && (
@@ -271,7 +279,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <ShieldCheck className="w-5 h-5 mb-0.5" />
-            <span className="text-[10px] leading-none">アライアンス</span>
+            <span className="text-[11px] leading-none">アライアンス</span>
           </button>
         )}
 
@@ -283,8 +291,10 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Swords className="w-5 h-5 mb-0.5" />
-            <span className="text-[10px] leading-none">零式</span>
-            <span className="absolute right-1 top-1 rounded bg-rose-950 px-1 text-[8px] text-rose-200">{savageClearedCount}/{savageTargetCount}</span>
+            <span className="text-[11px] leading-none">{ultimateUnlocked ? '零式・絶' : '零式'}</span>
+            <span className="absolute right-1 top-1 rounded bg-rose-950 px-1 text-[8px] text-rose-200">
+              {ultimateUnlocked ? ultimateCleared ? '絶✓' : '絶' : `${savageClearedCount}/${savageTargetCount}`}
+            </span>
           </button>
         )}
       </nav>

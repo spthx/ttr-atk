@@ -71,12 +71,12 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                 return (
                   <button key={candidate.allyId} type="button" onClick={() => { soundFx.playCoin(); onFormAlliance(candidate); }} className={`min-h-28 p-3 rounded-lg border text-left transition-all cursor-pointer active:scale-[.99] ${isGrandCompany ? 'bg-violet-950/20 border-violet-500/35 hover:border-violet-400/70' : 'bg-indigo-950/20 border-indigo-500/35 hover:border-indigo-400/70'}`}>
                     <span className={`text-[10px] font-black tracking-wider ${isGrandCompany ? 'text-violet-300' : 'text-indigo-300'}`}>
-                      {isGrandCompany ? 'PUBLIC PATRONAGE' : 'TRADE PARTY'}
+                      {isGrandCompany ? '公的後援' : '協力協定'}
                     </span>
                     <b className="mt-1 block text-sm text-slate-100">{candidate.allyName}</b>
                     <small className="mt-1.5 block text-[11px] leading-relaxed text-slate-400">{candidate.summary}</small>
                     <strong className={`mt-2 block text-xs ${isGrandCompany ? 'text-violet-300' : 'text-indigo-300'}`}>
-                      {isGrandCompany ? `${candidate.allyName}へ後援を申請` : `${candidate.allyName}をパーティに招く`}
+                      {isGrandCompany ? `${candidate.allyName}へ後援を申請` : `${candidate.allyName}と協定を結ぶ`}
                     </strong>
                   </button>
                 );
@@ -98,9 +98,9 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
           </>
         ) : alliance.active ? (
           <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
-            <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">1. 不可侵契約:</span><span>パーティ企業から{companyName}への対抗買収が一切仕掛けられなくなります。</span></div>
-            <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">2. パーティ支援要請:</span><span>買収交渉ごとに1回、対象相場の32%相当を要請できます。LBには含まれません。</span></div>
-            <div className="flex items-start gap-2"><span className="text-rose-400 font-bold">3. 破棄条件:</span><span>パーティ企業の傘下へ買収を仕掛けると、協定は永久解除されます。</span></div>
+            <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">1. 不可侵契約:</span><span>協力企業から{companyName}への対抗買収が一切仕掛けられなくなります。</span></div>
+            <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">2. 協力支援要請:</span><span>買収交渉ごとに1回、対象相場の32%相当を要請できます。LBには含まれません。</span></div>
+            <div className="flex items-start gap-2"><span className="text-rose-400 font-bold">3. 破棄条件:</span><span>協力企業の傘下へ買収を仕掛けると、協定は永久解除されます。</span></div>
           </div>
         ) : (
           <p className="text-xs leading-relaxed text-slate-400">
@@ -118,7 +118,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
             <HelpTip term="本部防衛資本" description={HELP_TEXT.defenseCapital} />
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            大規模なトレード・アライアンス本部は、参加カンパニーから防衛資本を得ています。各社との交渉を先に成立させ、本部の防衛資本を段階的に減らしましょう。
+            参加組織と提携するほど、本部防衛資本が低下します。
           </p>
         </div>
 

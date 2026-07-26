@@ -1,10 +1,11 @@
-import type { CommunityType, Property, TacticalSkill } from '../types';
+import type { BattleMode, CommunityType, Property, TacticalSkill } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
 
 export const PASSIVE_REVENUE_MULTIPLIER = 2;
 export const BATTLE_GAUGE_SPEED_FACTOR = 4;
 export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
 export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.45;
+export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 1.72;
 export const LIMIT_BREAK_CHARGE_PER_BAR = 100;
 export const LIMIT_BREAK_MAX_BARS = 3;
 export const LIMIT_BREAK_MAX_CHARGE =
@@ -46,6 +47,22 @@ export const TACTICAL_SKILL_BALANCE = {
     pushMultiplier: 1.5,
   },
 } as const;
+
+export const calculateBattleVictoryReward = (
+  marketPrice: number,
+  isPlayerVictory: boolean,
+  mode: BattleMode,
+  alreadyCleared = false
+) => {
+  if (
+    !isPlayerVictory ||
+    mode === 'ultimate' ||
+    (mode === 'savage' && alreadyCleared)
+  ) {
+    return 0;
+  }
+  return Math.round(Math.max(0, marketPrice) * 0.05);
+};
 
 export type LivingDeadPhase =
   | 'inactive'
@@ -123,6 +140,7 @@ interface EnemyBudgetContext {
   regionalInfluence: InfluenceBudgetModifier;
   isTutorial: boolean;
   isSavage?: boolean;
+  isUltimate?: boolean;
 }
 
 interface SkillUnlockContext {
@@ -147,9 +165,11 @@ export const getCampaignProperties = (
 export const getEnemyDifficultyLevel = (
   targetProperty: Property,
   isTutorial: boolean,
-  isSavage = false
+  isSavage = false,
+  isUltimate = false
 ) => {
   if (isTutorial) return 0;
+  if (isUltimate) return 6;
   if (isSavage) return 5;
   if (targetProperty.id === 'prop_casino_grand') return 4;
   const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
@@ -165,6 +185,7 @@ export const calculateEnemyBudget = ({
   regionalInfluence,
   isTutorial,
   isSavage = false,
+  isUltimate = false,
 }: EnemyBudgetContext) => {
   const price = targetProperty.marketPrice;
   const rankFactor =
@@ -200,7 +221,11 @@ export const calculateEnemyBudget = ({
 
   return Math.round(
     baseBudget * balanceFactor *
-    (isSavage ? SAVAGE_ENEMY_BUDGET_MULTIPLIER : 1)
+    (isUltimate
+      ? ULTIMATE_ENEMY_BUDGET_MULTIPLIER
+      : isSavage
+        ? SAVAGE_ENEMY_BUDGET_MULTIPLIER
+        : 1)
   );
 };
 

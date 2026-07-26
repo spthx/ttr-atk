@@ -27,8 +27,15 @@ export interface GameSaveData {
   limitBreakCharge?: number;
   /** Optional schema-v3 additions. Old completed saves unlock the normal ending automatically. */
   savageClearedPropertyIds?: string[];
+  /** Distinguishes four regional raid IDs from the former 20-encounter list. */
+  savageProgressVersion?: 2;
   normalEndingSeen?: boolean;
+  /** Optional schema-v3 additions for the post-Savage Ultimate route. */
+  savageEndingSeen?: boolean;
+  ultimateCleared?: boolean;
   trueEndingSeen?: boolean;
+  /** One manual battle-synergy slot. Missing/unknown values fall back in App. */
+  selectedBattleSynergyId?: string | null;
   lastSavedAt: number;
 }
 
@@ -114,8 +121,18 @@ export const loadGameSave = (): GameSaveData | null => {
       savageClearedPropertyIds: Array.isArray(parsed.savageClearedPropertyIds)
         ? parsed.savageClearedPropertyIds.filter((id): id is string => typeof id === 'string')
         : [],
+      savageProgressVersion: parsed.savageProgressVersion === 2 ? 2 : undefined,
       normalEndingSeen: parsed.normalEndingSeen === true,
-      trueEndingSeen: parsed.trueEndingSeen === true,
+      savageEndingSeen:
+        parsed.savageEndingSeen === true ||
+        (parsed.ultimateCleared === undefined && parsed.trueEndingSeen === true),
+      ultimateCleared: parsed.ultimateCleared === true,
+      trueEndingSeen:
+        parsed.ultimateCleared === true && parsed.trueEndingSeen === true,
+      selectedBattleSynergyId:
+        typeof parsed.selectedBattleSynergyId === 'string'
+          ? parsed.selectedBattleSynergyId
+          : null,
       lastSavedAt: parsed.lastSavedAt,
     };
   } catch (error) {

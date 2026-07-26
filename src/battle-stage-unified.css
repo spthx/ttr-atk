@@ -1,0 +1,272 @@
+/* Final battle-layout pass: one glance connects ownership, actors and capital. */
+.buyout-main {
+  width: min(100%, 76rem);
+  margin-inline: auto;
+}
+
+.battle-stage {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 13rem;
+  flex: 1 1 13rem;
+  grid-template-rows: minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid rgba(245, 196, 81, .34);
+  border-radius: .86rem;
+  background:
+    radial-gradient(circle at 20% 45%, rgba(14, 116, 144, .1), transparent 34%),
+    radial-gradient(circle at 80% 45%, rgba(190, 24, 93, .1), transparent 34%),
+    rgba(3, 7, 17, .94);
+  box-shadow: inset 0 0 2rem rgba(0, 0, 0, .38), 0 .45rem 1.25rem rgba(0, 0, 0, .28);
+}
+
+.battle-stage > .ownership-board {
+  position: absolute !important;
+  z-index: 20;
+  top: .38rem;
+  right: .45rem;
+  left: .45rem;
+  margin: 0;
+  padding: .48rem .62rem .42rem;
+  pointer-events: none;
+  border-color: rgba(226, 232, 240, .3);
+  background: linear-gradient(180deg, rgba(5, 10, 24, .95), rgba(5, 10, 24, .82));
+  box-shadow: 0 .35rem 1rem rgba(0, 0, 0, .34), inset 0 0 1.2rem rgba(255, 255, 255, .025);
+  backdrop-filter: blur(.25rem);
+}
+
+.battle-stage > .capital-arena {
+  grid-row: 1;
+  min-height: 0 !important;
+  height: auto !important;
+  padding: 6.45rem .55rem .48rem;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.battle-stage > .active-time {
+  grid-row: 2;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid rgba(245, 196, 81, .24);
+  border-radius: 0;
+  background: rgba(4, 10, 24, .94);
+  box-shadow: none;
+}
+
+.battle-stage .ownership-board__labels {
+  font-size: .72rem;
+}
+
+.battle-stage .ownership-board__labels span,
+.battle-stage .ownership-board > p {
+  font-size: .7rem;
+}
+
+.battle-stage .capital-arena__side > small,
+.battle-stage .gil-tower > small {
+  font-size: .64rem;
+}
+
+.battle-stage .capital-arena__center strong,
+.battle-stage .capital-arena__center b {
+  font-size: .66rem;
+}
+
+.command-deck nav {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.command-deck nav button,
+.investment-levels button,
+.command-primary,
+.property-funds button,
+.group-funds button,
+.alliance-fund,
+.grand-allied-fund {
+  min-height: 2.75rem;
+}
+
+.special-action-hotbar__action {
+  min-height: 3.25rem;
+}
+
+.special-action-hotbar__action > span b {
+  font-size: .74rem;
+}
+
+.special-action-hotbar__action > span small,
+.special-action-hotbar__action > em {
+  font-size: .6rem;
+}
+
+.recast-lane > span b,
+.recast-lane > strong {
+  font-size: .68rem;
+}
+
+.recast-lane > span small {
+  font-size: .58rem;
+}
+
+.buyout-dialog {
+  width: min(44rem, calc(100vw - 1rem));
+  max-width: calc(100vw - 1rem);
+  overflow-x: hidden;
+}
+
+.briefing-facts,
+.briefing-facts > div,
+.briefing-section {
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .buyout-main {
+    padding-inline: .75rem;
+  }
+
+  .battle-stage {
+    min-height: 18rem;
+  }
+
+  .battle-stage > .capital-arena {
+    padding-top: 6.8rem;
+  }
+
+  .gil-tower__chips {
+    min-height: 8.4rem;
+  }
+
+  .special-action-hotbar > div {
+    justify-content: center;
+  }
+
+  .special-action-hotbar__action {
+    flex-basis: 13rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .buyout-main {
+    gap: .3rem;
+    padding: .32rem .35rem 0;
+  }
+
+  .battle-stage {
+    min-height: 12rem;
+    flex-basis: 12rem;
+    border-radius: .65rem;
+  }
+
+  .battle-stage > .ownership-board {
+    top: .25rem;
+    right: .28rem;
+    left: .28rem;
+    padding: .36rem .4rem .32rem;
+    border-radius: .58rem;
+  }
+
+  .battle-stage > .capital-arena {
+    padding: 5.75rem .3rem .28rem;
+  }
+
+  .battle-stage .ownership-board__labels {
+    gap: .2rem;
+    font-size: .61rem;
+  }
+
+  .battle-stage .ownership-board__labels span,
+  .battle-stage .ownership-board > p {
+    font-size: .61rem;
+  }
+
+  .battle-stage .capital-arena__side > small,
+  .battle-stage .gil-tower > small {
+    font-size: .56rem;
+  }
+
+  .battle-stage .capital-arena__center {
+    width: 3rem;
+  }
+
+  .battle-stage .capital-arena__center strong,
+  .battle-stage .capital-arena__center b {
+    font-size: .58rem;
+  }
+
+  .active-time__mode {
+    font-size: .6rem !important;
+  }
+
+  .active-time__mode .battle-income-rate {
+    font-size: .54rem !important;
+  }
+
+  .recast-lane > span b,
+  .recast-lane > strong {
+    font-size: .61rem !important;
+  }
+
+  .recast-lane > span small {
+    font-size: .54rem !important;
+  }
+
+  .battle-limit-meter {
+    padding-block: .36rem !important;
+  }
+
+  .special-action-hotbar > header {
+    padding-top: .35rem;
+    font-size: .56rem;
+  }
+
+  .special-action-hotbar__action {
+    min-width: 12.25rem;
+    min-height: 3.15rem;
+  }
+
+  .command-deck {
+    max-height: 12.5rem;
+    overflow: hidden;
+    padding-bottom: max(.45rem, env(safe-area-inset-bottom));
+  }
+
+  .command-panel--funds {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+@media (max-width: 390px), (max-height: 700px) {
+  .buyout-header {
+    min-height: 2.8rem;
+  }
+
+  .battle-stage {
+    min-height: 10.7rem;
+  }
+
+  .battle-stage > .capital-arena {
+    padding-top: 5.4rem;
+  }
+
+  .command-deck {
+    max-height: 10.7rem;
+  }
+
+  .special-action-hotbar__action {
+    min-height: 3rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battle-stage *,
+  .battle-stage *::before,
+  .battle-stage *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
