@@ -3,7 +3,7 @@ export const metadata = {
   description: "タタルの大繁盛商店を旗揚げし、FF14の主要都市を順番に制覇する金融ゲーム。",
 };
 
-const EMBEDDED_GAME_VERSION = "capital-layer-v2";
+const EMBEDDED_GAME_VERSION = "finisher-session-v3";
 
 export default function Home() {
   return (

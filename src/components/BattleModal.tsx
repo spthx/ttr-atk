@@ -53,10 +53,13 @@ import {
 import { calculateBattleReadiness } from '../utils/battleReadiness';
 import {
   BATTLE_CINEMATIC_TIMING,
+  canConfirmBattleResult,
   canShowShortNotice,
   getBattleCinematicLayer,
   getCapitalVisualBundleCountForAmount,
   getCapitalVisualStage,
+  getVictoryConfettiParticleCount,
+  RESULT_CONFIRM_ARM_DELAY_MS,
   shouldInertBattleFooter,
 } from '../utils/battlePresentation';
 import { getTrainingDummyDefinition } from '../utils/trainingDummy';
@@ -511,6 +514,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [lastPlayerAction, setLastPlayerAction] = useState<PlayerBattleAction | null>(null);
   const [aiCycle, setAiCycle] = useState(0);
   const [finishTelegraphVisible, setFinishTelegraphVisible] = useState(false);
+  const [resultConfirmArmed, setResultConfirmArmed] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [floaters, setFloaters] = useState<FloatingGil[]>([]);
@@ -533,6 +537,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const shortDelayTimerRef = useRef<number | null>(null);
   const terminalActionTimerRef = useRef<number | null>(null);
   const finishTimerRef = useRef<number | null>(null);
+  const resultConfirmTimerRef = useRef<number | null>(null);
   const limitImpactTimerRef = useRef<number | null>(null);
   const conditionTimerRef = useRef<number | null>(null);
   const openingSlowTimerRef = useRef<number | null>(null);
@@ -543,6 +548,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const motionTimerRef = useRef<number | null>(null);
   const commandReadySoundArmedRef = useRef(false);
   const decisiveRef = useRef(false);
+  const resultConfirmArmedRef = useRef(false);
+  const resultConfirmedRef = useRef(false);
   const lastAnnouncedWindRef = useRef<WindCondition['type']>('CALM');
   const lastTelegraphedWindRef = useRef<WindCondition['type'] | null>(null);
   const livingDeadPhaseRef = useRef<LivingDeadPhase>('inactive');
@@ -559,6 +566,34 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+
+  const requestClose = useCallback(() => {
+    if (battlePhaseRef.current !== 'briefing' || endedRef.current) return;
+    onCloseRef.current();
+  }, []);
+
+  useEffect(() => {
+    if (resultConfirmTimerRef.current) {
+      window.clearTimeout(resultConfirmTimerRef.current);
+      resultConfirmTimerRef.current = null;
+    }
+    resultConfirmArmedRef.current = false;
+    setResultConfirmArmed(false);
+    if (battlePhase !== 'result' || !winner) return;
+
+    resultConfirmTimerRef.current = window.setTimeout(() => {
+      resultConfirmTimerRef.current = null;
+      resultConfirmArmedRef.current = true;
+      setResultConfirmArmed(true);
+    }, RESULT_CONFIRM_ARM_DELAY_MS);
+
+    return () => {
+      if (resultConfirmTimerRef.current) {
+        window.clearTimeout(resultConfirmTimerRef.current);
+        resultConfirmTimerRef.current = null;
+      }
+    };
+  }, [battlePhase, winner]);
 
   useEffect(() => {
     initialFocusRef.current =
@@ -595,7 +630,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           !element.closest('[inert]')
       );
     const focusTimer = window.setTimeout(() => {
-      if (activeSurface === rootDialogRef.current) {
+      if (
+        activeSurface === rootDialogRef.current ||
+        (battlePhase === 'result' && activeSurface === phaseDialogRef.current)
+      ) {
         activeSurface.focus();
         return;
       }
@@ -608,7 +646,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         if (showHelp) setShowHelp(false);
         else if (showLog) setShowLog(false);
         else if (panel !== 'capital') setPanel('capital');
-        else if (battlePhase === 'briefing') onCloseRef.current();
+        else if (battlePhase === 'briefing') requestClose();
         return;
       }
       if (event.key !== 'Tab') return;
@@ -633,7 +671,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       window.clearTimeout(focusTimer);
       document.removeEventListener('keydown', trapFocus);
     };
-  }, [battlePhase, panel, showHelp, showLog]);
+  }, [battlePhase, panel, requestClose, showHelp, showLog]);
 
   const updateLivingDeadState = (phase: LivingDeadPhase, remainingMs = 0) => {
     livingDeadPhaseRef.current = phase;
@@ -1065,6 +1103,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (shortDelayTimerRef.current) window.clearTimeout(shortDelayTimerRef.current);
     if (terminalActionTimerRef.current) window.clearTimeout(terminalActionTimerRef.current);
     if (finishTimerRef.current) window.clearTimeout(finishTimerRef.current);
+    if (resultConfirmTimerRef.current) window.clearTimeout(resultConfirmTimerRef.current);
     if (limitImpactTimerRef.current) window.clearTimeout(limitImpactTimerRef.current);
     if (conditionTimerRef.current) window.clearTimeout(conditionTimerRef.current);
     if (openingSlowTimerRef.current) window.clearTimeout(openingSlowTimerRef.current);
@@ -1073,6 +1112,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (decisiveResolveTimerRef.current) window.clearTimeout(decisiveResolveTimerRef.current);
     if (livingDeadNoticeTimerRef.current) window.clearTimeout(livingDeadNoticeTimerRef.current);
     if (motionTimerRef.current) window.clearTimeout(motionTimerRef.current);
+    confetti.reset();
     soundFx.stopBattleCinematicAudio(80);
   }, [onTimeScaleChange]);
 
@@ -1380,7 +1420,25 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     );
     if (result === 'player') {
       soundFx.playVictory();
-      confetti({ particleCount: 150, spread: 100, origin: { y: 0.48 } });
+      confetti.reset();
+      const reducedMotion = window.matchMedia?.(
+        '(prefers-reduced-motion: reduce)'
+      ).matches ?? false;
+      const particleCount = getVictoryConfettiParticleCount(
+        window.innerWidth,
+        reducedMotion
+      );
+      if (particleCount > 0) {
+        confetti({
+          particleCount,
+          spread: window.innerWidth <= 640 ? 72 : 96,
+          startVelocity: window.innerWidth <= 640 ? 26 : 34,
+          ticks: window.innerWidth <= 640 ? 80 : 120,
+          scalar: window.innerWidth <= 640 ? 0.78 : 0.92,
+          origin: { y: 0.48 },
+          disableForReducedMotion: true,
+        });
+      }
     } else {
       soundFx.playDefeat();
     }
@@ -2063,13 +2121,21 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         }, BATTLE_CINEMATIC_TIMING.limitTerminalImpactMs);
         return;
       }
-      confetti({
-        particleCount: 110,
-        spread: 82,
-        startVelocity: 38,
-        origin: { y: 0.62 },
-        colors: ['#fef08a', '#f59e0b', '#34d399', '#ffffff'],
-      });
+      const reducedMotion = window.matchMedia?.(
+        '(prefers-reduced-motion: reduce)'
+      ).matches ?? false;
+      if (!reducedMotion) {
+        confetti({
+          particleCount: window.innerWidth <= 640 ? 30 : 72,
+          spread: 78,
+          startVelocity: window.innerWidth <= 640 ? 26 : 34,
+          ticks: window.innerWidth <= 640 ? 72 : 100,
+          scalar: window.innerWidth <= 640 ? 0.74 : 0.88,
+          origin: { y: 0.62 },
+          colors: ['#fef08a', '#f59e0b', '#34d399', '#ffffff'],
+          disableForReducedMotion: true,
+        });
+      }
       changeBattlePhase('active');
       setBattleAnnouncement(null);
       setLastPlayerAction(null);
@@ -2287,9 +2353,34 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       brokerageFee -
       resultSettlementCost;
 
+  const openResultAnalysis = () => {
+    if (
+      battlePhaseRef.current !== 'finisher_notice' ||
+      !winner ||
+      finishTelegraphVisible
+    ) {
+      return;
+    }
+    changeBattlePhase('result');
+  };
+
   const confirmResult = () => {
+    if (!winner) return;
+    if (
+      !canConfirmBattleResult({
+        battlePhase: battlePhaseRef.current,
+        hasWinner: true,
+        armed: resultConfirmArmedRef.current,
+        alreadyConfirmed: resultConfirmedRef.current,
+      })
+    ) {
+      return;
+    }
+    resultConfirmedRef.current = true;
+    resultConfirmArmedRef.current = false;
+    setResultConfirmArmed(false);
     onBattleEnd({
-      winner: winner || 'opponent',
+      winner,
       targetProperty,
       companyFundsInvested: companyInvested,
       demandFundsInvested: demandInvested,
@@ -2438,7 +2529,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         <div className="buyout-header__actions">
           <button type="button" onClick={() => setShowHelp(true)} aria-label={isTraining ? '木人訓練の遊び方' : '買収戦の遊び方'}><CircleHelp /></button>
           {battlePhase === 'briefing' && (
-            <button type="button" onClick={onClose} aria-label={isTraining ? '木人一覧へ戻る' : '買収戦を閉じる'}><X /></button>
+            <button type="button" onClick={requestClose} aria-label={isTraining ? '木人一覧へ戻る' : '買収戦を閉じる'}><X /></button>
           )}
         </div>
       </header>
@@ -2997,7 +3088,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               : winner === 'player'
                 ? `${FINISH_LABELS[finishMethod]} / 所有率 ${finalOwnership.toFixed(1)}%`
                 : defeatReason === 'WALKING_DEAD_FAILED' ? 'WALKING DEAD FAILED / 蘇生失敗' : 'CAPITAL COLLAPSE / 買収失敗'}</span>
-            <button type="button" className="battle-next-button" onClick={() => changeBattlePhase('result')} disabled={finishTelegraphVisible}>
+            <button type="button" className="battle-next-button" onClick={openResultAnalysis} disabled={finishTelegraphVisible}>
               {finishTelegraphVisible ? '演出中' : '分析へ →'}
             </button>
           </>
@@ -3089,7 +3180,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   ? `零式レイド開始（${battleReadiness.symbol}${battleReadiness.label}）`
                   : `この条件で討滅戦開始（${battleReadiness.symbol}${battleReadiness.label}）`}
             </button>
-            <button type="button" className="dialog-close briefing-cancel" onClick={onClose}>
+            <button type="button" className="dialog-close briefing-cancel" onClick={requestClose}>
               {isTraining ? '木人一覧へ戻る' : '今回は交渉を見送る'}
             </button>
           </article>
@@ -3225,8 +3316,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               </p>
             )}
             {!isTraining && winner === 'player' && nextCommunity && <p className="next-community"><CheckCircle2 />次の都市「{nextCommunity}」への交易路が開きます。</p>}
-            <button type="button" className="dialog-close result-confirm" onClick={confirmResult}>
-              {isTraining
+            <button
+              type="button"
+              className="dialog-close result-confirm"
+              onClick={confirmResult}
+              disabled={!resultConfirmArmed}
+              aria-describedby="battle-result-confirm-note"
+            >
+              {!resultConfirmArmed
+                ? '結果を確認中…'
+                : isTraining
                 ? '訓練結果を保存せず木人一覧へ戻る'
                 : winner === 'player'
                 ? isHighEndRaid
@@ -3234,6 +3333,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   : '買収結果を確定する'
                 : '敗因を記録して戻る'}
             </button>
+            <small id="battle-result-confirm-note" className="sr-only">
+              このボタンを押すまで商戦結果は確定されず、画面も閉じません。
+            </small>
           </article>
         </div>
       )}
