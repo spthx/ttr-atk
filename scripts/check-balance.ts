@@ -19,15 +19,19 @@ import {
 } from '../src/utils/battleSettlement';
 import {
   BATTLE_CINEMATIC_TIMING,
+  BATTLE_STATUS_MESSAGE_DURATION_MS,
   canConfirmBattleResult,
-  canShowShortNotice,
+  getTerminalCinematicPresentation,
   getBattleCinematicLayer,
   getCapitalVisualBundleCount,
   getCapitalVisualBundleCountForAmount,
   getCapitalVisualStage,
   getVictoryConfettiParticleCount,
+  normalizeBattleStatusMessageText,
   RESULT_CONFIRM_ARM_DELAY_MS,
+  selectBattleStatusMessage,
   shouldInertBattleFooter,
+  TERMINAL_CINEMATIC_TIMING,
 } from '../src/utils/battlePresentation';
 import {
   parsePendingBattleSession,
@@ -78,7 +82,11 @@ import {
   TRAINING_DUMMY_DEFINITIONS,
 } from '../src/utils/trainingDummy';
 import {
+  advanceBattleCashRecovery,
   applyTrainingGaugeSpeed,
+  BATTLE_CASH_RECOVERY_RATE_PER_SECOND,
+  BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO,
+  BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS,
   BATTLE_GAUGE_SPEED_FACTOR,
   calculateBattleVictoryReward,
   ENEMY_INITIAL_COMMITMENT_RATIO,
@@ -95,15 +103,16 @@ import {
   calculateLimitBreakOwnershipPush,
   countsTowardCityConquest,
   getCampaignProperties,
+  getBattleCashRecoveryWindMultipliers,
+  getBattleTerminalWinner,
   getChargedLimitBreakTier,
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
-  holdGaugeForManualShortFinish,
   holdTrainingGaugeAboveDefeat,
   isSkillUnlocked,
   LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER,
   LIMIT_BREAK_MULTIPLIERS,
-  SHORT_MANUAL_FINISH_GAUGE,
+  LIMIT_BREAK_OWNERSHIP_CAPS,
   resolveLivingDeadOutcome,
   SAVAGE_ENEMY_BUDGET_MULTIPLIER,
   ULTIMATE_ENEMY_BUDGET_MULTIPLIER,
@@ -426,54 +435,9 @@ assert.equal(
   'the result dialog keeps the settled footer inert behind its modal surface'
 );
 assert.equal(
-  canShowShortNotice({
-    battlePhase: 'active',
-    ended: false,
-    decisive: false,
-  }),
-  true
-);
-assert.equal(
-  canShowShortNotice({
-    battlePhase: 'active',
-    ended: true,
-    decisive: false,
-  }),
-  false,
-  'SHORT cannot appear after settlement'
-);
-assert.equal(
-  canShowShortNotice({
-    battlePhase: 'active',
-    ended: false,
-    decisive: true,
-  }),
-  false,
-  'SHORT cannot interrupt the decisive slow-motion'
-);
-for (const battlePhase of [
-  'briefing',
-  'short_notice',
-  'limit_charge',
-  'decisive',
-  'finisher_notice',
-  'result',
-] as const) {
-  assert.equal(
-    canShowShortNotice({
-      battlePhase,
-      ended: false,
-      decisive: false,
-    }),
-    false,
-    `SHORT cannot interrupt ${battlePhase}`
-  );
-}
-assert.equal(
   getBattleCinematicLayer({
     battlePhase: 'decisive',
     hasBattleAnnouncement: true,
-    hasConditionAnnouncement: true,
     hasDecisiveBlow: true,
     hasWinner: false,
     finishTelegraphVisible: false,
@@ -485,7 +449,6 @@ assert.equal(
   getBattleCinematicLayer({
     battlePhase: 'finisher_notice',
     hasBattleAnnouncement: true,
-    hasConditionAnnouncement: true,
     hasDecisiveBlow: false,
     hasWinner: true,
     finishTelegraphVisible: true,
@@ -497,7 +460,6 @@ assert.equal(
   getBattleCinematicLayer({
     battlePhase: 'active',
     hasBattleAnnouncement: true,
-    hasConditionAnnouncement: true,
     hasDecisiveBlow: false,
     hasWinner: false,
     finishTelegraphVisible: false,
@@ -506,21 +468,109 @@ assert.equal(
   'only one full-screen cue is selected when action and condition timers coincide'
 );
 assert.ok(
-  BATTLE_CINEMATIC_TIMING.finalAnnouncementMs <=
-    BATTLE_CINEMATIC_TIMING.finalDecisiveStartMs,
-  'FINAL PUSH announcement finishes before the decisive blow starts'
-);
-assert.ok(
   BATTLE_CINEMATIC_TIMING.limitAnnouncementMs <=
     BATTLE_CINEMATIC_TIMING.limitResolveMs,
   'LIMIT BREAK announcement finishes before its capital impact'
 );
-assert.ok(
-  BATTLE_CINEMATIC_TIMING.decisiveImpactMs <
-    BATTLE_CINEMATIC_TIMING.decisiveClearMs &&
-    BATTLE_CINEMATIC_TIMING.decisiveClearMs <
-      BATTLE_CINEMATIC_TIMING.decisiveResolveMs,
-  'decisive impact, clear and WIN/LOSE resolve remain sequential'
+assert.equal(getBattleTerminalWinner(-99.999), null);
+assert.equal(getBattleTerminalWinner(-100), 'player');
+assert.equal(getBattleTerminalWinner(99.999), null);
+assert.equal(getBattleTerminalWinner(100), 'opponent');
+assert.equal(
+  getBattleTerminalWinner(-99.5),
+  null,
+  'zero enemy reserve is not a terminal condition and 99.5% no longer stops play'
+);
+for (const [route, gauge, expectedWinner] of [
+  ['direct company investment', -104, 'player'],
+  ['subsidiary support', -101, 'player'],
+  ['synergy support', -106, 'player'],
+  ['alliance or skill pressure', -100.1, 'player'],
+  ['era wind pressure', -100.01, 'player'],
+  ['continuous capital pressure', -100, 'player'],
+  ['enemy defense pressure', 100, 'opponent'],
+] as const) {
+  assert.equal(
+    getBattleTerminalWinner(gauge),
+    expectedWinner,
+    `${route} reaches the shared ownership terminal`
+  );
+}
+for (const tier of [1, 2, 3] as const) {
+  const rawOwnershipAfterLimitBreak =
+    99 + LIMIT_BREAK_OWNERSHIP_CAPS[tier];
+  assert.equal(
+    getBattleTerminalWinner(100 - rawOwnershipAfterLimitBreak * 2),
+    'player',
+    `LIMIT BREAK ${tier} uses the same terminal latch`
+  );
+}
+assert.equal(
+  getTerminalCinematicPresentation(
+    TERMINAL_CINEMATIC_TIMING.anticipationMs - 1
+  ).stage,
+  'anticipation'
+);
+assert.equal(
+  getTerminalCinematicPresentation(
+    TERMINAL_CINEMATIC_TIMING.anticipationMs
+  ).stage,
+  'impact'
+);
+assert.equal(
+  getTerminalCinematicPresentation(
+    TERMINAL_CINEMATIC_TIMING.anticipationMs +
+      TERMINAL_CINEMATIC_TIMING.impactMs
+  ).stage,
+  'resolution'
+);
+assert.equal(
+  getTerminalCinematicPresentation(TERMINAL_CINEMATIC_TIMING.totalMs).stage,
+  'complete'
+);
+assert.equal(
+  normalizeBattleStatusMessageText(
+    '一行目\n二行目\n表示してはいけない三行目'
+  ),
+  '一行目\n二行目'
+);
+assert.equal(BATTLE_STATUS_MESSAGE_DURATION_MS, 1_350);
+assert.equal(
+  selectBattleStatusMessage([
+    {
+      id: 'ally',
+      text: '自社への追い風！',
+      tone: 'ally',
+      createdAt: 2,
+    },
+    {
+      id: 'danger',
+      text: '自社不利！',
+      tone: 'enemy',
+      createdAt: 1,
+    },
+  ])?.id,
+  'danger',
+  'danger outranks newer positive notices'
+);
+assert.equal(
+  selectBattleStatusMessage([
+    {
+      id: 'danger',
+      text: '自社不利！',
+      tone: 'enemy',
+      createdAt: 2,
+    },
+    {
+      id: 'terminal',
+      text: 'DEAL CLOSED',
+      tone: 'ally',
+      terminal: true,
+      createdAt: 1,
+    },
+  ])?.id,
+  'terminal',
+  'the terminal notice always owns the single status window'
 );
 
 const readinessProperty = {
@@ -1297,7 +1347,219 @@ assert.ok(
 );
 assert.equal(LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER, 1.2);
 assert.deepEqual(LIMIT_BREAK_MULTIPLIERS, { 1: 1.44, 2: 1.8, 3: 2.22 });
+assert.deepEqual(LIMIT_BREAK_OWNERSHIP_CAPS, { 1: 10, 2: 20, 3: 30 });
 assert.equal(ENEMY_INITIAL_COMMITMENT_RATIO, 0.25);
+assert.equal(BATTLE_CASH_RECOVERY_RATE_PER_SECOND, 0.003);
+assert.equal(BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO, 0.2);
+assert.deepEqual(getBattleCashRecoveryWindMultipliers('CALM'), {
+  player: 1,
+  enemy: 1,
+});
+assert.deepEqual(
+  getBattleCashRecoveryWindMultipliers('TAILWIND_PLAYER'),
+  { player: 1.25, enemy: 1 }
+);
+assert.deepEqual(
+  getBattleCashRecoveryWindMultipliers('HEADWIND_PLAYER'),
+  { player: 0.75, enemy: 1 }
+);
+assert.deepEqual(
+  getBattleCashRecoveryWindMultipliers('TAILWIND_ENEMY'),
+  { player: 1, enemy: 1.25 }
+);
+assert.deepEqual(getBattleCashRecoveryWindMultipliers('CROSSWIND'), {
+  player: 1.2,
+  enemy: 1.2,
+});
+assert.deepEqual(BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS.CALM, {
+  player: 1,
+  enemy: 1,
+});
+
+const recoveryBaseline = 10_000;
+const calmSixtySecondRecovery = advanceBattleCashRecovery({
+  baselineFunds: recoveryBaseline,
+  availableFunds: 0,
+  cumulativeRecovered: 0,
+  elapsedSeconds: 60,
+  timeScale: 1,
+  windMultiplier: 1,
+  terminal: false,
+});
+assert.equal(calmSixtySecondRecovery.availableFunds, 1_800);
+assert.equal(calmSixtySecondRecovery.cumulativeRecovered, 1_800);
+assert.equal(calmSixtySecondRecovery.cumulativeRecoveryRatio, 0.18);
+
+const recoveryAtSixtySixPointSevenSeconds = advanceBattleCashRecovery({
+  baselineFunds: recoveryBaseline,
+  availableFunds: 0,
+  cumulativeRecovered: 0,
+  elapsedSeconds: 66.7,
+  timeScale: 1,
+  windMultiplier: 1,
+  terminal: false,
+});
+assert.equal(recoveryAtSixtySixPointSevenSeconds.availableFunds, 2_000);
+assert.equal(
+  recoveryAtSixtySixPointSevenSeconds.cumulativeRecovered,
+  2_000
+);
+assert.equal(
+  recoveryAtSixtySixPointSevenSeconds.cumulativeRecoveryRatio,
+  0.2
+);
+assert.deepEqual(
+  advanceBattleCashRecovery({
+    baselineFunds: recoveryBaseline,
+    availableFunds: recoveryAtSixtySixPointSevenSeconds.availableFunds,
+    cumulativeRecovered:
+      recoveryAtSixtySixPointSevenSeconds.cumulativeRecovered,
+    elapsedSeconds: 600,
+    timeScale: 1,
+    windMultiplier: 1.25,
+    terminal: false,
+  }),
+  {
+    availableFunds: 2_000,
+    cumulativeRecovered: 2_000,
+    recoveredThisStep: 0,
+    cumulativeRecoveryRatio: 0.2,
+  },
+  'battle cash recovery stops permanently at 20% of the opening baseline'
+);
+
+const currentCashCap = advanceBattleCashRecovery({
+  baselineFunds: recoveryBaseline,
+  availableFunds: 9_500,
+  cumulativeRecovered: 0,
+  elapsedSeconds: 60,
+  timeScale: 1,
+  windMultiplier: 1,
+  terminal: false,
+});
+assert.equal(currentCashCap.availableFunds, recoveryBaseline);
+assert.equal(currentCashCap.cumulativeRecovered, 500);
+assert.equal(currentCashCap.cumulativeRecoveryRatio, 0.05);
+
+const tacticalRecovery = advanceBattleCashRecovery({
+  baselineFunds: recoveryBaseline,
+  availableFunds: 0,
+  cumulativeRecovered: 0,
+  elapsedSeconds: 60,
+  timeScale: 0.1,
+  windMultiplier: 1,
+  terminal: false,
+});
+assert.equal(tacticalRecovery.availableFunds, 180);
+assert.equal(tacticalRecovery.cumulativeRecoveryRatio, 0.018);
+
+const playerTailwindRecovery = advanceBattleCashRecovery({
+  baselineFunds: recoveryBaseline,
+  availableFunds: 0,
+  cumulativeRecovered: 0,
+  elapsedSeconds: 10,
+  timeScale: 1,
+  windMultiplier:
+    getBattleCashRecoveryWindMultipliers('TAILWIND_PLAYER').player,
+  terminal: false,
+});
+assert.equal(playerTailwindRecovery.availableFunds, 375);
+const playerHeadwindRecovery = advanceBattleCashRecovery({
+  baselineFunds: recoveryBaseline,
+  availableFunds: 0,
+  cumulativeRecovered: 0,
+  elapsedSeconds: 10,
+  timeScale: 1,
+  windMultiplier:
+    getBattleCashRecoveryWindMultipliers('HEADWIND_PLAYER').player,
+  terminal: false,
+});
+assert.equal(playerHeadwindRecovery.availableFunds, 225);
+const enemyTailwindRecovery = advanceBattleCashRecovery({
+  baselineFunds: recoveryBaseline,
+  availableFunds: 0,
+  cumulativeRecovered: 0,
+  elapsedSeconds: 10,
+  timeScale: 1,
+  windMultiplier:
+    getBattleCashRecoveryWindMultipliers('TAILWIND_ENEMY').enemy,
+  terminal: false,
+});
+assert.equal(enemyTailwindRecovery.availableFunds, 375);
+const crosswindPlayerRecovery = advanceBattleCashRecovery({
+  baselineFunds: recoveryBaseline,
+  availableFunds: 0,
+  cumulativeRecovered: 0,
+  elapsedSeconds: 10,
+  timeScale: 1,
+  windMultiplier: getBattleCashRecoveryWindMultipliers('CROSSWIND').player,
+  terminal: false,
+});
+const crosswindEnemyRecovery = advanceBattleCashRecovery({
+  baselineFunds: recoveryBaseline,
+  availableFunds: 0,
+  cumulativeRecovered: 0,
+  elapsedSeconds: 10,
+  timeScale: 1,
+  windMultiplier: getBattleCashRecoveryWindMultipliers('CROSSWIND').enemy,
+  terminal: false,
+});
+assert.equal(crosswindPlayerRecovery.availableFunds, 360);
+assert.equal(crosswindEnemyRecovery.availableFunds, 360);
+
+const trainingRecovery = advanceBattleCashRecovery({
+  baselineFunds: recoveryBaseline,
+  availableFunds: 1_000,
+  cumulativeRecovered: 0,
+  elapsedSeconds: 10,
+  timeScale: 1,
+  windMultiplier: 1,
+  terminal: false,
+});
+assert.equal(trainingRecovery.availableFunds, 1_300);
+assert.equal(
+  trainingRecovery.cumulativeRecovered,
+  300,
+  'training uses the same current-100% and cumulative-20% recovery limits'
+);
+
+const terminalRecoveryState = {
+  baselineFunds: recoveryBaseline,
+  availableFunds: 1_234,
+  cumulativeRecovered: 567,
+  elapsedSeconds: 60,
+  timeScale: 1,
+  windMultiplier: 1.25,
+  terminal: true,
+};
+assert.deepEqual(
+  advanceBattleCashRecovery(terminalRecoveryState),
+  {
+    availableFunds: 1_234,
+    cumulativeRecovered: 567,
+    recoveredThisStep: 0,
+    cumulativeRecoveryRatio: 0.0567,
+  },
+  'terminal battle state freezes cash recovery'
+);
+
+const enemyOwnershipBeforeReserveRecovery = 48;
+const recoveredEnemyReserve = advanceBattleCashRecovery({
+  baselineFunds: recoveryBaseline,
+  availableFunds: 2_500,
+  cumulativeRecovered: 0,
+  elapsedSeconds: 10,
+  timeScale: 1,
+  windMultiplier: 1,
+  terminal: false,
+});
+assert.equal(recoveredEnemyReserve.availableFunds, 2_800);
+assert.equal(enemyOwnershipBeforeReserveRecovery, 48);
+assert.equal(
+  Object.hasOwn(recoveredEnemyReserve, 'ownership'),
+  false,
+  'enemy reserve recovery has no ownership side effect before the AI invests it'
+);
 assert.equal(calculateLimitBreakOwnershipPush(2_822, 1_000, 1, 1), 10);
 assert.equal(calculateLimitBreakOwnershipPush(20_000, 1_000, 2, 1.15), 20);
 assert.equal(calculateLimitBreakOwnershipPush(50_000, 1_000, 3, 1.15), 30);
@@ -1334,10 +1596,7 @@ for (let activation = 0; activation < 3; activation += 1) {
   repeatableLimitBreakCharge = consumeLimitBreakCharge(repeatableLimitBreakCharge);
   assert.equal(repeatableLimitBreakCharge, 0);
 }
-assert.equal(holdGaugeForManualShortFinish(-100, 0), SHORT_MANUAL_FINISH_GAUGE);
-assert.equal(calculateOwnershipFromGauge(SHORT_MANUAL_FINISH_GAUGE), 99.5);
-assert.equal(holdGaugeForManualShortFinish(-100, 1), -100);
-assert.equal(holdGaugeForManualShortFinish(-80, 0), -80);
+assert.equal(calculateOwnershipFromGauge(-100), 100);
 assert.equal(normalizeLimitBreakCharge(undefined), 0);
 assert.equal(normalizeLimitBreakCharge(Number.NaN), 0);
 assert.equal(normalizeLimitBreakCharge(-20), 0);

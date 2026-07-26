@@ -21,10 +21,135 @@ export const holdTrainingGaugeAboveDefeat = (
 ) => isTraining
   ? Math.min(gauge, 100 - TRAINING_MIN_OWNERSHIP_PERCENT * 2)
   : gauge;
+
+export type BattleTerminalWinner = 'player' | 'opponent' | null;
+
+/**
+ * Ownership alone decides a completed battle. Hand cash and enemy reserve are
+ * deliberately absent so a temporary liquidity shortage can never settle it.
+ */
+export const getBattleTerminalWinner = (
+  gauge: number
+): BattleTerminalWinner => {
+  if (gauge <= -100) return 'player';
+  if (gauge >= 100) return 'opponent';
+  return null;
+};
 export const LIMIT_BREAK_MAX_CHARGE =
   LIMIT_BREAK_CHARGE_PER_BAR * LIMIT_BREAK_MAX_BARS;
 export const LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER = 1.2;
-export const SHORT_MANUAL_FINISH_GAUGE = -99;
+export const BATTLE_CASH_RECOVERY_RATE_PER_SECOND = 0.003;
+export const BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO = 0.2;
+
+export type BattleCashRecoveryWindType =
+  | 'TAILWIND_PLAYER'
+  | 'HEADWIND_PLAYER'
+  | 'TAILWIND_ENEMY'
+  | 'CROSSWIND'
+  | 'CALM';
+
+export const BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS: Record<
+  BattleCashRecoveryWindType,
+  Readonly<{ player: number; enemy: number }>
+> = {
+  TAILWIND_PLAYER: { player: 1.25, enemy: 1 },
+  HEADWIND_PLAYER: { player: 0.75, enemy: 1 },
+  TAILWIND_ENEMY: { player: 1, enemy: 1.25 },
+  CROSSWIND: { player: 1.2, enemy: 1.2 },
+  CALM: { player: 1, enemy: 1 },
+};
+
+export interface BattleCashRecoveryState {
+  availableFunds: number;
+  cumulativeRecovered: number;
+}
+
+export interface BattleCashRecoveryStepInput
+  extends BattleCashRecoveryState {
+  baselineFunds: number;
+  elapsedSeconds: number;
+  timeScale: number;
+  windMultiplier: number;
+  terminal: boolean;
+}
+
+export interface BattleCashRecoveryStepResult
+  extends BattleCashRecoveryState {
+  recoveredThisStep: number;
+  cumulativeRecoveryRatio: number;
+}
+
+const finiteNonNegative = (value: number) =>
+  Number.isFinite(value) ? Math.max(0, value) : 0;
+
+/**
+ * Advances one side's battle-local cash tank without touching ownership,
+ * invested capital, or any persistent economy value.
+ */
+export const advanceBattleCashRecovery = ({
+  baselineFunds,
+  availableFunds,
+  cumulativeRecovered,
+  elapsedSeconds,
+  timeScale,
+  windMultiplier,
+  terminal,
+}: BattleCashRecoveryStepInput): BattleCashRecoveryStepResult => {
+  const baseline = finiteNonNegative(baselineFunds);
+  const currentFunds = Math.min(
+    baseline,
+    finiteNonNegative(availableFunds)
+  );
+  const cumulativeCap =
+    baseline * BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO;
+  const recoveredSoFar = Math.min(
+    cumulativeCap,
+    finiteNonNegative(cumulativeRecovered)
+  );
+  const unchanged = {
+    availableFunds: currentFunds,
+    cumulativeRecovered: recoveredSoFar,
+    recoveredThisStep: 0,
+    cumulativeRecoveryRatio:
+      baseline > 0 ? recoveredSoFar / baseline : 0,
+  };
+
+  if (
+    terminal ||
+    baseline <= 0 ||
+    elapsedSeconds <= 0 ||
+    timeScale <= 0 ||
+    windMultiplier <= 0
+  ) {
+    return unchanged;
+  }
+
+  const requestedRecovery =
+    baseline *
+    BATTLE_CASH_RECOVERY_RATE_PER_SECOND *
+    finiteNonNegative(elapsedSeconds) *
+    finiteNonNegative(timeScale) *
+    finiteNonNegative(windMultiplier);
+  const recoveredThisStep = Math.min(
+    requestedRecovery,
+    baseline - currentFunds,
+    cumulativeCap - recoveredSoFar
+  );
+  const nextCumulativeRecovered =
+    recoveredSoFar + recoveredThisStep;
+
+  return {
+    availableFunds: currentFunds + recoveredThisStep,
+    cumulativeRecovered: nextCumulativeRecovered,
+    recoveredThisStep,
+    cumulativeRecoveryRatio:
+      baseline > 0 ? nextCumulativeRecovered / baseline : 0,
+  };
+};
+
+export const getBattleCashRecoveryWindMultipliers = (
+  windType: BattleCashRecoveryWindType
+) => BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS[windType];
 
 export const TACTICAL_SKILL_BALANCE = {
   fastAction: {
@@ -301,18 +426,6 @@ export const getChargedLimitBreakTier = (
 
 /** Every LIMIT BREAK spends the entire stored gauge, even when only one bar fires. */
 export const consumeLimitBreakCharge = (_charge: number) => 0;
-
-/**
- * Once the rival is SHORT, passive capital pressure may reach 99.5% ownership,
- * but the player must provide the finishing input.
- */
-export const holdGaugeForManualShortFinish = (
-  nextGauge: number,
-  enemyReserve: number
-) =>
-  enemyReserve <= 0 && nextGauge <= -100
-    ? SHORT_MANUAL_FINISH_GAUGE
-    : nextGauge;
 
 export const calculateLimitBreakChargeGain = (
   effectiveCapitalMovement: number,
