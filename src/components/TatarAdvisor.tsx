@@ -1,6 +1,7 @@
 import React from 'react';
 import { Building2, ClipboardList, MessageSquareText } from 'lucide-react';
 import { GAME_WORLD } from '../data/worldData';
+import { FANKIT_ART } from '../data/fankitAssets';
 import type { AppTab } from '../types';
 
 interface TatarAdvisorProps {
@@ -39,17 +40,17 @@ const getAdvice = ({
   }
 
   if (ownedCount === 0) {
-    return 'まずは手の届く物件を選んで、仲介手数料と残り資金を確認するでっす。';
+    return 'まずは手の届く交渉対象を選んで、仲介手数料と残り資金を確認するでっす。';
   }
 
   if (activeTab === 'market') {
-    return '都市ごとの物件数と相場を比べて、制覇までの残りが少ない市場から狙うでっす。';
+    return '都市ごとの交渉対象数と相場を比べて、制覇までの残りが少ない市場から狙うでっす。';
   }
   if (activeTab === 'portfolio') {
-    return '傘下の独立危険度を点検するでっす。支援を求めすぎた会社には根回しが必要でっす。';
+    return '支援元の独立危険度を点検するでっす。支援を求めすぎた相手にはネマワシが必要でっす。';
   }
   if (activeTab === 'skills') {
-    return '物件の組み合わせで使える手が増えるでっす。次の買収先に合う技を選ぶでっす。';
+    return '事業・契約の組み合わせで使えるスキルが増えるでっす。次の交渉に合う一手を選ぶでっす。';
   }
   return '本部へ挑む前に参加カンパニーを切り崩して、外部協力や公的後援と資金余力を整えるでっす。';
 };
@@ -58,8 +59,12 @@ export const TatarAdvisor: React.FC<TatarAdvisorProps> = (props) => (
   <section className="rounded-xl border border-amber-500/35 bg-gradient-to-r from-amber-950/45 via-slate-900 to-slate-900 p-3 shadow-lg">
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-amber-300/60 bg-amber-500 text-lg font-black text-slate-950 shadow">
-          タ
+        <div className="flex h-14 w-14 shrink-0 items-end justify-center overflow-hidden rounded-xl border border-amber-300/60 bg-gradient-to-b from-amber-100/15 to-amber-950/60 shadow">
+          <img
+            src={FANKIT_ART.tataru.windUp}
+            alt="タタル"
+            className="h-13 w-13 object-contain object-bottom"
+          />
         </div>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

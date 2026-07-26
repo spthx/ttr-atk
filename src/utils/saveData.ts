@@ -36,6 +36,11 @@ export interface GameSaveData {
   trueEndingSeen?: boolean;
   /** One manual battle-synergy slot. Missing/unknown values fall back in App. */
   selectedBattleSynergyId?: string | null;
+  /**
+   * True while a no-economy training battle is open.
+   * Optional so existing schema-v3 saves remain compatible.
+   */
+  passiveIncomePaused?: boolean;
   lastSavedAt: number;
 }
 
@@ -133,6 +138,7 @@ export const loadGameSave = (): GameSaveData | null => {
         typeof parsed.selectedBattleSynergyId === 'string'
           ? parsed.selectedBattleSynergyId
           : null,
+      passiveIncomePaused: parsed.passiveIncomePaused === true,
       lastSavedAt: parsed.lastSavedAt,
     };
   } catch (error) {
@@ -151,7 +157,12 @@ export const restoreProperties = (save: GameSaveData | null): Property[] => {
     return {
       ...property,
       owner: saved.owner,
-      ownerName: saved.owner === 'player' ? saved.ownerName : property.ownerName,
+      ownerName:
+        saved.owner === 'player'
+          ? saved.ownerName
+          : saved.owner === 'independent'
+            ? '独立物件'
+            : property.ownerName,
       loyaltyRisk: Math.max(0, Math.min(100, saved.loyaltyRisk)),
     };
   });

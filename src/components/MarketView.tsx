@@ -3,7 +3,7 @@ import { Property, IndustryType, CommunityType } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER, TRADE_COMMUNITIES } from '../data/worldData';
 import { formatCurrency } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
-import { ArrowRight, ShieldAlert, CheckCircle2, TrendingUp, TrendingDown, Newspaper, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole } from 'lucide-react';
+import { ArrowRight, ShieldAlert, CheckCircle2, TrendingUp, TrendingDown, Newspaper, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole, Dumbbell } from 'lucide-react';
 import {
   WindIndicator,
   type WindCondition,
@@ -33,7 +33,33 @@ interface MarketViewProps {
   campaignMode?: 'normal' | 'savage';
   getStrengthComparison: (property: Property) => BattleReadinessResult;
   onStartBuyout: (property: Property) => void;
+  onOpenTraining?: () => void;
 }
+
+const getPropertyPresentation = (description: string) => {
+  const prefixes = [
+    ['【公式名称を用いたゲーム向けアレンジ】', '公式名アレンジ'],
+    ['【本作独自のIF連盟】', '創作IF'],
+    ['【ゲーム向け創作】', '創作'],
+    ['【系列組織】', '系列'],
+    ['【アライアンス本部】', '企業連合本部'],
+    ['【初心者おすすめ】', ''],
+  ] as const;
+  const tags: string[] = [];
+  let text = description;
+  let matched = true;
+  while (matched) {
+    matched = false;
+    for (const [prefix, tag] of prefixes) {
+      if (!text.startsWith(prefix)) continue;
+      text = text.slice(prefix.length);
+      if (tag) tags.push(tag);
+      matched = true;
+      break;
+    }
+  }
+  return { text: text.trim(), tags };
+};
 
 export const MarketView: React.FC<MarketViewProps> = ({
   properties,
@@ -47,6 +73,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
   campaignMode = 'normal',
   getStrengthComparison,
   onStartBuyout,
+  onOpenTraining,
 }) => {
   const hasStartedCampaign = campaignMode === 'savage' || properties.some((property) => property.owner === 'player');
   const [selectedIndustry, setSelectedIndustry] = useState<string>('ALL');
@@ -72,9 +99,9 @@ export const MarketView: React.FC<MarketViewProps> = ({
   );
 
   const newsItems = [
-    '【市場ニュース】中央銀行の金利政策により、不動産・農業株に買気集中！',
-    '【底値気配】一部の独立物件で一時的な価格下落！安値買いの仕込みチャンス！',
-    '【アライアンス動向】東アルデナード商会圏が交渉資金を積み増した模様。',
+    '【市場ニュース】各都市の両替商が調達条件を見直し、農園・土地事業へ買いが集中！',
+    '【下落気配】一部の独立事業で一時的な価格下落。安値交渉の好機です！',
+    '【企業連合動向】東アルデナード商会圏が交渉資金を積み増した模様。',
     '【産業トピックス】馬・畜産業で需要が急増。毎秒収益への期待が高まる。',
     '【市場気配】全体的に押し目買いが優勢。取得交渉の好機です！',
   ];
@@ -177,7 +204,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
     if (!canAffordFee) {
       soundFx.playWarning();
       setNoticeMessage(
-        `【所持金不足】${prop.name} の買収仲介手数料 ${formatCurrency(fee)} が不足しています。（現在の所持金: ${formatCurrency(totalFunds)}）`
+        `【所持金不足】${prop.name} の仲介手数料 ${formatCurrency(fee)} が不足しています。（現在の所持金: ${formatCurrency(totalFunds)}）`
       );
       setTimeout(() => setNoticeMessage(null), 4000);
       return;
@@ -199,16 +226,23 @@ export const MarketView: React.FC<MarketViewProps> = ({
           <img src={campaignMode === 'savage' ? FANKIT_ART.battleBackdrop : FANKIT_ART.marketBackdrop} alt="FFXIVファンキットによる交易世界の背景" className="absolute inset-0 h-full w-full object-cover object-center" />
           <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/85 to-slate-950/25" />
           <div className="relative z-10 flex min-h-36 max-w-2xl flex-col justify-center px-5 py-5">
-            <p className={`text-[10px] font-black tracking-[0.28em] ${campaignMode === 'savage' ? 'text-rose-300' : 'text-amber-300'}`}>{campaignMode === 'savage' ? 'SAVAGE TRADE RAID' : 'EORZEA GRAND MARKET'}</p>
+            <p className={`text-[10px] font-black tracking-[0.28em] ${campaignMode === 'savage' ? 'text-rose-300' : 'text-amber-300'}`}>{campaignMode === 'savage' ? 'SAVAGE TRADE RAID' : 'GRAND WORLD MARKET'}</p>
             <h2 className="mt-1 text-2xl font-black text-white drop-shadow-lg">{campaignMode === 'savage' ? '挑戦する零式商戦を選ぶ' : '次に攻める都市を選ぶ'}</h2>
             <p className="mt-1 text-xs text-slate-200">{campaignMode === 'savage' ? '各都市の通常商戦を再構成した1～4層の高難度交易レイドです。' : '都市を選ぶと、交渉できる事業・契約だけを表示します。'}</p>
           </div>
-          <button type="button" onClick={() => setShowGuide((open) => !open)} className="absolute bottom-3 right-3 z-20 flex items-center gap-1 rounded-lg border border-cyan-400/30 bg-slate-950/80 px-2.5 py-1.5 text-[10px] font-bold text-cyan-200">
-            <CircleHelp className="h-3.5 w-3.5" /> 遊び方
-          </button>
+          <div className="absolute bottom-3 right-3 z-20 flex items-center gap-2">
+            {campaignMode === 'normal' && onOpenTraining && (
+              <button type="button" onClick={onOpenTraining} className="flex min-h-11 items-center gap-1 rounded-lg border border-amber-400/40 bg-slate-950/85 px-3 py-2 text-xs font-black text-amber-200">
+                <Dumbbell className="h-4 w-4" /> 木人練習
+              </button>
+            )}
+            <button type="button" aria-expanded={showGuide} onClick={() => setShowGuide((open) => !open)} className="flex min-h-11 items-center gap-1 rounded-lg border border-cyan-400/30 bg-slate-950/80 px-3 py-2 text-xs font-bold text-cyan-200">
+              <CircleHelp className="h-3.5 w-3.5" /> 遊び方
+            </button>
+          </div>
         </section>
 
-        {showGuide && <BeginnerGuide />}
+        {showGuide && <BeginnerGuide defaultOpen />}
 
         <section className="rounded-2xl border border-cyan-500/20 bg-slate-900/85 p-3 shadow-xl">
           <div className="mb-3 flex items-center justify-between">
@@ -216,7 +250,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
               <h3 className="flex items-center gap-2 text-sm font-black text-cyan-100"><MapPinned className="h-4 w-4 text-cyan-400" /> {campaignMode === 'savage' ? '商戦 零式レイドマップ' : '都市戦略マップ'}</h3>
               <p className="mt-0.5 text-[10px] text-slate-500">{campaignMode === 'savage' ? '踏破都市' : '制覇数'} {communityProgress.filter((city) => city.conquered).length}/{communityProgress.length}</p>
             </div>
-            <button type="button" onClick={() => { setSelectedCommunity('ALL'); setViewMode('targets'); }} className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[10px] font-bold text-slate-300">
+            <button type="button" onClick={() => { setSelectedCommunity('ALL'); setViewMode('targets'); }} className="flex min-h-11 items-center gap-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-300">
               {campaignMode === 'savage' ? '全層から探す' : '全対象から探す'} <ChevronRight className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -231,29 +265,42 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 <img src={getFankitJobArt(community.id)} alt="" aria-hidden="true" className="absolute -bottom-5 -right-4 h-24 w-24 object-contain opacity-20 transition-transform group-hover:scale-110" />
                 <span className="relative z-10 flex items-center gap-1 text-xs font-black text-slate-100">{!unlocked && <LockKeyhole className="h-3 w-3 text-slate-500" />}{community.id}</span>
                 <span className="relative z-10 mt-1 block text-[11px] text-cyan-300">{community.marketCharacter}</span>
-                <span className={`relative z-10 mt-3 inline-block rounded px-1.5 py-0.5 text-[9px] font-black ${community.conquered ? 'bg-emerald-400/20 text-emerald-200' : 'bg-slate-800 text-slate-300'}`}>
+                <span className={`relative z-10 mt-3 inline-block rounded px-1.5 py-0.5 text-[11px] font-black ${community.conquered ? 'bg-emerald-400/20 text-emerald-200' : 'bg-slate-800 text-slate-300'}`}>
                   {community.conquered ? (campaignMode === 'savage' ? '零式踏破済み' : '制覇済み') : unlocked ? `${community.owned}/${community.total} ${campaignMode === 'savage' ? '層踏破' : '取得'}` : `${prerequisite}制覇で解放`}
                 </span>
-                {unlocked && <span className="relative z-10 mt-1 block text-[10px] font-bold text-amber-300">{campaignMode === 'savage' ? '通常の地域補正は無効' : `地域補正 +${regionalBonus}%`}</span>}
+                {unlocked && <span className="relative z-10 mt-1 block text-xs font-bold text-amber-300">{campaignMode === 'savage' ? '通常の地域補正は無効' : `地域補正 +${regionalBonus}%`}</span>}
               </button>
               );
             })}
           </div>
         </section>
-        <p className="text-center text-[9px] text-slate-600">FFXIVファンキット素材使用 © SQUARE ENIX</p>
       </div>
     );
   }
   return (
     <div className="market-screen-enter space-y-3 font-sans">
-      <section className="flex items-center justify-between rounded-xl border border-cyan-500/20 bg-slate-900/90 p-3">
+      {campaignMode === 'normal' && <BeginnerGuide defaultOpen={!hasStartedCampaign} />}
+      <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-500/20 bg-slate-900/90 p-3">
         <div>
-          <button type="button" onClick={() => setViewMode('map')} className="mb-1 flex items-center gap-1 text-[10px] font-bold text-cyan-300 hover:text-cyan-200">
+          <button type="button" onClick={() => setViewMode('map')} className="mb-1 flex min-h-11 items-center gap-1 text-xs font-bold text-cyan-300 hover:text-cyan-200">
             <MapPinned className="h-3.5 w-3.5" /> 都市マップへ戻る
           </button>
-          <h2 className="text-base font-black text-white">{selectedCommunity === 'ALL' ? '全都市の交渉対象' : `${selectedCommunity}の交渉対象`}</h2>
+          <h2 className="flex items-center gap-1 text-base font-black text-white">
+            {selectedCommunity === 'ALL' ? '全都市の交渉対象' : `${selectedCommunity}の交渉対象`}
+            <HelpTip
+              term="世界観バッジ"
+              description="「創作」は本作独自、「公式名アレンジ」はFFXIV公式名を用いたゲーム向けIF、「創作IF」は公式に存在しない本作独自の連盟・関係を示します。"
+            />
+          </h2>
         </div>
-        <div className="flex items-center gap-2 text-[10px] text-slate-400"><ListFilter className="h-4 w-4 text-amber-400" />交渉対象 {activeTargetCount}件</div>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-2 text-xs text-slate-400"><ListFilter className="h-4 w-4 text-amber-400" />交渉対象 {activeTargetCount}件</span>
+          {campaignMode === 'normal' && onOpenTraining && (
+            <button type="button" onClick={onOpenTraining} className="flex min-h-11 items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-950/25 px-3 py-2 text-xs font-black text-amber-200">
+              <Dumbbell className="h-4 w-4" /> 木人練習
+            </button>
+          )}
+        </div>
       </section>
 
       {/* Insufficient Funds Warning Banner */}
@@ -265,7 +312,8 @@ export const MarketView: React.FC<MarketViewProps> = ({
           </div>
           <button
             onClick={() => setNoticeMessage(null)}
-            className="text-rose-400 hover:text-white font-black text-sm px-1"
+            aria-label="資金不足の案内を閉じる"
+            className="inline-flex h-11 w-11 items-center justify-center text-rose-400 hover:text-white font-black text-sm"
           >
             ✕
           </button>
@@ -303,7 +351,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
             title="表示する都市を選びます"
             value={selectedCommunity}
             onChange={(e) => setSelectedCommunity(e.target.value as CommunityType | 'ALL')}
-            className="bg-slate-950 border border-violet-500/40 rounded-lg px-2.5 py-1.5 text-xs text-violet-200 focus:outline-none focus:border-violet-400"
+            className="min-h-11 bg-slate-950 border border-violet-500/40 rounded-lg px-2.5 py-1.5 text-xs text-violet-200 focus:outline-none focus:border-violet-400"
           >
             <option value="ALL">全都市</option>
             {TRADE_COMMUNITIES.filter((community) => unlockedCommunityIds.has(community.id)).map((community) => (
@@ -318,7 +366,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
             title="表示する産業を選びます"
             value={selectedIndustry}
             onChange={(e) => setSelectedIndustry(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+            className="min-h-11 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
           >
             <option value="ALL">全産業</option>
             {industries.map((ind) => (
@@ -330,15 +378,15 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
           <select
             aria-label="所有者で絞り込む"
-            title="独立物件、トレード・アライアンス、自社所有で絞り込みます"
+            title="独立事業、競合企業連合、自社保有で絞り込みます"
             value={selectedOwnerFilter}
             onChange={(e) => setSelectedOwnerFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+            className="min-h-11 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
           >
             <option value="ALL">全所属</option>
             <option value="INDEPENDENT">独立（未所属）</option>
-            <option value="CARTEL">アライアンス</option>
-            <option value="PLAYER">自社所有</option>
+            <option value="CARTEL">企業連合（競合）</option>
+            <option value="PLAYER">自社保有</option>
           </select>
         </div>
       </div>
@@ -347,7 +395,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
         <button
           type="button"
           onClick={() => setShowOwnedProperties((open) => !open)}
-          className="flex w-full items-center justify-between rounded-xl border border-emerald-500/25 bg-emerald-950/20 px-4 py-2.5 text-left text-xs font-bold text-emerald-200"
+          className="flex min-h-11 w-full items-center justify-between rounded-xl border border-emerald-500/25 bg-emerald-950/20 px-4 py-2.5 text-left text-xs font-bold text-emerald-200"
         >
           <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" />取得済み事業・契約 {ownedFilteredCount}件</span>
           <span className="text-[10px] text-emerald-300">{showOwnedCards ? '畳む ▲' : '開く ▼'}</span>
@@ -375,6 +423,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 ...prop,
                 marketPrice: activePrice,
               });
+          const propertyPresentation = getPropertyPresentation(prop.description);
 
           // Owner badge styles
           let ownerBadgeColor = 'bg-slate-800 text-slate-300 border-slate-700';
@@ -427,25 +476,34 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 <h3 className="text-base font-bold text-slate-100 flex items-center justify-between gap-2">
                   <span>{prop.name}</span>
                   {prop.id.startsWith('prop_starter_') && !isPlayerOwned && (
-                    <span className="shrink-0 rounded bg-cyan-500/15 px-1.5 py-0.5 text-[9px] font-black text-cyan-300 ring-1 ring-cyan-500/30">
+                    <span className="shrink-0 rounded bg-cyan-500/15 px-1.5 py-0.5 text-[11px] font-black text-cyan-300 ring-1 ring-cyan-500/30">
                       初心者向け
                     </span>
                   )}
                   {prop.isCartelHQ && (
-                    <span className="text-[10px] bg-red-600 text-white font-black px-1.5 py-0.5 rounded uppercase">
-                      アライアンス本部
+                    <span className="text-[11px] bg-red-600 text-white font-black px-1.5 py-0.5 rounded">
+                      企業連合本部
                     </span>
                   )}
                   {!countsTowardCityConquest(prop) && (
-                    <span className="shrink-0 rounded border border-violet-400/40 bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-black text-violet-200">
-                      任意の連合戦
+                    <span className="shrink-0 rounded border border-violet-400/40 bg-violet-500/15 px-1.5 py-0.5 text-[11px] font-black text-violet-200">
+                      任意の企業連合戦
                     </span>
                   )}
                 </h3>
 
                 {/* Description */}
+                {propertyPresentation.tags.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {propertyPresentation.tags.map((tag) => (
+                      <span key={tag} className="rounded border border-cyan-500/30 bg-cyan-950/40 px-1.5 py-0.5 text-[11px] font-bold text-cyan-200">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <p className="text-xs text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
-                  {prop.description}
+                  {propertyPresentation.text}
                 </p>
 
                 {/* Real-time FX Market Financial Metrics */}
@@ -460,7 +518,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       {rateInfo.change < 0 ? (
                         <span className="text-[11px] text-emerald-400 font-bold flex items-center bg-emerald-950/60 px-1 rounded border border-emerald-500/30">
                           <TrendingDown className="w-3 h-3 mr-0.5" />
-                          {rateInfo.change}% (底値)
+                          {rateInfo.change}% (下落)
                         </span>
                       ) : (
                         <span className="text-[11px] text-rose-400 font-bold flex items-center bg-rose-950/60 px-1 rounded border border-rose-500/30">
@@ -507,13 +565,13 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 {isPlayerOwned ? (
                   <div className="w-full py-2 px-3 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center justify-center gap-1.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    {campaignMode === 'savage' ? '零式踏破済み（再取得不要）' : '自社所有中（毎秒収益を受取中）'}
+                    {campaignMode === 'savage' ? '零式踏破済み（再取得不要）' : '自社保有中（毎秒収益を受取中）'}
                   </div>
                 ) : (
                   <button
                     onClick={() => handleBuyoutClick(prop, activePrice, fee, canAffordFee)}
                     title={HELP_TEXT.brokerageFee}
-                    className={`w-full py-2.5 px-4 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 active:brightness-90 touch-manipulation select-none cursor-pointer ${
+                    className={`min-h-11 w-full py-2.5 px-4 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 active:brightness-90 touch-manipulation select-none cursor-pointer ${
                       canAffordFee
                         ? 'bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-400 text-slate-950 shadow-amber-500/20 border border-amber-400/50'
                         : 'bg-slate-800 hover:bg-slate-750 text-rose-300/90 border border-slate-700/80 hover:border-rose-500/50'
@@ -540,20 +598,18 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
       {filteredProperties.length === 0 && (
         <div className="text-center py-12 bg-slate-900/40 border border-slate-800 rounded-xl">
-          <p className="text-slate-400 text-sm">条件に一致する物件が見つかりませんでした。</p>
-          <p className="mt-1 text-xs text-slate-500">検索語や都市・産業・所有者の条件を減らしてみてください。</p>
+          <p className="text-slate-400 text-sm">条件に一致する交渉対象が見つかりませんでした。</p>
+          <p className="mt-1 text-xs text-slate-500">都市・産業・所属の絞り込み条件を減らしてみてください。</p>
           <button
             type="button"
             onClick={resetFilters}
-            className="mt-4 rounded-lg border border-cyan-500/40 bg-cyan-950/40 px-4 py-2 text-xs font-bold text-cyan-300 transition-colors hover:bg-cyan-900/50"
+            className="mt-4 min-h-11 rounded-lg border border-cyan-500/40 bg-cyan-950/40 px-4 py-2 text-xs font-bold text-cyan-300 transition-colors hover:bg-cyan-900/50"
           >
             絞り込みをリセット
           </button>
         </div>
       )}
 
-      <footer className="pb-2 text-center text-[9px] leading-relaxed text-slate-500">
-        本作は非公式・非営利の私用ファンゲームです。FFXIVファンキット素材を使用しています。© SQUARE ENIX
-      </footer>    </div>
+    </div>
   );
 };

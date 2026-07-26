@@ -69,7 +69,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
           <div>
             <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
               <Building2 className="w-5 h-5 text-amber-400" />
-              {companyName}の保有物件・独立危険度
+              {companyName}の保有事業・契約
               <HelpTip term="独立危険度" description={HELP_TEXT.independenceRisk} />
             </h2>
           </div>
@@ -80,14 +80,14 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
               onClick={onGlobalNemawashi}
               disabled={totalFunds < globalNemawashiCost}
               title={HELP_TEXT.nemawashi}
-              className={`px-4 py-2.5 rounded-lg font-bold text-xs flex items-center gap-2 shadow-md transition-all shrink-0 ${
+              className={`min-h-11 px-4 py-2.5 rounded-lg font-bold text-xs flex items-center gap-2 shadow-md transition-all shrink-0 ${
                 totalFunds >= globalNemawashiCost
                   ? 'bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer'
                   : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
               }`}
             >
               <RefreshCw className="w-4 h-4 text-indigo-300" />
-              全傘下一括ネマワシ（費用 {formatCurrency(globalNemawashiCost)}）
+              全支援元一括ネマワシ（費用 {formatCurrency(globalNemawashiCost)}）
             </button>
           )}
         </div>
@@ -95,7 +95,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
         {/* Stats Summary Bar */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-800">
           <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-            <span className="text-[11px] text-slate-400">所有物件数 & 総資産評価</span>
+            <span className="text-xs text-slate-400">保有事業数・総資産</span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="text-lg font-black text-amber-400">{ownedProperties.length} 件</span>
               <span className="text-xs text-slate-400">({formatCurrency(totalAssetValue)})</span>
@@ -103,7 +103,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
           </div>
 
           <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-            <span className="flex items-center gap-1 text-[11px] text-slate-400">
+            <span className="flex items-center gap-1 text-xs text-slate-400">
               合計基礎収益（連携前）
               <HelpTip term="毎秒収益" description={HELP_TEXT.passiveRevenue} />
             </span>
@@ -113,7 +113,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
           </div>
 
           <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-            <span className="flex items-center gap-1 text-[11px] text-slate-400">
+            <span className="flex items-center gap-1 text-xs text-slate-400">
               平均独立危険度
               <HelpTip term="独立危険度" description={HELP_TEXT.independenceRisk} align="right" />
             </span>
@@ -129,7 +129,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
               >
                 {avgLoyaltyRisk} / 100
               </span>
-              <span className="text-[10px] text-slate-500">
+              <span className="text-xs text-slate-500">
                 ({getLoyaltyRiskStatus(avgLoyaltyRisk).label})
               </span>
             </div>
@@ -143,10 +143,10 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
         <div className="space-y-1">
           <strong className="font-bold text-indigo-300">独立した事業の精算</strong>
           <p className="leading-relaxed text-indigo-200/80">
-            独立すると収益・支援元を失います。現在評価額は商会資金へ戻ります。
+            独立すると収益・支援元を失います。基準評価額は商会資金へ戻ります。
           </p>
           <details className="pt-1 text-[11px] text-indigo-300/75">
-            <summary className="cursor-pointer font-semibold">上級者向け：清算を利用する場合</summary>
+            <summary className="flex min-h-11 cursor-pointer items-center font-semibold">上級者向け：清算を利用する場合</summary>
             <p className="mt-1 leading-relaxed">支援金を受けた後に独立精算を資金繰りへ利用できますが、収益とシナジーが崩れるため高リスクです。</p>
           </details>
         </div>
@@ -156,14 +156,14 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
       <div className="space-y-3">
         <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          保有物件一覧（{ownedProperties.length}件）
+          保有事業・契約一覧（{ownedProperties.length}件）
         </h3>
 
         {ownedProperties.length === 0 ? (
           <div className="text-center py-12 bg-slate-900 border border-slate-800 rounded-xl">
             <Building2 className="w-10 h-10 text-slate-600 mx-auto mb-2" />
-            <p className="text-slate-400 text-sm font-medium">現在所有している物件はありません。</p>
-            <p className="text-xs text-slate-500 mt-1">「市場・物件」画面から最初の物件を買収しましょう。</p>
+            <p className="text-slate-400 text-sm font-medium">現在保有している事業・契約はありません。</p>
+            <p className="text-xs text-slate-500 mt-1">「市場」から最初の取得交渉を始めましょう。</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -187,10 +187,10 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold text-violet-300 bg-violet-950/70 px-2 py-0.5 rounded border border-violet-500/30">
+                        <span className="text-[11px] font-bold text-violet-300 bg-violet-950/70 px-2 py-0.5 rounded border border-violet-500/30">
                           {prop.community}
                         </span>
-                        <span className="text-[10px] font-semibold text-amber-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                        <span className="text-[11px] font-semibold text-amber-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
                           {prop.industry}
                         </span>
                       </div>
@@ -207,11 +207,11 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
                   {/* Financials */}
                   <div className="flex items-center justify-between text-xs bg-slate-950 p-2.5 rounded-lg border border-slate-800">
                     <div>
-                      <span className="text-slate-400 block text-[10px]">現在評価額</span>
+                      <span className="text-slate-400 block text-xs">基準評価額</span>
                       <span className="font-bold text-amber-400">{formatCurrency(prop.marketPrice)}</span>
                     </div>
                     <div className="text-right">
-                      <span className="block text-[11px] text-slate-400">
+                      <span className="block text-xs text-slate-400">
                         基礎収益（連携前）
                       </span>
                       <span className="font-bold text-emerald-400">
@@ -261,7 +261,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
                       onClick={() => handleSingleNemawashi(prop)}
                       disabled={totalFunds < singleCost || prop.loyaltyRisk === 0}
                       title={HELP_TEXT.nemawashi}
-                      className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-all ${
+                      className={`min-h-11 px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-all ${
                         prop.loyaltyRisk === 0
                           ? 'bg-slate-800 text-slate-500 cursor-default'
                           : totalFunds >= singleCost

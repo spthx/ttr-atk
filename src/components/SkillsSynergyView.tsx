@@ -41,6 +41,8 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
   );
 
   const handleToggle = (skill: TacticalSkill) => {
+    const isEquipped = equippedSkillIds.includes(skill.id);
+    if (!isEquipped && equippedSkillIds.length >= 8) return;
     soundFx.playSkillSpark();
     onToggleEquipSkill(skill.id);
   };
@@ -54,9 +56,10 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
             <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
               <Zap className="w-5 h-5 text-amber-400" />
               スキル装備
-              <HelpTip term="かけひき技" description="買収交渉中に使える特殊コマンドです。修得済みの技を最大8個まで装備できます。" />
+              <HelpTip term="スキル" description="買収交渉中に使える特殊コマンドです。修得済みのスキルを最大8個まで装備できます。" />
             </h2>
-            <p className="mt-1 text-xs text-slate-400">物件や業界の条件を満たすと修得できます。使用後は再使用時間が必要です。</p>
+            <p className="mt-1 text-xs text-slate-400">事業・契約や業界の条件を満たすと修得できます。使用後は再使用時間が必要です。</p>
+            <p className="mt-1 text-xs text-cyan-300/80">主な名称はFFXIVのアクションをモチーフにし、交易戦での効果は本作独自にアレンジしています。</p>
           </div>
 
           <div className="bg-slate-950 px-4 py-2 rounded-lg border border-slate-800 text-xs font-bold text-amber-400 flex items-center gap-2">
@@ -86,7 +89,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
               >
                 <div>
                   <div className="flex items-center justify-end gap-2 mb-2">
-                    <span className="text-[10px] text-slate-400">
+                    <span className="text-xs text-slate-400">
                       {skill.oncePerBattle ? '使用制限: 1交渉1回' : `再使用: ${(skill.cooldownMs / 1000).toFixed(1)}秒`}
                     </span>
                   </div>
@@ -107,7 +110,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                   <div className="mt-3 p-2 rounded bg-slate-950 border border-slate-800/80 text-[11px] text-slate-400">
                     <strong className="flex items-center gap-1 text-slate-300 font-medium">
                       修得条件
-                      <HelpTip term="修得条件" description="表示された物件・業界・総資産・SYNERGYの条件を満たすと装備できます。" />
+                      <HelpTip term="修得条件" description="表示された事業・契約、業界、総資産、事業連携の条件を満たすと装備できます。" />
                     </strong>
                     {skill.unlockRequirements}
                   </div>
@@ -117,7 +120,8 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                   {unlocked ? (
                     <button
                       onClick={() => handleToggle(skill)}
-                      className={`w-full py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                      disabled={!isEquipped && equippedSkillIds.length >= 8}
+                      className={`min-h-11 w-full py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${
                         isEquipped
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 cursor-pointer'
                           : equippedSkillIds.length >= 8
@@ -140,7 +144,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleToggle(skill)}
-                      className="w-full rounded-lg border border-rose-500/30 bg-rose-950/20 px-3 py-2 text-xs font-bold text-rose-300"
+                      className="min-h-11 w-full rounded-lg border border-rose-500/30 bg-rose-950/20 px-3 py-2 text-xs font-bold text-rose-300"
                     >
                       条件未達で休止中（装備解除）
                     </button>
@@ -162,11 +166,11 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
           <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
             <Layers className="w-5 h-5 text-indigo-400" />
-            SYNERGY（自社内の事業連携）
+            事業連携（SYNERGY）
             <HelpTip term="SYNERGY" description={HELP_TEXT.synergy} />
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            原料・加工・輸送・販売など、つながりのある必要物件をすべて所有すると毎秒収益倍率が自動で発動します。
+            原料・加工・輸送・販売など、つながりのある事業・契約をすべて保有すると毎秒収益倍率が自動で発動します。
             <span className="ml-1 inline-flex"><HelpTip term="バリューチェーン" description={HELP_TEXT.valueChain} /></span>
           </p>
           <div className="mt-4 flex flex-col gap-3 rounded-xl border border-indigo-400/30 bg-indigo-950/30 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -236,7 +240,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                 {/* Properties Checklist */}
                 <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-1.5">
                   <span className="text-[11px] text-slate-400 font-semibold block">
-                    必要な物件:
+                    必要な事業・契約:
                   </span>
                   <div className="flex flex-wrap gap-2">
                     {synergy.requiredPropertyIds.map((propId) => {
@@ -261,11 +265,11 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
 
                 <div className="grid grid-cols-2 gap-2 text-center text-xs">
                   <div className="bg-slate-950 p-2 rounded border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">毎秒収益</span>
+                    <span className="text-xs text-slate-400 block">毎秒収益</span>
                     <strong className="text-emerald-400 font-bold">×{synergy.bonusYieldMultiplier.toFixed(2)}</strong>
                   </div>
                   <div className="bg-slate-950 p-2 rounded border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">戦闘連携の調達倍率</span>
+                    <span className="text-xs text-slate-400 block">戦闘連携の調達倍率</span>
                     <strong className="text-amber-300 font-bold">×{(synergy.battleGroupMultiplier ?? 1.28).toFixed(2)}</strong>
                   </div>
                 </div>

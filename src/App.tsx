@@ -30,6 +30,7 @@ import { TatarAdvisor } from './components/TatarAdvisor';
 import { LaunchIntro } from './components/LaunchIntro';
 import { EndingModal } from './components/EndingModal';
 import { HighEndRaidView } from './components/HighEndRaidView';
+import { TrainingDummyView } from './components/TrainingDummyView';
 import {
   getWindPool,
   getWindProgressionStage,
@@ -68,6 +69,10 @@ import {
   calculateBattleReadiness,
   type BattleReadinessResult,
 } from './utils/battleReadiness';
+import {
+  applyNormalBattlePropertyUpdates,
+  calculateLiquidationCashback,
+} from './utils/battleSettlement';
 import {
   applySavageSynergyUpgrades,
   buildUltimateProperty,
@@ -117,21 +122,21 @@ const FEATURE_UNLOCKS: Record<
   },
   subsidiary_support: {
     kicker: 'TRADE PARTY',
-    title: '傘下カンパニー支援 解放',
-    dialogue: '買収戦の「資金源」から、仲間になった会社へ一社ずつ支援を頼めるでっす。',
-    detail: '支援は自動ではありません。毎回会社を選び、独立危険度と引き換えにギルを積みます。',
+    title: '保有事業・契約の支援 解放',
+    dialogue: '買収戦の「資金源」から、取得した事業や契約先へ一件ずつ支援を頼めるでっす。',
+    detail: '支援は自動ではありません。毎回支援元を選び、独立危険度と引き換えにギルを積みます。契約先そのものを所有・傘下化する意味ではありません。',
   },
   light_party_limit_break: {
     kicker: 'LIGHT PARTY',
     title: 'LIMIT BREAK I 解放',
-    dialogue: '自社を含む4社がそろって、LBゲージ1本が解放でっす！ 攻防を重ねて満タンにするでっす。',
+    dialogue: '自社1枠と支援元3件がそろって、交易ライトパーティ結成でっす！ LBゲージ1本が解放されますぞ。',
     detail: 'ゲージは資金投入と敵の防衛の大きさで蓄積。発動すると0に戻り、使わなかった分は次の買収戦へ持ち越せます。',
   },
   guild_synergy: {
-    kicker: 'GUILD LINK',
-    title: 'SYNERGY 解放',
-    dialogue: '同じ商流で働く仲間がつながりましたな。これがギルド・シナジーでっす！',
-    detail: '対象企業の組み合わせや地域・業界の影響力で、収益・押し込み・一斉支援が強化されます。',
+    kicker: 'BUSINESS SYNERGY',
+    title: '事業連携（SYNERGY）解放',
+    dialogue: '必要な事業・契約がつながり、ひとつの商流になったでっす！',
+    detail: '指定された事業・契約を揃えると毎秒収益が自動で強化されます。戦闘では選んだ1連携だけを使用し、地域・業界補正やLIMIT BREAKとは別に働きます。',
   },
   living_dead_skill: {
     kicker: 'DARK KNIGHT ACTION',
@@ -142,14 +147,14 @@ const FEATURE_UNLOCKS: Record<
   full_party: {
     kicker: 'FULL PARTY',
     title: 'フルパーティ結成',
-    dialogue: '自社を含む8社のフルパーティでっす。大口案件にも、仲間の役割を見て挑むでっす。',
-    detail: '自社を含む8社でLBゲージ2本、16社で3本まで蓄積。ためた本数に応じてLB I～IIIへ強化されます。',
+    dialogue: '自社1枠と支援元7件の交易フルパーティでっす。大口案件にも、仲間の役割を見て挑むでっす。',
+    detail: '自社＋支援元が合計8枠でLBゲージ2本、16枠で3本まで蓄積。ためた本数に応じてLB I～IIIへ強化されます。',
   },
   trade_alliance: {
-    kicker: 'TRADE ALLIANCE',
-    title: 'アライアンス航路 解放',
-    dialogue: 'ウルダハでの実績が認められましたな。ここからは複数カンパニーが組む大規模案件でっす！',
-    detail: '段階式の買収戦、外部カンパニーとの協力協定、グランドカンパニーへの公的後援申請が開放されます。',
+    kicker: 'ENTERPRISE ALLIANCE',
+    title: '企業連合・協力 解放',
+    dialogue: 'ウルダハでの実績が認められましたな。ここからは複数組織が組む企業連合へ挑めるでっす！',
+    detail: '段階式の企業連合戦、外部企業との協力協定、グランドカンパニーへの公的後援申請が開放されます。',
   },
 };
 
@@ -207,6 +212,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<AppTab>('market');
   const [activeBattleProperty, setActiveBattleProperty] = useState<Property | null>(null);
   const [activeBattleMode, setActiveBattleMode] = useState<BattleMode>('normal');
+  const [showTrainingSelector, setShowTrainingSelector] = useState(false);
+  const [trainingLimitBreakCharge, setTrainingLimitBreakCharge] = useState(0);
   const [endingNotice, setEndingNotice] = useState<'normal' | 'savage' | 'true' | null>(null);
   const [battleTimeScale, setBattleTimeScale] = useState(1);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
@@ -232,6 +239,8 @@ export default function App() {
     WIND_CONDITIONS.CALM
   );
   const [windCountdown, setWindCountdown] = useState(0);
+  const marketWindRef = useRef<WindCondition>(WIND_CONDITIONS.CALM);
+  const windCountdownRef = useRef(0);
 
   const completeLaunchIntro = () => {
     const normalizedName = companyName.trim() || GAME_WORLD.companyName;
@@ -292,10 +301,12 @@ export default function App() {
   );
 
   useEffect(() => {
+    const nextCountdown =
+      windProgressionStage === 0 ? 0 : WIND_CALM_SECONDS;
+    marketWindRef.current = WIND_CONDITIONS.CALM;
+    windCountdownRef.current = nextCountdown;
     setMarketWind(WIND_CONDITIONS.CALM);
-    setWindCountdown(
-      windProgressionStage === 0 ? 0 : WIND_CALM_SECONDS
-    );
+    setWindCountdown(nextCountdown);
   }, [windProgressionStage]);
 
   useEffect(() => {
@@ -303,38 +314,46 @@ export default function App() {
     const timer = window.setInterval(() => {
       const overlayPaused =
         showLaunchIntro ||
+        showTrainingSelector ||
         !!unlockNotice ||
         !!featureUnlockNoticeId ||
         !!endingNotice;
       const scale = activeBattleProperty
-        ? battleTimeScale
+        ? activeBattleMode === 'training'
+          ? 0
+          : battleTimeScale
         : overlayPaused
           ? 0
           : 1;
       if (scale <= 0) return;
-      setWindCountdown((current) => {
-        const next = current - 0.25 * scale;
-        if (next > 0) return next;
+      const next = windCountdownRef.current - 0.25 * scale;
+      if (next > 0) {
+        windCountdownRef.current = next;
+        setWindCountdown(next);
+        return;
+      }
 
-        if (marketWind.type !== 'CALM') {
-          setMarketWind(WIND_CONDITIONS.CALM);
-          return WIND_CALM_SECONDS;
-        }
-
+      if (marketWindRef.current.type !== 'CALM') {
+        marketWindRef.current = WIND_CONDITIONS.CALM;
+        windCountdownRef.current = WIND_CALM_SECONDS;
+      } else {
         const pool = getWindPool(windProgressionStage);
         const nextType = pool[Math.floor(Math.random() * pool.length)];
-        setMarketWind(WIND_CONDITIONS[nextType]);
-        return WIND_ACTIVE_SECONDS;
-      });
+        marketWindRef.current = WIND_CONDITIONS[nextType];
+        windCountdownRef.current = WIND_ACTIVE_SECONDS;
+      }
+      setMarketWind(marketWindRef.current);
+      setWindCountdown(windCountdownRef.current);
     }, 250);
     return () => window.clearInterval(timer);
   }, [
     activeBattleProperty,
+    activeBattleMode,
     battleTimeScale,
     endingNotice,
     featureUnlockNoticeId,
-    marketWind.type,
     showLaunchIntro,
+    showTrainingSelector,
     unlockNotice,
     windProgressionStage,
   ]);
@@ -525,6 +544,7 @@ export default function App() {
   useEffect(() => {
     if (
       showLaunchIntro ||
+      showTrainingSelector ||
       activeBattleProperty ||
       unlockNotice ||
       featureUnlockNoticeId
@@ -539,6 +559,7 @@ export default function App() {
     reachedFeatureUnlockIds,
     seenUnlockIds,
     showLaunchIntro,
+    showTrainingSelector,
     unlockNotice,
   ]);
 
@@ -558,6 +579,7 @@ export default function App() {
   useEffect(() => {
     if (
       showLaunchIntro ||
+      showTrainingSelector ||
       activeBattleProperty ||
       unlockNotice ||
       featureUnlockNoticeId ||
@@ -579,7 +601,7 @@ export default function App() {
     }
   }, [
     activeBattleProperty, endingNotice, featureUnlockNoticeId, normalCampaignComplete,
-    normalEndingSeen, savageComplete, savageEndingSeen, showLaunchIntro,
+    normalEndingSeen, savageComplete, savageEndingSeen, showLaunchIntro, showTrainingSelector,
     trueEndingSeen, ultimateCleared, unlockNotice,
   ]);
 
@@ -625,12 +647,47 @@ export default function App() {
     return Math.round(base * bonusMultiplier * PASSIVE_REVENUE_MULTIPLIER);
   }, [bonusMultiplier, ownedProperties, savageClearedSet]);
 
+  const persistGameState = (passiveIncomePaused: boolean) => {
+    saveGame({
+      companyName: companyName.trim() || GAME_WORLD.companyName,
+      totalFunds,
+      properties,
+      equippedSkillIds,
+      alliance,
+      seenUnlockIds,
+      limitBreakCharge,
+      savageClearedPropertyIds,
+      savageProgressVersion: 2,
+      normalEndingSeen,
+      savageEndingSeen,
+      ultimateCleared,
+      trueEndingSeen,
+      selectedBattleSynergyId,
+      passiveIncomePaused,
+    });
+  };
+
+  const resumedTrainingPauseClearedRef = useRef(false);
+  useEffect(() => {
+    if (
+      resumedTrainingPauseClearedRef.current ||
+      !initialSave?.passiveIncomePaused
+    ) return;
+    resumedTrainingPauseClearedRef.current = true;
+    // A saved training battle is intentionally not resumed after reload.
+    // Reset its income clock immediately after suppressing that session's
+    // offline payout, so future absences earn normally.
+    persistGameState(false);
+  }, [initialSave]);
+
   const offlineIncomeAppliedRef = useRef(false);
   useEffect(() => {
     if (offlineIncomeAppliedRef.current) return;
     offlineIncomeAppliedRef.current = true;
     if (!initialSave || passiveRevenue <= 0) return;
-    const income = calculateOfflineIncome(passiveRevenue, initialSave.lastSavedAt);
+    const income = initialSave.passiveIncomePaused
+      ? 0
+      : calculateOfflineIncome(passiveRevenue, initialSave.lastSavedAt);
     if (income <= 0) return;
     setTotalFunds((current) => current + income);
     setOfflineIncomeNotice(income);
@@ -641,37 +698,23 @@ export default function App() {
   // IDLE CASH HARVEST ENGINE (1 Second Ticker)
   useEffect(() => {
     const timer = setInterval(() => {
-      if (passiveRevenue > 0) {
+      if (passiveRevenue > 0 && activeBattleMode !== 'training') {
         setTotalFunds((prev) => prev + passiveRevenue);
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [passiveRevenue]);
+  }, [activeBattleMode, passiveRevenue]);
 
   useEffect(() => {
     if (showLaunchIntro) return;
     const timer = window.setTimeout(() => {
-      saveGame({
-        companyName: companyName.trim() || GAME_WORLD.companyName,
-        totalFunds,
-        properties,
-        equippedSkillIds,
-        alliance,
-        seenUnlockIds,
-        limitBreakCharge,
-        savageClearedPropertyIds,
-        savageProgressVersion: 2,
-        normalEndingSeen,
-        savageEndingSeen,
-        ultimateCleared,
-        trueEndingSeen,
-        selectedBattleSynergyId,
-      });
+      persistGameState(activeBattleMode === 'training');
     }, 400);
     return () => window.clearTimeout(timer);
   }, [
     alliance,
+    activeBattleMode,
     companyName,
     equippedSkillIds,
     limitBreakCharge,
@@ -693,6 +736,17 @@ export default function App() {
       soundFx.playWarning();
       addGameLog(`【航路未開通】${property.community}へ進むには、手前の都市を制覇してください。`, 'warning');
       setActiveTab('market');
+      return;
+    }
+    const brokerageFee = Math.round(property.marketPrice * 0.03);
+    if (totalFunds < brokerageFee) {
+      soundFx.playWarning();
+      addGameLog(
+        `【資金不足】${property.name}との交渉には仲介手数料 ${formatCurrency(
+          brokerageFee
+        )} が必要です。`,
+        'warning'
+      );
       return;
     }
     soundFx.playCoin();
@@ -717,6 +771,18 @@ export default function App() {
     setActiveBattleProperty(property);
   };
 
+  const handleStartTraining = (property: Property) => {
+    soundFx.playCoin();
+    // Record the pause immediately so reloading during this no-economy mode
+    // cannot turn training time into offline income.
+    persistGameState(true);
+    setTrainingLimitBreakCharge(limitBreakCharge);
+    setShowTrainingSelector(false);
+    setBattleTimeScale(0);
+    setActiveBattleMode('training');
+    setActiveBattleProperty(property);
+  };
+
   // Battle Resolution Handler
   const handleBattleEnd = ({
     winner,
@@ -728,9 +794,51 @@ export default function App() {
     battleCashDelta,
     victoryReward,
     rebelledProperties,
+    survivingRiskUpdates,
   }: BattleResult) => {
+    if (activeBattleMode === 'training') {
+      // Clear the pause before returning to the selector. The regular
+      // debounced autosave follows, but an immediate app close is also safe.
+      persistGameState(false);
+      addGameLog(
+        winner === 'player'
+          ? `【木人討滅成功】${targetProperty.name}を討滅しました。訓練用の出資・LB増減・勝敗は保存されません。`
+          : `【木人訓練終了】${targetProperty.name}との練習を終了しました。資金・保有事業・独立危険度は変化しません。`,
+        winner === 'player' ? 'success' : 'info'
+      );
+      setActiveBattleProperty(null);
+      setActiveBattleMode('normal');
+      setBattleTimeScale(1);
+      setShowTrainingSelector(true);
+      return;
+    }
+
+    const isNormalBattle = activeBattleMode === 'normal';
+    const projectedProperties = isNormalBattle
+      ? applyNormalBattlePropertyUpdates({
+          properties,
+          winner,
+          targetPropertyId: targetProperty.id,
+          companyName,
+          rebelledProperties,
+          survivingRiskUpdates,
+        })
+      : properties;
+    const liquidationCashback = isNormalBattle
+      ? calculateLiquidationCashback(rebelledProperties)
+      : 0;
     // 仲介手数料に加え、直接出資の一部が買収費用・撤退損として確定する。
-    setTotalFunds((prev) => Math.max(0, prev - brokerageFee - settlementCost + battleCashDelta + (winner === 'player' ? victoryReward : 0)));
+    setTotalFunds((prev) =>
+      Math.max(
+        0,
+        prev -
+          brokerageFee -
+          settlementCost +
+          battleCashDelta +
+          (winner === 'player' ? victoryReward : 0) +
+          liquidationCashback
+      )
+    );
 
     if (activeBattleMode === 'savage') {
       const clearedAfterBattle = new Set(savageClearedPropertyIds);
@@ -761,7 +869,7 @@ export default function App() {
         );
       } else {
         addGameLog(
-          `【零式ワイプ】${targetProperty.name} の攻略に失敗。通常物件の所有権と独立危険度は保護され、同じ層へ再挑戦できます。`,
+          `【零式ワイプ】${targetProperty.name} の攻略に失敗。通常事業・契約の保有状態と独立危険度は保護され、同じ層へ再挑戦できます。`,
           'warning'
         );
       }
@@ -778,7 +886,7 @@ export default function App() {
         );
       } else {
         addGameLog(
-          `【絶商戦ワイプ】${targetProperty.name} の攻略に失敗。通常物件は保護され、最初から再挑戦できます。`,
+          `【絶商戦ワイプ】${targetProperty.name} の攻略に失敗。通常事業・契約は保護され、最初から再挑戦できます。`,
           'warning'
         );
       }
@@ -787,11 +895,18 @@ export default function App() {
       }
       setActiveTab('savage');
     } else if (winner === 'player') {
-      const conquersCity = getCampaignProperties(properties, targetProperty.community)
-        .every((property) => property.owner === 'player' || property.id === targetProperty.id);
+      const wasConquered = getCampaignProperties(
+        properties,
+        targetProperty.community
+      ).every((property) => property.owner === 'player');
+      const conquersCity = getCampaignProperties(
+        projectedProperties,
+        targetProperty.community
+      ).every((property) => property.owner === 'player');
+      const newlyConquered = !wasConquered && conquersCity;
       const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
       const nextCommunity = COMMUNITY_CAMPAIGN_ORDER[campaignIndex + 1];
-      if (conquersCity && nextCommunity) {
+      if (newlyConquered && nextCommunity) {
         setUnlockNotice(nextCommunity);
         setMarketNavigationRequest((previous) => ({
           id: (previous?.id || 0) + 1,
@@ -807,19 +922,12 @@ export default function App() {
       }
       setActiveTab('market');
 
-      // Transfer target property ownership to player
-      setProperties((prev) =>
-        prev.map((p) =>
-          p.id === targetProperty.id
-            ? { ...p, owner: 'player', ownerName: companyName, loyaltyRisk: 0 }
-            : p
-        )
-      );
-
       addGameLog(
-        `【買収成功】${targetProperty.name} を買収し、自社の保有物件に加えました！（手数料 ${formatCurrency(
+        `【交渉成功】${targetProperty.name} を取得し、自社の保有事業・契約に加えました！（確定支出 ${formatCurrency(
           brokerageFee + settlementCost
-        )} 消費、運転資金 ${formatCurrency(victoryReward)} を獲得）`,
+        )}＝仲介手数料 ${formatCurrency(brokerageFee)}＋直接出資の精算 ${formatCurrency(
+          settlementCost
+        )}、運転資金 ${formatCurrency(victoryReward)} を獲得）`,
         'success'
       );
 
@@ -833,15 +941,17 @@ export default function App() {
           relationType: 'commercial_alliance',
         });
         addGameLog(
-          `【パーティ協定解除】協定企業の所有物件を攻めたため、${alliance.allyName} との協定が永久解除されました！`,
+          `【協力協定 自動解除】協定企業の傘下事業へ交渉を仕掛けたため、${alliance.allyName} との協定を解除しました。`,
           'danger'
         );
       }
     } else {
       addGameLog(
-        `【買収敗北】${targetProperty.name} の買収に失敗しました。（手数料 ${formatCurrency(
+        `【交渉敗北】${targetProperty.name} の取得交渉に失敗しました。（確定支出 ${formatCurrency(
           brokerageFee + settlementCost
-        )} 消費、直接出資の精算 ${formatCurrency(settlementCost)}）`,
+        )}＝仲介手数料 ${formatCurrency(brokerageFee)}＋直接出資の精算 ${formatCurrency(
+          settlementCost
+        )}）`,
         'warning'
       );
       setMarketNavigationRequest((previous) => ({
@@ -852,35 +962,17 @@ export default function App() {
       setActiveTab('market');
     }
 
+    if (isNormalBattle) {
+      setProperties(projectedProperties);
+    }
+
     // 2. Handle Rebellion & Strategic Bankruptcy Liquidation Cashback
-    if (activeBattleMode === 'normal' && rebelledProperties.length > 0) {
-      let totalCashback = 0;
-
-      const rebelIds = new Set(rebelledProperties.map((r) => r.id));
-
-      setProperties((prev) =>
-        prev.map((p) => {
-          if (rebelIds.has(p.id)) {
-            totalCashback += p.marketPrice;
-            return {
-              ...p,
-              owner: 'independent',
-              ownerName: '独立物件',
-              loyaltyRisk: 0,
-            };
-          }
-          return p;
-        })
-      );
-
-      // Add forced liquidation cashback to player funds!
-      setTotalFunds((prev) => prev + totalCashback);
-
+    if (isNormalBattle && rebelledProperties.length > 0) {
       rebelledProperties.forEach((rebel) => {
         addGameLog(
-          `【独立発生 & 強制清算】${rebel.name} の不満が高まり独立離脱しました！現在評価価値 ${formatCurrency(
+          `【独立発生・強制清算】${rebel.name} の不満が高まり独立離脱しました。現在評価額 ${formatCurrency(
             rebel.marketPrice
-          )} が即座に自社へ一括返金されました。`,
+          )} を強制清算金として商会資金へ入金しました。`,
           'warning'
         );
       });
@@ -906,7 +998,7 @@ export default function App() {
       )
     );
     addGameLog(
-      `【ネマワシ完了】物件の独立危険度を -${amount} 減算しました（コスト ${formatCurrency(
+      `【ネマワシ完了】保有事業・契約の独立危険度を -${amount} 減算しました（コスト ${formatCurrency(
         cost
       )}）`,
       'info'
@@ -933,7 +1025,7 @@ export default function App() {
     );
 
     addGameLog(
-      `【全傘下一括ネマワシ】全所有物件の独立危険度を -30 一括減算しました（費用 ${formatCurrency(
+      `【全支援元一括ネマワシ】全保有事業・契約の独立危険度を -30 一括減算しました（費用 ${formatCurrency(
         cost
       )}）`,
       'info'
@@ -959,7 +1051,7 @@ export default function App() {
     addGameLog(
       isPublicPatronage(formedAlliance)
         ? `【公的後援】${formedAlliance.allyName}から通商・調達の後援を受けました！`
-        : `【トレード・パーティ結成】${formedAlliance.allyName}との協力協定が成立しました！`,
+        : `【協力協定成立】${formedAlliance.allyName}との協力協定が成立しました！`,
       'success'
     );
   };
@@ -977,7 +1069,7 @@ export default function App() {
     addGameLog(
       wasPublicPatronage
         ? `【後援返上】${allyName}への公的後援を返上しました。`
-        : '【パーティ解散】外部協力協定を解消しました。',
+        : '【協力協定解除】外部協力先との協定を解除しました。',
       'info'
     );
   };
@@ -995,7 +1087,7 @@ export default function App() {
 
   const handleNewGame = () => {
     const accepted = window.confirm(
-      '保存済みの所持金・物件・装備スキル・外部協力／公的後援を削除して、ニューゲームを始めますか？'
+      '保存済みの所持金・保有事業／契約・装備スキル・外部協力／公的後援を削除して、ニューゲームを始めますか？'
     );
     if (!accepted) return;
     clearGameSave();
@@ -1012,38 +1104,44 @@ export default function App() {
     mode: BattleMode = 'normal'
   ): BattleReadinessResult => {
     const isHighEndRaid = mode === 'savage' || mode === 'ultimate';
+    const isTraining = mode === 'training';
+    const ignoresCampaignInfluence = isHighEndRaid || isTraining;
     const isTutorial =
       mode === 'normal' &&
       ownedProperties.length === 0 &&
       targetProperty.community === 'グリダニア' &&
       targetProperty.countsTowardCityConquest !== false;
-    const targetIndustryInfluence = isHighEndRaid
+    const targetIndustryInfluence = ignoresCampaignInfluence
       ? { playerBonus: 0, enemyBudgetDiscount: 0 }
       : industryInfluence[targetProperty.industry] ?? {
           playerBonus: 0,
           enemyBudgetDiscount: 0,
         };
-    const targetRegionalInfluence = isHighEndRaid
+    const targetRegionalInfluence = ignoresCampaignInfluence
       ? { playerBonus: 0, enemyBudgetDiscount: 0 }
       : regionalInfluence[targetProperty.community] ?? {
           playerBonus: 0,
           enemyBudgetDiscount: 0,
         };
-    const enemyBudget = calculateEnemyBudget({
-      targetProperty,
-      industryInfluence: targetIndustryInfluence,
-      regionalInfluence: targetRegionalInfluence,
-      isTutorial,
-      isSavage: mode === 'savage',
-      isUltimate: mode === 'ultimate',
-    });
+    const enemyBudget = isTraining
+      ? Math.max(1, Math.round(targetProperty.marketPrice))
+      : calculateEnemyBudget({
+          targetProperty,
+          industryInfluence: targetIndustryInfluence,
+          regionalInfluence: targetRegionalInfluence,
+          isTutorial,
+          isSavage: mode === 'savage',
+          isUltimate: mode === 'ultimate',
+        });
     const enemyDifficultyLevel = getEnemyDifficultyLevel(
       targetProperty,
       isTutorial,
       mode === 'savage',
       mode === 'ultimate'
     );
-    const brokerageFee = Math.round(targetProperty.marketPrice * 0.03);
+    const brokerageFee = isTraining
+      ? 0
+      : Math.round(targetProperty.marketPrice * 0.03);
 
     return calculateBattleReadiness({
       targetMarketPrice: targetProperty.marketPrice,
@@ -1065,7 +1163,7 @@ export default function App() {
           isTutorial,
           !!targetProperty.isCartelHQ
         ) / 1000,
-      playerPushBonus: isHighEndRaid
+      playerPushBonus: ignoresCampaignInfluence
         ? 0
         : targetIndustryInfluence.playerBonus +
           targetRegionalInfluence.playerBonus +
@@ -1134,6 +1232,7 @@ export default function App() {
               getBattleReadinessForTarget(property, 'normal')
             }
             onStartBuyout={handleStartBuyout}
+            onOpenTraining={() => setShowTrainingSelector(true)}
           />
         )}
 
@@ -1200,7 +1299,7 @@ export default function App() {
         {/* Global activity stays closed until the player asks for it. */}
         {logs.length > 0 && (
           <details className="group rounded-xl border border-slate-800 bg-slate-900/80 shadow-lg">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-300">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-300">
               <span className="flex items-center gap-2"><Bell className="h-4 w-4 text-amber-400" />システム運営ログ</span>
               <span className="text-[10px] text-slate-500 group-open:hidden">最新 {logs.length}件・タップして開く</span>
               <span className="hidden text-[10px] text-amber-300 group-open:inline">閉じる</span>
@@ -1234,6 +1333,18 @@ export default function App() {
         <EndingModal ending={endingNotice} companyName={companyName} onContinue={acknowledgeEnding} />
       )}
 
+      {showTrainingSelector && !activeBattleProperty && (
+        <TrainingDummyView
+          conqueredCommunityCount={conqueredCommunityCount}
+          totalFunds={totalFunds}
+          getStrengthComparison={(property) =>
+            getBattleReadinessForTarget(property, 'training')
+          }
+          onStart={handleStartTraining}
+          onClose={() => setShowTrainingSelector(false)}
+        />
+      )}
+
       {featureUnlockNotice && (
         <button
           type="button"
@@ -1252,7 +1363,7 @@ export default function App() {
               </span>
             </span>
             <span className="relative z-10 mt-3 block text-xs leading-relaxed text-slate-300 sm:text-sm">{featureUnlockNotice.detail}</span>
-            <span className="relative z-10 mt-4 inline-block rounded-lg bg-cyan-300 px-4 py-2 text-xs font-black text-slate-950">わかったでっす！</span>
+            <span className="relative z-10 mt-4 inline-block rounded-lg bg-cyan-300 px-4 py-2 text-xs font-black text-slate-950">わかった！</span>
           </span>
         </button>
       )}
@@ -1293,28 +1404,32 @@ export default function App() {
           alliance={alliance}
           activeSynergies={activeGroupSynergies}
           selectedBattleSynergy={selectedBattleSynergy}
-          industryInfluence={activeBattleMode !== 'normal' ? { owned: 0, total: 0, label: '高難度記録戦では無効', playerBonus: 0, enemyBudgetDiscount: 0 } : industryInfluence[activeBattleProperty.industry] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
-          regionalInfluence={activeBattleMode !== 'normal' ? { owned: 0, total: 0, label: '高難度記録戦では無効', playerBonus: 0, enemyBudgetDiscount: 0 } : regionalInfluence[activeBattleProperty.community] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
-          currentWind={marketWind}
-          windCountdown={Math.max(0, Math.ceil(windCountdown))}
-          windProgressionStage={windProgressionStage}
+          industryInfluence={activeBattleMode !== 'normal' ? { owned: 0, total: 0, label: activeBattleMode === 'training' ? '木人訓練では無効' : '高難度記録戦では無効', playerBonus: 0, enemyBudgetDiscount: 0 } : industryInfluence[activeBattleProperty.industry] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
+          regionalInfluence={activeBattleMode !== 'normal' ? { owned: 0, total: 0, label: activeBattleMode === 'training' ? '木人訓練では無効' : '高難度記録戦では無効', playerBonus: 0, enemyBudgetDiscount: 0 } : regionalInfluence[activeBattleProperty.community] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
+          currentWind={activeBattleMode === 'training' ? WIND_CONDITIONS.CALM : marketWind}
+          windCountdown={activeBattleMode === 'training' ? 0 : Math.max(0, Math.ceil(windCountdown))}
+          windProgressionStage={activeBattleMode === 'training' ? 0 : windProgressionStage}
           battleContextLabel={
             activeBattleMode === 'savage'
               ? getSavageRaidDefinition(activeBattleProperty.id)?.coalitionName
               : activeBattleMode === 'ultimate'
                 ? ULTIMATE_RAID_DEFINITION.coalitionName
-                : undefined
+                : activeBattleMode === 'training'
+                  ? '商戦訓練所'
+                  : undefined
           }
           battleRegionLabel={
             activeBattleMode === 'savage'
               ? getSavageRaidDefinition(activeBattleProperty.id)?.communities.join('・')
               : activeBattleMode === 'ultimate'
                 ? `全${ULTIMATE_RAID_DEFINITION.communities.length}地域`
-                : undefined
+                : activeBattleMode === 'training'
+                  ? 'グリダニア訓練区画'
+                  : undefined
           }
           tradeNetworkBonus={activeBattleMode !== 'normal' ? 0 : tradeNetworkBonus}
-          limitBreakCharge={limitBreakCharge}
-          onLimitBreakChargeChange={setLimitBreakCharge}
+          limitBreakCharge={activeBattleMode === 'training' ? trainingLimitBreakCharge : limitBreakCharge}
+          onLimitBreakChargeChange={activeBattleMode === 'training' ? setTrainingLimitBreakCharge : setLimitBreakCharge}
           onTimeScaleChange={setBattleTimeScale}
           nextCommunity={(() => {
             if (activeBattleMode !== 'normal') return null;
@@ -1332,10 +1447,15 @@ export default function App() {
           }
           isSavage={activeBattleMode === 'savage'}
           isUltimate={activeBattleMode === 'ultimate'}
+          isTraining={activeBattleMode === 'training'}
           onAddFunds={handleAddFunds}
           onResetFunds={handleResetFunds}
           onBattleEnd={handleBattleEnd}
           onClose={() => {
+            if (activeBattleMode === 'training') {
+              persistGameState(false);
+              setShowTrainingSelector(true);
+            }
             setActiveBattleProperty(null);
             setActiveBattleMode('normal');
             setBattleTimeScale(1);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Crown, Sparkles, Swords, Trophy } from 'lucide-react';
 import { FANKIT_ART } from '../data/fankitAssets';
 
@@ -16,8 +16,64 @@ export const EndingModal: React.FC<EndingModalProps> = ({
   const trueEnding = ending === 'true';
   const savageEnding = ending === 'savage';
   const finalRoute = savageEnding || trueEnding;
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const continueButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+
+    const focusTimer = window.setTimeout(
+      () => continueButtonRef.current?.focus(),
+      0
+    );
+    const trapFocus = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || !modalRef.current) return;
+      const focusable = Array.from(
+        modalRef.current.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), [href], [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        modalRef.current.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', trapFocus);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', trapFocus);
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+      previousFocus?.focus();
+    };
+  }, []);
+
   return (
-    <div className={`ending-modal ending-modal--${ending}`} role="dialog" aria-modal="true" aria-labelledby="ending-title">
+    <div
+      ref={modalRef}
+      className={`ending-modal ending-modal--${ending}`}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ending-title"
+      tabIndex={-1}
+    >
       <img
         src={finalRoute ? FANKIT_ART.battleBackdrop : FANKIT_ART.marketBackdrop}
         alt=""
@@ -51,14 +107,14 @@ export const EndingModal: React.FC<EndingModalProps> = ({
         <div className="ending-card__copy">
           <small>{trueEnding ? 'ULTIMATE TRADE DUTY CLEARED' : savageEnding ? 'FOUR SAVAGE LAYERS CLEARED' : 'TEN CITIES UNITED BY TRADE'}</small>
           <h1 id="ending-title">
-            {trueEnding ? '真・全商戦制覇！' : savageEnding ? '商戦 零式4層 踏破！' : 'エオルゼア交易網 全制覇！'}
+            {trueEnding ? '真・全商戦制覇！' : savageEnding ? '商戦 零式4層 踏破！' : '十都市交易網 全制覇！'}
           </h1>
           <p>
             {trueEnding
               ? `${companyName}は、単独の最終高難度「絶商戦」を踏破しました。仲間と積み上げた一手一手こそ、どんな大口資本にも負けない最大の財産でっす！`
               : savageEnding
                 ? `${companyName}は、4つの地域連合による商戦 零式をすべて踏破したでっす！ 仲間と読み切った攻防を、次の大商戦へつなげるでっす。`
-                : `${companyName}の航路が十都市を結びました。けれど、完成した交易網には腕利きだけが挑める高難度の取引記録が残っているようでっす。`}
+                : `${companyName}の交易路が十都市を結びました。けれど、完成した交易網には腕利きだけが挑める高難度の取引記録が残っているようでっす。`}
           </p>
         </div>
 
@@ -74,7 +130,7 @@ export const EndingModal: React.FC<EndingModalProps> = ({
           </section>
         )}
 
-        <button type="button" onClick={onContinue} className="ending-card__continue">
+        <button ref={continueButtonRef} type="button" onClick={onContinue} className="ending-card__continue">
           {trueEnding ? 'みんなと祝って、商いをつづける' : savageEnding ? '絶商戦を確認する' : '商戦 零式へ進む'}
         </button>
         <footer>FFXIV公式ファンキット素材使用 © SQUARE ENIX</footer>

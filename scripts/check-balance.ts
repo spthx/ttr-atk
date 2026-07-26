@@ -13,7 +13,12 @@ import {
   type EnemyDecisionContext,
 } from '../src/utils/enemyAi';
 import { calculateBattleReadiness } from '../src/utils/battleReadiness';
+import {
+  applyNormalBattlePropertyUpdates,
+  calculateLiquidationCashback,
+} from '../src/utils/battleSettlement';
 import { shouldInertBattleFooter } from '../src/utils/battlePresentation';
+import { calculateCartelHeadquartersDefense } from '../src/utils/cartel';
 import { calculateRebellionProbability } from '../src/utils/formatter';
 import {
   getWindPool,
@@ -48,6 +53,11 @@ import {
   calculateAllianceSupport,
   shouldBreakAllianceForTarget,
 } from '../src/utils/alliance';
+import {
+  buildTrainingDummyProperty,
+  isTrainingDummyUnlocked,
+  TRAINING_DUMMY_DEFINITIONS,
+} from '../src/utils/trainingDummy';
 import {
   BATTLE_GAUGE_SPEED_FACTOR,
   calculateBattleVictoryReward,
@@ -257,7 +267,7 @@ assert.equal(
 assert.equal(multiRequestReadiness.sequentialSupportGradeCapped, true);
 assert.ok(
   multiRequestReadiness.capitalComponents.some(
-    (component) => component.label.includes('傘下2社へ各1回')
+    (component) => component.label.includes('支援元2件へ各1回')
   ),
   'readiness details the subsidiary one-pass assumption'
 );
@@ -476,6 +486,84 @@ assert.equal(
   'Ultimate is an honor clear and never a repeatable cash source'
 );
 
+assert.deepEqual(
+  TRAINING_DUMMY_DEFINITIONS.map((definition) => definition.level),
+  [1, 2, 3, 4, 5],
+  'training dummies provide exactly LEVEL 1 through LEVEL 5'
+);
+const trainingDummyIds = TRAINING_DUMMY_DEFINITIONS.map(
+  (definition) => definition.id
+);
+const trainingDummyIdSet = new Set<string>(trainingDummyIds);
+assert.equal(
+  trainingDummyIdSet.size,
+  trainingDummyIds.length,
+  'training dummy IDs are unique'
+);
+for (let index = 1; index < TRAINING_DUMMY_DEFINITIONS.length; index += 1) {
+  const previous = TRAINING_DUMMY_DEFINITIONS[index - 1];
+  const current = TRAINING_DUMMY_DEFINITIONS[index];
+  assert.ok(
+    current.marketPrice > previous.marketPrice,
+    `training dummy price increases from LEVEL ${previous.level} to ${current.level}`
+  );
+  assert.ok(
+    current.requiredConqueredCommunityCount >
+      previous.requiredConqueredCommunityCount,
+    `training dummy unlock threshold increases from LEVEL ${previous.level} to ${current.level}`
+  );
+}
+TRAINING_DUMMY_DEFINITIONS.forEach((definition) => {
+  const property = buildTrainingDummyProperty(definition);
+  assert.equal(property.annualRevenue, 0);
+  assert.equal(countsTowardCityConquest(property), false);
+  assert.equal(
+    isTrainingDummyUnlocked(
+      definition,
+      definition.requiredConqueredCommunityCount
+    ),
+    true
+  );
+  if (definition.requiredConqueredCommunityCount > 0) {
+    assert.equal(
+      isTrainingDummyUnlocked(
+        definition,
+        definition.requiredConqueredCommunityCount - 1
+      ),
+      false
+    );
+  }
+  assert.equal(
+    calculateBattleVictoryReward(
+      definition.marketPrice,
+      true,
+      'training',
+      false
+    ),
+    0,
+    `training victory grants no reward at LEVEL ${definition.level}`
+  );
+  assert.equal(
+    calculateBattleVictoryReward(
+      definition.marketPrice,
+      false,
+      'training',
+      false
+    ),
+    0,
+    `training defeat grants no reward at LEVEL ${definition.level}`
+  );
+});
+assert.equal(
+  INITIAL_PROPERTIES.some(
+    (property) =>
+      property.id.startsWith('training_dummy_') ||
+      trainingDummyIdSet.has(property.id)
+  ),
+  false,
+  'training dummies never enter INITIAL_PROPERTIES'
+);
+
 const optionalCartelIds = new Set([
   'prop_dofor_ship',
   'prop_dofor_bank',
@@ -523,26 +611,40 @@ assert.equal(
   true
 );
 assert.equal(calculateAllianceSupport(1_000_000), 320_000);
+assert.deepEqual(
+  INITIAL_CARTELS.map((cartel) =>
+    calculateCartelHeadquartersDefense(
+      cartel,
+      cartel.subsidiaryIds.length,
+      cartel.subsidiaryIds.length
+    )
+  ),
+  [50_000_000, 250_000_000],
+  'all enterprise-alliance headquarters keep the same 5% defense floor'
+);
 assert.equal(getLimitBreakTier(4), 1, 'public patronage never changes participating company count');
 const worldText = INITIAL_PROPERTIES.flatMap((property) => [property.name, property.description, property.ownerName]).join(' ');
 ['フォルタン家騎兵牧場', 'ハイウィンド飛空社', 'ラストスタンド食材組合', 'ゴールドソーサー運営局'].forEach((legacyLabel) => {
   assert.equal(worldText.includes(legacyLabel), false, `world-text migration: ${legacyLabel}`);
 });
 assert.match(worldText, /MGPそのものをギルへ換金する事業ではない/);
-assert.match(worldText, /知識・技術交易連盟（本作オリジナル）/);
+assert.match(worldText, /知識・技術交易連盟/);
 const restoredWorldCopy = restoreProperties({
   schemaVersion: 3,
   companyName: '旧セーブ商会',
   totalFunds: 100_000,
   properties: [
-    { id: 'prop_abyss_heavy', owner: 'abyss', ownerName: '知識・技術交易連盟', loyaltyRisk: 0 },
+    { id: 'prop_abyss_heavy', owner: 'independent', ownerName: '独立物件', loyaltyRisk: 0 },
+    { id: 'prop_abyss_mine', owner: 'abyss', ownerName: '古い連盟表示', loyaltyRisk: 0 },
     { id: 'prop_starter_farm', owner: 'player', ownerName: '旧セーブ商会', loyaltyRisk: 12 },
   ],
   equippedSkillIds: [],
   alliance: { allyId: '', allyName: '', active: false },
   lastSavedAt: 1,
 });
-assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_abyss_heavy')?.ownerName, '知識・技術交易連盟（本作オリジナル）');
+assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_abyss_heavy')?.ownerName, '独立物件');
+assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_abyss_heavy')?.owner, 'independent');
+assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_abyss_mine')?.ownerName, '知識・技術交易連盟');
 assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_starter_farm')?.ownerName, '旧セーブ商会');
 
 const enemyBudgetRatio = (propertyId: string, isTutorial = false) => {
@@ -660,13 +762,13 @@ assert.equal(isSkillUnlocked({
 assert.equal(capitalBoostSkill.oncePerBattle, true);
 assert.deepEqual(
   INITIAL_SKILLS.map((skill) => skill.name),
-  ['神速魔', '士気高揚の策', '連環計', '消沈', '意気衝天', 'リビングデッド', 'バトルリタニー']
+  ['疾風怒濤の計', '守りのサンバ', '連環計', '消沈', '意気衝天', 'リビングデッド', 'バトルリタニー']
 );
 assert.equal(fastHorseSkill.cooldownMs, TACTICAL_SKILL_BALANCE.fastAction.cooldownMs);
 assert.equal(
   fastHorseSkill.cooldownMs - TACTICAL_SKILL_BALANCE.fastAction.durationMs,
   8_000,
-  '神速魔 cannot maintain permanent uptime'
+  '疾風怒濤の計 cannot maintain permanent uptime'
 );
 const fastActionRatio =
   TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick /
@@ -697,6 +799,66 @@ assert.equal(resolveLivingDeadOutcome('recovery', 29.99, 1), 'none');
 assert.equal(resolveLivingDeadOutcome('recovery', 30, 1), 'recovered');
 assert.equal(resolveLivingDeadOutcome('recovery', 29.99, 0), 'failed');
 assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.pushMultiplier, 1.5);
+
+const rebelledSettlementProperty = {
+  ...INITIAL_PROPERTIES[0],
+  owner: 'player' as const,
+  ownerName: '検証商会',
+  marketPrice: 2_000,
+  loyaltyRisk: 100,
+};
+const survivingSettlementProperty = {
+  ...INITIAL_PROPERTIES[1],
+  owner: 'player' as const,
+  ownerName: '検証商会',
+  loyaltyRisk: 0,
+};
+const targetSettlementProperty = {
+  ...INITIAL_PROPERTIES[2],
+  owner: 'independent' as const,
+  ownerName: '独立物件',
+};
+assert.equal(
+  calculateLiquidationCashback([
+    rebelledSettlementProperty,
+    rebelledSettlementProperty,
+  ]),
+  2_000,
+  'liquidation cashback is calculated outside React state updaters and deduplicated'
+);
+const settledProperties = applyNormalBattlePropertyUpdates({
+  properties: [
+    rebelledSettlementProperty,
+    survivingSettlementProperty,
+    targetSettlementProperty,
+  ],
+  winner: 'player',
+  targetPropertyId: targetSettlementProperty.id,
+  companyName: '検証商会',
+  rebelledProperties: [rebelledSettlementProperty],
+  survivingRiskUpdates: [
+    { id: survivingSettlementProperty.id, loyaltyRisk: 18 },
+  ],
+});
+assert.equal(
+  settledProperties.find(
+    (property) => property.id === rebelledSettlementProperty.id
+  )?.owner,
+  'independent'
+);
+assert.equal(
+  settledProperties.find(
+    (property) => property.id === survivingSettlementProperty.id
+  )?.loyaltyRisk,
+  18,
+  'surviving subsidiary risk persists into the next battle'
+);
+assert.equal(
+  settledProperties.find(
+    (property) => property.id === targetSettlementProperty.id
+  )?.owner,
+  'player'
+);
 
 const lbSubs = [
   { ...INITIAL_PROPERTIES[0], marketPrice: 1_000 },
