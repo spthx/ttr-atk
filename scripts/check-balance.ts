@@ -21,11 +21,13 @@ import {
   BATTLE_CINEMATIC_TIMING,
   BATTLE_STATUS_MESSAGE_DURATION_MS,
   canConfirmBattleResult,
+  getBattleCapitalVisualBundleCount,
   getTerminalCinematicPresentation,
   getBattleCinematicLayer,
   getCapitalVisualBundleCount,
   getCapitalVisualBundleCountForAmount,
   getCapitalVisualStage,
+  getCapitalVisualStageForBundleCount,
   getVictoryConfettiParticleCount,
   normalizeBattleStatusMessageText,
   RESULT_CONFIRM_ARM_DELAY_MS,
@@ -429,6 +431,56 @@ assert.equal(getCapitalVisualBundleCountForAmount(500), 2);
 assert.equal(getCapitalVisualBundleCountForAmount(4_999), 3);
 assert.equal(getCapitalVisualBundleCountForAmount(50_000), 5);
 assert.equal(getCapitalVisualBundleCountForAmount(1_000_000_000), 13);
+const battleCapitalRatios = [
+  0,
+  0.02,
+  0.08,
+  0.2,
+  0.5,
+  1,
+  1.5,
+  2,
+  3,
+  4,
+  5,
+  8,
+  10,
+  14,
+  20,
+];
+const battleCapitalBundleCounts = battleCapitalRatios.map((ratio) =>
+  getBattleCapitalVisualBundleCount(ratio * 100_000, 100_000)
+);
+assert.ok(
+  battleCapitalBundleCounts.every(
+    (count, index) =>
+      index === 0 || count >= battleCapitalBundleCounts[index - 1]
+  ),
+  'live battle bundles grow monotonically as offers are stacked'
+);
+assert.equal(getBattleCapitalVisualBundleCount(0, 100_000), 0);
+assert.equal(getBattleCapitalVisualBundleCount(2_000, 100_000), 1);
+assert.equal(
+  getBattleCapitalVisualBundleCount(10_000, 100_000),
+  1,
+  'the default first offer starts with one visible bundle'
+);
+assert.equal(getBattleCapitalVisualBundleCount(20_000, 100_000), 2);
+assert.equal(
+  getBattleCapitalVisualBundleCount(50_000, 100_000),
+  3,
+  'a typical opening defence stays a modest pile'
+);
+assert.equal(getBattleCapitalVisualBundleCount(100_000, 100_000), 5);
+assert.equal(getBattleCapitalVisualBundleCount(2_000_000, 100_000), 13);
+assert.equal(
+  getBattleCapitalVisualBundleCount(20_000, 1_000_000),
+  1,
+  'the first visible offer is sparse in later chapters too'
+);
+assert.equal(getCapitalVisualStageForBundleCount(0), 0);
+assert.equal(getCapitalVisualStageForBundleCount(4), 3);
+assert.equal(getCapitalVisualStageForBundleCount(13), 7);
 assert.equal(
   shouldInertBattleFooter(true, true, 'result'),
   true,

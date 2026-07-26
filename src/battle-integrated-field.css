@@ -4113,3 +4113,63 @@
     height: 6.4rem;
   }
 }
+
+/*
+ * One reading lane, one event surface.
+ * Routine state remains available to assistive technology, while the live
+ * field only shows the duel track and VS. Short values use side floaters and
+ * wind/danger events exclusively use the single FF-style message window.
+ */
+.integrated-battlefield .battle-status-summary {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  min-height: 0 !important;
+  max-height: 1px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+.integrated-battlefield .battle-wind-sigil {
+  display: grid;
+  width: auto;
+  min-width: 0;
+  max-width: min(11rem, calc(100% - .35rem)) !important;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: .28rem;
+  padding: .2rem .42rem;
+}
+
+.integrated-battlefield .battle-wind-sigil b,
+.integrated-battlefield .battle-wind-sigil small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.integrated-battlefield .capital-arena__center {
+  gap: .18rem;
+}
+
+.integrated-battlefield .capital-arena__center > strong {
+  max-width: 4.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 639px) {
+  .integrated-battlefield .battle-wind-sigil {
+    max-width: min(8.8rem, calc(100% - .2rem)) !important;
+    padding-inline: .3rem;
+  }
+
+  .integrated-battlefield .battle-wind-sigil small {
+    font-size: .67rem;
+  }
+}

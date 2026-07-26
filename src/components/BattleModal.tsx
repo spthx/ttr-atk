@@ -56,8 +56,8 @@ import {
   BATTLE_STATUS_MESSAGE_DURATION_MS,
   canConfirmBattleResult,
   getBattleCinematicLayer,
-  getCapitalVisualBundleCountForAmount,
-  getCapitalVisualStage,
+  getBattleCapitalVisualBundleCount,
+  getCapitalVisualStageForBundleCount,
   getVictoryConfettiParticleCount,
   normalizeBattleStatusMessageText,
   RESULT_CONFIRM_ARM_DELAY_MS,
@@ -352,9 +352,12 @@ const GilTower: React.FC<{
   motion: BattleMotion;
 }> = ({ amount, reserveAmount = 0, marketPrice, side, motion }) => {
   const committedCapital = Math.max(0, amount);
-  const visualStage = getCapitalVisualStage(committedCapital);
+  const bundleCount = getBattleCapitalVisualBundleCount(
+    committedCapital,
+    marketPrice
+  );
+  const visualStage = getCapitalVisualStageForBundleCount(bundleCount);
   const committedStage = visualStage;
-  const bundleCount = getCapitalVisualBundleCountForAmount(committedCapital);
   const committedBundleCount = bundleCount;
   const chipAsset = side === 'player' ? gilChipPlayer : defenseChipEnemy;
   const medallionAsset = side === 'player' ? gilMedallionPlayer : defenseMedallionEnemy;
@@ -364,6 +367,7 @@ const GilTower: React.FC<{
     <div
       className={`gil-tower gil-tower--${side} gil-tower--stage-${visualStage} ${motion === side ? 'gil-tower--impact' : ''}`}
       data-capital-stage={visualStage}
+      data-capital-bundles={bundleCount}
       data-capital-ratio={Math.max(0, Math.round(capitalRatio * 100))}
     >
       <div
@@ -789,8 +793,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     totalPlayerInvested / Math.max(1, targetProperty.marketPrice) * 100;
   const enemyCapitalProgress =
     enemyInvested / Math.max(1, targetProperty.marketPrice) * 100;
-  const playerCapitalVisualStage = getCapitalVisualStage(totalPlayerInvested);
-  const enemyCapitalVisualStage = getCapitalVisualStage(enemyInvested);
+  const playerCapitalVisualStage = getCapitalVisualStageForBundleCount(
+    getBattleCapitalVisualBundleCount(
+      totalPlayerInvested,
+      targetProperty.marketPrice
+    )
+  );
+  const enemyCapitalVisualStage = getCapitalVisualStageForBundleCount(
+    getBattleCapitalVisualBundleCount(enemyInvested, targetProperty.marketPrice)
+  );
   const capitalPressureLabel = effectivePlayerShare >= 58
     ? '自社優勢'
     : effectivePlayerShare <= 42
@@ -931,7 +942,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               : currentWind.type === 'CROSSWIND'
                 ? `双方 ×${currentWind.playerMultiplier.toFixed(2)} / 商流回復 ×${recoveryWindMultipliers.player.toFixed(2)}`
                 : '双方の資金効果 ×1.00';
-  const windHudDetail = windDetail;
   const fastHorse = fastHorseRemaining > 0;
   const enemySlowed = enemySlowedRemaining > 0;
   const enemyDisruption = enemyDisruptionRemaining > 0
@@ -2844,10 +2854,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               {windVisible && (
                 <>
                   <div className={`battle-wind-magic ${eraWindActive ? 'battle-wind-magic--era' : ''} ${windTelegraphVisible ? 'battle-wind-magic--telegraph' : ''}`} aria-hidden="true"><i /><i /><i /><i /></div>
-                  <div key={`${battleWindState.phase}-${presentedWind.type}-${eraWindUses}`} className={`battle-wind-sigil battle-wind-sigil--${windSide} ${eraWindActive ? 'battle-wind-sigil--era' : ''} ${windTelegraphVisible ? 'battle-wind-sigil--telegraph' : ''}`}>
-                    <Sparkles /><b>{windHudTitle}</b><span>{windHudDetail}</span>
+                  {!conditionAnnouncement && <div key={`${battleWindState.phase}-${presentedWind.type}-${eraWindUses}`} className={`battle-wind-sigil battle-wind-sigil--${windSide} ${eraWindActive ? 'battle-wind-sigil--era' : ''} ${windTelegraphVisible ? 'battle-wind-sigil--telegraph' : ''}`}>
+                    <Sparkles /><b>{windHudTitle}</b>
                     <small>{windTelegraphVisible ? '到来まで' : eraWindActive ? '時流終了まで' : '静穏まで'} {windCountdown}秒</small>
-                  </div>
+                  </div>}
                 </>
               )}
               <div className="ownership-track__enemy-flow" style={{ left: `${ownership}%` }} />
@@ -2856,7 +2866,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <div className="ownership-track__marker" style={{ left: `${ownership}%` }}><i /><i /><i /></div>
             </div>
           </div>
-          <p className={motion === 'rebel' ? 'status-rebel' : ''}>{statusText}</p>
+          <p className="battle-status-summary" aria-live="polite">{statusText}</p>
         </section>
 
         <section className="capital-arena battlefield-capital">
@@ -2909,8 +2919,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <div className={`capital-clash capital-clash--${battleDirection}`}><i /><i /><i /></div>
             <b className="capital-vs">VS</b>
             <strong>{capitalPressureLabel}</strong>
-            <small>投入比 {Math.round(effectivePlayerShare)}:{Math.round(100 - effectivePlayerShare)}</small>
-            {!isTraining && enemyReserve <= 0 && <em>LIQUIDITY LOW</em>}
           </div>
           <div className={`capital-arena__side ${motion === 'enemy' ? 'is-acting' : motion === 'player' ? 'is-hit' : ''}`}>
             <div className="enemy-capital-stack">
