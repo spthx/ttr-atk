@@ -1787,6 +1787,604 @@
 }
 
 /*
+ * Ambient commerce-flow layer.
+ *
+ * DOM contract:
+ *   <span class="battle-commerce-flow" aria-hidden="true">
+ *     <i /> x 8
+ *   </span>
+ *
+ * Existing `integrated-battlefield--push-*`, `--motion-*` and
+ * `ownership-board--wind-*` modifiers are enough to drive it. The optional
+ * data-flow-direction/data-flow-intensity attributes are provided for a
+ * terminal latch or future deterministic visual tests.
+ */
+.battle-commerce-flow {
+  --commerce-flow-color: 255, 255, 255;
+  --commerce-flow-duration: max(.42s, var(--field-flow-duration, 1.9s));
+  position: absolute;
+  z-index: 2;
+  inset: 1.8rem 0 1rem;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: .34;
+  contain: paint;
+  transition: opacity .22s ease, filter .22s ease;
+}
+
+.battle-commerce-flow > i {
+  position: absolute;
+  top: 10%;
+  left: -32%;
+  width: clamp(5.5rem, 24vw, 16rem);
+  height: 1px;
+  border-radius: 999px;
+  opacity: 0;
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      rgba(var(--commerce-flow-color), .2) 18%,
+      rgba(var(--commerce-flow-color), .92) 82%,
+      #fff
+    );
+  box-shadow:
+    0 0 .18rem rgba(var(--commerce-flow-color), .5),
+    0 0 .42rem rgba(var(--commerce-flow-color), .22);
+  transform: skewX(-20deg);
+  animation: battle-commerce-flow-player var(--commerce-flow-duration) linear infinite;
+  will-change: translate, opacity;
+}
+
+.battle-commerce-flow > i::after {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: .18rem;
+  height: .18rem;
+  translate: 50% -50%;
+  border-radius: 50%;
+  content: "";
+  background: #fff;
+  box-shadow: 0 0 .4rem rgba(var(--commerce-flow-color), .92);
+}
+
+.battle-commerce-flow > i:nth-child(2) {
+  top: 22%;
+  width: clamp(4rem, 17vw, 11rem);
+  animation-delay: -.74s;
+  animation-duration: calc(var(--commerce-flow-duration) * .82);
+}
+
+.battle-commerce-flow > i:nth-child(3) {
+  top: 35%;
+  width: clamp(6rem, 27vw, 18rem);
+  animation-delay: -1.28s;
+  animation-duration: calc(var(--commerce-flow-duration) * 1.13);
+}
+
+.battle-commerce-flow > i:nth-child(4) {
+  top: 47%;
+  width: clamp(3.8rem, 15vw, 10rem);
+  animation-delay: -.38s;
+  animation-duration: calc(var(--commerce-flow-duration) * .72);
+}
+
+.battle-commerce-flow > i:nth-child(5) {
+  top: 59%;
+  width: clamp(5rem, 21vw, 14rem);
+  animation-delay: -1.62s;
+  animation-duration: calc(var(--commerce-flow-duration) * .96);
+}
+
+.battle-commerce-flow > i:nth-child(6) {
+  top: 70%;
+  width: clamp(6.5rem, 29vw, 19rem);
+  animation-delay: -.96s;
+  animation-duration: calc(var(--commerce-flow-duration) * 1.2);
+}
+
+.battle-commerce-flow > i:nth-child(7) {
+  top: 81%;
+  width: clamp(4.2rem, 18vw, 12rem);
+  animation-delay: -1.9s;
+  animation-duration: calc(var(--commerce-flow-duration) * .88);
+}
+
+.battle-commerce-flow > i:nth-child(8) {
+  top: 91%;
+  width: clamp(5.4rem, 23vw, 15rem);
+  animation-delay: -.16s;
+  animation-duration: calc(var(--commerce-flow-duration) * 1.06);
+}
+
+.integrated-battlefield--push-enemy .battle-commerce-flow > i,
+.integrated-battlefield[data-flow-direction="enemy"] .battle-commerce-flow > i {
+  right: -32%;
+  left: auto;
+  background:
+    linear-gradient(
+      90deg,
+      #fff,
+      rgba(var(--commerce-flow-color), .92) 18%,
+      rgba(var(--commerce-flow-color), .2) 82%,
+      transparent
+    );
+  transform: skewX(20deg);
+  animation-name: battle-commerce-flow-enemy;
+}
+
+.integrated-battlefield--push-even .battle-commerce-flow {
+  opacity: .2;
+  filter: saturate(.72);
+}
+
+.integrated-battlefield--push-even .battle-commerce-flow > i:nth-child(even),
+.integrated-battlefield[data-flow-direction="even"] .battle-commerce-flow > i:nth-child(even) {
+  right: -32%;
+  left: auto;
+  background:
+    linear-gradient(
+      90deg,
+      #fff,
+      rgba(var(--commerce-flow-color), .82) 18%,
+      rgba(var(--commerce-flow-color), .16) 82%,
+      transparent
+    );
+  transform: skewX(20deg);
+  animation-name: battle-commerce-flow-enemy;
+}
+
+.integrated-battlefield--motion-player .battle-commerce-flow,
+.integrated-battlefield--motion-enemy .battle-commerce-flow,
+.integrated-battlefield[data-flow-intensity="fast"] .battle-commerce-flow {
+  opacity: .64;
+  filter: brightness(1.24);
+}
+
+.integrated-battlefield--motion-player .battle-commerce-flow > i,
+.integrated-battlefield--motion-enemy .battle-commerce-flow > i,
+.integrated-battlefield[data-flow-intensity="fast"] .battle-commerce-flow > i {
+  animation-duration: calc(var(--commerce-flow-duration) * .58);
+}
+
+.integrated-battlefield[data-flow-intensity="calm"] .battle-commerce-flow {
+  opacity: .16;
+  filter: saturate(.55);
+}
+
+.integrated-battlefield[data-flow-intensity="surge"] .battle-commerce-flow {
+  opacity: .78;
+  filter: brightness(1.42);
+}
+
+.integrated-battlefield[data-flow-intensity="surge"] .battle-commerce-flow > i {
+  height: 2px;
+  animation-duration: calc(var(--commerce-flow-duration) * .42);
+}
+
+.integrated-battlefield.ownership-board--wind-player .battle-commerce-flow,
+.integrated-battlefield--era-wind .battle-commerce-flow {
+  --commerce-flow-color: 110, 231, 183;
+  opacity: .7;
+  filter: brightness(1.24) saturate(1.12);
+}
+
+.integrated-battlefield.ownership-board--wind-player .battle-commerce-flow > i,
+.integrated-battlefield--era-wind .battle-commerce-flow > i {
+  right: auto;
+  left: -32%;
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      rgba(var(--commerce-flow-color), .22) 18%,
+      rgba(var(--commerce-flow-color), .96) 82%,
+      #fff
+    );
+  transform: skewX(-20deg);
+  animation-name: battle-commerce-flow-player;
+  animation-duration: calc(var(--commerce-flow-duration) * .62);
+}
+
+.integrated-battlefield.ownership-board--wind-enemy .battle-commerce-flow {
+  --commerce-flow-color: 251, 113, 133;
+  opacity: .72;
+  filter: brightness(1.22) saturate(1.16);
+}
+
+.integrated-battlefield.ownership-board--wind-enemy .battle-commerce-flow > i {
+  right: -32%;
+  left: auto;
+  background:
+    linear-gradient(
+      90deg,
+      #fff,
+      rgba(var(--commerce-flow-color), .96) 18%,
+      rgba(var(--commerce-flow-color), .22) 82%,
+      transparent
+    );
+  transform: skewX(20deg);
+  animation-name: battle-commerce-flow-enemy;
+  animation-duration: calc(var(--commerce-flow-duration) * .62);
+}
+
+.integrated-battlefield.ownership-board--wind-cross .battle-commerce-flow {
+  --commerce-flow-color: 253, 224, 71;
+  opacity: .68;
+  filter: brightness(1.22) saturate(1.12);
+}
+
+.integrated-battlefield.ownership-board--wind-cross .battle-commerce-flow > i {
+  right: auto;
+  left: -32%;
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      rgba(var(--commerce-flow-color), .2) 18%,
+      rgba(var(--commerce-flow-color), .94) 82%,
+      #fff
+    );
+  transform: skewX(-20deg);
+  animation-name: battle-commerce-flow-player;
+  animation-duration: calc(var(--commerce-flow-duration) * .7);
+}
+
+.integrated-battlefield.ownership-board--wind-cross .battle-commerce-flow > i:nth-child(even) {
+  right: -32%;
+  left: auto;
+  background:
+    linear-gradient(
+      90deg,
+      #fff,
+      rgba(var(--commerce-flow-color), .94) 18%,
+      rgba(var(--commerce-flow-color), .2) 82%,
+      transparent
+    );
+  transform: skewX(20deg);
+  animation-name: battle-commerce-flow-enemy;
+}
+
+.integrated-battlefield--era-wind-2 .battle-commerce-flow {
+  opacity: .8;
+  filter: brightness(1.38) saturate(1.16);
+}
+
+.integrated-battlefield--era-wind-3 .battle-commerce-flow {
+  opacity: .9;
+  filter: brightness(1.52) saturate(1.2);
+}
+
+.integrated-battlefield--settled .battle-commerce-flow {
+  opacity: 0 !important;
+  animation: none !important;
+}
+
+@keyframes battle-commerce-flow-player {
+  0% {
+    opacity: 0;
+    translate: 0 0;
+  }
+  12%, 76% {
+    opacity: .84;
+  }
+  100% {
+    opacity: 0;
+    translate: 720% 0;
+  }
+}
+
+@keyframes battle-commerce-flow-enemy {
+  0% {
+    opacity: 0;
+    translate: 0 0;
+  }
+  12%, 76% {
+    opacity: .84;
+  }
+  100% {
+    opacity: 0;
+    translate: -720% 0;
+  }
+}
+
+/*
+ * One compact FF4-6-inspired status window. Only one instance may be mounted
+ * at a time; text is clamped to two lines and never becomes a second log.
+ */
+.battle-status-message {
+  --battle-message-accent: 148, 163, 184;
+  --battle-message-duration: 1.35s;
+  position: absolute;
+  z-index: 46;
+  top: clamp(2.8rem, 13%, 4.1rem);
+  left: 50%;
+  display: grid;
+  width: min(26rem, 68%);
+  min-height: 2.8rem;
+  max-height: 4.1rem;
+  place-items: center;
+  padding: .48rem .86rem;
+  translate: -50% 0;
+  overflow: hidden;
+  border: 2px solid rgba(248, 250, 252, .96);
+  border-radius: .35rem;
+  outline: 2px solid rgba(var(--battle-message-accent), .88);
+  outline-offset: 1px;
+  pointer-events: none;
+  color: #f8fafc;
+  background:
+    linear-gradient(180deg, rgba(11, 28, 60, .98), rgba(3, 10, 31, .99));
+  box-shadow:
+    0 .3rem .8rem rgba(0, 0, 0, .62),
+    0 0 .7rem rgba(var(--battle-message-accent), .36),
+    inset 0 0 0 1px rgba(15, 23, 42, .92);
+  font-size: clamp(.78rem, 2.2vw, .96rem);
+  font-weight: 900;
+  line-height: 1.35;
+  text-align: center;
+  white-space: pre-line;
+  text-shadow: 0 .1rem .18rem #000;
+  animation: battle-status-message-life var(--battle-message-duration) ease both;
+}
+
+.battle-status-message > span {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.battle-status-message--ally,
+.battle-status-message[data-tone="ally"] {
+  --battle-message-accent: 45, 212, 191;
+  color: #ecfeff;
+  box-shadow:
+    0 .3rem .8rem rgba(0, 0, 0, .62),
+    0 0 .8rem rgba(45, 212, 191, .48),
+    inset 0 0 0 1px rgba(8, 47, 73, .9);
+}
+
+.battle-status-message--enemy,
+.battle-status-message[data-tone="enemy"] {
+  --battle-message-accent: 251, 113, 133;
+  color: #fff1f2;
+  box-shadow:
+    0 .3rem .8rem rgba(0, 0, 0, .68),
+    0 0 .95rem rgba(244, 63, 94, .68),
+    inset 0 0 0 1px rgba(76, 5, 25, .94);
+}
+
+.battle-status-message--chaos,
+.battle-status-message[data-tone="chaos"] {
+  --battle-message-accent: 250, 204, 21;
+  color: #fef9c3;
+  box-shadow:
+    0 .3rem .8rem rgba(0, 0, 0, .66),
+    0 0 .9rem rgba(234, 179, 8, .58),
+    inset 0 0 0 1px rgba(66, 32, 6, .94);
+}
+
+@keyframes battle-status-message-life {
+  0% {
+    opacity: 0;
+    translate: -50% -.35rem;
+    filter: brightness(1.45);
+  }
+  10%, 88% {
+    opacity: 1;
+    translate: -50% 0;
+    filter: brightness(1);
+  }
+  100% {
+    opacity: 0;
+    translate: -50% .12rem;
+  }
+}
+
+/*
+ * Single terminal cinematic.
+ *
+ * Root contract:
+ *   buyout-screen--terminal-cinematic
+ * Field contract:
+ *   integrated-battlefield--terminal-{anticipation|impact|resolution}
+ *   integrated-battlefield--terminal-winner-{player|opponent}
+ * Resolution contract:
+ *   <div class="battle-terminal-resolution battle-terminal-resolution--player">
+ *     <div><small>FINAL OFFER</small><strong>DEAL CLOSED</strong><span>契約成立</span></div>
+ *   </div>
+ */
+.buyout-screen--terminal-cinematic .battle-condition-announcement,
+.buyout-screen--terminal-cinematic .battle-announcement,
+.buyout-screen--terminal-cinematic .battle-decisive-blow {
+  display: none !important;
+}
+
+.buyout-screen--terminal-cinematic .battle-commerce-flow,
+.buyout-screen--terminal-cinematic .battle-wind-magic,
+.buyout-screen--terminal-cinematic .battle-wind-sigil,
+.buyout-screen--terminal-cinematic .battlefield-capital-deluge,
+.buyout-screen--terminal-cinematic .gil-tower__overflow,
+.buyout-screen--terminal-cinematic .battle-flying-texts,
+.buyout-screen--decisive .battle-commerce-flow,
+.buyout-screen--decisive .battle-wind-magic,
+.buyout-screen--decisive .battle-wind-sigil,
+.buyout-screen--decisive .battlefield-capital-deluge,
+.buyout-screen--decisive .gil-tower__overflow,
+.buyout-screen--decisive .battle-flying-texts {
+  opacity: 0 !important;
+  animation: none !important;
+  transition: opacity .12s linear;
+}
+
+.buyout-screen--terminal-cinematic .battlefield-pressure-lane__player,
+.buyout-screen--terminal-cinematic .battlefield-pressure-lane__enemy,
+.buyout-screen--terminal-cinematic .capital-visual-row::before,
+.buyout-screen--terminal-cinematic .capital-visual-row::after,
+.buyout-screen--decisive .battlefield-pressure-lane__player,
+.buyout-screen--decisive .battlefield-pressure-lane__enemy,
+.buyout-screen--decisive .capital-visual-row::before,
+.buyout-screen--decisive .capital-visual-row::after {
+  animation-play-state: paused !important;
+}
+
+.integrated-battlefield--terminal-anticipation {
+  filter: saturate(.74) contrast(1.08);
+}
+
+.integrated-battlefield--terminal-anticipation .battlefield-pressure-lane__front {
+  filter: brightness(1.5);
+  transition-duration: .9s;
+}
+
+.integrated-battlefield--terminal-impact {
+  filter: brightness(1.28) contrast(1.12);
+}
+
+.integrated-battlefield--terminal-impact .battlefield-pressure-lane__front {
+  width: .42rem;
+  filter: brightness(2);
+  box-shadow:
+    0 0 .4rem #fff,
+    0 0 1.6rem rgba(250, 204, 21, .98);
+}
+
+.integrated-battlefield--terminal-resolution {
+  filter: saturate(.82) brightness(.76);
+}
+
+.battle-terminal-resolution {
+  position: fixed;
+  z-index: 295;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at center, rgba(59, 130, 246, .22), transparent 38%),
+    linear-gradient(180deg, transparent 18%, rgba(2, 6, 23, .5) 42% 62%, transparent 86%);
+  animation: battle-terminal-resolution-in .56s cubic-bezier(.2, .76, .2, 1) both;
+}
+
+.battle-terminal-resolution > div {
+  display: grid;
+  width: min(44rem, 92vw);
+  justify-items: center;
+  gap: .28rem;
+  padding: 1rem .8rem;
+  color: #eff6ff;
+  text-align: center;
+}
+
+.battle-terminal-resolution small {
+  color: #93c5fd;
+  font: 1000 .72rem/1 ui-monospace, monospace;
+  letter-spacing: .3em;
+}
+
+.battle-terminal-resolution strong {
+  color: #fff;
+  font: 1000 clamp(2.5rem, 10vw, 6rem)/.9 ui-monospace, monospace;
+  letter-spacing: .045em;
+  text-shadow:
+    0 0 .25rem #fff,
+    0 0 1.4rem rgba(59, 130, 246, .92),
+    0 .2rem .6rem #000;
+}
+
+.battle-terminal-resolution span {
+  color: #dbeafe;
+  font-size: clamp(.82rem, 2.8vw, 1.15rem);
+  font-weight: 1000;
+  letter-spacing: .12em;
+}
+
+.battle-terminal-resolution--opponent {
+  background:
+    radial-gradient(circle at center, rgba(225, 29, 72, .26), transparent 38%),
+    linear-gradient(180deg, transparent 18%, rgba(35, 2, 14, .56) 42% 62%, transparent 86%);
+}
+
+.battle-terminal-resolution--opponent small,
+.battle-terminal-resolution--opponent span {
+  color: #fecdd3;
+}
+
+.battle-terminal-resolution--opponent strong {
+  color: #fff1f2;
+  text-shadow:
+    0 0 .25rem #fff,
+    0 0 1.5rem rgba(225, 29, 72, .96),
+    0 .2rem .6rem #000;
+}
+
+@keyframes battle-terminal-resolution-in {
+  0% {
+    opacity: 0;
+    filter: brightness(1.9);
+  }
+  24% {
+    opacity: 1;
+    filter: brightness(1.25);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+
+@media (max-width: 639px) {
+  .battle-commerce-flow {
+    inset-block-start: 2rem;
+  }
+
+  .battle-commerce-flow > i:nth-child(n + 7) {
+    display: none;
+  }
+
+  .battle-status-message {
+    top: 3rem;
+    width: min(17.5rem, calc(100% - 5rem));
+    min-height: 2.65rem;
+    max-height: 3.7rem;
+    padding: .42rem .62rem;
+    font-size: .78rem;
+  }
+
+  .battle-terminal-resolution small {
+    font-size: .66rem;
+    letter-spacing: .22em;
+  }
+
+  .battle-terminal-resolution strong {
+    font-size: clamp(2.15rem, 11vw, 3.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battle-commerce-flow > i,
+  .battle-status-message,
+  .battle-terminal-resolution {
+    animation: none !important;
+  }
+
+  .battle-commerce-flow {
+    opacity: .1 !important;
+  }
+
+  .integrated-battlefield--terminal-anticipation,
+  .integrated-battlefield--terminal-impact,
+  .integrated-battlefield--terminal-resolution {
+    filter: none;
+  }
+}
+
+/*
  * Capital readability pass:
  * - the compact side label keeps long company names out of the ownership lane;
  * - reserve capital remains visually distinct without becoming translucent;
@@ -2598,6 +3196,35 @@
     width: 100%;
     opacity: .38;
   }
+}
+
+.integrated-battlefield .battle-budget-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .35rem;
+}
+
+.integrated-battlefield .battle-budget-meta b,
+.integrated-battlefield .battle-budget-meta em {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font: inherit;
+  font-style: normal;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.integrated-battlefield .battle-budget-meta b {
+  flex: 1 1 auto;
+}
+
+.integrated-battlefield .battle-budget-meta em {
+  flex: 0 0 auto;
+  overflow: visible;
+  color: #86efac;
+  text-overflow: clip;
 }
 
 /*

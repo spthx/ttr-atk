@@ -3,20 +3,177 @@ import type { BattlePhase } from '../types';
 export const BATTLE_CINEMATIC_TIMING = {
   startAnnouncementMs: 3_800,
   conditionAnnouncementMs: 1_650,
-  shortDelayMs: 420,
-  shortNoticeMs: 3_200,
-  finalAnnouncementMs: 1_200,
-  finalDecisiveStartMs: 1_400,
   limitAnnouncementMs: 1_800,
   limitResolveMs: 1_850,
-  limitTerminalImpactMs: 650,
-  decisiveImpactMs: 420,
-  decisiveClearMs: 1_400,
-  decisiveResolveMs: 1_800,
   finishNoticeMs: 1_450,
 } as const;
 
 export const RESULT_CONFIRM_ARM_DELAY_MS = 700;
+
+/**
+ * One terminal sequence owns the final offer, impact and result reveal.
+ * Simulation code must latch the winner before this sequence starts and must
+ * not use these stages as additional chances to mutate battle state.
+ */
+export const TERMINAL_CINEMATIC_TIMING = {
+  anticipationMs: 900,
+  impactMs: 340,
+  resolutionMs: 560,
+  totalMs: 1_800,
+  reducedMotionAnticipationMs: 140,
+  reducedMotionImpactMs: 100,
+  reducedMotionResolutionMs: 460,
+  reducedMotionTotalMs: 700,
+} as const;
+
+export type TerminalCinematicStage =
+  | 'anticipation'
+  | 'impact'
+  | 'resolution'
+  | 'complete';
+
+export interface TerminalCinematicPresentation {
+  stage: TerminalCinematicStage;
+  timeScale: 0 | 0.1;
+  showImpact: boolean;
+  showResolution: boolean;
+  suppressAmbientEffects: boolean;
+  complete: boolean;
+}
+
+/**
+ * Pure timeline projection for the single terminal cinematic.
+ *
+ * `elapsedMs` is measured from the instant the terminal winner is latched.
+ * Reduced-motion keeps the readable resolution card while replacing the
+ * moving anticipation and impact with short, static beats.
+ */
+export const getTerminalCinematicPresentation = (
+  elapsedMs: number,
+  reducedMotion = false
+): TerminalCinematicPresentation => {
+  const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+  const anticipationEnd = reducedMotion
+    ? TERMINAL_CINEMATIC_TIMING.reducedMotionAnticipationMs
+    : TERMINAL_CINEMATIC_TIMING.anticipationMs;
+  const impactEnd =
+    anticipationEnd +
+    (reducedMotion
+      ? TERMINAL_CINEMATIC_TIMING.reducedMotionImpactMs
+      : TERMINAL_CINEMATIC_TIMING.impactMs);
+  const resolutionEnd =
+    impactEnd +
+    (reducedMotion
+      ? TERMINAL_CINEMATIC_TIMING.reducedMotionResolutionMs
+      : TERMINAL_CINEMATIC_TIMING.resolutionMs);
+
+  if (elapsed < anticipationEnd) {
+    return {
+      stage: 'anticipation',
+      timeScale: 0.1,
+      showImpact: false,
+      showResolution: false,
+      suppressAmbientEffects: true,
+      complete: false,
+    };
+  }
+
+  if (elapsed < impactEnd) {
+    return {
+      stage: 'impact',
+      timeScale: 0,
+      showImpact: true,
+      showResolution: false,
+      suppressAmbientEffects: true,
+      complete: false,
+    };
+  }
+
+  if (elapsed < resolutionEnd) {
+    return {
+      stage: 'resolution',
+      timeScale: 0,
+      showImpact: false,
+      showResolution: true,
+      suppressAmbientEffects: true,
+      complete: false,
+    };
+  }
+
+  return {
+    stage: 'complete',
+    timeScale: 0,
+    showImpact: false,
+    showResolution: true,
+    suppressAmbientEffects: true,
+    complete: true,
+  };
+};
+
+export const BATTLE_STATUS_MESSAGE_DURATION_MS = 1_350;
+export const BATTLE_STATUS_MESSAGE_MAX_CHARS_PER_LINE = 32;
+
+export type BattleStatusMessageTone =
+  | 'neutral'
+  | 'ally'
+  | 'enemy'
+  | 'chaos';
+
+export interface BattleStatusMessageCandidate {
+  id: string;
+  text: string;
+  tone: BattleStatusMessageTone;
+  terminal?: boolean;
+  createdAt: number;
+}
+
+const BATTLE_STATUS_MESSAGE_PRIORITY: Record<
+  BattleStatusMessageTone,
+  number
+> = {
+  neutral: 0,
+  ally: 1,
+  chaos: 2,
+  enemy: 2,
+};
+
+/**
+ * A status window has room for two short lines. Sanitising at the presentation
+ * boundary prevents long log text from turning it into a second battle log.
+ */
+export const normalizeBattleStatusMessageText = (text: string) =>
+  text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((line) =>
+      line.length > BATTLE_STATUS_MESSAGE_MAX_CHARS_PER_LINE
+        ? `${line.slice(0, BATTLE_STATUS_MESSAGE_MAX_CHARS_PER_LINE - 1)}…`
+        : line
+    )
+    .join('\n');
+
+/**
+ * Selects exactly one notice. Terminal beats outrank danger, danger/chaos
+ * outrank positive news, and newer notices win ties.
+ */
+export const selectBattleStatusMessage = (
+  candidates: readonly BattleStatusMessageCandidate[]
+): BattleStatusMessageCandidate | null =>
+  candidates.reduce<BattleStatusMessageCandidate | null>((selected, candidate) => {
+    if (!selected) return candidate;
+    const selectedPriority = selected.terminal
+      ? 3
+      : BATTLE_STATUS_MESSAGE_PRIORITY[selected.tone];
+    const candidatePriority = candidate.terminal
+      ? 3
+      : BATTLE_STATUS_MESSAGE_PRIORITY[candidate.tone];
+    if (candidatePriority !== selectedPriority) {
+      return candidatePriority > selectedPriority ? candidate : selected;
+    }
+    return candidate.createdAt >= selected.createdAt ? candidate : selected;
+  }, null);
 
 export const canConfirmBattleResult = ({
   battlePhase,
@@ -114,28 +271,24 @@ export const shouldInertBattleFooter = (
 
 export type BattleCinematicLayer =
   | 'battle_announcement'
-  | 'condition_announcement'
-  | 'short'
   | 'decisive'
   | 'finish'
   | null;
 
 /**
  * Full-screen battle cues are deliberately exclusive. State timers may finish
- * on adjacent frames, but the player must never have to read stacked SHORT,
- * action, decisive and result cards at the same time.
+ * on adjacent frames, but the player must never have to read stacked action,
+ * decisive and result cards at the same time.
  */
 export const getBattleCinematicLayer = ({
   battlePhase,
   hasBattleAnnouncement,
-  hasConditionAnnouncement,
   hasDecisiveBlow,
   hasWinner,
   finishTelegraphVisible,
 }: {
   battlePhase: BattlePhase;
   hasBattleAnnouncement: boolean;
-  hasConditionAnnouncement: boolean;
   hasDecisiveBlow: boolean;
   hasWinner: boolean;
   finishTelegraphVisible: boolean;
@@ -148,20 +301,6 @@ export const getBattleCinematicLayer = ({
   ) {
     return 'finish';
   }
-  if (battlePhase === 'short_notice') return 'short';
   if (hasBattleAnnouncement) return 'battle_announcement';
-  if (battlePhase === 'active' && hasConditionAnnouncement) {
-    return 'condition_announcement';
-  }
   return null;
 };
-
-export const canShowShortNotice = ({
-  battlePhase,
-  ended,
-  decisive,
-}: {
-  battlePhase: BattlePhase;
-  ended: boolean;
-  decisive: boolean;
-}) => battlePhase === 'active' && !ended && !decisive;
