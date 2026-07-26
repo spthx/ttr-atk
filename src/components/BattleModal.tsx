@@ -580,6 +580,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             : currentWind.type === 'CROSSWIND'
               ? `双方 ×${currentWind.playerMultiplier.toFixed(2)} / 速度 ×${currentWind.speedMultiplier.toFixed(2)}`
               : '双方の資金効果 ×1.00';
+  const windHudDetail = !windEnabled
+    ? '双方 ×1.00'
+    : isBurstTime
+      ? `SYNERGY ×風 / 自社 ×${currentWind.playerMultiplier.toFixed(2)}`
+      : windDetail;
   const fastHorse = fastHorseRemaining > 0;
   const enemySlowed = enemySlowedRemaining > 0;
   const enemyDisruption = enemyDisruptionRemaining > 0
@@ -1770,7 +1775,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <div className="ownership-track__player" style={{ width: `${ownership}%` }} />
               <div className="battle-wind-magic" aria-hidden="true"><i /><i /><i /><i /></div>
               <div key={currentWind.type} className={`battle-wind-sigil battle-wind-sigil--${windSide}`}>
-                <Sparkles /><b>{windTitle}</b><span>{windDetail}</span>
+                <Sparkles /><b>{windTitle}</b><span>{windHudDetail}</span>
                 <small>
                   {!windEnabled
                     ? '進行後に解放'

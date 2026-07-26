@@ -166,11 +166,11 @@ export const WindIndicator: React.FC<WindIndicatorProps> = ({
       >
         <div className="flex items-center gap-1.5 truncate">
           <Compass className="w-4 h-4 text-amber-400 shrink-0 animate-spin-slow" />
-          <span className="font-extrabold truncate text-[11px]">{currentWind.title}</span>
-          <span className="text-[10px] text-slate-300 hidden sm:inline">({currentWind.directionLabel})</span>
+          <span className="font-extrabold truncate text-xs">{currentWind.title}</span>
+          <span className="text-xs text-slate-300 hidden sm:inline">({currentWind.directionLabel})</span>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
+        <div className="flex items-center gap-2 shrink-0 font-mono text-xs">
           {currentWind.playerMultiplier > 1.0 && (
             <span className="bg-emerald-950 text-emerald-300 px-1.5 py-0.2 rounded border border-emerald-500/50 font-bold">
               交渉力{currentWind.playerMultiplier}x
@@ -191,7 +191,7 @@ export const WindIndicator: React.FC<WindIndicatorProps> = ({
               暴風{currentWind.speedMultiplier}x
             </span>
           )}
-          <span className="text-[10px] text-amber-300 bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-700 font-bold">
+          <span className="text-xs text-amber-300 bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-700 font-bold">
             {countdownLabel} {nextChangeSeconds}秒
           </span>
         </div>
