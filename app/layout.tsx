@@ -1,6 +1,12 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -14,13 +20,13 @@ export async function generateMetadata(): Promise<Metadata> {
     description: "自社と傘下企業のギルを積み、競合の防衛資金と所有率を押し切って都市を制覇する金融ゲーム。",
     openGraph: {
       title: "タタルの大繁盛店",
-      description: "ギルを積み、魂を奪え。SYNERGYとALLIANCEを束ね、所有率100%まで押し切れ。",
+      description: "ギルを積み、風を読み、事業や交易契約を獲得。仲間と世界の交易路を広げよう。",
       images: [new URL("/title-hero-v1.png", baseUrl).toString()],
     },
     twitter: {
       card: "summary_large_image",
       title: "タタルの大繁盛店",
-      description: "ギルを積み、魂を奪え。SYNERGYとALLIANCEを束ね、所有率100%まで押し切れ。",
+      description: "ギルを積み、風を読み、事業や交易契約を獲得。仲間と世界の交易路を広げよう。",
       images: [new URL("/title-hero-v1.png", baseUrl).toString()],
     },
   };

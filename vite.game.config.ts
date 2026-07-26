@@ -5,7 +5,10 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   base: './',
-  publicDir: false,
+  publicDir: 'public',
+  build: {
+    copyPublicDir: false,
+  },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

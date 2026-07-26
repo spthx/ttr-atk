@@ -9,6 +9,7 @@
   min-width: 0;
   height: 100dvh;
   max-height: 100dvh;
+  padding-top: env(safe-area-inset-top);
   flex-direction: column;
   overflow: hidden;
   color: #e8eef8;
