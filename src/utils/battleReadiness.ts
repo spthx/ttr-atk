@@ -15,7 +15,7 @@ export type BattleReadinessGrade =
   | 'danger';
 
 export type BattleReadinessSupportRoute =
-  | '傘下一巡'
+  | '支援元一巡'
   | '戦闘連携'
   | 'LIMIT BREAK'
   | '支援なし';
@@ -127,13 +127,13 @@ const getBestSupportRoute = ({
   if (subsidiaries.length > 0) {
     const onePass = expectedSupport(subsidiaries, 18, 0.45);
     routes.push({
-      name: '傘下一巡',
+      name: '支援元一巡',
       amount: Math.round(onePass.amount),
       actionCount: subsidiaries.length,
       maxFailureProbability: onePass.maxFailureProbability,
       cumulativeFailureProbability: 1 - onePass.allSucceedProbability,
       componentKey: 'subsidiaries',
-      componentLabel: `傘下${subsidiaries.length}社へ各1回（一巡）`,
+      componentLabel: `支援元${subsidiaries.length}件へ各1回（一巡）`,
     });
   }
 
@@ -287,13 +287,13 @@ export const calculateBattleReadiness = ({
     100 /
     (TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick * 10);
   const expectedEnemyResponsesDuringSupport =
-    supportRoute.name === '傘下一巡' && supportRoute.actionCount > 1
+    supportRoute.name === '支援元一巡' && supportRoute.actionCount > 1
       ? ((supportRoute.actionCount - 1) * commandRecoverySeconds) /
         Math.max(0.1, enemyBaseReactionSeconds)
       : 0;
   const sequentialSupportGradeCapped =
     ratio >= 1.15 &&
-    supportRoute.name === '傘下一巡' &&
+    supportRoute.name === '支援元一巡' &&
     supportShare >= 0.2 &&
     expectedEnemyResponsesDuringSupport >= 1;
   // 一巡総額は得られても、その操作中に競合が反応する場合は「安定圏」と断定しない。
@@ -340,7 +340,7 @@ export const calculateBattleReadiness = ({
     symbol: gradePresentation.symbol,
     label: gradePresentation.label,
     advice: sequentialSupportGradeCapped
-      ? '総額は上回りますが、傘下への一巡要求中に競合が動きます。安定圏ではなく操作勝負です。'
+      ? '総額は上回りますが、支援元への一巡要求中に競合が動きます。安定圏ではなく操作勝負です。'
       : gradePresentation.advice,
     playerExpectedCapital,
     enemyBudget: normalizedEnemyBudget,

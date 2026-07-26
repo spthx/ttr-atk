@@ -19,13 +19,13 @@ const INTRO_STEPS = [
   {
     eyebrow: 'REAL-TIME TRADE BATTLE',
     title: 'ギルを積み、商機をつかめ。',
-    body: '自社と傘下カンパニーのギルを積み、競合の防衛資金と所有率を押し切れば取得交渉成立です。',
+    body: '自社資金と保有事業・契約からの支援を積み、競合の防衛資金と所有率を押し切れば取得交渉成立です。',
     icon: Coins,
   },
   {
     eyebrow: 'FOUND YOUR COMPANY',
     title: 'カンパニーを旗揚げする',
-    body: 'この名前が保有物件、買収結果、都市制覇の記録に表示されます。',
+    body: 'この名前が保有事業・契約、交渉結果、都市制覇の記録に表示されます。',
     icon: Building2,
   },
 ] as const;
@@ -108,12 +108,12 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
                 <span key={index} className={`h-1 rounded-full transition-all ${index === step ? 'w-10 bg-amber-300' : 'w-5 bg-slate-700'}`} />
               ))}
             </div>
-            <p className="launch-intro__copyright text-[8px] text-slate-400"><a href="https://jp.finalfantasyxiv.com/lodestone/special/fankit/" target="_blank" rel="noreferrer">FFXIVファンキット</a>使用の非公式ファンサイト<br /><span>© SQUARE ENIX</span></p>
+            <p className="launch-intro__copyright text-[10px] text-slate-400"><a className="inline-flex min-h-11 items-center px-1" href="https://jp.finalfantasyxiv.com/lodestone/special/fankit/" target="_blank" rel="noreferrer">FFXIVファンキット</a>使用の非公式ファンサイト<br /><span>© SQUARE ENIX</span></p>
           </div>
           <button
             type="button"
             onClick={next}
-            className="flex items-center gap-2 rounded-xl border border-amber-200 bg-gradient-to-r from-amber-400 to-yellow-500 px-5 py-3 text-xs font-black text-slate-950 shadow-[0_0_25px_rgba(251,191,36,.28)] transition active:scale-95"
+            className="flex min-h-11 items-center gap-2 rounded-xl border border-amber-200 bg-gradient-to-r from-amber-400 to-yellow-500 px-5 py-3 text-xs font-black text-slate-950 shadow-[0_0_25px_rgba(251,191,36,.28)] transition active:scale-95"
           >
             {step === INTRO_STEPS.length - 1 ? 'この名で開店する' : '次へ'}
             <ArrowRight className="h-4 w-4" />

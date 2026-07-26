@@ -67,7 +67,10 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="bg-slate-900 border-b border-slate-800 text-slate-100 sticky top-0 z-30 shadow-xl">
+    <header
+      className="sticky z-30 border-b border-slate-800 bg-slate-900 text-slate-100 shadow-xl"
+      style={{ top: 'var(--game-safe-top)' }}
+    >
       {/* Top Bar */}
       <div className="max-w-7xl mx-auto px-3 py-2 sm:px-6 flex items-center justify-between gap-2">
         <div
@@ -128,7 +131,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Owned Count */}
           <div
             className="bg-slate-950 border border-slate-700/60 rounded-lg px-2 py-1 flex items-center gap-1 hidden sm:flex"
-            title={`${companyName}が所有している物件数／市場に存在する全物件数`}
+            title={`${companyName}が保有している事業・契約数／市場に存在する全交渉対象数`}
           >
             <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
             <span className="text-xs font-bold text-cyan-300 font-mono">
@@ -147,14 +150,18 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Audio Toggle */}
           <button
             onClick={toggleSound}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer ml-1"
+            type="button"
+            aria-label={soundEnabled ? '効果音をオフにする' : '効果音をオンにする'}
+            aria-pressed={soundEnabled}
+            className="ml-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white cursor-pointer"
             title={soundEnabled ? '効果音OFF' : '効果音ON'}
           >
             {soundEnabled ? <Volume2 className="w-4 h-4 text-amber-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
           </button>
           <button
             onClick={onNewGame}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950 border border-slate-700 hover:border-rose-500/60 text-slate-400 hover:text-rose-300 transition-colors cursor-pointer"
+            type="button"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-slate-400 transition-colors hover:border-rose-500/60 hover:bg-rose-950 hover:text-rose-300 cursor-pointer"
             title="セーブデータを削除してニューゲーム"
             aria-label="セーブデータを削除してニューゲーム"
           >
@@ -186,7 +193,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <TrendingUp className="w-4 h-4" />
-          {companyName}の保有物件 ({ownedCount})
+          {companyName}の保有事業・契約 ({ownedCount})
         </button>
 
         <button
@@ -211,7 +218,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <ShieldCheck className="w-4 h-4" />
-            トレード・アライアンス
+            企業連合・協力
           </button>
         )}
 
@@ -253,7 +260,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <TrendingUp className="w-5 h-5 mb-0.5" />
-          <span className="text-[11px] leading-none">自社傘下</span>
+          <span className="text-[11px] leading-none">保有事業</span>
           {ownedCount > 0 && (
             <span className="absolute top-1 right-2 w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-black text-[9px] flex items-center justify-center">
               {ownedCount}
@@ -279,7 +286,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <ShieldCheck className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px] leading-none">アライアンス</span>
+            <span className="text-[11px] leading-none">連合・協力</span>
           </button>
         )}
 

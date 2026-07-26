@@ -57,6 +57,7 @@ export const calculateBattleVictoryReward = (
   if (
     !isPlayerVictory ||
     mode === 'ultimate' ||
+    mode === 'training' ||
     (mode === 'savage' && alreadyCleared)
   ) {
     return 0;

@@ -23,7 +23,7 @@ export type OwnerType = 'player' | 'independent' | 'dofor' | 'abyss';
 export type MarketTrendType = 'BULL' | 'BEAR' | 'VOLATILE' | 'STABLE';
 
 export type AppTab = 'market' | 'portfolio' | 'skills' | 'cartels' | 'savage';
-export type BattleMode = 'normal' | 'savage' | 'ultimate';
+export type BattleMode = 'normal' | 'savage' | 'ultimate' | 'training';
 
 export interface MarketCondition {
   trend: MarketTrendType;
@@ -59,8 +59,8 @@ export interface TacticalSkill {
   cooldownMs: number;
   description: string;
   effectType:
-    | 'COOLDOWN_REDUCTION' // 神速魔
-    | 'NEMAWASHI' // 士気高揚の策 (reduces L_risk)
+    | 'COOLDOWN_REDUCTION' // 疾風怒濤の計
+    | 'NEMAWASHI' // 守りのサンバ (reduces L_risk)
     | 'INDEPENDENCE_SABOTAGE' // 連環計 (disrupts enemy funding)
     | 'DEMORALIZE' // 消沈 (slows enemy AI)
     | 'CAPITAL_BOOST' // 意気衝天
@@ -166,6 +166,10 @@ export interface BattleResult {
   battleCashDelta: number;
   victoryReward: number;
   rebelledProperties: Property[];
+  survivingRiskUpdates: Array<{
+    id: string;
+    loyaltyRisk: number;
+  }>;
   finishMethod: FinishMethod;
   finalOwnership: number;
   overkill: number;

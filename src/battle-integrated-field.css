@@ -2006,7 +2006,8 @@
   }
 
   .investment-hold-button.is-holding .investment-hold-button__fill {
-    width: 0;
+    width: 100%;
+    opacity: .38;
   }
 }
 

@@ -7,12 +7,36 @@ import '../strength-comparison.css';
 interface StrengthComparisonProps {
   result: BattleReadinessResult;
   compact?: boolean;
+  isTraining?: boolean;
 }
 
 export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
   result,
   compact = false,
+  isTraining = false,
 }) => {
+  const trainingPresentation = {
+    advantage: {
+      label: '余力あり',
+      advice: '現在の動員見込みなら、基本の投入操作を試しながら討滅を狙えます。',
+    },
+    even: {
+      label: '挑戦圏',
+      advice: '投入順と支援元の使い分けを試すのに適した固定耐久です。',
+    },
+    challenge: {
+      label: '要工夫',
+      advice: '支援元、有効なスキル、LIMIT BREAKを組み合わせて耐久を削りましょう。',
+    },
+    danger: {
+      label: '準備不足',
+      advice: '現在の動員見込みでは高耐久です。交易網を広げてから再挑戦しましょう。',
+    },
+  }[result.grade];
+  const comparisonTitle = isTraining ? '固定耐久比較' : '風なし動員比較';
+  const comparisonLabel = isTraining
+    ? trainingPresentation.label
+    : result.label;
   const maximum = Math.max(
     result.playerExpectedCapital,
     result.enemyBudget,
@@ -29,13 +53,13 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
       className={`strength-comparison strength-comparison--${result.grade} ${
         compact ? 'strength-comparison--compact' : ''
       }`}
-      aria-label={`風なし動員比較。自社見込${formatCurrency(
+      aria-label={`${comparisonTitle}。自社見込${formatCurrency(
         result.playerExpectedCapital
-      )}、競合予算${formatCurrency(result.enemyBudget)}、${result.label}`}
+      )}、${isTraining ? '木人耐久' : '競合予算'}${formatCurrency(result.enemyBudget)}、${comparisonLabel}`}
     >
       <header>
-        <span><Gauge />風なし動員比較</span>
-        <strong>{result.symbol} {result.label}</strong>
+        <span><Gauge />{comparisonTitle}</span>
+        <strong>{result.symbol} {comparisonLabel}</strong>
       </header>
       <div className="strength-comparison__values">
         <span>
@@ -44,7 +68,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
         </span>
         <i>VS</i>
         <span>
-          <small>競合・総防衛予算</small>
+          <small>{isTraining ? '木人・耐久資本' : '競合・総防衛予算'}</small>
           <b>{formatCurrency(result.enemyBudget)}</b>
         </span>
       </div>
@@ -54,7 +78,9 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
       </div>
       <div className="strength-comparison__meta">
         <span>実効資本比 {result.ratioPercent}%</span>
-        <span>AI Lv{result.enemyDifficultyLevel}・基準反応 約{result.enemyBaseReactionSeconds.toFixed(1)}秒</span>
+        <span>{isTraining
+          ? '木人は追加行動なし'
+          : `AI Lv${result.enemyDifficultyLevel}・基準反応 約${result.enemyBaseReactionSeconds.toFixed(1)}秒`}</span>
         {result.playerPushBonus > 0 && (
           <span title="資本額と等級には加算しません">
             <Sparkles />押込 +{Math.round(result.playerPushBonus * 100)}%（資本外）
@@ -68,11 +94,11 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
         {result.cumulativeSupportFailureProbability > 0 && (
           <span className={result.supportVolatile ? 'strength-comparison__risk' : ''}>
             <ShieldAlert />
-            {result.supportRoute === '傘下一巡' ? '一巡離反' : '支援離反'}{' '}
+            {result.supportRoute === '支援元一巡' ? '一巡離反' : '支援離反'}{' '}
             {Math.round(result.cumulativeSupportFailureProbability * 100)}%
           </span>
         )}
-        {result.supportRoute === '傘下一巡' &&
+        {!isTraining && result.supportRoute === '支援元一巡' &&
           result.expectedEnemyResponsesDuringSupport >= 1 && (
             <span className="strength-comparison__risk">
               <ShieldAlert />一巡中に競合 約{result.expectedEnemyResponsesDuringSupport.toFixed(1)}回
@@ -97,12 +123,11 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
       </div>
       {!compact && (
         <>
-          <p>{result.advice}</p>
+          <p>{isTraining ? trainingPresentation.advice : result.advice}</p>
           <small className="strength-comparison__note">
-            風は未算入。傘下支援は各社の離反確率を割り引き、少なくとも1社が
-            離反する確率は 1−Π(1−p) で算出。現金＋最良の支援
-            （{result.supportRoute}）＋一交渉1回の協力・スキルで比較しています。
-            押し込み補正は速度効果のため資本比と等級を逆転させません。
+            {isTraining
+              ? '追加行動なしの固定耐久です。訓練中の出資・離反・LB増減は保存されません。'
+              : `現金＋離反リスクを織り込んだ最良の支援（${result.supportRoute}）＋一交渉1回の協力・スキルで比較。風と押し込み速度は等級に含みません。`}
           </small>
         </>
       )}

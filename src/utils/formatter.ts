@@ -98,7 +98,7 @@ export function getLoyaltyRiskStatus(L_risk: number): {
   if (L_risk < 40) {
     return {
       state: 'Safe',
-      label: '安全 (Safe)',
+      label: '安全',
       textColor: 'text-emerald-400',
       bgColor: 'bg-emerald-950/40',
       borderColor: 'border-emerald-500/30',
@@ -107,7 +107,7 @@ export function getLoyaltyRiskStatus(L_risk: number): {
   if (L_risk < 80) {
     return {
       state: 'Caution',
-      label: '警告 (Caution)',
+      label: '注意',
       textColor: 'text-amber-400',
       bgColor: 'bg-amber-950/40',
       borderColor: 'border-amber-500/30',
@@ -115,7 +115,7 @@ export function getLoyaltyRiskStatus(L_risk: number): {
   }
   return {
     state: 'Danger',
-    label: '危機 (Danger)',
+    label: '危険',
     textColor: 'text-rose-400 font-bold animate-pulse',
     bgColor: 'bg-rose-950/50',
     borderColor: 'border-rose-500/50',

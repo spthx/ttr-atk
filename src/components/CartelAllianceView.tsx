@@ -5,7 +5,6 @@ import { soundFx } from '../utils/audio';
 import {
   ShieldCheck,
   ArrowDown,
-  Lock,
   Unlock,
   CheckCircle2,
   Swords,
@@ -17,6 +16,7 @@ import { ALLIANCE_CANDIDATES } from '../data/allianceData';
 import { isPublicPatronage } from '../utils/alliance';
 import type { BattleReadinessResult } from '../utils/battleReadiness';
 import { StrengthComparison } from './StrengthComparison';
+import { calculateCartelHeadquartersDefense } from '../utils/cartel';
 
 interface CartelAllianceViewProps {
   companyName: string;
@@ -51,8 +51,8 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
               <Users className="w-5 h-5 text-indigo-400" />
-              ALLIANCE（外部協力・公的後援）
-              <HelpTip term="ALLIANCE" description={HELP_TEXT.alliance} />
+              協力先・公的後援
+              <HelpTip term="協力先・公的後援" description={HELP_TEXT.alliance} />
             </h2>
 
             {alliance.active && (
@@ -61,7 +61,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                   <ShieldCheck className="w-4 h-4 text-indigo-400" />
                   {publicPatronageActive ? '公的後援' : '協力協定'}：{alliance.allyName}
                 </div>
-                <button onClick={onBreakAlliance} className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-xs font-bold transition-all cursor-pointer">
+                <button onClick={onBreakAlliance} className="min-h-11 px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-xs font-bold transition-all cursor-pointer">
                   {publicPatronageActive ? '後援を返上' : '協定解除'}
                 </button>
               </div>
@@ -97,18 +97,19 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
             <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
               <div className="flex items-start gap-2"><span className="text-violet-400 font-bold">1. 通商・調達の後援:</span><span>{activeCandidate?.summary || `${alliance.allyName}から公的後援を受けます。`}</span></div>
               <div className="flex items-start gap-2"><span className="text-violet-400 font-bold">2. 支援要請:</span><span>一交渉1回、許認可・調達・輸送を含む相場32%相当の支援価値を受けます。LBには含まれません。</span></div>
-              <div className="flex items-start gap-2"><span className="text-slate-400 font-bold">3. 任意返上:</span><span>後援はいつでも返上できます。通常物件への買収で自動解除されません。</span></div>
+              <div className="flex items-start gap-2"><span className="text-slate-400 font-bold">3. 任意返上:</span><span>後援はいつでも返上できます。通常の取得交渉では自動解除されません。</span></div>
             </div>
           </>
         ) : alliance.active ? (
           <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
             <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">1. 不可侵契約:</span><span>協力企業から{companyName}への対抗買収が一切仕掛けられなくなります。</span></div>
             <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">2. 協力支援要請:</span><span>買収交渉ごとに1回、対象相場の32%相当を要請できます。LBには含まれません。</span></div>
-            <div className="flex items-start gap-2"><span className="text-rose-400 font-bold">3. 破棄条件:</span><span>協力企業の傘下へ買収を仕掛けると、協定は永久解除されます。</span></div>
+            <div className="flex items-start gap-2"><span className="text-rose-400 font-bold">3. 解除条件:</span><span>協力企業の傘下へ交渉を仕掛けると、協定は自動解除されます。再協定は可能です。</span></div>
           </div>
         ) : (
           <p className="text-xs leading-relaxed text-slate-400">
             同時に有効にできる協力先は1つです。企業との協力協定か、三都市いずれかのグランドカンパニーによる公的後援を選べます。
+            組織名を除き、協力協定と公的後援の交易効果は本作独自のルールです。
           </p>
         )}
       </div>
@@ -118,11 +119,11 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
           <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
             <Swords className="w-5 h-5 text-rose-400" />
-            トレード・アライアンス攻略
+            企業連合（競合）攻略
             <HelpTip term="本部防衛資本" description={HELP_TEXT.defenseCapital} />
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            参加組織と提携するほど、本部防衛資本が低下します。
+            競合企業連合は本作独自の攻略組織で、FFXIV公式のアライアンスコンテンツや味方の協力協定・公的後援とは別枠です。参加組織と提携するほど、本部防衛資本が低下します。
           </p>
         </div>
 
@@ -138,12 +139,11 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
             const allSubsDefeated = ownedSubsCount === totalSubsCount;
 
             // Calculate current HQ Defense Buffer
-            const currentDefense = allSubsDefeated
-              ? 50_000_000 // Weakened HQ defense!
-              : Math.round(
-                  cartel.maxDefenseCapital *
-                    ((totalSubsCount - ownedSubsCount + 1) / (totalSubsCount + 1))
-                );
+            const currentDefense = calculateCartelHeadquartersDefense(
+              cartel,
+              ownedSubsCount,
+              totalSubsCount
+            );
 
             const isHqOwned = hqProp?.owner === 'player';
             const hqBattleProperty = hqProp
@@ -170,9 +170,17 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-black px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40">
-                        TRADE ALLIANCE
+                        RIVAL ALLIANCE
                       </span>
                       <h3 className="text-lg font-bold text-slate-100">{cartel.name}</h3>
+                      {cartel.id === 'cartel_abyss' && (
+                        <span
+                          className="shrink-0 rounded border border-cyan-500/30 bg-cyan-950/40 px-1.5 py-0.5 text-[11px] font-bold text-cyan-200"
+                          title="FFXIV公式には存在しない、本作独自のIF企業連合です"
+                        >
+                          創作IF
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-slate-400 mt-1">{cartel.description}</p>
                   </div>
@@ -208,7 +216,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                     </div>
 
                     <span className="text-[10px] text-slate-500 mt-1 block text-right">
-                      子会社残: {totalSubsCount - ownedSubsCount} / {totalSubsCount} 件
+                      未提携組織: {totalSubsCount - ownedSubsCount} / {totalSubsCount} 件
                     </span>
                   </div>
                 </div>
@@ -275,7 +283,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                                   soundFx.playCoin();
                                   onStartBuyout(sub);
                                 }}
-                                className="w-full py-1.5 px-2 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold transition-all active:scale-95 touch-manipulation cursor-pointer"
+                                className="min-h-11 w-full py-1.5 px-2 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold transition-all active:scale-95 touch-manipulation cursor-pointer"
                               >
                                 参加交渉を開始
                               </button>
@@ -305,18 +313,18 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                             allSubsDefeated ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-500'
                           }`}
                         >
-                          {allSubsDefeated ? <Unlock className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
+                          {allSubsDefeated ? <Unlock className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
                         </div>
 
                         <div>
                           <div className="text-xs text-slate-400 font-semibold">
-                            【最終ステップ】アライアンス本部との交渉
+                            【最終ステップ】企業連合本部との交渉
                           </div>
                           <h4 className="text-base font-bold text-slate-100">{hqProp.name}</h4>
                           <p className="text-xs text-slate-400 mt-0.5">
                             {allSubsDefeated
                               ? '参加組織すべてとの提携が成立し、本部防衛資本が最低まで低下しました。'
-                              : '残る参加組織と先に提携すると、本部防衛資本をさらに減らせます。'}
+                              : '今すぐ挑戦もできますが、残る参加組織と先に提携すると本部防衛資本をさらに減らせます。'}
                           </p>
                         </div>
                       </div>
@@ -331,7 +339,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                         {isHqOwned ? (
                           <div className="px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black text-xs flex items-center gap-2">
                             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                            アライアンス攻略完了
+                            企業連合攻略完了
                           </div>
                         ) : (
                           <button
@@ -339,7 +347,8 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                               soundFx.playCoin();
                               onStartBuyout(hqBattleProperty ?? hqProp);
                             }}
-                            className={`px-4 py-2.5 rounded-lg font-bold text-xs flex items-center gap-2 transition-all active:scale-95 touch-manipulation cursor-pointer ${
+                            title={allSubsDefeated ? '弱体化した企業連合本部へ挑戦します' : '早期挑戦できます。参加組織との提携で防衛資本を下げられます'}
+                            className={`min-h-11 px-4 py-2.5 rounded-lg font-bold text-xs flex items-center gap-2 transition-all active:scale-95 touch-manipulation cursor-pointer ${
                               allSubsDefeated
                                 ? 'bg-gradient-to-r from-amber-500 to-yellow-600 text-slate-950 cursor-pointer shadow-lg shadow-amber-500/20'
                                 : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer'

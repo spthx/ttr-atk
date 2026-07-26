@@ -81,7 +81,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
         </div>
         <div className="high-end-raids__hero-copy">
           <small>HIGH-END TRADE DUTIES</small>
-          <h2>星海交易戦 零式</h2>
+          <h2>商戦 零式</h2>
           <p>
             4つの地域連合を順に攻略する、本作独自の高難度交易戦です。
             失敗しても通常事業は失いません。
@@ -214,7 +214,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
           </span>
           <span>
             <ShieldAlert />
-            AI LEVEL 6・地域／業界補正なし・通常物件と収益は保護
+            AI LEVEL 6・地域／業界補正なし・通常事業と収益は保護
           </span>
           <StrengthComparison result={ultimateStrengthComparison} compact />
           <div className="ultimate-raid-card__actions">
