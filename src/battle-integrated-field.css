@@ -4173,3 +4173,32 @@
     font-size: .67rem;
   }
 }
+
+/*
+ * Tablet power budget.
+ * iPad-class screens previously received the desktop particle count plus
+ * every ambient infinite animation. Keep the directional read and spectacle,
+ * but cap simultaneous layers so the terminal result stays responsive.
+ */
+@media (max-width: 1024px) {
+  .battle-commerce-flow > i:nth-child(n + 5),
+  .battlefield-capital-deluge > i:nth-child(n + 9),
+  .gil-tower__overflow > i:nth-child(n + 7) {
+    display: none;
+  }
+
+  .battle-commerce-flow {
+    filter: none !important;
+  }
+
+  .integrated-battlefield .player-capital-stack .capital-visual-row::before,
+  .integrated-battlefield .enemy-capital-stack .capital-visual-row::before {
+    filter: none;
+    animation-duration: 2.1s;
+  }
+
+  .integrated-battlefield .player-capital-stack .capital-visual-row::after,
+  .integrated-battlefield .enemy-capital-stack .capital-visual-row::after {
+    animation-duration: 2.4s;
+  }
+}
