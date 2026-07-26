@@ -4,7 +4,6 @@ import {
   Building2,
   CheckCircle2,
   CircleHelp,
-  Coins,
   HandCoins,
   ScrollText,
   ShieldAlert,
@@ -52,6 +51,7 @@ import { calculateBattleReadiness } from '../utils/battleReadiness';
 import { shouldInertBattleFooter } from '../utils/battlePresentation';
 import { StrengthComparison } from './StrengthComparison';
 import {
+  applyTrainingGaugeSpeed,
   BATTLE_GAUGE_SPEED_FACTOR,
   calculateBattleVictoryReward,
   calculateEnemyBudget,
@@ -72,6 +72,7 @@ import {
   LIMIT_BREAK_MULTIPLIERS,
   LIMIT_BREAK_OWNERSHIP_CAPS,
   holdGaugeForManualShortFinish,
+  holdTrainingGaugeAboveDefeat,
   resolveLivingDeadOutcome,
   TACTICAL_SKILL_BALANCE,
   type LimitBreakTier,
@@ -244,8 +245,6 @@ interface FloatingGil {
   tone: 'positive' | 'negative' | 'notice';
 }
 
-const INVESTMENT_HOLD_DURATION_MS = 700;
-
 const FINISH_LABELS: Record<FinishMethod, string> = {
   LIMIT_BREAK_1: 'LIMIT BREAK I',
   LIMIT_BREAK_2: 'LIMIT BREAK II',
@@ -414,7 +413,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [enemyInvested, setEnemyInvested] = useState(initialEnemyCommitment);
   const [enemyReserve, setEnemyReserve] = useState(enemyBudget - initialEnemyCommitment);
   const enemyReserveRef = useRef(enemyBudget - initialEnemyCommitment);
-  const [cash, setCash] = useState(Math.max(0, totalFunds - brokerageFee));
+  const initialBattleCashRef = useRef(Math.max(0, totalFunds - brokerageFee));
+  const [cash, setCash] = useState(initialBattleCashRef.current);
   const battleCashRecoveryPerSecond = Math.max(1, Math.round(targetProperty.marketPrice * 0.003));
   const battleCashRecoveryCap = Math.round(targetProperty.marketPrice * 0.15);
   const [battleCashRecovered, setBattleCashRecovered] = useState(0);
@@ -429,7 +429,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [activeLimitBreakTier, setActiveLimitBreakTier] = useState<LimitBreakTier>(0);
   const [panel, setPanel] = useState<Panel>('capital');
   const [selectedLevel, setSelectedLevel] = useState(3);
-  const [investmentHolding, setInvestmentHolding] = useState(false);
   const [commandProgress, setCommandProgress] = useState(100);
   const [fastHorseRemaining, setFastHorseRemaining] = useState(0);
   const [enemySlowedRemaining, setEnemySlowedRemaining] = useState(0);
@@ -440,6 +439,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [livingDeadPhase, setLivingDeadPhase] = useState<LivingDeadPhase>('inactive');
   const [livingDeadRemaining, setLivingDeadRemaining] = useState(0);
   const [motion, setMotion] = useState<BattleMotion>('idle');
+  const [motionSerial, setMotionSerial] = useState(0);
   const [statusText, setStatusText] = useState(
     isTraining
       ? '条件を確認して商戦木人訓練を開始してください'
@@ -490,14 +490,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const decisiveImpactTimerRef = useRef<number | null>(null);
   const decisiveResolveTimerRef = useRef<number | null>(null);
   const livingDeadNoticeTimerRef = useRef<number | null>(null);
-  const investmentHoldTimerRef = useRef<number | null>(null);
-  const investmentPointerRef = useRef<number | null>(null);
-  const investmentHoldActiveRef = useRef(false);
-  const investmentHoldCommittedRef = useRef(false);
-  const investmentHoldCancelledRef = useRef(false);
-  const canConfirmInvestmentRef = useRef(false);
-  const investmentCommitRef = useRef<() => void>(() => {});
-  const investmentButtonRef = useRef<HTMLButtonElement | null>(null);
+  const motionTimerRef = useRef<number | null>(null);
+  const commandReadySoundArmedRef = useRef(false);
   const decisiveRef = useRef(false);
   const lastAnnouncedWindRef = useRef(currentWind.type);
   const livingDeadPhaseRef = useRef<LivingDeadPhase>('inactive');
@@ -672,7 +666,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ? 'healthy'
     : enemyReservePercent <= 0 ? 'short' : enemyReservePercent <= 10 ? 'critical'
       : enemyReservePercent <= 25 ? 'danger' : enemyReservePercent <= 50 ? 'warning' : 'healthy';
-  const playerReserveCapacity = Math.max(1, totalFunds - brokerageFee);
+  const playerReserveCapacity = Math.max(1, initialBattleCashRef.current);
   const playerReservePercent = Math.max(0, Math.min(100, (cash / playerReserveCapacity) * 100));
   const playerReserveState = playerReservePercent <= 0 ? 'short' : playerReservePercent <= 10 ? 'critical'
     : playerReservePercent <= 25 ? 'danger' : playerReservePercent <= 50 ? 'warning' : 'healthy';
@@ -693,6 +687,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     tradeNetworkBonus > 0 ||
     battleSubs.length + 1 >= 4;
   const isBurstTime = windSide === 'player' && hasActiveBattleSynergy;
+  const windVisible = windEnabled && currentWind.type !== 'CALM';
   const windTitle = isTraining ? '木人訓練・風なし'
     : !windEnabled ? '基礎商戦・風なし'
     : isBurstTime ? 'BURST TIME'
@@ -701,7 +696,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           : windSide === 'cross' ? '乱旋風' : '静穏';
   const windHudTitle = isTraining ? '木人訓練・CALM'
     : !windEnabled ? '風なし' : windTitle;
-  const windDetail = isTraining ? '訓練はCALM固定'
+  const windDetail = isTraining ? '訓練では風は発生しません'
     : !windEnabled ? '双方の資金効果 ×1.00'
     : isBurstTime ? `風 × SYNERGY / 自社効果 ×${currentWind.playerMultiplier.toFixed(2)}`
       : currentWind.type === 'HEADWIND_PLAYER' ? `自社効果 ×${currentWind.playerMultiplier.toFixed(2)}`
@@ -769,9 +764,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const commandProgressPerTick = fastHorse
     ? TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick
     : TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick;
-  const playerRecastSeconds = commandReady
-    ? 0
-    : Math.max(0, ((100 - commandProgress) / commandProgressPerTick) * 0.05);
+  const isFinalPushWindow = !isTraining && enemyReserve <= 0;
   const presentationLocked =
     !!battleAnnouncement ||
     !!conditionAnnouncement;
@@ -796,15 +789,22 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     battlePhase
   );
   const isPaused = battlePhase !== 'active' || showHelp || showLog || presentationLocked;
+  const tutorialAssistActive =
+    !!isTutorial &&
+    battlePhase === 'active' &&
+    totalPlayerInvested < targetProperty.marketPrice * 0.45 &&
+    !winner;
   const timeScale = isPaused
     ? 0
     : decisiveBlow
       ? 0.16
-      : openingSlowActive
-        ? 0.1
-        : panel === 'capital'
-          ? 1
-          : 0.1;
+      : tutorialAssistActive
+        ? 0.2
+        : openingSlowActive
+          ? 0.1
+          : panel === 'capital'
+            ? 1
+            : 0.1;
   const enemyOwnershipForAi = Math.round((100 - ownership) / 5) * 5;
   const enemyDecision = useMemo(() => decideEnemyAction({
     enemyOwnership: enemyOwnershipForAi,
@@ -824,9 +824,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     enemyDifficultyLevel, isTutorial, lastPlayerAction, targetProperty.isCartelHQ,
     targetProperty.marketPrice, windCountdown,
   ]);
-  const enemyRecastSeconds = isTraining || enemyReserve <= 0
-    ? 0
-    : Math.max(0, (enemyDecision.waitMs * (1 - aiProgress / 100)) / 1000);
   const livingDeadDuration = livingDeadPhase === 'waiting'
     ? TACTICAL_SKILL_BALANCE.livingDead.waitingDurationMs
     : livingDeadPhase === 'recovery'
@@ -846,30 +843,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   }, [onTimeScaleChange, timeScale]);
 
   useEffect(() => {
-    if (!actionsLocked) return;
-    if (investmentHoldTimerRef.current) {
-      window.clearTimeout(investmentHoldTimerRef.current);
-      investmentHoldTimerRef.current = null;
+    if (!commandReady) {
+      commandReadySoundArmedRef.current = true;
+      return;
     }
-    investmentHoldCancelledRef.current = true;
-    investmentHoldActiveRef.current = false;
-    setInvestmentHolding(false);
-  }, [actionsLocked]);
-
-  useEffect(() => {
-    const cancelInvestmentHold = () => {
-      if (investmentPointerRef.current === null) return;
-      if (investmentHoldTimerRef.current) {
-        window.clearTimeout(investmentHoldTimerRef.current);
-        investmentHoldTimerRef.current = null;
-      }
-      investmentHoldCancelledRef.current = true;
-      investmentHoldActiveRef.current = false;
-      setInvestmentHolding(false);
-    };
-    window.addEventListener('blur', cancelInvestmentHold);
-    return () => window.removeEventListener('blur', cancelInvestmentHold);
-  }, []);
+    if (
+      commandReadySoundArmedRef.current &&
+      battlePhase === 'active' &&
+      !winner
+    ) {
+      commandReadySoundArmedRef.current = false;
+      soundFx.playCommandReady();
+    }
+  }, [battlePhase, commandReady, winner]);
 
   useEffect(() => {
     const scrollX = window.scrollX;
@@ -910,7 +896,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (decisiveImpactTimerRef.current) window.clearTimeout(decisiveImpactTimerRef.current);
     if (decisiveResolveTimerRef.current) window.clearTimeout(decisiveResolveTimerRef.current);
     if (livingDeadNoticeTimerRef.current) window.clearTimeout(livingDeadNoticeTimerRef.current);
-    if (investmentHoldTimerRef.current) window.clearTimeout(investmentHoldTimerRef.current);
+    if (motionTimerRef.current) window.clearTimeout(motionTimerRef.current);
   }, [onTimeScaleChange]);
 
   useEffect(() => {
@@ -939,8 +925,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const playMotion = (next: BattleMotion) => {
+    if (motionTimerRef.current) window.clearTimeout(motionTimerRef.current);
     setMotion(next);
-    window.setTimeout(() => setMotion('idle'), 620);
+    setMotionSerial((current) => current + 1);
+    motionTimerRef.current = window.setTimeout(() => {
+      motionTimerRef.current = null;
+      setMotion('idle');
+    }, 620);
   };
 
   const chargeLimitBreak = (effectiveCapitalMovement: number) => {
@@ -1057,11 +1048,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         : `${companyName}対${targetProperty.name}、討滅戦開始。競合は${formatCurrency(initialEnemyCommitment)}を先に積みました。`,
     };
     setBattlePhase('active');
+    if (isTraining) setCommandProgress(100);
     setOpeningSlowActive(true);
     setStatusText(
       isTraining
         ? '木人訓練開始――投入・支援元・スキルを自由に試してください'
-        : '投入ボタンをタップで額選択、長押しでギルを積んでください'
+        : '投資レベルを選び、投資実行でギルを積んでください'
     );
     setLogs((current) => [
       openingLog,
@@ -1322,7 +1314,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const commandProgressPerTick = fastHorse
         ? TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick
         : TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick;
-      setCommandProgress((value) => Math.min(100, value + commandProgressPerTick * timeScale));
+      const commandScale = tutorialAssistActive ? 1 : timeScale;
+      setCommandProgress((value) => Math.min(100, value + commandProgressPerTick * commandScale));
       setSkillCooldowns((current) => {
         let changed = false;
         const next = { ...current };
@@ -1345,7 +1338,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       }
     }, 50);
     return () => window.clearInterval(interval);
-  }, [fastHorse, timeScale, winner]);
+  }, [fastHorse, timeScale, tutorialAssistActive, winner]);
 
   useEffect(() => {
     if (winner) return;
@@ -1487,12 +1480,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const gapRatio = Math.abs(effectiveCapitalGap) / Math.max(targetProperty.marketPrice, 1);
       const leverage = 1 + Math.min(2.4, gapRatio * 3.2);
       const deadZone = gapRatio < 0.025 ? 0.32 : 1;
-      const velocity =
+      const velocity = applyTrainingGaugeSpeed(
         baseVelocity *
-        BATTLE_GAUGE_SPEED_FACTOR *
-        leverage *
-        deadZone *
-        currentWind.speedMultiplier;
+          BATTLE_GAUGE_SPEED_FACTOR *
+          leverage *
+          deadZone *
+          currentWind.speedMultiplier,
+        isTraining
+      );
       setGaugeSpeed(velocity);
       const next = gaugeRef.current + velocity * dt;
       const heldNext = isTraining
@@ -1501,9 +1496,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             next,
             enemyReserveRef.current
           );
-      if (heldNext !== next) {
+      const practiceHeldNext = holdTrainingGaugeAboveDefeat(heldNext, isTraining);
+      if (practiceHeldNext !== next) {
         setGaugeSpeed(0);
-        updateGauge(heldNext);
+        updateGauge(practiceHeldNext);
       } else if (next <= -100) {
         finishBattle('player', 'NORMAL', (100 - next) / 2);
       } else if (next >= 100) {
@@ -1583,18 +1579,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     cash >= selectedCost &&
     !actionsLocked;
 
-  canConfirmInvestmentRef.current = canConfirmInvestment;
-  investmentCommitRef.current = investCompanyFunds;
-
-  const clearInvestmentHold = () => {
-    if (investmentHoldTimerRef.current) {
-      window.clearTimeout(investmentHoldTimerRef.current);
-      investmentHoldTimerRef.current = null;
-    }
-    investmentHoldActiveRef.current = false;
-    setInvestmentHolding(false);
-  };
-
   const cycleInvestmentLevel = (direction = 1) => {
     const affordableLevels = INVESTMENT_LEVELS.filter(
       (item) => getInvestmentCost(targetProperty.marketPrice, item.level) <= cash
@@ -1616,117 +1600,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setStatusText(
       `投入額「${next.label}」${formatCurrency(
         getInvestmentCost(targetProperty.marketPrice, next.level)
-      )}――長押しで確定`
+      )}――投資実行で確定`
     );
-  };
-
-  const releaseInvestmentPointer = (pointerId: number | null) => {
-    if (
-      pointerId === null ||
-      !investmentButtonRef.current?.hasPointerCapture(pointerId)
-    ) return;
-    investmentButtonRef.current.releasePointerCapture(pointerId);
-  };
-
-  const handleInvestmentPointerDown = (
-    event: React.PointerEvent<HTMLButtonElement>
-  ) => {
-    if (!event.isPrimary) return;
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
-    clearInvestmentHold();
-    investmentPointerRef.current = event.pointerId;
-    investmentHoldCommittedRef.current = false;
-    investmentHoldCancelledRef.current = false;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    if (!canConfirmInvestmentRef.current) return;
-
-    investmentHoldActiveRef.current = true;
-    setInvestmentHolding(true);
-    investmentHoldTimerRef.current = window.setTimeout(() => {
-      investmentHoldTimerRef.current = null;
-      if (!canConfirmInvestmentRef.current) {
-        investmentHoldCancelledRef.current = true;
-        investmentHoldActiveRef.current = false;
-        setInvestmentHolding(false);
-        return;
-      }
-      investmentHoldCommittedRef.current = true;
-      investmentHoldActiveRef.current = false;
-      setInvestmentHolding(false);
-      investmentCommitRef.current();
-    }, INVESTMENT_HOLD_DURATION_MS);
-  };
-
-  const handleInvestmentPointerMove = (
-    event: React.PointerEvent<HTMLButtonElement>
-  ) => {
-    if (
-      investmentPointerRef.current !== event.pointerId ||
-      investmentHoldCommittedRef.current
-    ) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const outside =
-      event.clientX < rect.left ||
-      event.clientX > rect.right ||
-      event.clientY < rect.top ||
-      event.clientY > rect.bottom;
-    if (!outside) return;
-    investmentHoldCancelledRef.current = true;
-    clearInvestmentHold();
-  };
-
-  const handleInvestmentPointerUp = (
-    event: React.PointerEvent<HTMLButtonElement>
-  ) => {
-    if (investmentPointerRef.current !== event.pointerId) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    if (
-      event.clientX < rect.left ||
-      event.clientX > rect.right ||
-      event.clientY < rect.top ||
-      event.clientY > rect.bottom
-    ) {
-      investmentHoldCancelledRef.current = true;
-    }
-    const committed = investmentHoldCommittedRef.current;
-    const cancelled = investmentHoldCancelledRef.current;
-    clearInvestmentHold();
-    investmentPointerRef.current = null;
-    releaseInvestmentPointer(event.pointerId);
-    investmentHoldCommittedRef.current = false;
-    investmentHoldCancelledRef.current = false;
-    if (!committed && !cancelled) cycleInvestmentLevel();
-  };
-
-  const handleInvestmentPointerCancel = (
-    event: React.PointerEvent<HTMLButtonElement>
-  ) => {
-    if (investmentPointerRef.current !== event.pointerId) return;
-    investmentHoldCancelledRef.current = true;
-    clearInvestmentHold();
-    investmentPointerRef.current = null;
-    releaseInvestmentPointer(event.pointerId);
-  };
-
-  const handleInvestmentLostPointerCapture = (
-    event: React.PointerEvent<HTMLButtonElement>
-  ) => {
-    if (investmentPointerRef.current !== event.pointerId) return;
-    investmentHoldCancelledRef.current = true;
-    clearInvestmentHold();
-    investmentPointerRef.current = null;
-  };
-
-  const handleInvestmentKeyDown = (
-    event: React.KeyboardEvent<HTMLButtonElement>
-  ) => {
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-      event.preventDefault();
-      cycleInvestmentLevel(1);
-    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      cycleInvestmentLevel(-1);
-    }
   };
 
   const demandFromProperty = (property: Property) => {
@@ -2000,7 +1875,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
     if (skill.effectType === 'COOLDOWN_REDUCTION') {
       setFastHorseRemaining(TACTICAL_SKILL_BALANCE.fastAction.durationMs);
-      setStatusText('疾風怒濤の計――10秒間、命令ゲージの進行速度が約1.8倍');
+      setStatusText('疾風怒濤の計――10秒間、行動準備ゲージの進行速度が約1.8倍');
     } else if (skill.effectType === 'NEMAWASHI') {
       setBattleSubs((current) => current.map((item) => ({
         ...item,
@@ -2212,13 +2087,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
       <main className="buyout-main">
         <section
-          className={`battle-stage integrated-battlefield ownership-board--wind-${windSide} ${isSavage ? 'integrated-battlefield--savage' : ''} ${isUltimate ? 'integrated-battlefield--ultimate' : ''}`}
+          className={`battle-stage integrated-battlefield integrated-battlefield--push-${battleDirection} integrated-battlefield--motion-${motion} ownership-board--wind-${windSide} ${isSavage ? 'integrated-battlefield--savage' : ''} ${isUltimate ? 'integrated-battlefield--ultimate' : ''}`}
           aria-label="所有率、両陣営、投入資金、行動予兆の統合商戦フィールド"
           inert={backgroundInert}
           data-company-invested={companyInvested}
           style={{
             '--battle-frontline': `${ownership}%`,
             '--capital-pressure': `${capitalPressurePosition}%`,
+            '--field-flow-duration': `${Math.max(.46, 1.9 - Math.min(1, ownershipRate / 4))}s`,
           } as React.CSSProperties}
         >
         <div className="battlefield-pressure-lane" aria-hidden="true">
@@ -2275,17 +2151,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               style={{ '--flow-duration': `${Math.max(.32, 1.4 - Math.min(1, ownershipRate / 4))}s` } as React.CSSProperties}
             >
               <div className="ownership-track__player" style={{ width: `${ownership}%` }} />
-              <div className="battle-wind-magic" aria-hidden="true"><i /><i /><i /><i /></div>
-              <div key={currentWind.type} className={`battle-wind-sigil battle-wind-sigil--${windSide}`}>
-                <Sparkles /><b>{windHudTitle}</b><span>{windHudDetail}</span>
-                <small>
-                  {!windEnabled
-                    ? isTraining ? '訓練では風なし' : '進行後に解放'
-                    : currentWind.type === 'CALM'
-                      ? `次の風まで ${windCountdown}秒`
-                      : `静穏まで ${windCountdown}秒`}
-                </small>
-              </div>
+              {windVisible && (
+                <>
+                  <div className="battle-wind-magic" aria-hidden="true"><i /><i /><i /><i /></div>
+                  <div key={currentWind.type} className={`battle-wind-sigil battle-wind-sigil--${windSide}`}>
+                    <Sparkles /><b>{windHudTitle}</b><span>{windHudDetail}</span>
+                    <small>静穏まで {windCountdown}秒</small>
+                  </div>
+                </>
+              )}
               <div className="ownership-track__enemy-flow" style={{ left: `${ownership}%` }} />
               <div className="ownership-track__tension" style={{ left: `${ownership}%` }} />
               <div className="ownership-track__ticks">{Array.from({ length: 9 }).map((_, index) => <i key={index} />)}</div>
@@ -2296,12 +2170,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </section>
 
         <section className="capital-arena battlefield-capital">
-          <div className="capital-arena__side">
+          <div className={`capital-arena__side ${motion === 'player' ? 'is-acting' : motion === 'enemy' || motion === 'rebel' ? 'is-hit' : ''}`}>
             <div className="player-capital-stack">
               <div className="capital-visual-row">
                 <GilTower amount={totalPlayerInvested} marketPrice={targetProperty.marketPrice} side="player" motion={motion} />
                 <div className="ownership-fighter ownership-fighter--player">
-                  <img className={`ownership-avatar ownership-avatar--player ${motion === 'player' ? 'avatar-attack' : ''}`} src={FANKIT_ART.tataru.windUp} alt="タタル" />
+                  <img
+                    key={`player-${motionSerial}`}
+                    className={`ownership-avatar ownership-avatar--player ${motion === 'player' ? 'avatar-act' : motion === 'enemy' || motion === 'rebel' ? 'avatar-hurt' : ''}`}
+                    src={FANKIT_ART.tataru.windUp}
+                    alt="タタル"
+                  />
                   <div className="battle-status-rail battle-status-rail--player" aria-label="自社の継続効果">
                     {fastHorseRemaining > 0 && (
                       <span role="img" aria-label={`疾風怒濤の計 残り${Math.ceil(fastHorseRemaining / 1000)}秒`} title={`疾風怒濤の計 残り${Math.ceil(fastHorseRemaining / 1000)}秒`}>
@@ -2322,14 +2201,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 </div>
               </div>
               <div className={`player-budget-overlay player-budget-overlay--${playerReserveState}`}>
-                <small>未投入資金</small>
+                <small>{isTraining ? '訓練用未投入資金' : '未投入資金'}</small>
                 <strong>{formatCurrency(cash)}</strong>
                 <span>残量 {playerReservePercent.toFixed(1)}%・{playerReservePercent <= 0 ? '回復待ち' : playerReservePercent <= 10 ? '枯渇寸前' : '投入可能'}</span>
               </div>
             </div>
             <small className="capital-effective-detail">
               <span>積上げ {playerCapitalProgress.toFixed(0)}%　自社 {formatCurrency(companyInvested)} / 支援 {formatCurrency(demandInvested)}</span>
-              <b>風反映後 {formatCurrency(effectivePlayerInvested)}相当（×{currentWind.playerMultiplier.toFixed(2)}）</b>
+              {windVisible && <b>風反映後 {formatCurrency(effectivePlayerInvested)}相当（×{currentWind.playerMultiplier.toFixed(2)}）</b>}
             </small>
             <div className="capital-source-bar"><i style={{ width: `${totalPlayerInvested > 0 ? companyInvested / totalPlayerInvested * 100 : 0}%` }} /><span /></div>
           </div>
@@ -2340,12 +2219,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <small>投入比 {Math.round(effectivePlayerShare)}:{Math.round(100 - effectivePlayerShare)}</small>
             {!isTraining && enemyReserve <= 0 && <em>SHORT</em>}
           </div>
-          <div className="capital-arena__side">
+          <div className={`capital-arena__side ${motion === 'enemy' ? 'is-acting' : motion === 'player' ? 'is-hit' : ''}`}>
             <div className="enemy-capital-stack">
               <div className="capital-visual-row">
                 <GilTower amount={enemyInvested} marketPrice={targetProperty.marketPrice} side="enemy" motion={motion} />
                 <div className="ownership-fighter ownership-fighter--enemy">
-                  <img className={`ownership-avatar ownership-avatar--enemy ${motion === 'enemy' ? 'avatar-hit' : ''}`} src={getFankitJobArt(targetProperty.industry)} alt={isTraining ? '商戦木人' : '競合代表'} />
+                  <img
+                    key={`enemy-${motionSerial}`}
+                    className={`ownership-avatar ownership-avatar--enemy ${motion === 'enemy' ? 'avatar-act' : motion === 'player' ? 'avatar-hurt' : ''}`}
+                    src={getFankitJobArt(targetProperty.industry)}
+                    alt={isTraining ? '商戦木人' : '競合代表'}
+                  />
                   <div className="battle-status-rail battle-status-rail--enemy" aria-label={isTraining ? '商戦木人への継続効果' : '競合の継続効果'}>
                     {enemySlowedRemaining > 0 && (
                       <span role="img" aria-label={`消沈 残り${Math.ceil(enemySlowedRemaining / 1000)}秒`} title={`消沈 残り${Math.ceil(enemySlowedRemaining / 1000)}秒`}>
@@ -2368,7 +2252,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             </div>
             <small className="capital-effective-detail">
               <span>{isTraining ? `木人耐久 ${enemyCapitalProgress.toFixed(0)}%　追加防衛なし` : `積上げ ${enemyCapitalProgress.toFixed(0)}%　追加防衛枠 ${formatCurrency(enemyReserve)}`}</span>
-              <b>風反映後 {formatCurrency(effectiveEnemyInvested)}相当（×{currentWind.enemyMultiplier.toFixed(2)}）</b>
+              {windVisible && <b>風反映後 {formatCurrency(effectiveEnemyInvested)}相当（×{currentWind.enemyMultiplier.toFixed(2)}）</b>}
             </small>
             <div className="enemy-reserve-bar"><i style={{ width: `${enemyReservePercent}%` }} /></div>
           </div>
@@ -2385,28 +2269,32 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           ))}
         </div>
 
-        <section className="active-time battlefield-timing">
-          <div className="active-time__mode">
-            <TimerReset />
-            <span>{timeScale === 0
-              ? '演出・画面表示中：停止'
-              : timeScale === 0.1
-                ? openingSlowActive ? '開始演出中 ×0.1' : '戦術選択中 ×0.1'
-                : timeScale === 0.16 ? '決着スロー ×0.16' : '通常進行'}</span>
-            <b className="battle-income-rate">商流 +{formatCurrency(Math.round(battleCashRecoveryPerSecond * timeScale))}/秒</b>
+        <section className="active-time battlefield-timing" aria-label="行動準備ゲージ">
+          <div
+            className={`recast-meter recast-meter--player ${commandReady ? 'is-ready' : ''}`}
+            role="progressbar"
+            aria-label="自社の次回行動準備"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(commandProgress)}
+            aria-valuetext={commandReady ? '行動可能' : `準備 ${Math.round(commandProgress)}%`}
+          >
+            <i><u style={{ width: `${commandProgress}%` }} /></i>
           </div>
-          <div className="recast-lanes">
-            <div className={`recast-lane recast-lane--player ${commandReady ? 'recast-lane--ready' : ''}`}>
-              <span><b>自社コマンド</b><small>{fastHorse ? '疾風怒濤の計で加速中' : commandReady ? '命令入力可能' : '次の命令を準備中'}</small></span>
-              <strong>{commandReady ? '発動可' : `${playerRecastSeconds.toFixed(1)}秒`}</strong>
-              <i><u style={{ width: `${commandProgress}%` }} /></i>
+          {!isTraining && (
+            <div
+              className={`recast-meter recast-meter--enemy ${aiProgress >= 72 ? 'is-danger' : ''} ${enemyReserve <= 0 ? 'is-short' : ''}`}
+              role="progressbar"
+              aria-label="競合の次回行動予兆"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={enemyReserve <= 0 ? 0 : Math.round(aiProgress)}
+              aria-valuetext={enemyReserve <= 0 ? 'SHORT・追加防衛不能' : `${aiText}・準備 ${Math.round(aiProgress)}%`}
+              title={enemyReserve <= 0 ? 'SHORT・追加防衛不能' : aiText}
+            >
+              <i><u style={{ width: `${enemyReserve <= 0 ? 0 : aiProgress}%` }} /></i>
             </div>
-            <div className={`recast-lane recast-lane--enemy ${!isTraining && aiProgress >= 72 ? 'recast-lane--danger' : ''}`} title={isTraining ? '商戦木人は追加防衛を行いません' : aiText}>
-              <span><b>{isTraining ? '木人アクション' : '競合アクション'}</b><small>{isTraining ? '初期耐久のみ・追加防衛なし' : enemyReserve <= 0 ? '追加防衛不能' : aiText}</small></span>
-              <strong>{isTraining ? '行動なし' : enemyReserve <= 0 ? 'SHORT' : `${enemyRecastSeconds.toFixed(1)}秒`}</strong>
-              <i><u style={{ width: `${isTraining ? 0 : aiProgress}%` }} /></i>
-            </div>
-          </div>
+          )}
         </section>
         </section>
 
@@ -2432,7 +2320,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <span>
                 <b>{limitBreakTier > 0 ? `LB ${limitBreakTier}` : 'LB'}</b>
                 <small>{limitBreakTier > 0
-                  ? commandReady ? `最大+${limitBreakOwnershipCap}pt` : `${playerRecastSeconds.toFixed(1)}秒`
+                  ? commandReady ? `最大+${limitBreakOwnershipCap}pt` : '準備中'
                   : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`}</small>
               </span>
               <span
@@ -2480,7 +2368,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 ? '連携崩壊'
                 : commandReady
                   ? '発動可'
-                  : `${playerRecastSeconds.toFixed(1)}秒`}</em>
+                  : '準備中'}</em>
             </button>
           )}
 
@@ -2502,10 +2390,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 : primarySkillUsed
                 ? '使用済み'
                 : primarySkillCooldown > 0
-                  ? `${(primarySkillCooldown / 1000).toFixed(1)}秒`
+                  ? '再使用待ち'
                   : commandReady
                     ? '発動可'
-                    : `共通 ${playerRecastSeconds.toFixed(1)}秒`}</em>
+                    : '準備中'}</em>
             </button>
           )}
 
@@ -2531,71 +2419,66 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </section>
 
         <section className="command-deck command-deck--compact" inert={backgroundInert}>
-          <div className="command-deck__summary">
-            <span><Coins /><b>自社資金</b><small>可処分 {formatCurrency(cash)}</small></span>
-            <span className={`command-deck__wind command-deck__wind--${windSide}`}>
-              <Sparkles /><b>{windTitle}</b><small>{windDetail}</small>
-            </span>
-          </div>
-
           <div className="command-panel command-panel--capital">
-            <button
-              ref={investmentButtonRef}
-              type="button"
-              className={`investment-hold-button ${investmentHolding ? 'is-holding' : ''} ${canConfirmInvestment ? 'is-ready' : 'is-recharging'}`}
-              style={{
-                '--investment-hold-duration': `${INVESTMENT_HOLD_DURATION_MS}ms`,
-              } as React.CSSProperties}
-              onPointerDown={handleInvestmentPointerDown}
-              onPointerMove={handleInvestmentPointerMove}
-              onPointerUp={handleInvestmentPointerUp}
-              onPointerCancel={handleInvestmentPointerCancel}
-              onLostPointerCapture={handleInvestmentLostPointerCapture}
-              onContextMenu={(event) => event.preventDefault()}
-              onDragStart={(event) => event.preventDefault()}
-              onKeyDown={handleInvestmentKeyDown}
-              onClick={(event) => {
-                if (event.detail !== 0 || !canConfirmInvestment) return;
-                investCompanyFunds();
-              }}
-              disabled={!maxAffordableConfig || actionsLocked}
-              aria-label={`投入額 ${selectedInvestmentConfig.label} ${formatCurrency(selectedCost)}。タップで金額変更、長押しで投入。キーボードは矢印で変更、EnterまたはSpaceで投入`}
-              aria-describedby="investment-control-help"
-              aria-busy={investmentHolding}
-              data-investment-level={selectedLevel}
-              data-investment-cost={selectedCost}
-              data-command-ready={commandReady}
-              data-holding={investmentHolding}
-            >
-              <span className="investment-hold-button__fill" aria-hidden="true" />
-              <HandCoins />
-              <span className="investment-hold-button__value">
-                <small>{selectedInvestmentConfig.label}</small>
-                <b>{formatCurrency(selectedCost)}</b>
-              </span>
-              <span className="investment-hold-button__instruction">
-                {!maxAffordableConfig
-                  ? '自己資金不足'
-                  : canConfirmInvestment
-                    ? investmentHolding ? 'そのまま長押し' : 'タップで変更・長押しで投入'
-                    : `再使用 ${playerRecastSeconds.toFixed(1)}秒・タップで額変更`}
-              </span>
-              <span className="investment-hold-button__steps" aria-hidden="true">
-                {INVESTMENT_LEVELS.map((item) => {
-                  const cost = getInvestmentCost(targetProperty.marketPrice, item.level);
-                  return (
-                    <i
-                      key={item.level}
-                      className={`${selectedLevel === item.level ? 'is-selected' : ''} ${cost > cash ? 'is-locked' : ''}`}
-                    />
-                  );
-                })}
-              </span>
-            </button>
+            <div className="investment-controls">
+              <button
+                type="button"
+                className="investment-level-button"
+                onClick={() => cycleInvestmentLevel()}
+                disabled={!maxAffordableConfig || actionsLocked}
+                aria-label={`投資レベル変更。現在 ${selectedInvestmentConfig.label} ${formatCurrency(selectedCost)}。押すと次のレベル`}
+                aria-describedby="investment-control-help"
+                data-investment-level={selectedLevel}
+                data-investment-cost={selectedCost}
+              >
+                <span>
+                  <small>投資レベル</small>
+                  <b>{selectedInvestmentConfig.label}</b>
+                  <strong>{formatCurrency(selectedCost)}</strong>
+                </span>
+                <span className="investment-level-button__steps" aria-hidden="true">
+                  {INVESTMENT_LEVELS.map((item) => {
+                    const cost = getInvestmentCost(targetProperty.marketPrice, item.level);
+                    return (
+                      <i
+                        key={item.level}
+                        className={`${selectedLevel === item.level ? 'is-selected' : ''} ${cost > cash ? 'is-locked' : ''}`}
+                      />
+                    );
+                  })}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className={`investment-execute-button ${canConfirmInvestment ? 'is-ready' : 'is-recharging'} ${isFinalPushWindow ? 'is-finisher' : ''}`}
+                onClick={investCompanyFunds}
+                disabled={!canConfirmInvestment}
+                aria-label={`${isFinalPushWindow ? 'とどめ' : '投資実行'}。${selectedInvestmentConfig.label} ${formatCurrency(selectedCost)}を1回投入`}
+                data-investment-level={selectedLevel}
+                data-investment-cost={selectedCost}
+                data-command-ready={commandReady}
+              >
+                <span
+                  className="investment-execute-button__charge"
+                  style={{ width: `${commandProgress}%` }}
+                  aria-hidden="true"
+                />
+                <HandCoins />
+                <span>
+                  <b>{isFinalPushWindow ? 'とどめ' : '投資実行'}</b>
+                  <small>{!maxAffordableConfig
+                    ? '資金不足'
+                    : commandReady
+                      ? formatCurrency(selectedCost)
+                      : '準備中'}</small>
+                </span>
+              </button>
+            </div>
             <p id="investment-control-help" className={maxAffordableConfig && maxAffordableConfig.level < 5 ? 'investment-auto-note' : ''}>
               {maxAffordableConfig && maxAffordableConfig.level < 5
                 ? `残高に合わせ「${maxAffordableConfig.label}」まで選択できます`
-                : '短押しで5段階を巡回／長押しゲージ満了で1回投入'}
+                : '左で5段階を切替／右で1回投入'}
             </p>
           </div>
         </section>
@@ -2608,16 +2491,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <span><Building2 /><b>資金源</b><small>戦術選択中 ×0.1</small></span>
                 <button type="button" data-modal-close onClick={() => setPanel('capital')} aria-label="資金源を閉じる"><X /></button>
               </header>
-              <div className={`command-wind-context command-wind-context--${windSide}`}>
-                <span><Sparkles /><b>{windTitle}</b><em>{windDetail}</em></span>
-                <small>
-                  {!windEnabled
-                    ? 'この章は風補正なし。まず資金源の選び方を覚えます。'
-                    : `この画面では所有率・競合行動・リキャスト・風も×0.1進行。${
-                        currentWind.type === 'CALM' ? '次の風' : '静穏'
-                      }まで${windCountdown}秒。`}
-                </small>
-              </div>
+              {windVisible && (
+                <div className={`command-wind-context command-wind-context--${windSide}`}>
+                  <span><Sparkles /><b>{windTitle}</b><em>{windDetail}</em></span>
+                  <small>戦術選択中も風は×0.1で進行。静穏まで{windCountdown}秒。</small>
+                </div>
+              )}
               <div className="command-panel command-panel--funds">
               {limitBreakCapacityTier === 0 && (
               <button
@@ -2690,10 +2569,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                         : used
                         ? '使用済み'
                         : cooldown > 0
-                          ? `${(cooldown / 1000).toFixed(1)}秒`
+                          ? '再使用待ち'
                           : commandReady
                             ? '発動可'
-                            : `共通 ${playerRecastSeconds.toFixed(1)}秒`}</em>
+                            : '準備中'}</em>
                     </button>
                   );
                 })}
@@ -2790,7 +2669,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             )}
             <section className="briefing-section">
               <h3><ShieldAlert />勝敗条件</h3>
-              <p>{isTraining ? '木人は全耐久資本を開幕に配置します。所有率100％まで押し切ると訓練成功、自社側が0％になると訓練終了です。' : '未投入資金や追加防衛枠が残っていても、所有率0％になった側は敗北します。'}</p>
+              <p>{isTraining ? '木人は全耐久資本を開幕に配置します。所有率100％まで押し切ると訓練成功です。木人側に押されても自社1％で踏みとどまり、任意に訓練を終了できます。' : '未投入資金や追加防衛枠が残っていても、所有率0％になった側は敗北します。'}</p>
               {!isTraining && <p>競合がSHORTすると所有率99.5％で停止します。自社出資かLIMIT BREAKで決着してください。</p>}
               {equippedSkills.some((skill) => skill.effectType === 'LIVING_DEAD') && (
                 <p className="briefing-living-dead">例外：リビングデッド待機中は1％で踏みとどまり、10秒以内に正規化所有率30％へ戻せば続行できます。</p>
@@ -2851,18 +2730,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           <article ref={helpDialogRef} className="buyout-dialog" role="dialog" aria-modal="true" aria-label={isTraining ? '木人訓練の遊び方' : '買収戦の遊び方'} tabIndex={-1}>
             <header><CircleHelp /><strong>{isTraining ? '木人訓練の遊び方' : '買収戦の遊び方'}</strong><button type="button" data-modal-close onClick={() => setShowHelp(false)} aria-label="ヘルプを閉じる"><X /></button></header>
             <ol>
-              <li><b>ギルを積む</b><span>大きな投入ボタンを短く押すと金額が5段階で切り替わり、長押しゲージが満ちると1回投入します。支援元・SYNERGYの支援は上のアイコンから使います。</span></li>
-              {isTraining && <li><b>木人訓練</b><span>参加費・報酬・精算・清算は0。木人は初期耐久資本を全配置し、追加防衛や敵AI行動を行いません。訓練結果はセーブへ反映されません。</span></li>}
+              <li><b>ギルを積む</b><span>左の投資レベルボタンで金額を5段階から選び、右の投資実行ボタンで1回投入します。支援元・SYNERGYの支援は上のアイコンから使います。</span></li>
+              {isTraining && <li><b>木人訓練</b><span>参加費・報酬・精算・清算は0。木人は初期耐久資本を全配置し、追加防衛や敵AI行動を行いません。押されても自社1％で訓練を継続でき、その間も通常の毎秒収益とオフライン収益は商会資金へ加算されます。</span></li>}
               <li><b>戦術選択</b><span>資金源やスキルの選択中は、商戦と商流回復が通常の10%になります。</span></li>
               <li><b>商流回復</b><span>通常時は相場の0.3%/秒、1戦につき相場の15%まで、その戦闘内だけで再利用できる資金が戻ります。最終残高へ別途加算はされません。</span></li>
-              <li><b>風を読む</b><span>{isTraining ? '木人訓練はCALM固定。風による自社・木人双方への補正はありません。' : 'グリダニアは風なし。進行後は静穏16秒の後に10秒だけ風が吹きます。青は自社強化、赤は競合強化または自社弱体です。'}</span></li>
+              <li><b>風を読む</b><span>{isTraining ? '木人訓練では風は発生せず、自社・木人双方への補正もありません。' : 'グリダニアは風なし。進行後は静穏16秒の後に10秒だけ風が吹きます。青は自社強化、赤は競合強化または自社弱体です。'}</span></li>
               <li><b>LIMIT BREAK</b><span>攻防の資金衝突で通常比20％速く蓄積し、動員資金も20％増加。自社＋支援元が合計4/8/16枠で1/2/3本まで解放され、発動のたび全ゲージを0にします。同じ戦闘でも再蓄積すれば再発動できます。</span></li>
               <li><b>特殊アクション</b><span>商戦フィールド直下のアイコンからLB・選択中のSYNERGY・主要スキルを1タップで実行できます。未解放の枠は表示せず、全スキルと資金源はドロワーで開きます。</span></li>
               <li><b>効果通知</b><span>味方への良い効果は青く上昇し、競合への妨害や悪い効果は赤く下降します。詳しい履歴は戦局ログで後から確認できます。</span></li>
               <li><b>リビングデッド</b><span>10秒の待機中に所有率0％へ到達すると表示上1％で耐えます。攻防の内部値は進み続け、その後10秒以内に30％以上へ戻せなければ敗北。1交渉1回です。</span></li>
               <li><b>協力協定</b><span>外部協力先から一交渉1回の支援です。LBの参加件数や投入額には含みません。</span></li>
               <li><b>独立リスク</b><span>支援元へ繰り返し要求できますが、独立すると過去支援も崩れます。</span></li>
-              {!isTraining && <li><b>SHORT</b><span>敵の追加防衛資金が0になった戦況通知。約3.2秒後に自動再開し、所有率99.5%で踏みとどまります。自社資金のFINAL PUSHかLIMIT BREAKで決着してください。</span></li>}
+              {!isTraining && <li><b>SHORT</b><span>敵の追加防衛資金が0になった戦況通知。約3.2秒後に自動再開し、所有率99.5%で踏みとどまります。投資実行が「とどめ」に変わるので、FINAL PUSHかLIMIT BREAKで決着してください。</span></li>}
               <li><b>OVERKILL</b><span>所有率100%をどれだけ超えて押し切ったかを示す派手さの評価です。</span></li>
             </ol>
             <button type="button" className="dialog-close" onClick={() => setShowHelp(false)}>{isTraining ? '木人訓練へ戻る' : '商談へ戻る'}</button>
@@ -2924,9 +2803,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <span><small>自社競り値</small><b>{formatCurrency(totalPlayerInvested)}</b></span>
               <span><small>{isTraining ? '木人耐久資本' : '競合競り値'}</small><b>{formatCurrency(enemyInvested)}</b></span>
               <span><small>戦中再利用（残高加算なし）</small><b>{formatCurrency(battleCashRecovered)}</b></span>
-              <span><small>{isTraining ? '訓練確定支出' : '確定支出'}</small><b>{formatCurrency(brokerageFee + resultSettlementCost)}</b></span>
+              <span><small>{isTraining ? '訓練操作による資金差引' : '確定支出'}</small><b>{isTraining ? '+0' : formatCurrency(brokerageFee + resultSettlementCost)}</b></span>
               <span><small>{isTraining ? '訓練報酬' : '攻略報酬'}</small><b>+{formatCurrency(resultVictoryReward)}</b></span>
-              <span><small>{isTraining ? 'セーブ資金差引' : '商会資金差引'}</small><b>{resultFundsDelta >= 0 ? '+' : '-'}{formatCurrency(Math.abs(resultFundsDelta))}</b></span>
+              {!isTraining && <span><small>商会資金差引</small><b>{resultFundsDelta >= 0 ? '+' : '-'}{formatCurrency(Math.abs(resultFundsDelta))}</b></span>}
               <span><small>{isTraining ? '訓練中の一時離脱' : isHighEndRaid ? '記録戦中の一時離脱' : '資金源離脱'}</small><b>{rebelled.length}件</b></span>
             </div>
             {winner === 'player' && <p className="overkill-rating">{getOverkillRating(overkill)}</p>}

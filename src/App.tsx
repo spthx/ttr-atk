@@ -647,7 +647,7 @@ export default function App() {
     return Math.round(base * bonusMultiplier * PASSIVE_REVENUE_MULTIPLIER);
   }, [bonusMultiplier, ownedProperties, savageClearedSet]);
 
-  const persistGameState = (passiveIncomePaused: boolean) => {
+  const persistGameState = () => {
     saveGame({
       companyName: companyName.trim() || GAME_WORLD.companyName,
       totalFunds,
@@ -663,31 +663,19 @@ export default function App() {
       ultimateCleared,
       trueEndingSeen,
       selectedBattleSynergyId,
-      passiveIncomePaused,
+      passiveIncomePaused: false,
     });
   };
-
-  const resumedTrainingPauseClearedRef = useRef(false);
-  useEffect(() => {
-    if (
-      resumedTrainingPauseClearedRef.current ||
-      !initialSave?.passiveIncomePaused
-    ) return;
-    resumedTrainingPauseClearedRef.current = true;
-    // A saved training battle is intentionally not resumed after reload.
-    // Reset its income clock immediately after suppressing that session's
-    // offline payout, so future absences earn normally.
-    persistGameState(false);
-  }, [initialSave]);
 
   const offlineIncomeAppliedRef = useRef(false);
   useEffect(() => {
     if (offlineIncomeAppliedRef.current) return;
     offlineIncomeAppliedRef.current = true;
     if (!initialSave || passiveRevenue <= 0) return;
-    const income = initialSave.passiveIncomePaused
-      ? 0
-      : calculateOfflineIncome(passiveRevenue, initialSave.lastSavedAt);
+    const income = calculateOfflineIncome(
+      passiveRevenue,
+      initialSave.lastSavedAt
+    );
     if (income <= 0) return;
     setTotalFunds((current) => current + income);
     setOfflineIncomeNotice(income);
@@ -698,18 +686,18 @@ export default function App() {
   // IDLE CASH HARVEST ENGINE (1 Second Ticker)
   useEffect(() => {
     const timer = setInterval(() => {
-      if (passiveRevenue > 0 && activeBattleMode !== 'training') {
+      if (passiveRevenue > 0) {
         setTotalFunds((prev) => prev + passiveRevenue);
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [activeBattleMode, passiveRevenue]);
+  }, [passiveRevenue]);
 
   useEffect(() => {
     if (showLaunchIntro) return;
     const timer = window.setTimeout(() => {
-      persistGameState(activeBattleMode === 'training');
+      persistGameState();
     }, 400);
     return () => window.clearTimeout(timer);
   }, [
@@ -773,9 +761,9 @@ export default function App() {
 
   const handleStartTraining = (property: Property) => {
     soundFx.playCoin();
-    // Record the pause immediately so reloading during this no-economy mode
-    // cannot turn training time into offline income.
-    persistGameState(true);
+    // Record the current economy clock before entering the isolated practice.
+    // Passive and offline income continue while the training battle is open.
+    persistGameState();
     setTrainingLimitBreakCharge(limitBreakCharge);
     setShowTrainingSelector(false);
     setBattleTimeScale(0);
@@ -797,9 +785,7 @@ export default function App() {
     survivingRiskUpdates,
   }: BattleResult) => {
     if (activeBattleMode === 'training') {
-      // Clear the pause before returning to the selector. The regular
-      // debounced autosave follows, but an immediate app close is also safe.
-      persistGameState(false);
+      persistGameState();
       addGameLog(
         winner === 'player'
           ? `【木人討滅成功】${targetProperty.name}を討滅しました。訓練用の出資・LB増減・勝敗は保存されません。`
@@ -1453,7 +1439,7 @@ export default function App() {
           onBattleEnd={handleBattleEnd}
           onClose={() => {
             if (activeBattleMode === 'training') {
-              persistGameState(false);
+              persistGameState();
               setShowTrainingSelector(true);
             }
             setActiveBattleProperty(null);

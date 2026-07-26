@@ -19,7 +19,10 @@ import {
 } from '../src/utils/battleSettlement';
 import { shouldInertBattleFooter } from '../src/utils/battlePresentation';
 import { calculateCartelHeadquartersDefense } from '../src/utils/cartel';
-import { calculateRebellionProbability } from '../src/utils/formatter';
+import {
+  calculateGaugeVelocity,
+  calculateRebellionProbability,
+} from '../src/utils/formatter';
 import {
   getWindPool,
   getWindProgressionStage,
@@ -27,6 +30,7 @@ import {
   WIND_CALM_SECONDS,
 } from '../src/components/WindIndicator';
 import {
+  calculateOfflineIncome,
   loadGameSave,
   normalizeAllianceState,
   normalizeLimitBreakCharge,
@@ -59,11 +63,14 @@ import {
   TRAINING_DUMMY_DEFINITIONS,
 } from '../src/utils/trainingDummy';
 import {
+  applyTrainingGaugeSpeed,
   BATTLE_GAUGE_SPEED_FACTOR,
   calculateBattleVictoryReward,
   ENEMY_INITIAL_COMMITMENT_RATIO,
   PASSIVE_REVENUE_MULTIPLIER,
   TACTICAL_SKILL_BALANCE,
+  TRAINING_GAUGE_SPEED_MULTIPLIER,
+  TRAINING_MIN_OWNERSHIP_PERCENT,
   calculateEnemyBudget,
   calculateLimitBreakAmount,
   calculateLimitBreakChargeGain,
@@ -77,6 +84,7 @@ import {
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
   holdGaugeForManualShortFinish,
+  holdTrainingGaugeAboveDefeat,
   isSkillUnlocked,
   LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER,
   LIMIT_BREAK_MULTIPLIERS,
@@ -869,6 +877,34 @@ const lbTier = getLimitBreakTier(lbSubs.length + 1);
 assert.equal(lbTier, 1);
 assert.equal(calculateLimitBreakAmount(1_000, lbSubs, lbTier), 2_822);
 assert.equal(BATTLE_GAUGE_SPEED_FACTOR, 4);
+assert.equal(TRAINING_GAUGE_SPEED_MULTIPLIER, 0.1);
+assert.equal(TRAINING_MIN_OWNERSHIP_PERCENT, 1);
+assert.equal(applyTrainingGaugeSpeed(12, false), 12);
+assert.ok(Math.abs(applyTrainingGaugeSpeed(12, true) - 1.2) < 1e-9);
+assert.equal(holdTrainingGaugeAboveDefeat(140, false), 140);
+assert.equal(holdTrainingGaugeAboveDefeat(140, true), 98);
+const unansweredTrainingVelocity = Math.abs(
+  applyTrainingGaugeSpeed(
+    calculateGaugeVelocity(0, 1, 1) *
+      BATTLE_GAUGE_SPEED_FACTOR *
+      3.4,
+    true
+  )
+);
+const unansweredTrainingSeconds =
+  (100 - TRAINING_MIN_OWNERSHIP_PERCENT * 2) /
+  unansweredTrainingVelocity;
+const baseCommandRecoverySeconds =
+  100 /
+  (TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick * 20);
+assert.ok(
+  unansweredTrainingSeconds >= 60,
+  'training dummy takes at least one minute to reach its protected 1% floor'
+);
+assert.ok(
+  unansweredTrainingSeconds / baseCommandRecoverySeconds >= 30,
+  'training dummy allows at least thirty command cycles before its protected floor'
+);
 assert.equal(LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER, 1.2);
 assert.deepEqual(LIMIT_BREAK_MULTIPLIERS, { 1: 1.44, 2: 1.8, 3: 2.22 });
 assert.equal(ENEMY_INITIAL_COMMITMENT_RATIO, 0.25);
@@ -942,6 +978,11 @@ const legacySchemaThreePayload = {
 savedPayload = JSON.stringify(legacySchemaThreePayload);
 const restoredLegacySave = loadGameSave();
 assert.ok(restoredLegacySave);
+assert.equal(
+  restoredLegacySave.passiveIncomePaused,
+  false,
+  'legacy training pause markers migrate without suppressing future income'
+);
 assert.deepEqual(restoredLegacySave.savageClearedPropertyIds, []);
 assert.equal(restoredLegacySave.normalEndingSeen, false);
 assert.equal(restoredLegacySave.savageEndingSeen, false);
@@ -949,6 +990,21 @@ assert.equal(restoredLegacySave.ultimateCleared, false);
 assert.equal(restoredLegacySave.trueEndingSeen, false);
 assert.equal(restoredLegacySave.selectedBattleSynergyId, null);
 assert.equal(restoredLegacySave.savageProgressVersion, undefined);
+savedPayload = JSON.stringify({
+  ...legacySchemaThreePayload,
+  passiveIncomePaused: true,
+});
+const restoredPausedTrainingSave = loadGameSave();
+assert.equal(
+  restoredPausedTrainingSave?.passiveIncomePaused,
+  false,
+  'training no longer pauses passive or offline income'
+);
+assert.equal(
+  calculateOfflineIncome(40, 1_000, 61_000),
+  2_400,
+  'one minute spent in training still earns the normal passive income'
+);
 savedPayload = JSON.stringify({
   ...legacySchemaThreePayload,
   savageClearedPropertyIds: savageTargetIds.slice(0, 3),

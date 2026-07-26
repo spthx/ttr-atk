@@ -3,11 +3,24 @@ import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
 
 export const PASSIVE_REVENUE_MULTIPLIER = 2;
 export const BATTLE_GAUGE_SPEED_FACTOR = 4;
+export const TRAINING_GAUGE_SPEED_MULTIPLIER = 0.1;
+export const TRAINING_MIN_OWNERSHIP_PERCENT = 1;
 export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
 export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.45;
 export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 1.72;
 export const LIMIT_BREAK_CHARGE_PER_BAR = 100;
 export const LIMIT_BREAK_MAX_BARS = 3;
+
+export const applyTrainingGaugeSpeed = (
+  velocity: number,
+  isTraining: boolean
+) => velocity * (isTraining ? TRAINING_GAUGE_SPEED_MULTIPLIER : 1);
+export const holdTrainingGaugeAboveDefeat = (
+  gauge: number,
+  isTraining: boolean
+) => isTraining
+  ? Math.min(gauge, 100 - TRAINING_MIN_OWNERSHIP_PERCENT * 2)
+  : gauge;
 export const LIMIT_BREAK_MAX_CHARGE =
   LIMIT_BREAK_CHARGE_PER_BAR * LIMIT_BREAK_MAX_BARS;
 export const LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER = 1.2;

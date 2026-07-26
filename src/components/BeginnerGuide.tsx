@@ -39,7 +39,7 @@ export const BeginnerGuide: React.FC<BeginnerGuideProps> = ({
           <div className="mb-1 flex items-center gap-1.5 font-black text-amber-300">
             <Coins className="h-3.5 w-3.5" /> 2. 少額出資で右へ押す
           </div>
-          <p className="leading-relaxed text-slate-400">グリダニアでは風が吹きません。投入ボタンを短く押して小口～全力の金額を選び、約0.7秒長押しして1回投入します。</p>
+          <p className="leading-relaxed text-slate-400">グリダニアでは風が吹きません。「投資レベル」で小口～全力の金額を選び、「投資実行」で1回投入します。</p>
         </div>
         <div className="rounded-lg border border-slate-800 bg-slate-950/75 p-2.5">
           <div className="mb-1 flex items-center gap-1.5 font-black text-emerald-300">

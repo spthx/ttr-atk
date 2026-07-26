@@ -2293,3 +2293,584 @@
     bottom: 1.25rem;
   }
 }
+
+/*
+ * Focused trade-battle pass.
+ * Keep the important contest, capital and commands visible while removing
+ * verbose recast cards from the live field.
+ */
+.integrated-battlefield {
+  --battle-field-flow: var(--field-flow-duration, 1.15s);
+}
+
+.integrated-battlefield::after {
+  bottom: 1.05rem;
+}
+
+.integrated-battlefield .battlefield-pressure-lane {
+  bottom: 1rem;
+}
+
+.integrated-battlefield .battlefield-pressure-lane__player,
+.integrated-battlefield .battlefield-pressure-lane__enemy,
+.integrated-battlefield .battlefield-pressure-lane__front {
+  will-change: background-position, left, right, filter, opacity;
+}
+
+.integrated-battlefield .battlefield-pressure-lane__player {
+  opacity: .68;
+  background:
+    linear-gradient(90deg, rgba(14, 165, 233, .12), rgba(56, 189, 248, .46)),
+    repeating-linear-gradient(
+      115deg,
+      transparent 0 .82rem,
+      rgba(186, 230, 253, .2) .82rem 1.02rem,
+      transparent 1.02rem 2.2rem
+    );
+  background-size: auto, 2.2rem 100%;
+  animation: battlefield-current-player var(--battle-field-flow) linear infinite;
+  transition: right .12s linear, opacity .2s ease, filter .2s ease;
+}
+
+.integrated-battlefield .battlefield-pressure-lane__enemy {
+  opacity: .68;
+  background:
+    linear-gradient(270deg, rgba(225, 29, 72, .14), rgba(251, 113, 133, .48)),
+    repeating-linear-gradient(
+      -115deg,
+      transparent 0 .82rem,
+      rgba(254, 205, 211, .2) .82rem 1.02rem,
+      transparent 1.02rem 2.2rem
+    );
+  background-size: auto, 2.2rem 100%;
+  animation: battlefield-current-enemy var(--battle-field-flow) linear infinite;
+  transition: left .12s linear, opacity .2s ease, filter .2s ease;
+}
+
+.integrated-battlefield .battlefield-pressure-lane__front {
+  transition: left .12s linear;
+}
+
+.integrated-battlefield--push-player .battlefield-pressure-lane__player,
+.integrated-battlefield--push-enemy .battlefield-pressure-lane__enemy {
+  opacity: 1;
+  filter: brightness(1.3) saturate(1.22);
+  animation-duration: .56s;
+}
+
+.integrated-battlefield--motion-player .battlefield-pressure-lane__player,
+.integrated-battlefield--motion-enemy .battlefield-pressure-lane__enemy {
+  filter: brightness(1.48) saturate(1.3);
+  animation-duration: .34s;
+}
+
+.integrated-battlefield--push-player .battlefield-pressure-lane__enemy,
+.integrated-battlefield--push-enemy .battlefield-pressure-lane__player {
+  opacity: .42;
+  filter: saturate(.72);
+}
+
+.integrated-battlefield--push-even .battlefield-pressure-lane__player,
+.integrated-battlefield--push-even .battlefield-pressure-lane__enemy {
+  opacity: .72;
+}
+
+.integrated-battlefield .ownership-track__enemy-flow::after {
+  translate: 120% 0;
+  animation-name: enemy-bid-shimmer;
+}
+
+.integrated-battlefield .ownership-track.ownership-track--impact {
+  animation:
+    enemy-bid-flow var(--flow-duration) linear infinite,
+    track-impact .28s ease-out;
+}
+
+.integrated-battlefield .player-capital-stack .capital-visual-row,
+.integrated-battlefield .enemy-capital-stack .capital-visual-row {
+  --battle-side-rgb: 56, 189, 248;
+}
+
+.integrated-battlefield .enemy-capital-stack .capital-visual-row {
+  --battle-side-rgb: 244, 63, 94;
+}
+
+.integrated-battlefield .player-capital-stack .capital-visual-row::before,
+.integrated-battlefield .enemy-capital-stack .capital-visual-row::before,
+.integrated-battlefield .player-capital-stack .capital-visual-row::after,
+.integrated-battlefield .enemy-capital-stack .capital-visual-row::after {
+  position: absolute;
+  z-index: 0;
+  content: "";
+  pointer-events: none;
+}
+
+.integrated-battlefield .player-capital-stack .capital-visual-row::before,
+.integrated-battlefield .enemy-capital-stack .capital-visual-row::before {
+  inset: 5% -4% 2%;
+  border-radius: 48%;
+  opacity: .46;
+  background:
+    radial-gradient(
+      ellipse at center bottom,
+      rgba(var(--battle-side-rgb), .56),
+      rgba(var(--battle-side-rgb), .12) 48%,
+      transparent 72%
+    );
+  filter: blur(.22rem);
+  transform-origin: center bottom;
+  animation: battlefield-side-aura 1.35s ease-in-out infinite alternate;
+}
+
+.integrated-battlefield .player-capital-stack .capital-visual-row::after,
+.integrated-battlefield .enemy-capital-stack .capital-visual-row::after {
+  inset: 12% 0 4%;
+  opacity: .2;
+  background:
+    repeating-linear-gradient(
+      112deg,
+      transparent 0 1.05rem,
+      rgba(var(--battle-side-rgb), .5) 1.05rem 1.16rem,
+      transparent 1.16rem 2.35rem
+    );
+  background-size: 2.35rem 100%;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000, transparent 72%);
+  mask-image: radial-gradient(ellipse at center, #000, transparent 72%);
+  animation: battlefield-side-current 1.6s linear infinite;
+}
+
+.integrated-battlefield .enemy-capital-stack .capital-visual-row::after {
+  animation-direction: reverse;
+}
+
+.integrated-battlefield--push-player .player-capital-stack .capital-visual-row::before,
+.integrated-battlefield--push-enemy .enemy-capital-stack .capital-visual-row::before {
+  opacity: .72;
+  animation-duration: .62s;
+}
+
+.integrated-battlefield--push-player .enemy-capital-stack .capital-visual-row::before,
+.integrated-battlefield--push-enemy .player-capital-stack .capital-visual-row::before {
+  opacity: .28;
+}
+
+.integrated-battlefield .capital-visual-row:has(.avatar-act)::before {
+  animation: battlefield-side-action .42s ease-out;
+}
+
+.integrated-battlefield .capital-arena__side.is-acting .capital-visual-row::before {
+  animation: battlefield-side-action .42s ease-out;
+}
+
+.integrated-battlefield .capital-arena__side.is-hit .capital-visual-row::before {
+  animation: battlefield-side-hit .34s ease-out;
+}
+
+.integrated-battlefield .ownership-avatar--player.avatar-act {
+  animation: battlefield-avatar-player-act .42s ease-out;
+}
+
+.integrated-battlefield .ownership-avatar--enemy.avatar-act {
+  animation: battlefield-avatar-enemy-act .42s ease-out;
+}
+
+.integrated-battlefield .ownership-avatar--player.avatar-hurt {
+  animation: battlefield-avatar-player-hurt .34s ease-out;
+}
+
+.integrated-battlefield .ownership-avatar--enemy.avatar-hurt {
+  animation: battlefield-avatar-enemy-hurt .34s ease-out;
+}
+
+.integrated-battlefield > .battlefield-overview,
+.integrated-battlefield > .battlefield-capital {
+  bottom: 1rem;
+}
+
+.integrated-battlefield > .battlefield-timing {
+  box-sizing: border-box;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  min-height: 1rem;
+  height: 1rem;
+  padding: .28rem .44rem !important;
+  border-top-color: rgba(245, 196, 81, .25);
+  background: rgba(2, 6, 17, .9);
+  box-shadow: 0 -.16rem .35rem rgba(0, 0, 0, .24);
+}
+
+.integrated-battlefield > .battlefield-timing:has(.recast-meter:only-child) {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.integrated-battlefield .active-time__mode {
+  display: none !important;
+}
+
+.integrated-battlefield .recast-meter {
+  display: block;
+  min-width: 0;
+  height: .4rem;
+}
+
+.integrated-battlefield .recast-meter > i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, .24);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, .94);
+  box-shadow: inset 0 0 .3rem rgba(0, 0, 0, .58);
+}
+
+.integrated-battlefield .recast-meter > i > u {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #075985, #38bdf8 72%, #e0f2fe);
+  box-shadow: 0 0 .45rem rgba(56, 189, 248, .66);
+  transition: width .05s linear;
+}
+
+.integrated-battlefield .recast-meter--enemy > i > u {
+  background: linear-gradient(90deg, #991b1b, #ef4444 72%, #fecaca);
+  box-shadow: 0 0 .45rem rgba(239, 68, 68, .66);
+}
+
+.integrated-battlefield .recast-meter--player.is-ready > i {
+  border-color: rgba(134, 239, 172, .8);
+  box-shadow: 0 0 .5rem rgba(74, 222, 128, .48);
+}
+
+.integrated-battlefield .recast-meter--player.is-ready > i > u {
+  background: linear-gradient(90deg, #15803d, #4ade80 72%, #dcfce7);
+}
+
+.integrated-battlefield .recast-meter--enemy.is-danger > i {
+  border-color: rgba(254, 202, 202, .82);
+  box-shadow: 0 0 .5rem rgba(239, 68, 68, .5);
+}
+
+.integrated-battlefield .recast-meter--enemy.is-short {
+  opacity: .28;
+}
+
+.investment-controls {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(7rem, .9fr) minmax(8.5rem, 1.1fr);
+  gap: .42rem;
+}
+
+.investment-level-button,
+.investment-execute-button {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 4rem;
+  align-items: center;
+  gap: .15rem .42rem;
+  padding: .52rem .64rem;
+  overflow: hidden;
+  border-radius: .72rem;
+  color: #f8fafc;
+  font-weight: 900;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.investment-level-button {
+  grid-template-columns: minmax(0, 1fr);
+  border: 1px solid rgba(125, 211, 252, .68);
+  background: linear-gradient(135deg, rgba(8, 47, 73, .98), rgba(15, 23, 42, .98));
+  box-shadow: inset 0 0 1rem rgba(56, 189, 248, .08);
+}
+
+.investment-execute-button {
+  grid-template-columns: auto minmax(0, 1fr);
+  border: 1px solid #ffe58a;
+  color: #fff7cf;
+  background: linear-gradient(110deg, #4e2d05, #8a5308 48%, #382304);
+  box-shadow:
+    0 .18rem 0 #5c3506,
+    0 .35rem .8rem rgba(245, 196, 81, .16),
+    inset 0 0 .9rem rgba(255, 238, 155, .1);
+}
+
+.investment-level-button > svg,
+.investment-execute-button > svg {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: #fde68a;
+  filter: drop-shadow(0 0 .28rem rgba(250, 204, 21, .42));
+}
+
+.investment-level-button > span,
+.investment-execute-button > span {
+  display: grid;
+  min-width: 0;
+  gap: .1rem;
+}
+
+.investment-level-button small,
+.investment-execute-button small {
+  overflow: hidden;
+  color: #cbd5e1;
+  font-size: .75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.investment-level-button strong {
+  overflow: hidden;
+  color: #fef3c7;
+  font: 1000 .9rem/1.05 ui-monospace, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.investment-level-button__steps {
+  display: grid !important;
+  width: 100%;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: .16rem !important;
+}
+
+.investment-level-button__steps > i {
+  height: .22rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, .78);
+  box-shadow: inset 0 0 0 1px rgba(186, 230, 253, .22);
+}
+
+.investment-level-button__steps > i.is-selected {
+  background: #7dd3fc;
+  box-shadow: 0 0 .4rem rgba(56, 189, 248, .85);
+}
+
+.investment-level-button__steps > i.is-locked {
+  opacity: .22;
+}
+
+.investment-execute-button__charge {
+  position: absolute;
+  z-index: 0;
+  inset: 0 auto 0 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(14, 165, 233, .12), rgba(103, 232, 249, .48)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, .08) 0 .4rem, transparent .4rem .8rem);
+  box-shadow: .15rem 0 .65rem rgba(103, 232, 249, .46);
+  transition: width .05s linear;
+}
+
+.investment-execute-button > :not(.investment-execute-button__charge) {
+  position: relative;
+  z-index: 1;
+}
+
+.investment-execute-button.is-finisher {
+  border-color: rgba(134, 239, 172, .9);
+  background: linear-gradient(110deg, #064e3b, #047857 48%, #052e25);
+  box-shadow: 0 .18rem 0 #022c22, 0 0 .8rem rgba(74, 222, 128, .32);
+}
+
+.investment-level-button b,
+.investment-execute-button b {
+  overflow: hidden;
+  color: #fff;
+  font: 1000 1rem/1.05 ui-monospace, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.investment-level-button:focus-visible,
+.investment-execute-button:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, .9);
+  outline-offset: 2px;
+}
+
+.investment-level-button:disabled,
+.investment-execute-button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(.62);
+  opacity: .46;
+}
+
+.investment-execute-button:not(:disabled) {
+  animation: investment-execute-ready 1.15s ease-in-out infinite alternate;
+}
+
+@keyframes battlefield-current-player {
+  to { background-position: 0 0, 2.2rem 0; }
+}
+
+@keyframes battlefield-current-enemy {
+  to { background-position: 0 0, -2.2rem 0; }
+}
+
+@keyframes enemy-bid-shimmer {
+  55%, 100% { translate: -160% 0; }
+}
+
+@keyframes battlefield-side-aura {
+  to { opacity: .68; transform: scale(1.04, 1.1); }
+}
+
+@keyframes battlefield-side-current {
+  to { background-position: 2.35rem 0; }
+}
+
+@keyframes battlefield-side-action {
+  0% { opacity: .35; transform: scale(.9); }
+  42% { opacity: .92; transform: scale(1.18, 1.12); }
+  100% { opacity: .5; transform: scale(1); }
+}
+
+@keyframes battlefield-side-hit {
+  0%, 100% { opacity: .42; transform: translateX(0) scale(1); }
+  34% { opacity: .86; transform: translateX(-.22rem) scale(.96, 1.08); }
+  62% { transform: translateX(.14rem) scale(1.04, .98); }
+}
+
+@keyframes battlefield-avatar-player-act {
+  0%, 100% { transform: scaleX(-1); }
+  44% { transform: translateX(14px) scaleX(-1) rotate(-5deg); }
+}
+
+@keyframes battlefield-avatar-enemy-act {
+  0%, 100% { transform: none; }
+  44% { transform: translateX(-14px) rotate(5deg); }
+}
+
+@keyframes battlefield-avatar-player-hurt {
+  0%, 100% { transform: scaleX(-1); filter: brightness(1); }
+  38% { transform: translateX(-8px) scaleX(-1) rotate(4deg); filter: brightness(1.65); }
+  64% { transform: translateX(4px) scaleX(-1); }
+}
+
+@keyframes battlefield-avatar-enemy-hurt {
+  0%, 100% { transform: none; filter: brightness(1); }
+  38% { transform: translateX(8px) rotate(-4deg); filter: brightness(1.65); }
+  64% { transform: translateX(-4px); }
+}
+
+@keyframes investment-execute-ready {
+  to {
+    border-color: #fff3b0;
+    filter: brightness(1.08);
+    box-shadow:
+      0 .18rem 0 #5c3506,
+      0 .35rem .9rem rgba(245, 196, 81, .26),
+      inset 0 0 1.1rem rgba(255, 238, 155, .15);
+  }
+}
+
+@media (max-width: 639px) {
+  .integrated-battlefield .ownership-duel {
+    right: 8%;
+    left: 8%;
+  }
+
+  .integrated-battlefield .ownership-duel .ownership-track {
+    height: 1.5rem;
+  }
+
+  .integrated-battlefield .ownership-board__labels {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .integrated-battlefield .ownership-board__labels > span {
+    display: none;
+  }
+
+  .integrated-battlefield .capital-visual-row .ownership-fighter {
+    width: 5.9rem;
+    height: 7.6rem;
+  }
+
+  .integrated-battlefield .capital-effective-detail,
+  .integrated-battlefield .capital-arena__center small {
+    display: none !important;
+  }
+
+  .integrated-battlefield > .battlefield-capital {
+    padding-top: 4.45rem !important;
+  }
+
+  .investment-controls {
+    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+    gap: .3rem;
+  }
+
+  .investment-level-button,
+  .investment-execute-button {
+    min-height: 3.65rem;
+    padding: .42rem .48rem;
+  }
+
+  .investment-level-button > svg,
+  .investment-execute-button > svg {
+    width: 1.55rem;
+    height: 1.55rem;
+  }
+
+  .investment-level-button b,
+  .investment-execute-button b {
+    font-size: .9rem;
+  }
+
+  .investment-level-button > span:first-child {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .investment-level-button > span:first-child small {
+    display: none;
+  }
+
+  .command-deck--compact .command-panel--capital > p,
+  .buyout-footer:not(.buyout-footer--settled) > span {
+    display: none !important;
+  }
+}
+
+@media (max-height: 700px) {
+  .integrated-battlefield .capital-visual-row .ownership-fighter {
+    width: 5.6rem;
+    height: 5.9rem;
+  }
+
+  .integrated-battlefield > .battlefield-capital {
+    padding-top: 3.75rem !important;
+  }
+
+  .investment-level-button,
+  .investment-execute-button {
+    min-height: 3.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .integrated-battlefield .battlefield-pressure-lane__player,
+  .integrated-battlefield .battlefield-pressure-lane__enemy,
+  .integrated-battlefield .ownership-track__enemy-flow::after,
+  .integrated-battlefield .ownership-track.ownership-track--impact,
+  .integrated-battlefield .player-capital-stack .capital-visual-row::before,
+  .integrated-battlefield .enemy-capital-stack .capital-visual-row::before,
+  .integrated-battlefield .player-capital-stack .capital-visual-row::after,
+  .integrated-battlefield .enemy-capital-stack .capital-visual-row::after,
+  .integrated-battlefield .ownership-avatar.avatar-act,
+  .integrated-battlefield .ownership-avatar.avatar-hurt,
+  .investment-execute-button:not(:disabled) {
+    animation: none !important;
+  }
+
+  .integrated-battlefield .battlefield-pressure-lane__player,
+  .integrated-battlefield .battlefield-pressure-lane__enemy,
+  .integrated-battlefield .battlefield-pressure-lane__front {
+    transition-duration: 0s !important;
+  }
+}
