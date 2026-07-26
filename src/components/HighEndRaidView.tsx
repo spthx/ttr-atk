@@ -7,9 +7,11 @@ import {
   Sparkles,
   Swords,
 } from 'lucide-react';
-import type { GroupSynergy, Property } from '../types';
+import type { BattleMode, GroupSynergy, Property } from '../types';
 import { FANKIT_ART } from '../data/fankitAssets';
 import { formatCurrency } from '../utils/formatter';
+import type { BattleReadinessResult } from '../utils/battleReadiness';
+import { StrengthComparison } from './StrengthComparison';
 import {
   SAVAGE_GROUP_MULTIPLIER_BASE,
   SAVAGE_GROUP_MULTIPLIER_BONUS_PER_RANK,
@@ -29,6 +31,10 @@ interface HighEndRaidViewProps {
   ultimateProperty: Property;
   ultimateUnlocked: boolean;
   ultimateCleared: boolean;
+  getStrengthComparison: (
+    property: Property,
+    mode: BattleMode
+  ) => BattleReadinessResult;
   onStartSavage: (property: Property) => void;
   onStartUltimate: (property: Property) => void;
   onReplayEnding: () => void;
@@ -43,6 +49,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
   ultimateProperty,
   ultimateUnlocked,
   ultimateCleared,
+  getStrengthComparison,
   onStartSavage,
   onStartUltimate,
   onReplayEnding,
@@ -52,6 +59,10 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
   );
   const synergyMap = new Map(
     groupSynergies.map((synergy) => [synergy.id, synergy])
+  );
+  const ultimateStrengthComparison = getStrengthComparison(
+    ultimateProperty,
+    'ultimate'
   );
 
   return (
@@ -90,6 +101,10 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
           const unlocked = savageUnlockedIds.has(raid.id);
           const fee = Math.round(property.marketPrice * 0.03);
           const affordable = totalFunds >= fee;
+          const strengthComparison = getStrengthComparison(
+            property,
+            'savage'
+          );
           const rewards = raid.rewardSynergyIds
             .map((id) => synergyMap.get(id))
             .filter((synergy): synergy is GroupSynergy => !!synergy);
@@ -128,6 +143,8 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
                   <dd>{formatCurrency(fee)}</dd>
                 </div>
               </dl>
+
+              <StrengthComparison result={strengthComparison} compact />
 
               <section className="savage-layer-card__reward">
                 <span><Sparkles />初回踏破報酬：通常編の事業・連携強化</span>
@@ -199,6 +216,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
             <ShieldAlert />
             AI LEVEL 6・地域／業界補正なし・通常物件と収益は保護
           </span>
+          <StrengthComparison result={ultimateStrengthComparison} compact />
           <div className="ultimate-raid-card__actions">
             <button
               type="button"

@@ -4,11 +4,17 @@ import { COMMUNITY_CAMPAIGN_ORDER, TRADE_COMMUNITIES } from '../data/worldData';
 import { formatCurrency } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
 import { ArrowRight, ShieldAlert, CheckCircle2, TrendingUp, TrendingDown, Newspaper, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole } from 'lucide-react';
-import { WindIndicator, WindCondition } from './WindIndicator';
+import {
+  WindIndicator,
+  type WindCondition,
+  type WindProgressionStage,
+} from './WindIndicator';
 import { BeginnerGuide } from './BeginnerGuide';
 import { HelpTip } from './HelpTip';
+import { StrengthComparison } from './StrengthComparison';
 import { HELP_TEXT } from '../data/helpText';
 import { FANKIT_ART, getFankitJobArt } from '../data/fankitAssets';
+import type { BattleReadinessResult } from '../utils/battleReadiness';
 import {
   countsTowardCityConquest,
   getCampaignProperties,
@@ -22,8 +28,10 @@ interface MarketViewProps {
   navigationRequest?: { id: number; mode: 'map' | 'targets'; community: CommunityType | 'ALL' } | null;
   currentWind: WindCondition;
   windCountdown: number;
+  windProgressionStage: WindProgressionStage;
   propertyRevenueMultipliers?: ReadonlyMap<string, number>;
   campaignMode?: 'normal' | 'savage';
+  getStrengthComparison: (property: Property) => BattleReadinessResult;
   onStartBuyout: (property: Property) => void;
 }
 
@@ -34,8 +42,10 @@ export const MarketView: React.FC<MarketViewProps> = ({
   navigationRequest,
   currentWind,
   windCountdown,
+  windProgressionStage,
   propertyRevenueMultipliers,
   campaignMode = 'normal',
+  getStrengthComparison,
   onStartBuyout,
 }) => {
   const hasStartedCampaign = campaignMode === 'savage' || properties.some((property) => property.owner === 'player');
@@ -275,7 +285,12 @@ export const MarketView: React.FC<MarketViewProps> = ({
         </div>
 
         <div className="shrink-0">
-          <WindIndicator currentWind={currentWind} nextChangeSeconds={windCountdown} compact />
+          <WindIndicator
+            currentWind={currentWind}
+            nextChangeSeconds={windCountdown}
+            progressionStage={windProgressionStage}
+            compact
+          />
         </div>
       </div>
 
@@ -354,6 +369,12 @@ export const MarketView: React.FC<MarketViewProps> = ({
           );
           const fee = Math.round(activePrice * 0.03);
           const canAffordFee = totalFunds >= fee;
+          const strengthComparison = isPlayerOwned
+            ? null
+            : getStrengthComparison({
+                ...prop,
+                marketPrice: activePrice,
+              });
 
           // Owner badge styles
           let ownerBadgeColor = 'bg-slate-800 text-slate-300 border-slate-700';
@@ -474,6 +495,12 @@ export const MarketView: React.FC<MarketViewProps> = ({
                   </div>
                 </div>
               </div>
+
+              {strengthComparison && (
+                <div className="relative z-10 mt-3">
+                  <StrengthComparison result={strengthComparison} compact />
+                </div>
+              )}
 
               {/* Action Area */}
               <div className="mt-4 pt-2">

@@ -30,7 +30,14 @@ import { TatarAdvisor } from './components/TatarAdvisor';
 import { LaunchIntro } from './components/LaunchIntro';
 import { EndingModal } from './components/EndingModal';
 import { HighEndRaidView } from './components/HighEndRaidView';
-import { WIND_CONDITIONS, WindCondition, WindType } from './components/WindIndicator';
+import {
+  getWindPool,
+  getWindProgressionStage,
+  WIND_ACTIVE_SECONDS,
+  WIND_CALM_SECONDS,
+  WIND_CONDITIONS,
+  type WindCondition,
+} from './components/WindIndicator';
 import { FANKIT_ART } from './data/fankitAssets';
 import { COMMUNITY_CAMPAIGN_ORDER, GAME_WORLD, TRADE_COMMUNITIES } from './data/worldData';
 import { Bell, MapPinned } from 'lucide-react';
@@ -43,13 +50,24 @@ import {
   saveGame,
 } from './utils/saveData';
 import {
+  calculateEnemyBudget,
   calculateTotalAssetValue,
   getCampaignProperties,
+  getEnemyDifficultyLevel,
   isSkillUnlocked,
   PASSIVE_REVENUE_MULTIPLIER,
   TACTICAL_SKILL_BALANCE,
 } from './utils/gameBalance';
-import { isPublicPatronage, shouldBreakAllianceForTarget } from './utils/alliance';
+import {
+  calculateAllianceSupport,
+  isPublicPatronage,
+  shouldBreakAllianceForTarget,
+} from './utils/alliance';
+import { getEnemyBaseWaitMs } from './utils/enemyAi';
+import {
+  calculateBattleReadiness,
+  type BattleReadinessResult,
+} from './utils/battleReadiness';
 import {
   applySavageSynergyUpgrades,
   buildUltimateProperty,
@@ -65,6 +83,9 @@ import {
 export { PASSIVE_REVENUE_MULTIPLIER };
 
 type FeatureUnlockId =
+  | 'market_wind'
+  | 'rival_wind'
+  | 'turbulent_wind'
   | 'subsidiary_support'
   | 'light_party_limit_break'
   | 'guild_synergy'
@@ -76,6 +97,24 @@ const FEATURE_UNLOCKS: Record<
   FeatureUnlockId,
   { kicker: string; title: string; dialogue: string; detail: string }
 > = {
+  market_wind: {
+    kicker: 'MARKET WIND',
+    title: '市場の風 解放',
+    dialogue: '基本の商戦を覚えたので、市場の潮目も読んでいくでっす！ まずは味方への追い風だけでっす。',
+    detail: '風は常時ではありません。静穏16秒の後に10秒だけ発生します。青い追い風の間は自社の出資・支援が1.35倍です。',
+  },
+  rival_wind: {
+    kicker: 'RIVAL WIND',
+    title: '競合の追い風 解放',
+    dialogue: 'リムサ・ロミンサ制覇後は、競合にも赤い追い風が届くでっす。赤い間は温存も立派な一手でっす！',
+    detail: '競合追い風の10秒間は敵防衛が1.35倍。静穏へ戻ると補正は消え、全画面演出による停止もありません。',
+  },
+  turbulent_wind: {
+    kicker: 'MARKET TURBULENCE',
+    title: '向かい風・乱旋風 解放',
+    dialogue: 'ウルダハ制覇で、すべての風を読む商戦へ進むでっす。倍率を見て、積むか待つか決めるでっす！',
+    detail: '自社向かい風は自社効果0.72倍。乱旋風は双方1.12倍・所有率速度1.45倍。味方追い風とSYNERGYが重なるとBURST TIMEです。',
+  },
   subsidiary_support: {
     kicker: 'TRADE PARTY',
     title: '傘下カンパニー支援 解放',
@@ -189,23 +228,10 @@ export default function App() {
     mode: 'map' | 'targets';
     community: CommunityType | 'ALL';
   } | null>(null);
-  const [marketWind, setMarketWind] = useState<WindCondition>(WIND_CONDITIONS.TAILWIND_PLAYER);
-  const [windCountdown, setWindCountdown] = useState(8);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      const scale = activeBattleProperty ? battleTimeScale : 1;
-      if (scale <= 0) return;
-      setWindCountdown((current) => {
-        const next = current - (0.25 * scale);
-        if (next > 0) return next;
-        const types: WindType[] = ['TAILWIND_PLAYER', 'HEADWIND_PLAYER', 'TAILWIND_ENEMY', 'CROSSWIND', 'CALM'];
-        setMarketWind(WIND_CONDITIONS[types[Math.floor(Math.random() * types.length)]]);
-        return 8;
-      });
-    }, 250);
-    return () => window.clearInterval(timer);
-  }, [activeBattleProperty, battleTimeScale]);
+  const [marketWind, setMarketWind] = useState<WindCondition>(
+    WIND_CONDITIONS.CALM
+  );
+  const [windCountdown, setWindCountdown] = useState(0);
 
   const completeLaunchIntro = () => {
     const normalizedName = companyName.trim() || GAME_WORLD.companyName;
@@ -260,6 +286,58 @@ export default function App() {
   const conqueredCommunityCount = communityProgress.filter(
     (community) => community.conquered
   ).length;
+  const windProgressionStage = getWindProgressionStage(
+    conqueredCommunityCount,
+    ownedProperties.length
+  );
+
+  useEffect(() => {
+    setMarketWind(WIND_CONDITIONS.CALM);
+    setWindCountdown(
+      windProgressionStage === 0 ? 0 : WIND_CALM_SECONDS
+    );
+  }, [windProgressionStage]);
+
+  useEffect(() => {
+    if (windProgressionStage === 0) return;
+    const timer = window.setInterval(() => {
+      const overlayPaused =
+        showLaunchIntro ||
+        !!unlockNotice ||
+        !!featureUnlockNoticeId ||
+        !!endingNotice;
+      const scale = activeBattleProperty
+        ? battleTimeScale
+        : overlayPaused
+          ? 0
+          : 1;
+      if (scale <= 0) return;
+      setWindCountdown((current) => {
+        const next = current - 0.25 * scale;
+        if (next > 0) return next;
+
+        if (marketWind.type !== 'CALM') {
+          setMarketWind(WIND_CONDITIONS.CALM);
+          return WIND_CALM_SECONDS;
+        }
+
+        const pool = getWindPool(windProgressionStage);
+        const nextType = pool[Math.floor(Math.random() * pool.length)];
+        setMarketWind(WIND_CONDITIONS[nextType]);
+        return WIND_ACTIVE_SECONDS;
+      });
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [
+    activeBattleProperty,
+    battleTimeScale,
+    endingNotice,
+    featureUnlockNoticeId,
+    marketWind.type,
+    showLaunchIntro,
+    unlockNotice,
+    windProgressionStage,
+  ]);
 
   const unlockedCommunityIds = useMemo(() => {
     const unlocked = new Set<CommunityType>();
@@ -425,15 +503,24 @@ export default function App() {
   const reachedFeatureUnlockIds = useMemo(() => {
     const reached: FeatureUnlockId[] = [];
     if (ownedProperties.length >= 1) reached.push('subsidiary_support');
+    if (windProgressionStage >= 1) reached.push('market_wind');
     if (ownedProperties.length + 1 >= 4) reached.push('light_party_limit_break');
     if (activeSynergiesCount > 0) reached.push('guild_synergy');
+    if (windProgressionStage >= 2) reached.push('rival_wind');
     if (totalAssetValue >= TACTICAL_SKILL_BALANCE.livingDead.requiredAssetValue) {
       reached.push('living_dead_skill');
     }
+    if (windProgressionStage >= 3) reached.push('turbulent_wind');
     if (ownedProperties.length + 1 >= 8) reached.push('full_party');
     if (tradeAllianceUnlocked) reached.push('trade_alliance');
     return reached;
-  }, [activeSynergiesCount, ownedProperties.length, totalAssetValue, tradeAllianceUnlocked]);
+  }, [
+    activeSynergiesCount,
+    ownedProperties.length,
+    totalAssetValue,
+    tradeAllianceUnlocked,
+    windProgressionStage,
+  ]);
 
   useEffect(() => {
     if (
@@ -920,6 +1007,72 @@ export default function App() {
     return skills.filter((s) => equippedSkillIds.includes(s.id) && unlockedSkillIds.has(s.id));
   }, [skills, equippedSkillIds, unlockedSkillIds]);
 
+  const getBattleReadinessForTarget = (
+    targetProperty: Property,
+    mode: BattleMode = 'normal'
+  ): BattleReadinessResult => {
+    const isHighEndRaid = mode === 'savage' || mode === 'ultimate';
+    const isTutorial =
+      mode === 'normal' &&
+      ownedProperties.length === 0 &&
+      targetProperty.community === 'グリダニア' &&
+      targetProperty.countsTowardCityConquest !== false;
+    const targetIndustryInfluence = isHighEndRaid
+      ? { playerBonus: 0, enemyBudgetDiscount: 0 }
+      : industryInfluence[targetProperty.industry] ?? {
+          playerBonus: 0,
+          enemyBudgetDiscount: 0,
+        };
+    const targetRegionalInfluence = isHighEndRaid
+      ? { playerBonus: 0, enemyBudgetDiscount: 0 }
+      : regionalInfluence[targetProperty.community] ?? {
+          playerBonus: 0,
+          enemyBudgetDiscount: 0,
+        };
+    const enemyBudget = calculateEnemyBudget({
+      targetProperty,
+      industryInfluence: targetIndustryInfluence,
+      regionalInfluence: targetRegionalInfluence,
+      isTutorial,
+      isSavage: mode === 'savage',
+      isUltimate: mode === 'ultimate',
+    });
+    const enemyDifficultyLevel = getEnemyDifficultyLevel(
+      targetProperty,
+      isTutorial,
+      mode === 'savage',
+      mode === 'ultimate'
+    );
+    const brokerageFee = Math.round(targetProperty.marketPrice * 0.03);
+
+    return calculateBattleReadiness({
+      targetMarketPrice: targetProperty.marketPrice,
+      availableCash: Math.max(0, totalFunds - brokerageFee),
+      subsidiaries: ownedProperties,
+      selectedBattleSynergy,
+      limitBreakCharge,
+      allianceSupport: alliance.active
+        ? calculateAllianceSupport(targetProperty.marketPrice)
+        : 0,
+      hasCapitalBoost: equippedSkills.some(
+        (skill) => skill.effectType === 'CAPITAL_BOOST'
+      ),
+      enemyBudget,
+      enemyDifficultyLevel,
+      enemyBaseReactionSeconds:
+        getEnemyBaseWaitMs(
+          enemyDifficultyLevel,
+          isTutorial,
+          !!targetProperty.isCartelHQ
+        ) / 1000,
+      playerPushBonus: isHighEndRaid
+        ? 0
+        : targetIndustryInfluence.playerBonus +
+          targetRegionalInfluence.playerBonus +
+          tradeNetworkBonus,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950 flex flex-col">
       {showLaunchIntro && (
@@ -974,8 +1127,12 @@ export default function App() {
             unlockedCommunityIds={unlockedCommunityIds}
             currentWind={marketWind}
             windCountdown={windCountdown}
+            windProgressionStage={windProgressionStage}
             navigationRequest={marketNavigationRequest}
             propertyRevenueMultipliers={savagePropertyRevenueMultipliers}
+            getStrengthComparison={(property) =>
+              getBattleReadinessForTarget(property, 'normal')
+            }
             onStartBuyout={handleStartBuyout}
           />
         )}
@@ -990,6 +1147,7 @@ export default function App() {
             ultimateProperty={ultimateProperty}
             ultimateUnlocked={ultimateUnlocked}
             ultimateCleared={ultimateCleared}
+            getStrengthComparison={getBattleReadinessForTarget}
             onStartSavage={handleStartSavageBuyout}
             onStartUltimate={handleStartUltimateBuyout}
             onReplayEnding={() => {
@@ -1030,6 +1188,9 @@ export default function App() {
             cartels={cartels}
             properties={properties}
             alliance={alliance}
+            getStrengthComparison={(property) =>
+              getBattleReadinessForTarget(property, 'normal')
+            }
             onFormAlliance={handleFormAlliance}
             onBreakAlliance={handleBreakAlliance}
             onStartBuyout={handleStartBuyout}
@@ -1136,6 +1297,7 @@ export default function App() {
           regionalInfluence={activeBattleMode !== 'normal' ? { owned: 0, total: 0, label: '高難度記録戦では無効', playerBonus: 0, enemyBudgetDiscount: 0 } : regionalInfluence[activeBattleProperty.community] || { owned: 0, total: 0, label: '未進出', playerBonus: 0, enemyBudgetDiscount: 0 }}
           currentWind={marketWind}
           windCountdown={Math.max(0, Math.ceil(windCountdown))}
+          windProgressionStage={windProgressionStage}
           battleContextLabel={
             activeBattleMode === 'savage'
               ? getSavageRaidDefinition(activeBattleProperty.id)?.coalitionName
@@ -1162,7 +1324,12 @@ export default function App() {
             const currentIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(activeBattleProperty.community);
             return COMMUNITY_CAMPAIGN_ORDER[currentIndex + 1] || null;
           })()}
-          isTutorial={activeBattleMode === 'normal' && ownedProperties.length === 0 && activeBattleProperty.id.startsWith('prop_starter_')}
+          isTutorial={
+            activeBattleMode === 'normal' &&
+            ownedProperties.length === 0 &&
+            activeBattleProperty.community === 'グリダニア' &&
+            activeBattleProperty.countsTowardCityConquest !== false
+          }
           isSavage={activeBattleMode === 'savage'}
           isUltimate={activeBattleMode === 'ultimate'}
           onAddFunds={handleAddFunds}

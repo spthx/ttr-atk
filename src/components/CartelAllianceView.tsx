@@ -15,12 +15,15 @@ import { HelpTip } from './HelpTip';
 import { HELP_TEXT } from '../data/helpText';
 import { ALLIANCE_CANDIDATES } from '../data/allianceData';
 import { isPublicPatronage } from '../utils/alliance';
+import type { BattleReadinessResult } from '../utils/battleReadiness';
+import { StrengthComparison } from './StrengthComparison';
 
 interface CartelAllianceViewProps {
   companyName: string;
   cartels: Cartel[];
   properties: Property[];
   alliance: AllianceState;
+  getStrengthComparison: (property: Property) => BattleReadinessResult;
   onFormAlliance: (alliance: Omit<AllianceState, 'active'>) => void;
   onBreakAlliance: () => void;
   onStartBuyout: (property: Property) => void;
@@ -31,6 +34,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
   cartels,
   properties,
   alliance,
+  getStrengthComparison,
   onFormAlliance,
   onBreakAlliance,
   onStartBuyout,
@@ -142,6 +146,13 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                 );
 
             const isHqOwned = hqProp?.owner === 'player';
+            const hqBattleProperty = hqProp
+              ? { ...hqProp, marketPrice: currentDefense }
+              : null;
+            const hqStrengthComparison =
+              hqBattleProperty && !isHqOwned
+                ? getStrengthComparison(hqBattleProperty)
+                : null;
 
             return (
               <div
@@ -213,6 +224,9 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                     {subProps.map((sub) => {
                       const isOwnedByPlayer = sub.owner === 'player';
                       const fee = Math.round(sub.marketPrice * 0.03);
+                      const strengthComparison = isOwnedByPlayer
+                        ? null
+                        : getStrengthComparison(sub);
 
                       return (
                         <div
@@ -242,6 +256,12 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                               <div>手数料: <span className="text-rose-400/90">{formatCurrency(fee)}</span></div>
                             </div>
                           </div>
+
+                          {strengthComparison && (
+                            <div className="mt-3">
+                              <StrengthComparison result={strengthComparison} compact />
+                            </div>
+                          )}
 
                           <div className="mt-3">
                             {isOwnedByPlayer ? (
@@ -301,6 +321,12 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                         </div>
                       </div>
 
+                      {hqStrengthComparison && (
+                        <div className="w-full min-w-0 sm:max-w-sm">
+                          <StrengthComparison result={hqStrengthComparison} compact />
+                        </div>
+                      )}
+
                       <div className="shrink-0 text-right">
                         {isHqOwned ? (
                           <div className="px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black text-xs flex items-center gap-2">
@@ -311,7 +337,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                           <button
                             onClick={() => {
                               soundFx.playCoin();
-                              onStartBuyout({ ...hqProp, marketPrice: currentDefense });
+                              onStartBuyout(hqBattleProperty ?? hqProp);
                             }}
                             className={`px-4 py-2.5 rounded-lg font-bold text-xs flex items-center gap-2 transition-all active:scale-95 touch-manipulation cursor-pointer ${
                               allSubsDefeated
