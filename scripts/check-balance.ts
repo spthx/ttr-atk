@@ -18,6 +18,9 @@ import {
   calculateLiquidationCashback,
 } from '../src/utils/battleSettlement';
 import {
+  BATTLE_CINEMATIC_TIMING,
+  canShowShortNotice,
+  getBattleCinematicLayer,
   getCapitalVisualBundleCount,
   getCapitalVisualBundleCountForAmount,
   getCapitalVisualStage,
@@ -330,6 +333,103 @@ assert.equal(
   shouldInertBattleFooter(true, true, 'result'),
   true,
   'the result dialog keeps the settled footer inert behind its modal surface'
+);
+assert.equal(
+  canShowShortNotice({
+    battlePhase: 'active',
+    ended: false,
+    decisive: false,
+  }),
+  true
+);
+assert.equal(
+  canShowShortNotice({
+    battlePhase: 'active',
+    ended: true,
+    decisive: false,
+  }),
+  false,
+  'SHORT cannot appear after settlement'
+);
+assert.equal(
+  canShowShortNotice({
+    battlePhase: 'active',
+    ended: false,
+    decisive: true,
+  }),
+  false,
+  'SHORT cannot interrupt the decisive slow-motion'
+);
+for (const battlePhase of [
+  'briefing',
+  'short_notice',
+  'limit_charge',
+  'decisive',
+  'finisher_notice',
+  'result',
+] as const) {
+  assert.equal(
+    canShowShortNotice({
+      battlePhase,
+      ended: false,
+      decisive: false,
+    }),
+    false,
+    `SHORT cannot interrupt ${battlePhase}`
+  );
+}
+assert.equal(
+  getBattleCinematicLayer({
+    battlePhase: 'decisive',
+    hasBattleAnnouncement: true,
+    hasConditionAnnouncement: true,
+    hasDecisiveBlow: true,
+    hasWinner: false,
+    finishTelegraphVisible: false,
+  }),
+  'decisive',
+  'the decisive blow replaces every older full-screen announcement'
+);
+assert.equal(
+  getBattleCinematicLayer({
+    battlePhase: 'finisher_notice',
+    hasBattleAnnouncement: true,
+    hasConditionAnnouncement: true,
+    hasDecisiveBlow: false,
+    hasWinner: true,
+    finishTelegraphVisible: true,
+  }),
+  'finish',
+  'the result telegraph replaces stale action and condition announcements'
+);
+assert.equal(
+  getBattleCinematicLayer({
+    battlePhase: 'active',
+    hasBattleAnnouncement: true,
+    hasConditionAnnouncement: true,
+    hasDecisiveBlow: false,
+    hasWinner: false,
+    finishTelegraphVisible: false,
+  }),
+  'battle_announcement',
+  'only one full-screen cue is selected when action and condition timers coincide'
+);
+assert.ok(
+  BATTLE_CINEMATIC_TIMING.finalAnnouncementMs <=
+    BATTLE_CINEMATIC_TIMING.finalDecisiveStartMs,
+  'FINAL PUSH announcement finishes before the decisive blow starts'
+);
+assert.ok(
+  BATTLE_CINEMATIC_TIMING.limitAnnouncementMs <=
+    BATTLE_CINEMATIC_TIMING.limitResolveMs,
+  'LIMIT BREAK announcement finishes before its capital impact'
+);
+assert.ok(
+  BATTLE_CINEMATIC_TIMING.decisiveImpactMs <
+    BATTLE_CINEMATIC_TIMING.decisiveClearMs &&
+    BATTLE_CINEMATIC_TIMING.decisiveClearMs <
+      BATTLE_CINEMATIC_TIMING.decisiveResolveMs,
+  'decisive impact, clear and WIN/LOSE resolve remain sequential'
 );
 
 const readinessProperty = {

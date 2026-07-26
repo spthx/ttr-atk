@@ -1,5 +1,21 @@
 import type { BattlePhase } from '../types';
 
+export const BATTLE_CINEMATIC_TIMING = {
+  startAnnouncementMs: 3_800,
+  conditionAnnouncementMs: 1_650,
+  shortDelayMs: 420,
+  shortNoticeMs: 3_200,
+  finalAnnouncementMs: 1_200,
+  finalDecisiveStartMs: 1_400,
+  limitAnnouncementMs: 1_800,
+  limitResolveMs: 1_850,
+  limitTerminalImpactMs: 650,
+  decisiveImpactMs: 420,
+  decisiveClearMs: 1_400,
+  decisiveResolveMs: 1_800,
+  finishNoticeMs: 1_450,
+} as const;
+
 export const getCapitalVisualStage = (amount: number) => {
   if (amount <= 0) return 0;
   if (amount < 500) return 1;
@@ -69,3 +85,57 @@ export const shouldInertBattleFooter = (
 ) =>
   backgroundInert &&
   !(hasWinner && battlePhase === 'finisher_notice');
+
+export type BattleCinematicLayer =
+  | 'battle_announcement'
+  | 'condition_announcement'
+  | 'short'
+  | 'decisive'
+  | 'finish'
+  | null;
+
+/**
+ * Full-screen battle cues are deliberately exclusive. State timers may finish
+ * on adjacent frames, but the player must never have to read stacked SHORT,
+ * action, decisive and result cards at the same time.
+ */
+export const getBattleCinematicLayer = ({
+  battlePhase,
+  hasBattleAnnouncement,
+  hasConditionAnnouncement,
+  hasDecisiveBlow,
+  hasWinner,
+  finishTelegraphVisible,
+}: {
+  battlePhase: BattlePhase;
+  hasBattleAnnouncement: boolean;
+  hasConditionAnnouncement: boolean;
+  hasDecisiveBlow: boolean;
+  hasWinner: boolean;
+  finishTelegraphVisible: boolean;
+}): BattleCinematicLayer => {
+  if (hasDecisiveBlow || battlePhase === 'decisive') return 'decisive';
+  if (
+    battlePhase === 'finisher_notice' &&
+    hasWinner &&
+    finishTelegraphVisible
+  ) {
+    return 'finish';
+  }
+  if (battlePhase === 'short_notice') return 'short';
+  if (hasBattleAnnouncement) return 'battle_announcement';
+  if (battlePhase === 'active' && hasConditionAnnouncement) {
+    return 'condition_announcement';
+  }
+  return null;
+};
+
+export const canShowShortNotice = ({
+  battlePhase,
+  ended,
+  decisive,
+}: {
+  battlePhase: BattlePhase;
+  ended: boolean;
+  decisive: boolean;
+}) => battlePhase === 'active' && !ended && !decisive;

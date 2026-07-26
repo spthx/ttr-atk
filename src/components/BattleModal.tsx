@@ -52,6 +52,9 @@ import {
 } from '../utils/enemyAi';
 import { calculateBattleReadiness } from '../utils/battleReadiness';
 import {
+  BATTLE_CINEMATIC_TIMING,
+  canShowShortNotice,
+  getBattleCinematicLayer,
   getCapitalVisualBundleCountForAmount,
   getCapitalVisualStage,
   shouldInertBattleFooter,
@@ -431,6 +434,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ? enemyBudget
     : Math.round(enemyBudget * ENEMY_INITIAL_COMMITMENT_RATIO);
   const [battlePhase, setBattlePhase] = useState<BattlePhase>('briefing');
+  const battlePhaseRef = useRef<BattlePhase>('briefing');
+  const changeBattlePhase = useCallback((next: BattlePhase) => {
+    battlePhaseRef.current = next;
+    setBattlePhase(next);
+  }, []);
   const [gauge, setGauge] = useState(0);
   const gaugeRef = useRef(0);
   const updateGauge = useCallback(
@@ -522,6 +530,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const announcementTimerRef = useRef<number | null>(null);
   const limitBreakTimerRef = useRef<number | null>(null);
   const shortTimerRef = useRef<number | null>(null);
+  const shortDelayTimerRef = useRef<number | null>(null);
+  const terminalActionTimerRef = useRef<number | null>(null);
   const finishTimerRef = useRef<number | null>(null);
   const limitImpactTimerRef = useRef<number | null>(null);
   const conditionTimerRef = useRef<number | null>(null);
@@ -905,10 +915,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     battlePhase === 'active' &&
     totalPlayerInvested < targetProperty.marketPrice * 0.45 &&
     !winner;
-  const timeScale = isPaused
-    ? 0
-    : decisiveBlow
-      ? 0.16
+  const timeScale = decisiveBlow
+    ? 0.16
+    : isPaused
+      ? 0
       : tutorialAssistActive
         ? 0.2
         : openingSlowActive
@@ -958,7 +968,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       !windEnabled ||
       !shouldAdvanceBattleWind({
         battleActive: battlePhase === 'active',
-        settled: !!winner,
+        settled: !!winner || decisiveLocked,
         presentationLocked,
         eraWindActive,
       }) ||
@@ -978,6 +988,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return () => window.clearInterval(timer);
   }, [
     battlePhase,
+    decisiveLocked,
     eraWindActive,
     presentationLocked,
     timeScale,
@@ -1051,6 +1062,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (announcementTimerRef.current) window.clearTimeout(announcementTimerRef.current);
     if (limitBreakTimerRef.current) window.clearTimeout(limitBreakTimerRef.current);
     if (shortTimerRef.current) window.clearTimeout(shortTimerRef.current);
+    if (shortDelayTimerRef.current) window.clearTimeout(shortDelayTimerRef.current);
+    if (terminalActionTimerRef.current) window.clearTimeout(terminalActionTimerRef.current);
     if (finishTimerRef.current) window.clearTimeout(finishTimerRef.current);
     if (limitImpactTimerRef.current) window.clearTimeout(limitImpactTimerRef.current);
     if (conditionTimerRef.current) window.clearTimeout(conditionTimerRef.current);
@@ -1060,6 +1073,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (decisiveResolveTimerRef.current) window.clearTimeout(decisiveResolveTimerRef.current);
     if (livingDeadNoticeTimerRef.current) window.clearTimeout(livingDeadNoticeTimerRef.current);
     if (motionTimerRef.current) window.clearTimeout(motionTimerRef.current);
+    soundFx.stopBattleCinematicAudio(80);
   }, [onTimeScaleChange]);
 
   useEffect(() => {
@@ -1115,7 +1129,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     announcementTimerRef.current = window.setTimeout(() => setBattleAnnouncement(null), duration);
   };
 
-  const announceCondition = (announcement: BattleConditionAnnouncement, duration = 2500) => {
+  const announceCondition = (
+    announcement: BattleConditionAnnouncement,
+    duration = BATTLE_CINEMATIC_TIMING.conditionAnnouncementMs
+  ) => {
     if (conditionTimerRef.current) window.clearTimeout(conditionTimerRef.current);
     setConditionAnnouncement(announcement);
     conditionTimerRef.current = window.setTimeout(() => setConditionAnnouncement(null), duration);
@@ -1210,7 +1227,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ? `${companyName}、${targetProperty.name}の訓練開始。木人は耐久資本${formatCurrency(initialEnemyCommitment)}を全配置しました。`
         : `${companyName}対${targetProperty.name}、討滅戦開始。競合は${formatCurrency(initialEnemyCommitment)}を先に積みました。`,
     };
-    setBattlePhase('active');
+    changeBattlePhase('active');
     if (isTraining) setCommandProgress(100);
     setOpeningSlowActive(true);
     setStatusText(
@@ -1223,7 +1240,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       ...current,
     ]);
     soundFx.playDutyStart();
-    announceBattle('start', 3800);
+    announceBattle('start', BATTLE_CINEMATIC_TIMING.startAnnouncementMs);
     if (openingSlowTimerRef.current) window.clearTimeout(openingSlowTimerRef.current);
     openingSlowTimerRef.current = window.setTimeout(
       () => setOpeningSlowActive(false),
@@ -1234,6 +1251,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   useEffect(() => {
     if (
       battlePhase !== 'active' ||
+      decisiveLocked ||
+      winner ||
       !windEnabled ||
       currentWind.type === lastAnnouncedWindRef.current
     ) return;
@@ -1245,13 +1264,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     currentWind.playerMultiplier,
     currentWind.speedMultiplier,
     currentWind.type,
+    decisiveLocked,
     isBurstTime,
     windEnabled,
+    winner,
   ]);
 
   useEffect(() => {
     if (
       battlePhase !== 'active' ||
+      decisiveLocked ||
+      winner ||
       battleWindState.phase !== 'telegraph' ||
       !battleWindState.pendingWindType ||
       battleWindState.pendingWindType === lastTelegraphedWindRef.current
@@ -1282,6 +1305,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     battlePhase,
     battleWindState.pendingWindType,
     battleWindState.phase,
+    decisiveLocked,
+    winner,
   ]);
 
   const consumeCommand = () => {
@@ -1309,6 +1334,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     endedRef.current = true;
     decisiveRef.current = false;
     setDecisiveBlow(null);
+    setBattleAnnouncement(null);
+    setConditionAnnouncement(null);
+    setLimitImpactActive(false);
+    setFinalPushActive(false);
+    setFloaters([]);
     const resolvedOwnership = Math.max(0, rawOwnership);
     const resolvedOverkill = result === 'player' ? Math.max(0, resolvedOwnership - 100) : 0;
     setWinner(result);
@@ -1318,10 +1348,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setOverkill(resolvedOverkill);
     updateGauge(result === 'player' ? -100 : 100);
     setGaugeSpeed(0);
-    setBattlePhase('finisher_notice');
+    changeBattlePhase('finisher_notice');
     setFinishTelegraphVisible(true);
     if (finishTimerRef.current) window.clearTimeout(finishTimerRef.current);
-    finishTimerRef.current = window.setTimeout(() => setFinishTelegraphVisible(false), 1450);
+    finishTimerRef.current = window.setTimeout(
+      () => setFinishTelegraphVisible(false),
+      BATTLE_CINEMATIC_TIMING.finishNoticeMs
+    );
     setStatusText(
       isTraining
         ? result === 'player'
@@ -1364,12 +1397,42 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setPanel('capital');
     setShowHelp(false);
     setShowLog(false);
+    if (announcementTimerRef.current) {
+      window.clearTimeout(announcementTimerRef.current);
+      announcementTimerRef.current = null;
+    }
+    if (conditionTimerRef.current) {
+      window.clearTimeout(conditionTimerRef.current);
+      conditionTimerRef.current = null;
+    }
+    if (shortTimerRef.current) {
+      window.clearTimeout(shortTimerRef.current);
+      shortTimerRef.current = null;
+    }
+    if (shortDelayTimerRef.current) {
+      window.clearTimeout(shortDelayTimerRef.current);
+      shortDelayTimerRef.current = null;
+    }
+    if (terminalActionTimerRef.current) {
+      window.clearTimeout(terminalActionTimerRef.current);
+      terminalActionTimerRef.current = null;
+    }
+    if (limitImpactTimerRef.current) {
+      window.clearTimeout(limitImpactTimerRef.current);
+      limitImpactTimerRef.current = null;
+    }
+    setBattleAnnouncement(null);
+    setConditionAnnouncement(null);
+    setLimitImpactActive(false);
+    setFinalPushActive(false);
+    setFloaters([]);
     if (!cinematic) {
       finalizeBattle(result, method, rawOwnership, resolvedDefeatReason);
       return;
     }
 
     decisiveRef.current = true;
+    changeBattlePhase('decisive');
     setGaugeSpeed(0);
     updateGauge(result === 'player' ? -99.2 : 99.2);
     setDecisiveBlow({ winner: result, impacted: false });
@@ -1391,7 +1454,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       updateGauge(result === 'player' ? -100 : 100);
       setDecisiveBlow({ winner: result, impacted: true });
       soundFx.playCapitalImpact(result === 'player' ? 'player' : 'opponent', 1);
-    }, 420);
+    }, BATTLE_CINEMATIC_TIMING.decisiveImpactMs);
     decisiveClearTimerRef.current = window.setTimeout(() => {
       setDecisiveBlow(null);
       setStatusText(
@@ -1399,11 +1462,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           ? '決着――競合の防衛線が崩れる'
           : '決着――自社の防衛線が崩れる'
       );
-    }, 1400);
+    }, BATTLE_CINEMATIC_TIMING.decisiveClearMs);
     decisiveResolveTimerRef.current = window.setTimeout(() => {
       decisiveRef.current = false;
       finalizeBattle(result, method, rawOwnership, resolvedDefeatReason);
-    }, 1800);
+    }, BATTLE_CINEMATIC_TIMING.decisiveResolveMs);
   };
 
   const triggerWalkingDead = () => {
@@ -1428,20 +1491,31 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const showShortNotice = () => {
-    if (isTraining || shortShownRef.current || endedRef.current) return;
+    if (
+      isTraining ||
+      shortShownRef.current ||
+      !canShowShortNotice({
+        battlePhase: battlePhaseRef.current,
+        ended: endedRef.current,
+        decisive: decisiveRef.current,
+      })
+    ) {
+      return;
+    }
     shortShownRef.current = true;
     setMotion('idle');
     setGaugeSpeed(0);
     setStatusText('SHORT――敵の防衛資金が枯渇。最後の一手で決着をつけてください');
-    setBattlePhase('short_notice');
+    changeBattlePhase('short_notice');
     addLog('SHORT！ 競合の追加防衛資金が枯渇。', 'result');
     soundFx.playWarning();
     if (shortTimerRef.current) window.clearTimeout(shortTimerRef.current);
     shortTimerRef.current = window.setTimeout(() => {
-      if (endedRef.current) return;
-      setBattlePhase('active');
+      shortTimerRef.current = null;
+      if (endedRef.current || decisiveRef.current) return;
+      changeBattlePhase('active');
       setStatusText('敵は追加防衛不能。自社資金のFINAL PUSHかLIMIT BREAKで決着してください');
-    }, 3200);
+    }, BATTLE_CINEMATIC_TIMING.shortNoticeMs);
   };
 
   const commitEnemyFunds = (
@@ -1497,7 +1571,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     soundFx.playCapitalImpact('opponent', actual / Math.max(targetProperty.marketPrice, 1));
     addLog(`${reason}として${formatCurrency(actual)}を投入。残予算${formatCurrency(nextReserve)}。`, 'enemy');
     if (!isTraining && nextReserve <= 0 && scheduleShort) {
-      window.setTimeout(showShortNotice, 420);
+      if (shortDelayTimerRef.current) {
+        window.clearTimeout(shortDelayTimerRef.current);
+      }
+      shortDelayTimerRef.current = window.setTimeout(() => {
+        shortDelayTimerRef.current = null;
+        showShortNotice();
+      }, BATTLE_CINEMATIC_TIMING.shortDelayMs);
     }
     return { actual, counterShock };
   };
@@ -1751,8 +1831,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
     if (!isTraining && enemyReserveRef.current <= 0) {
       setFinalPushActive(true);
-      setBattlePhase('limit_charge');
-      announceBattle('final', 1800);
+      changeBattlePhase('limit_charge');
+      announceBattle('final', BATTLE_CINEMATIC_TIMING.finalAnnouncementMs);
       setGaugeSpeed(0);
       setStatusText(`FINAL PUSH――${formatCurrency(selectedCost)}で最後の防衛線を突破！`);
       showFloater(`FINAL +${formatCurrency(selectedCost)}`, 'player');
@@ -1761,7 +1841,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         (100 - rawGaugeAfter) / 2,
         100 + (selectedCost / Math.max(targetProperty.marketPrice, 1)) * 50
       );
-      window.setTimeout(() => finishBattle('player', 'FINAL_PUSH', rawFinishOwnership), 1100);
+      if (terminalActionTimerRef.current) {
+        window.clearTimeout(terminalActionTimerRef.current);
+      }
+      terminalActionTimerRef.current = window.setTimeout(() => {
+        terminalActionTimerRef.current = null;
+        finishBattle('player', 'FINAL_PUSH', rawFinishOwnership);
+      }, BATTLE_CINEMATIC_TIMING.finalDecisiveStartMs);
       return;
     }
 
@@ -1844,9 +1930,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setLastPlayerAction('LIMIT_BREAK');
     setActiveLimitBreakTier(limitBreakTier);
     onLimitBreakChargeChange(consumeLimitBreakCharge);
-    setBattlePhase('limit_charge');
+    changeBattlePhase('limit_charge');
     setGaugeSpeed(0);
-    announceBattle('limit', 2300);
+    announceBattle('limit', BATTLE_CINEMATIC_TIMING.limitAnnouncementMs);
     soundFx.playLimitBreak();
 
     const leaving: Property[] = [];
@@ -1871,7 +1957,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     addLog(`LIMIT BREAK ${limitBreakTier}発動。自社と支援元${battleSubs.length}件が一斉出資へ参加。`, 'skill');
 
     limitBreakTimerRef.current = window.setTimeout(() => {
+      limitBreakTimerRef.current = null;
       if (endedRef.current) return;
+      // The fan-kit cue owns the charge-up. Fade it before the capital impact
+      // so a cached cue or a late first decode cannot spill into the decisive
+      // slow-motion and WIN presentation.
+      soundFx.stopBattleCinematicAudio(160);
       setBattleSubs((current) => current
         .filter((item) => !leaving.some((leaver) => leaver.id === item.id))
         .map((item) => survivors.find((survivor) => survivor.id === item.id) || item));
@@ -1897,7 +1988,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       if (limitImpactTimerRef.current) window.clearTimeout(limitImpactTimerRef.current);
       limitImpactTimerRef.current = window.setTimeout(() => setLimitImpactActive(false), 1450);
 
-      confetti({ particleCount: 110, spread: 82, startVelocity: 38, origin: { y: 0.62 }, colors: ['#fef08a', '#f59e0b', '#34d399', '#ffffff'] });
       soundFx.playCapitalImpact('player', 1);
       soundFx.playBigCash();
       const emergencyDefense = isTraining
@@ -1929,6 +2019,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ownershipPush,
         defenseResult.counterShock
       );
+      const terminalLimitBreak = rawOwnershipAfter >= 100;
       const rawGaugeAfter = 100 - rawOwnershipAfter * 2;
       updateGauge(
         livingDeadPhaseRef.current === 'recovery'
@@ -1958,17 +2049,34 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         setStatusText(limitBreakResultText);
       }
 
-      if (rawOwnershipAfter >= 100) {
-        finishBattle('player', `LIMIT_BREAK_${limitBreakTier}` as FinishMethod, rawOwnershipAfter);
+      if (terminalLimitBreak) {
+        if (terminalActionTimerRef.current) {
+          window.clearTimeout(terminalActionTimerRef.current);
+        }
+        terminalActionTimerRef.current = window.setTimeout(() => {
+          terminalActionTimerRef.current = null;
+          finishBattle(
+            'player',
+            `LIMIT_BREAK_${limitBreakTier}` as FinishMethod,
+            rawOwnershipAfter
+          );
+        }, BATTLE_CINEMATIC_TIMING.limitTerminalImpactMs);
         return;
       }
-      setBattlePhase('active');
+      confetti({
+        particleCount: 110,
+        spread: 82,
+        startVelocity: 38,
+        origin: { y: 0.62 },
+        colors: ['#fef08a', '#f59e0b', '#34d399', '#ffffff'],
+      });
+      changeBattlePhase('active');
       setBattleAnnouncement(null);
       setLastPlayerAction(null);
       setAiProgress(0);
       setAiCycle((cycle) => cycle + 1);
       if (!isTraining && enemyReserveRef.current <= 0) showShortNotice();
-    }, 1850);
+    }, BATTLE_CINEMATIC_TIMING.limitResolveMs);
   };
 
   const demandFromGroup = (
@@ -2149,7 +2257,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         kicker: `ERA WIND / PHASE ${nextUse}`,
         title: '時代の風',
         detail: `敵資金を残したまま、自社側へ時流+${pushPerSecond.toFixed(1)}pt/秒`,
-      }, 2600);
+      }, BATTLE_CINEMATIC_TIMING.conditionAnnouncementMs);
     }
     addLog(`${skill.name}を使用。${skill.description}`, 'skill');
   };
@@ -2250,6 +2358,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       : []),
     ...(tradeNetworkBonus > 0 ? [`都市交易網：自社押込 +${Math.round(tradeNetworkBonus * 100)}%`] : []),
   ];
+  const cinematicLayer = getBattleCinematicLayer({
+    battlePhase,
+    hasBattleAnnouncement: !!battleAnnouncement,
+    hasConditionAnnouncement: !!conditionAnnouncement,
+    hasDecisiveBlow: !!decisiveBlow,
+    hasWinner: !!winner,
+    finishTelegraphVisible,
+  });
 
   return (
     <div
@@ -2268,7 +2384,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       <img className="buyout-backdrop" src={FANKIT_ART.battleBackdrop} alt="" aria-hidden="true" />
       {limitImpactActive && <div className="limit-impact-field" aria-hidden="true"><i /><i /><i /><i /><i /></div>}
 
-      {battleAnnouncement && (
+      {cinematicLayer === 'battle_announcement' && battleAnnouncement && (
         <div className={`battle-announcement battle-announcement--${battleAnnouncement}`} aria-live="assertive">
           <div>
             <small>{battleAnnouncement === 'start' ? isTraining ? 'TRAINING COMMENCED' : 'CONTENT COMMENCED' : battleAnnouncement === 'limit' ? `LIMIT BREAK ${activeLimitBreakTier || limitBreakTier}` : 'FINAL PUSH'}</small>
@@ -2278,7 +2394,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </div>
       )}
 
-      {conditionAnnouncement && (
+      {cinematicLayer === 'condition_announcement' && conditionAnnouncement && (
         <div className={`battle-condition-announcement battle-condition-announcement--${conditionAnnouncement.kind}`} aria-live="assertive">
           <div className="battle-condition-announcement__wind" aria-hidden="true"><i /><i /><i /><i /><i /></div>
           <div>
@@ -2289,7 +2405,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </div>
       )}
 
-      {livingDeadPhase !== 'inactive' && (
+      {livingDeadPhase !== 'inactive' && !decisiveBlow && !winner && (
         <div className={`battle-living-dead battle-living-dead--${livingDeadPhase}`} aria-live="assertive">
           <img src={FANKIT_ART.jobs[1]} alt="" aria-hidden="true" />
           <div>
@@ -2399,7 +2515,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               title={companyName}
               aria-label={`${companyName} 所有率 ${ownership.toFixed(1)}%`}
             >
-              <span className="battle-side-label">自社</span>
+              <MarqueeText text={companyName} delayMs={450} />
             </b>
             <span className={gaugeSpeed < -0.02 ? 'push-player' : gaugeSpeed > 0.02 ? 'push-enemy' : ''}>
               {isTraining
@@ -2414,7 +2530,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     ? '◀ 競合防衛中'
                     : '◆ 競り値拮抗'}
             </span>
-            <b aria-label={`${targetProperty.name} 所有率 ${(100 - ownership).toFixed(1)}%`}>
+            <b
+              className="company-name-compact"
+              title={targetProperty.name}
+              aria-label={`${targetProperty.name} 所有率 ${(100 - ownership).toFixed(1)}%`}
+            >
               <MarqueeText text={targetProperty.name} delayMs={900} />
             </b>
           </div>
@@ -2877,7 +2997,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               : winner === 'player'
                 ? `${FINISH_LABELS[finishMethod]} / 所有率 ${finalOwnership.toFixed(1)}%`
                 : defeatReason === 'WALKING_DEAD_FAILED' ? 'WALKING DEAD FAILED / 蘇生失敗' : 'CAPITAL COLLAPSE / 買収失敗'}</span>
-            <button type="button" className="battle-next-button" onClick={() => setBattlePhase('result')} disabled={finishTelegraphVisible}>
+            <button type="button" className="battle-next-button" onClick={() => changeBattlePhase('result')} disabled={finishTelegraphVisible}>
               {finishTelegraphVisible ? '演出中' : '分析へ →'}
             </button>
           </>
@@ -2976,7 +3096,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </div>
       )}
 
-      {!isTraining && battlePhase === 'short_notice' && (
+      {!isTraining && cinematicLayer === 'short' && (
         <div className="battle-short-telegraph" aria-live="assertive">
           <i />
           <small>DEFENSE CAPITAL</small>
@@ -2986,7 +3106,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </div>
       )}
 
-      {decisiveBlow && (
+      {cinematicLayer === 'decisive' && decisiveBlow && (
         <div className={`battle-decisive-blow battle-decisive-blow--${decisiveBlow.winner} ${decisiveBlow.impacted ? 'battle-decisive-blow--impact' : ''}`} aria-live="assertive">
           <i />
           <small>{isTraining ? 'TRAINING CAPITAL IMPACT' : decisiveBlow.winner === 'player' ? 'FINAL CAPITAL IMPACT' : 'RIVAL CAPITAL IMPACT'}</small>
@@ -2996,7 +3116,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </div>
       )}
 
-      {battlePhase === 'finisher_notice' && winner && finishTelegraphVisible && (        <div className={`battle-finish-telegraph battle-finish-telegraph--${winner}`} aria-live="assertive">
+      {cinematicLayer === 'finish' && winner && finishTelegraphVisible && (
+        <div className={`battle-finish-telegraph battle-finish-telegraph--${winner}`} aria-live="assertive">
           <i />
           <small>{isTraining ? winner === 'player' ? 'TRAINING COMPLETE' : 'TRAINING ENDED' : winner === 'player' ? 'DUTY COMPLETE' : 'DUTY FAILED'}</small>
           <strong>{isTraining ? winner === 'player' ? 'SUCCESS!' : 'END' : winner === 'player' ? 'WIN!' : 'LOSE'}</strong>

@@ -8,13 +8,52 @@ import { FANKIT_AUDIO } from '../data/fankitAssets';
 class SoundEffects {
   private ctx: AudioContext | null = null;
   private bufferCache = new Map<string, Promise<AudioBuffer>>();
+  private cinematicAudioGeneration = 0;
+  private cinematicSource: AudioBufferSourceNode | null = null;
+  private cinematicGain: GainNode | null = null;
   public enabled: boolean = true;
 
-  private playFankitAudio(url: string, volume: number, fallback: () => void) {
+  private stopCinematicAudio(fadeMs = 0) {
+    this.cinematicAudioGeneration += 1;
+    const source = this.cinematicSource;
+    const gain = this.cinematicGain;
+    this.cinematicSource = null;
+    this.cinematicGain = null;
+    if (!source) return;
+
+    try {
+      const ctx = this.ctx;
+      if (ctx && gain && fadeMs > 0) {
+        const now = ctx.currentTime;
+        const fadeSeconds = fadeMs / 1000;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.0001), now);
+        gain.gain.linearRampToValueAtTime(0.0001, now + fadeSeconds);
+        source.stop(now + fadeSeconds + 0.02);
+      } else {
+        source.stop();
+      }
+    } catch {
+      // A source that has already ended needs no further cleanup.
+    }
+  }
+
+  stopBattleCinematicAudio(fadeMs = 160) {
+    this.stopCinematicAudio(fadeMs);
+  }
+
+  private playFankitAudio(
+    url: string,
+    volume: number,
+    fallback: () => void,
+    channel: 'effect' | 'cinematic' = 'effect'
+  ) {
     if (typeof window === 'undefined' || typeof fetch === 'undefined') return false;
     try {
       const ctx = this.initCtx();
       if (!ctx) return false;
+      if (channel === 'cinematic') this.stopCinematicAudio(80);
+      const generation = this.cinematicAudioGeneration;
       let pendingBuffer = this.bufferCache.get(url);
       if (!pendingBuffer) {
         pendingBuffer = fetch(url)
@@ -29,19 +68,45 @@ class SoundEffects {
       }
       void pendingBuffer
         .then(async (buffer) => {
-          if (!this.enabled) return;
+          if (
+            !this.enabled ||
+            (channel === 'cinematic' && generation !== this.cinematicAudioGeneration)
+          ) {
+            return;
+          }
           if (ctx.state === 'suspended') await ctx.resume();
+          if (
+            !this.enabled ||
+            (channel === 'cinematic' && generation !== this.cinematicAudioGeneration)
+          ) {
+            return;
+          }
           const source = ctx.createBufferSource();
           const gain = ctx.createGain();
           source.buffer = buffer;
           gain.gain.setValueAtTime(volume, ctx.currentTime);
           source.connect(gain);
           gain.connect(ctx.destination);
+          if (channel === 'cinematic') {
+            this.cinematicSource = source;
+            this.cinematicGain = gain;
+            source.onended = () => {
+              if (this.cinematicSource === source) {
+                this.cinematicSource = null;
+                this.cinematicGain = null;
+              }
+            };
+          }
           source.start();
         })
         .catch(() => {
           this.bufferCache.delete(url);
-          fallback();
+          if (
+            channel !== 'cinematic' ||
+            generation === this.cinematicAudioGeneration
+          ) {
+            fallback();
+          }
         });
       return true;
     } catch {
@@ -329,7 +394,12 @@ class SoundEffects {
   // Official fan-kit sound first; the synth remains a resilient autoplay/file fallback.
   playDutyStart() {
     if (!this.enabled) return;
-    if (!this.playFankitAudio(FANKIT_AUDIO.dutyStart, 0.62, () => this.playDutyStartSynth())) {
+    if (!this.playFankitAudio(
+      FANKIT_AUDIO.dutyStart,
+      0.62,
+      () => this.playDutyStartSynth(),
+      'cinematic'
+    )) {
       this.playDutyStartSynth();
     }
   }
@@ -343,7 +413,12 @@ class SoundEffects {
 
   playLimitBreak() {
     if (!this.enabled) return;
-    if (!this.playFankitAudio(FANKIT_AUDIO.limitBreak, 0.7, () => this.playFinalPush())) {
+    if (!this.playFankitAudio(
+      FANKIT_AUDIO.limitBreak,
+      0.7,
+      () => this.playFinalPush(),
+      'cinematic'
+    )) {
       this.playFinalPush();
     }
   }
@@ -463,7 +538,12 @@ class SoundEffects {
   }
   playVictory() {
     if (!this.enabled) return;
-    if (!this.playFankitAudio(FANKIT_AUDIO.victory, 0.64, () => this.playVictorySynth())) {
+    if (!this.playFankitAudio(
+      FANKIT_AUDIO.victory,
+      0.64,
+      () => this.playVictorySynth(),
+      'cinematic'
+    )) {
       this.playVictorySynth();
     }
   }
@@ -516,7 +596,12 @@ class SoundEffects {
 
   playDefeat() {
     if (!this.enabled) return;
-    if (!this.playFankitAudio(FANKIT_AUDIO.defeat, 0.64, () => this.playDefeatSynth())) {
+    if (!this.playFankitAudio(
+      FANKIT_AUDIO.defeat,
+      0.64,
+      () => this.playDefeatSynth(),
+      'cinematic'
+    )) {
       this.playDefeatSynth();
     }
   }
