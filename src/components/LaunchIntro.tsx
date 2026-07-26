@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Building2, Coins, MapPinned, PencilLine, ShieldCheck } from 'lucide-react';
 import { FANKIT_ART } from '../data/fankitAssets';
 import { soundFx } from '../utils/audio';
@@ -36,10 +36,13 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
   onComplete,
 }) => {
   const [step, setStep] = useState(0);
+  const [isNameEditing, setIsNameEditing] = useState(false);
   const [visualViewport, setVisualViewport] = useState<{
     height: number;
     offsetTop: number;
   } | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const revealTimersRef = useRef<number[]>([]);
   const current = INTRO_STEPS[step];
   const StepIcon = current.icon;
 
@@ -51,6 +54,15 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
         height: viewport.height,
         offsetTop: viewport.offsetTop,
       });
+      if (document.activeElement === nameInputRef.current) {
+        window.requestAnimationFrame(() =>
+          nameInputRef.current?.scrollIntoView({
+            block: 'center',
+            inline: 'nearest',
+            behavior: 'auto',
+          })
+        );
+      }
     };
     syncViewport();
     viewport.addEventListener('resize', syncViewport);
@@ -60,6 +72,31 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
       viewport.removeEventListener('scroll', syncViewport);
     };
   }, []);
+
+  useEffect(() => () => {
+    revealTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+  }, []);
+
+  const revealNameInput = () => {
+    setIsNameEditing(true);
+    revealTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    revealTimersRef.current = [0, 180, 420, 720].map((delay) =>
+      window.setTimeout(() => {
+        nameInputRef.current?.scrollIntoView({
+          block: 'center',
+          inline: 'nearest',
+          behavior: 'auto',
+        });
+      }, delay)
+    );
+  };
+
+  const finishNameEditing = () => {
+    revealTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    revealTimersRef.current = [
+      window.setTimeout(() => setIsNameEditing(false), 180),
+    ];
+  };
 
   const next = () => {
     soundFx.playCoin();
@@ -73,7 +110,7 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
 
   return (
     <div
-      className="launch-intro fixed inset-0 z-[200] overflow-y-auto overscroll-contain bg-slate-950 text-white"
+      className={`launch-intro fixed inset-0 z-[200] overflow-y-auto overscroll-contain bg-slate-950 text-white ${isNameEditing ? 'launch-intro--name-editing' : ''}`}
       style={visualViewport
         ? {
             top: `${visualViewport.offsetTop}px`,
@@ -112,12 +149,11 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
                 <PencilLine className="h-4 w-4" /> カンパニー名
               </span>
               <input
+                ref={nameInputRef}
                 value={companyName}
                 onChange={(event) => onCompanyNameChange(event.target.value.slice(0, 24))}
-                onFocus={(event) => {
-                  const input = event.currentTarget;
-                  window.setTimeout(() => input.scrollIntoView({ block: 'center', behavior: 'smooth' }), 320);
-                }}
+                onFocus={revealNameInput}
+                onBlur={finishNameEditing}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') next();
                 }}
@@ -125,6 +161,9 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
                 placeholder="タタルの大繁盛商店"
                 inputMode="text"
                 enterKeyHint="done"
+                autoComplete="organization"
+                autoCorrect="off"
+                spellCheck={false}
                 autoFocus
               />
               <span className="mt-1 block text-right text-[9px] text-slate-500">{companyName.length}/24</span>

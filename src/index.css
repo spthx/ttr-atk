@@ -459,6 +459,70 @@ body {
   background: linear-gradient(180deg, transparent, rgba(2, 6, 23, .94) 32%);
 }
 
+/*
+ * iOS moves the visual viewport several times while its software keyboard
+ * opens. Keep the naming form at the top of that live viewport instead of
+ * letting the decorative intro flex layout push it underneath the keyboard.
+ */
+@media (max-width: 639px) {
+  .launch-intro--name-editing {
+    scroll-padding:
+      calc(.6rem + var(--game-safe-top))
+      0
+      calc(.6rem + var(--game-safe-bottom));
+  }
+
+  .launch-intro--name-editing .launch-intro__content {
+    min-height: 100%;
+    gap: .5rem;
+    justify-content: flex-start;
+    padding-top: calc(.6rem + var(--game-safe-top));
+    padding-bottom: calc(.6rem + var(--game-safe-bottom));
+  }
+
+  .launch-intro--name-editing header,
+  .launch-intro--name-editing .launch-intro__panel > :not(.launch-intro__name-field),
+  .launch-intro--name-editing footer > div {
+    display: none;
+  }
+
+  .launch-intro--name-editing .launch-intro__panel {
+    width: 100%;
+    max-width: none;
+    margin: 0 !important;
+    padding: 0;
+  }
+
+  .launch-intro--name-editing .launch-intro__name-field {
+    position: sticky;
+    z-index: 4;
+    top: calc(.6rem + var(--game-safe-top));
+    width: 100%;
+    max-width: none;
+    margin-top: 0 !important;
+    padding: .7rem;
+    border: 1px solid rgba(251, 191, 36, .38);
+    border-radius: .85rem;
+    background: rgba(2, 6, 23, .96);
+    box-shadow: 0 .55rem 1.4rem rgba(0, 0, 0, .48);
+  }
+
+  .launch-intro--name-editing footer {
+    position: sticky !important;
+    z-index: 5;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+    margin-top: auto !important;
+    padding-block:
+      .55rem
+      calc(.55rem + var(--game-safe-bottom)) !important;
+    background: linear-gradient(180deg, transparent, rgba(2, 6, 23, .98) 35%);
+  }
+}
+
 @media (max-height: 620px) {
   .launch-intro__content {
     gap: .75rem;

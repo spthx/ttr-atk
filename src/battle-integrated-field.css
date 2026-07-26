@@ -209,8 +209,8 @@
   font-size: .76rem;
 }
 
-.integrated-battlefield .ownership-board__labels b,
-.integrated-battlefield .ownership-board__labels span {
+.integrated-battlefield .ownership-board__labels > b,
+.integrated-battlefield .ownership-board__labels > span {
   min-width: 0;
   padding: .22rem .38rem;
   overflow: hidden;
@@ -222,7 +222,7 @@
   text-shadow: 0 .08rem .2rem #000;
 }
 
-.integrated-battlefield .ownership-board__labels span {
+.integrated-battlefield .ownership-board__labels > span {
   justify-self: center;
   max-width: 9rem;
   font-size: .75rem;
@@ -1022,12 +1022,12 @@
     font-size: .75rem;
   }
 
-  .integrated-battlefield .ownership-board__labels b,
-  .integrated-battlefield .ownership-board__labels span {
+  .integrated-battlefield .ownership-board__labels > b,
+  .integrated-battlefield .ownership-board__labels > span {
     padding: .18rem .24rem;
   }
 
-  .integrated-battlefield .ownership-board__labels span {
+  .integrated-battlefield .ownership-board__labels > span {
     max-width: 7rem;
     font-size: .75rem;
   }
@@ -1274,7 +1274,7 @@
     font-size: .75rem;
   }
 
-  .integrated-battlefield .ownership-board__labels span {
+  .integrated-battlefield .ownership-board__labels > span {
     max-width: 5.7rem;
   }
 
@@ -1793,17 +1793,6 @@
  * - the pile canvas uses the available side width and grows into a mound at
  *   high absolute-capital stages.
  */
-.integrated-battlefield .battle-side-label {
-  display: block;
-  overflow: hidden;
-  color: #dff8ff;
-  font-size: .78rem;
-  letter-spacing: .12em;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .integrated-battlefield .gil-chip-image--reserve {
   opacity: .94;
   filter:
@@ -1981,14 +1970,46 @@
 
 .integrated-battlefield .ownership-board__labels > b {
   display: flex;
+  width: 100%;
   min-width: 0;
+  box-sizing: border-box;
   align-items: center;
+  justify-self: stretch;
   gap: .3rem;
 }
 
 .integrated-battlefield .ownership-board__labels > b .battle-marquee {
+  width: 100%;
   min-width: 0;
+  max-width: none;
   flex: 1 1 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  text-shadow: inherit;
+}
+
+.integrated-battlefield .ownership-board__labels > b .battle-marquee > span {
+  max-width: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  text-align: inherit;
+  text-shadow: inherit;
+}
+
+.integrated-battlefield .ownership-board__labels > b:last-child .battle-marquee:not(.battle-marquee--active) {
+  text-align: right;
 }
 
 .integrated-battlefield .ownership-board__labels > b > strong {

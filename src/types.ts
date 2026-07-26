@@ -155,6 +155,7 @@ export type BattlePhase =
   | 'active'
   | 'short_notice'
   | 'limit_charge'
+  | 'decisive'
   | 'finisher_notice'
   | 'result';
 
