@@ -17,7 +17,10 @@ import {
   applyNormalBattlePropertyUpdates,
   calculateLiquidationCashback,
 } from '../src/utils/battleSettlement';
-import { shouldInertBattleFooter } from '../src/utils/battlePresentation';
+import {
+  getCapitalVisualStage,
+  shouldInertBattleFooter,
+} from '../src/utils/battlePresentation';
 import { calculateCartelHeadquartersDefense } from '../src/utils/cartel';
 import {
   calculateGaugeVelocity,
@@ -93,7 +96,20 @@ import {
   SAVAGE_ENEMY_BUDGET_MULTIPLIER,
   ULTIMATE_ENEMY_BUDGET_MULTIPLIER,
   getEnemyDifficultyLevel,
+  calculateEraWindCost,
+  getEraWindGaugePushPerSecond,
 } from '../src/utils/gameBalance';
+import {
+  advanceBattleWind,
+  BATTLE_WIND_ACTIVE_MAX_SECONDS,
+  BATTLE_WIND_ACTIVE_MIN_SECONDS,
+  BATTLE_WIND_COOLDOWN_SECONDS,
+  BATTLE_WIND_INITIAL_CALM_SECONDS,
+  BATTLE_WIND_ROLL_INTERVAL_SECONDS,
+  BATTLE_WIND_TELEGRAPH_SECONDS,
+  createBattleWindState,
+  shouldAdvanceBattleWind,
+} from '../src/utils/battleWind';
 
 const noInfluence = { enemyBudgetDiscount: 0 };
 const expectedCampaignCounts = [3, 2, 3, 4, 2, 1, 1, 1, 1, 2];
@@ -140,6 +156,98 @@ assert.ok(
   WIND_ACTIVE_SECONDS + WIND_CALM_SECONDS >= 26,
   'non-calm wind events are separated by a readable calm interval'
 );
+let battleWind = createBattleWindState();
+assert.equal(battleWind.phase, 'grace');
+assert.equal(battleWind.windType, 'CALM');
+assert.equal(
+  battleWind.secondsRemaining,
+  BATTLE_WIND_INITIAL_CALM_SECONDS
+);
+battleWind = advanceBattleWind(
+  battleWind,
+  BATTLE_WIND_INITIAL_CALM_SECONDS - 0.01,
+  getWindPool(3),
+  () => 0
+);
+assert.equal(
+  battleWind.phase,
+  'grace',
+  'battle wind stays CALM for the full opening grace'
+);
+const deterministicRolls = [0, 0, 0];
+battleWind = advanceBattleWind(
+  battleWind,
+  0.01,
+  getWindPool(3),
+  () => deterministicRolls.shift() ?? 0
+);
+assert.equal(battleWind.phase, 'telegraph');
+assert.equal(battleWind.windType, 'CALM');
+assert.equal(battleWind.secondsRemaining, BATTLE_WIND_TELEGRAPH_SECONDS);
+const telegraphedWind = battleWind.pendingWindType;
+battleWind = advanceBattleWind(
+  battleWind,
+  BATTLE_WIND_TELEGRAPH_SECONDS,
+  getWindPool(3),
+  () => 0
+);
+assert.equal(battleWind.phase, 'active');
+assert.equal(battleWind.windType, telegraphedWind);
+assert.ok(
+  battleWind.secondsRemaining >= BATTLE_WIND_ACTIVE_MIN_SECONDS &&
+    battleWind.secondsRemaining <= BATTLE_WIND_ACTIVE_MAX_SECONDS
+);
+battleWind = advanceBattleWind(
+  battleWind,
+  battleWind.secondsRemaining,
+  getWindPool(3),
+  () => 0
+);
+assert.equal(battleWind.phase, 'cooldown');
+assert.equal(battleWind.windType, 'CALM');
+assert.equal(battleWind.secondsRemaining, BATTLE_WIND_COOLDOWN_SECONDS);
+battleWind = advanceBattleWind(
+  battleWind,
+  BATTLE_WIND_COOLDOWN_SECONDS,
+  getWindPool(3),
+  () => 0
+);
+assert.equal(battleWind.phase, 'waiting');
+assert.equal(
+  battleWind.secondsRemaining,
+  BATTLE_WIND_ROLL_INTERVAL_SECONDS,
+  'a new wind roll waits after the full cooldown'
+);
+assert.equal(shouldAdvanceBattleWind({
+  battleActive: false,
+  settled: false,
+  presentationLocked: false,
+  eraWindActive: false,
+}), false, 'briefing does not consume battle wind time');
+assert.equal(shouldAdvanceBattleWind({
+  battleActive: true,
+  settled: true,
+  presentationLocked: false,
+  eraWindActive: false,
+}), false, 'results do not consume battle wind time');
+assert.equal(shouldAdvanceBattleWind({
+  battleActive: true,
+  settled: false,
+  presentationLocked: false,
+  eraWindActive: true,
+}), false, '時代の風 pauses random market wind');
+const noRepeatWind = advanceBattleWind({
+  phase: 'waiting',
+  windType: 'CALM',
+  pendingWindType: null,
+  lastWindType: 'TAILWIND_PLAYER',
+  secondsRemaining: BATTLE_WIND_ROLL_INTERVAL_SECONDS,
+}, BATTLE_WIND_ROLL_INTERVAL_SECONDS, getWindPool(3), (() => {
+  const values = [0, 0];
+  return () => values.shift() ?? 0;
+})());
+assert.equal(noRepeatWind.phase, 'telegraph');
+assert.notEqual(noRepeatWind.pendingWindType, 'TAILWIND_PLAYER');
 assert.equal(
   shouldInertBattleFooter(true, false, 'finisher_notice'),
   true,
@@ -150,6 +258,34 @@ assert.equal(
   false,
   'the settled footer must stay interactive so the result analysis can open'
 );
+const capitalPresentationAmounts = [
+  0,
+  999,
+  1_000,
+  9_999,
+  10_000,
+  99_999,
+  100_000,
+  999_999,
+  1_000_000,
+  9_999_999,
+  10_000_000,
+  99_999_999,
+  100_000_000,
+  1_000_000_000,
+];
+const capitalPresentationStages = capitalPresentationAmounts.map(
+  getCapitalVisualStage
+);
+assert.ok(
+  capitalPresentationStages.every(
+    (stage, index) =>
+      index === 0 || stage >= capitalPresentationStages[index - 1]
+  ),
+  'absolute capital presentation stages are monotonically non-decreasing'
+);
+assert.equal(capitalPresentationStages[0], 0);
+assert.equal(capitalPresentationStages.at(-1), 7);
 assert.equal(
   shouldInertBattleFooter(true, true, 'result'),
   true,
@@ -753,11 +889,13 @@ const disruptionSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_sabot
 const demoralizeSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_demoralize')!;
 const capitalBoostSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_capital_boost')!;
 const synergyPushSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_synergy_push')!;
+const eraWindSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_era_wind')!;
 const noAssets = { ownedProperties: [], totalFunds: 50_000, activeSynergyCount: 0 };
 assert.equal(isSkillUnlocked({ skill: livingDeadSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: fastHorseSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: capitalBoostSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: synergyPushSkill, ...noAssets }), false);
+assert.equal(isSkillUnlocked({ skill: eraWindSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: capitalBoostSkill, ...noAssets, totalFunds: 1_000_000 }), true);
 assert.equal(isSkillUnlocked({ skill: livingDeadSkill, ...noAssets, totalFunds: 999_999 }), false);
 assert.equal(isSkillUnlocked({ skill: livingDeadSkill, ...noAssets, totalFunds: 1_000_000 }), true);
@@ -767,10 +905,23 @@ assert.equal(isSkillUnlocked({
   ...noAssets,
   ownedProperties: [INITIAL_PROPERTIES.find((property) => property.id === 'prop_ranch_1')!],
 }), true);
+const eraWindRequiredProperties = eraWindSkill.requiredAllPropertyIds!.map(
+  (id) => INITIAL_PROPERTIES.find((property) => property.id === id)!
+);
+assert.equal(isSkillUnlocked({
+  skill: eraWindSkill,
+  ...noAssets,
+  ownedProperties: eraWindRequiredProperties.slice(0, 2),
+}), false);
+assert.equal(isSkillUnlocked({
+  skill: eraWindSkill,
+  ...noAssets,
+  ownedProperties: eraWindRequiredProperties,
+}), true);
 assert.equal(capitalBoostSkill.oncePerBattle, true);
 assert.deepEqual(
   INITIAL_SKILLS.map((skill) => skill.name),
-  ['疾風怒濤の計', '守りのサンバ', '連環計', '消沈', '意気衝天', 'リビングデッド', 'バトルリタニー']
+  ['疾風怒濤の計', '守りのサンバ', '連環計', '消沈', '意気衝天', 'リビングデッド', 'バトルリタニー', '時代の風']
 );
 assert.equal(fastHorseSkill.cooldownMs, TACTICAL_SKILL_BALANCE.fastAction.cooldownMs);
 assert.equal(
@@ -797,6 +948,14 @@ assert.equal(TACTICAL_SKILL_BALANCE.livingDead.waitingDurationMs, 10_000);
 assert.equal(TACTICAL_SKILL_BALANCE.livingDead.recoveryDurationMs, 10_000);
 assert.equal(TACTICAL_SKILL_BALANCE.livingDead.minimumOwnership, 1);
 assert.equal(TACTICAL_SKILL_BALANCE.livingDead.recoveryOwnership, 30);
+assert.equal(calculateEraWindCost(1_000_000, 0), 100_000);
+assert.equal(calculateEraWindCost(100_000_000, 0), 2_000_000);
+assert.equal(calculateEraWindCost(100_000_000, 1), 3_000_000);
+assert.equal(calculateEraWindCost(100_000_000, 2), 4_000_000);
+assert.ok(
+  getEraWindGaugePushPerSecond(0) <
+    getEraWindGaugePushPerSecond(2)
+);
 assert.match(livingDeadSkill.description, /1交渉につき1回/);
 assert.equal(calculateOwnershipFromGauge(98), 1);
 assert.equal(calculateOwnershipFromGauge(40), 30);

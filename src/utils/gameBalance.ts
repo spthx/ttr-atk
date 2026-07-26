@@ -59,7 +59,41 @@ export const TACTICAL_SKILL_BALANCE = {
     durationMs: 7_000,
     pushMultiplier: 1.5,
   },
+  eraWind: {
+    durationMs: 12_000,
+    cooldownMs: 18_000,
+    minimumCost: 100_000,
+    marketCostRatio: 0.02,
+    useCostMultipliers: [1, 1.5, 2],
+    baseGaugePushPerSecond: 0.9,
+    pushStepPerUse: 0.2,
+    maxUsesPerBattle: 3,
+  },
 } as const;
+
+export const calculateEraWindCost = (
+  marketPrice: number,
+  previousUses: number
+) => {
+  const baseCost = Math.max(
+    TACTICAL_SKILL_BALANCE.eraWind.minimumCost,
+    Math.round(
+      Math.max(0, marketPrice) *
+        TACTICAL_SKILL_BALANCE.eraWind.marketCostRatio
+    )
+  );
+  const multipliers = TACTICAL_SKILL_BALANCE.eraWind.useCostMultipliers;
+  const multiplier =
+    multipliers[Math.min(multipliers.length - 1, Math.max(0, previousUses))];
+  return Math.round(baseCost * multiplier);
+};
+
+export const getEraWindGaugePushPerSecond = (previousUses: number) =>
+  TACTICAL_SKILL_BALANCE.eraWind.baseGaugePushPerSecond +
+  Math.min(
+    TACTICAL_SKILL_BALANCE.eraWind.maxUsesPerBattle - 1,
+    Math.max(0, previousUses)
+  ) * TACTICAL_SKILL_BALANCE.eraWind.pushStepPerUse;
 
 export const calculateBattleVictoryReward = (
   marketPrice: number,
@@ -362,6 +396,12 @@ export const isSkillUnlocked = ({
   if (
     skill.requiredPropertyIds &&
     !skill.requiredPropertyIds.some((id) => ownedPropertyIds.has(id))
+  ) {
+    return false;
+  }
+  if (
+    skill.requiredAllPropertyIds &&
+    !skill.requiredAllPropertyIds.every((id) => ownedPropertyIds.has(id))
   ) {
     return false;
   }

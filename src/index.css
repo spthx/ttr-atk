@@ -431,11 +431,32 @@ body {
 /* Mobile viewport and soft-keyboard safety. */
 .launch-intro,
 .launch-intro__content {
-  min-height: 100dvh;
+  min-height: 100%;
 }
 
 .launch-intro__name-field {
-  scroll-margin-block: 18dvh;
+  scroll-margin-block: 24vh;
+}
+
+.launch-intro:has(.launch-intro__name-field input:focus) {
+  scroll-padding-bottom: calc(1rem + var(--game-safe-bottom));
+}
+
+.launch-intro:has(.launch-intro__name-field input:focus) .launch-intro__content {
+  gap: .75rem;
+  justify-content: flex-start;
+}
+
+.launch-intro:has(.launch-intro__name-field input:focus) .launch-intro__panel {
+  margin-block: auto .25rem;
+}
+
+.launch-intro:has(.launch-intro__name-field input:focus) footer {
+  position: sticky;
+  bottom: 0;
+  margin-top: .25rem;
+  padding-block: .35rem calc(.35rem + var(--game-safe-bottom));
+  background: linear-gradient(180deg, transparent, rgba(2, 6, 23, .94) 32%);
 }
 
 @media (max-height: 620px) {

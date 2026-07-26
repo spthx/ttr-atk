@@ -164,6 +164,11 @@
   font-size: .625rem;
 }
 
+.strength-comparison__meta--critical {
+  min-height: 1rem;
+  color: #fda4af;
+}
+
 @media (max-width: 420px) {
   .strength-comparison { padding: .62rem; }
   .strength-comparison__values { gap: .3rem; }

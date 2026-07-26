@@ -65,10 +65,12 @@ export interface TacticalSkill {
     | 'DEMORALIZE' // 消沈 (slows enemy AI)
     | 'CAPITAL_BOOST' // 意気衝天
     | 'LIVING_DEAD' // リビングデッド（旧skill_sns_blitz IDを維持）
-    | 'SYNERGY_PUSH'; // バトルリタニー
+    | 'SYNERGY_PUSH' // バトルリタニー
+    | 'ERA_WIND'; // 時代の風（本作の持続逆転スキル）
   unlockRequirements: string; // Text description
   requiredIndustries?: IndustryType[];
   requiredPropertyIds?: string[];
+  requiredAllPropertyIds?: string[];
   requiredAssetValue?: number;
   requiresActiveSynergy?: boolean;
   oncePerBattle?: boolean;
