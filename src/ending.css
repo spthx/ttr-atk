@@ -5,7 +5,7 @@
   display: grid;
   place-items: center;
   overflow-y: auto;
-  padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+  padding: max(1rem, var(--game-safe-top)) 1rem max(1rem, var(--game-safe-bottom));
   background: #020617;
 }
 .ending-modal__backdrop,

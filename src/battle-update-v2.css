@@ -331,7 +331,7 @@
     white-space: nowrap;
   }
   .active-time > div:first-child em { display: none; }
-  .command-deck { padding-bottom: max(.65rem, env(safe-area-inset-bottom)); }
+  .command-deck { padding-bottom: max(.65rem, var(--game-safe-bottom)); }
   .command-deck nav button { min-height: 2.4rem; }
   .briefing-facts { grid-template-columns: 1fr; }
   .briefing-versus { gap: .35rem; padding-inline: .4rem; }

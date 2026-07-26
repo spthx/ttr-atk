@@ -9,7 +9,7 @@
   min-width: 0;
   height: 100dvh;
   max-height: 100dvh;
-  padding-top: env(safe-area-inset-top);
+  padding-top: var(--game-safe-top);
   flex-direction: column;
   overflow: hidden;
   color: #e8eef8;
@@ -609,7 +609,7 @@
   align-items: center;
   gap: .45rem;
   margin-top: .35rem;
-  padding: .3rem .55rem calc(env(safe-area-inset-bottom, 0px) + .65rem);
+  padding: .3rem .55rem calc(var(--game-safe-bottom) + .65rem);
   border-top: 1px solid rgba(245,196,81,.25);
   background: rgba(2,5,13,.96);
 }
@@ -757,7 +757,7 @@
   .property-funds button { min-height: 2.65rem; }
   .buyout-footer {
     min-height: 3.2rem;
-    padding: .35rem .45rem calc(env(safe-area-inset-bottom, 0px) + 1.15rem);
+    padding: .35rem .45rem calc(var(--game-safe-bottom) + 1.15rem);
   }
   .buyout-footer > span { display: none; }
   .buyout-footer { grid-template-columns: 1fr 1fr; gap: .4rem; }
