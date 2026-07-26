@@ -13,7 +13,7 @@ const INTRO_STEPS = [
   {
     eyebrow: 'FANTASY TRADE CAMPAIGN',
     title: 'タタルの大繁盛店',
-    body: 'ギルを積み、風を読み、各都市の事業や交易契約を獲得。エオルゼアから新大陸まで交易路を広げます。',
+    body: 'まずはギルを積む基本商戦から始め、各都市の事業や交易契約を獲得。進行に合わせて市場の風や連携を学び、交易路を広げます。',
     icon: MapPinned,
   },
   {

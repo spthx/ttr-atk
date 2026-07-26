@@ -1,0 +1,130 @@
+/* Staged wind onboarding, persistent tactical context, and effective-capital labels. */
+.battle-wind-sigil {
+  max-width: calc(100% - 1rem) !important;
+  gap: .26rem !important;
+  padding: .2rem .5rem !important;
+}
+
+.battle-wind-sigil b {
+  font-size: .64rem !important;
+  text-overflow: clip !important;
+}
+
+.battle-wind-sigil span,
+.battle-wind-sigil small {
+  font-size: .58rem !important;
+  line-height: 1.15 !important;
+}
+
+.capital-effective-detail {
+  display: grid !important;
+  gap: .12rem;
+  min-width: 0;
+  line-height: 1.25 !important;
+}
+
+.capital-effective-detail span,
+.capital-effective-detail b {
+  overflow-wrap: anywhere;
+}
+
+.capital-effective-detail b {
+  color: #bae6fd;
+  font-size: .56rem;
+}
+
+.command-wind-context {
+  display: grid;
+  gap: .18rem;
+  margin-top: .32rem;
+  padding: .38rem .48rem;
+  border: 1px solid rgba(103, 232, 249, .32);
+  border-radius: .55rem;
+  background: rgba(8, 47, 73, .36);
+}
+
+.command-wind-context > span {
+  display: flex;
+  align-items: center;
+  gap: .32rem;
+  min-width: 0;
+  color: #e0f2fe;
+  font-size: .62rem;
+}
+
+.command-wind-context svg {
+  width: .82rem;
+  height: .82rem;
+  flex: 0 0 auto;
+}
+
+.command-wind-context b {
+  white-space: nowrap;
+}
+
+.command-wind-context em {
+  overflow: hidden;
+  color: #bae6fd;
+  font-style: normal;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-wind-context small {
+  color: #cbd5e1;
+  font-size: .54rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.command-wind-context--player {
+  border-color: rgba(52, 211, 153, .48);
+  background: rgba(6, 78, 59, .36);
+}
+
+.command-wind-context--enemy {
+  border-color: rgba(251, 113, 133, .48);
+  background: rgba(76, 5, 25, .4);
+}
+
+.command-wind-context--cross {
+  border-color: rgba(250, 204, 21, .48);
+  background: rgba(66, 32, 6, .4);
+}
+
+.buyout-briefing > .strength-comparison {
+  margin: 0 0 .65rem;
+}
+
+@media (max-width: 639px) {
+  .battle-wind-sigil {
+    max-width: calc(100% - .3rem) !important;
+    padding: .14rem .28rem !important;
+  }
+
+  .battle-wind-sigil b {
+    font-size: .58rem !important;
+  }
+
+  .battle-wind-sigil span,
+  .battle-wind-sigil small {
+    font-size: .54rem !important;
+  }
+
+  .capital-effective-detail b {
+    font-size: .5rem;
+  }
+
+  .command-wind-context {
+    padding: .32rem .38rem;
+  }
+
+  .command-wind-context > span {
+    font-size: .58rem;
+  }
+
+  .command-wind-context small {
+    font-size: .5rem;
+  }
+}

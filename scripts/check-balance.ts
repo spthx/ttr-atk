@@ -7,7 +7,19 @@ import {
 } from '../src/data/initialData';
 import { ALLIANCE_CANDIDATES, GRAND_COMPANY_NAMES } from '../src/data/allianceData';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
-import { decideEnemyAction, type EnemyDecisionContext } from '../src/utils/enemyAi';
+import {
+  decideEnemyAction,
+  getEnemyBaseWaitMs,
+  type EnemyDecisionContext,
+} from '../src/utils/enemyAi';
+import { calculateBattleReadiness } from '../src/utils/battleReadiness';
+import { calculateRebellionProbability } from '../src/utils/formatter';
+import {
+  getWindPool,
+  getWindProgressionStage,
+  WIND_ACTIVE_SECONDS,
+  WIND_CALM_SECONDS,
+} from '../src/components/WindIndicator';
 import {
   loadGameSave,
   normalizeAllianceState,
@@ -91,6 +103,185 @@ assert.deepEqual(COMMUNITY_CAMPAIGN_ORDER, [
   'トライヨラ',
   'ソリューション・ナイン',
 ]);
+
+assert.equal(getWindProgressionStage(0, 0), 0);
+assert.equal(
+  getWindProgressionStage(1, 3),
+  0,
+  'the first Limsa battle remains a wind-free fundamentals battle'
+);
+assert.equal(getWindProgressionStage(1, 4), 1);
+assert.deepEqual(getWindPool(1), ['TAILWIND_PLAYER']);
+assert.equal(getWindProgressionStage(2, 5), 2);
+assert.ok(getWindPool(2).includes('TAILWIND_ENEMY'));
+assert.equal(getWindProgressionStage(3, 8), 3);
+assert.ok(getWindPool(3).includes('HEADWIND_PLAYER'));
+assert.ok(getWindPool(3).includes('CROSSWIND'));
+assert.ok(
+  WIND_ACTIVE_SECONDS + WIND_CALM_SECONDS >= 26,
+  'non-calm wind events are separated by a readable calm interval'
+);
+
+const readinessProperty = {
+  ...INITIAL_PROPERTIES[0],
+  marketPrice: 100_000,
+  loyaltyRisk: 0,
+};
+const safeReadiness = calculateBattleReadiness({
+  targetMarketPrice: 100_000,
+  availableCash: 100_000,
+  subsidiaries: [readinessProperty],
+  selectedBattleSynergy: null,
+  limitBreakCharge: 0,
+  allianceSupport: 0,
+  hasCapitalBoost: false,
+  enemyBudget: 100_000,
+  enemyDifficultyLevel: 2,
+  enemyBaseReactionSeconds: getEnemyBaseWaitMs(2, false, false) / 1000,
+  playerPushBonus: 0,
+});
+const riskyReadiness = calculateBattleReadiness({
+  targetMarketPrice: 100_000,
+  availableCash: 100_000,
+  subsidiaries: [{ ...readinessProperty, loyaltyRisk: 60 }],
+  selectedBattleSynergy: null,
+  limitBreakCharge: 0,
+  allianceSupport: 0,
+  hasCapitalBoost: false,
+  enemyBudget: 100_000,
+  enemyDifficultyLevel: 2,
+  enemyBaseReactionSeconds: getEnemyBaseWaitMs(2, false, false) / 1000,
+  playerPushBonus: 0,
+});
+assert.ok(
+  safeReadiness.playerExpectedCapital >
+    riskyReadiness.playerExpectedCapital,
+  'readiness discounts subsidiary support by rebellion probability'
+);
+assert.equal(safeReadiness.grade, 'advantage');
+assert.notEqual(riskyReadiness.grade, 'advantage');
+const noDirectCashReadiness = calculateBattleReadiness({
+  targetMarketPrice: 100_000,
+  availableCash: 1_999,
+  subsidiaries: [],
+  selectedBattleSynergy: null,
+  limitBreakCharge: 0,
+  allianceSupport: 0,
+  hasCapitalBoost: false,
+  enemyBudget: 100_000,
+  enemyDifficultyLevel: 1,
+  enemyBaseReactionSeconds: getEnemyBaseWaitMs(1, false, false) / 1000,
+  playerPushBonus: 0,
+});
+assert.equal(
+  noDirectCashReadiness.grade,
+  'danger',
+  'missing direct cash does not replace the capital comparison grade'
+);
+assert.equal(
+  noDirectCashReadiness.directInvestmentAvailable,
+  false,
+  'readiness independently warns when the 2% minimum investment is unavailable'
+);
+
+const pushNeutralReadiness = calculateBattleReadiness({
+  targetMarketPrice: 100_000,
+  availableCash: 100_000,
+  subsidiaries: [],
+  selectedBattleSynergy: null,
+  limitBreakCharge: 0,
+  allianceSupport: 0,
+  hasCapitalBoost: false,
+  enemyBudget: 100_000,
+  enemyDifficultyLevel: 1,
+  enemyBaseReactionSeconds: getEnemyBaseWaitMs(1, false, false) / 1000,
+  playerPushBonus: 0.5,
+});
+assert.equal(
+  pushNeutralReadiness.playerExpectedCapital,
+  100_000,
+  'push speed bonuses are not multiplied into effective capital'
+);
+assert.equal(
+  pushNeutralReadiness.ratioPercent,
+  100,
+  'push speed bonuses do not reverse the capital ratio'
+);
+
+const twoSafeSubsidiaries = [
+  { ...readinessProperty, id: 'readiness_a' },
+  { ...readinessProperty, id: 'readiness_b' },
+];
+const multiRequestReadiness = calculateBattleReadiness({
+  targetMarketPrice: 100_000,
+  availableCash: 30_000,
+  subsidiaries: twoSafeSubsidiaries,
+  selectedBattleSynergy: null,
+  limitBreakCharge: 0,
+  allianceSupport: 0,
+  hasCapitalBoost: false,
+  enemyBudget: 100_000,
+  enemyDifficultyLevel: 3,
+  enemyBaseReactionSeconds: 2,
+  playerPushBonus: 0,
+});
+const perSafeRequestFailure = calculateRebellionProbability(18);
+assert.ok(
+  Math.abs(
+    multiRequestReadiness.cumulativeSupportFailureProbability -
+      (1 - (1 - perSafeRequestFailure) ** 2)
+  ) < 1e-10,
+  'one-pass rebellion risk is 1 - product(1 - p)'
+);
+assert.equal(
+  multiRequestReadiness.grade,
+  'even',
+  'multi-request support cannot claim a stable advantage while the enemy can react'
+);
+assert.equal(multiRequestReadiness.sequentialSupportGradeCapped, true);
+assert.ok(
+  multiRequestReadiness.capitalComponents.some(
+    (component) => component.label.includes('傘下2社へ各1回')
+  ),
+  'readiness details the subsidiary one-pass assumption'
+);
+
+const lbReadiness = calculateBattleReadiness({
+  targetMarketPrice: 1_000_000,
+  availableCash: 20_000,
+  subsidiaries: [
+    { ...readinessProperty, id: 'lb_a' },
+    { ...readinessProperty, id: 'lb_b' },
+    { ...readinessProperty, id: 'lb_c' },
+  ],
+  selectedBattleSynergy: null,
+  limitBreakCharge: 100,
+  allianceSupport: 320_000,
+  hasCapitalBoost: true,
+  enemyBudget: 1_000_000,
+  enemyDifficultyLevel: 3,
+  enemyBaseReactionSeconds: 2,
+  playerPushBonus: 0,
+});
+assert.equal(lbReadiness.supportRoute, 'LIMIT BREAK');
+assert.ok(
+  lbReadiness.capitalComponents.some(
+    (component) => component.label.includes('蓄積分を全消費')
+  ),
+  'readiness states that LB consumes the charged bar'
+);
+assert.ok(
+  lbReadiness.capitalComponents.some(
+    (component) => component.label === '協力支援1回'
+  ),
+  'readiness states the once-per-battle cooperation assumption'
+);
+assert.ok(
+  lbReadiness.capitalComponents.some(
+    (component) => component.label === '意気衝天1回'
+  ),
+  'readiness states the capital boost assumption'
+);
 
 const campaignSummary = COMMUNITY_CAMPAIGN_ORDER.map((community, index) => {
   const targets = getCampaignProperties(INITIAL_PROPERTIES, community);

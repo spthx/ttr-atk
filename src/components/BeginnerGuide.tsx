@@ -20,13 +20,13 @@ export const BeginnerGuide: React.FC = () => (
           <div className="mb-1 flex items-center gap-1.5 font-black text-amber-300">
             <Building2 className="h-3.5 w-3.5" /> 1. 安い独立物件を選ぶ
           </div>
-          <p className="leading-relaxed text-slate-400">「初心者おすすめ」の物件から開始。交渉開始時に相場の3%を支払います。</p>
+          <p className="leading-relaxed text-slate-400">「初心者向け」か、風なし動員比較が「◎自社優勢」「＝互角」の物件から開始。交渉時に相場の3%を支払います。</p>
         </div>
         <div className="rounded-lg border border-slate-800 bg-slate-950/75 p-2.5">
           <div className="mb-1 flex items-center gap-1.5 font-black text-amber-300">
             <Coins className="h-3.5 w-3.5" /> 2. 少額出資で右へ押す
           </div>
-          <p className="leading-relaxed text-slate-400">まずLv1～3を選び、金色の針を右側の「WIN」まで進めます。</p>
+          <p className="leading-relaxed text-slate-400">グリダニアでは風が吹きません。まずLv1～3を選び、自社所有率を100%まで押し上げます。</p>
         </div>
         <div className="rounded-lg border border-slate-800 bg-slate-950/75 p-2.5">
           <div className="mb-1 flex items-center gap-1.5 font-black text-emerald-300">

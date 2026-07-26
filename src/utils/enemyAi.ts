@@ -63,6 +63,17 @@ const jitter = (cycle: number) => {
   return value - Math.floor(value);
 };
 
+export const getEnemyBaseWaitMs = (
+  difficultyLevel: number,
+  isTutorial: boolean,
+  isCartelHQ: boolean
+) => {
+  const intellect = Math.max(0, Math.min(6, difficultyLevel));
+  return isTutorial
+    ? 3400
+    : Math.max(1780, 3020 - intellect * 245 - (isCartelHQ ? 140 : 0));
+};
+
 export const decideEnemyAction = ({
   enemyOwnership,
   enemyReservePercent,
@@ -96,7 +107,11 @@ export const decideEnemyAction = ({
     (isCartelHQ && enemyOwnership < 38);
   const reserveFloor = 15;
   const reserveProtected = enemyReservePercent <= reserveFloor && !trueEmergency;
-  const baseWait = isTutorial ? 3400 : Math.max(1780, 3020 - intellect * 245 - (isCartelHQ ? 140 : 0));
+  const baseWait = getEnemyBaseWaitMs(
+    difficultyLevel,
+    isTutorial,
+    isCartelHQ
+  );
   const slowedMultiplier = slowed
     ? TACTICAL_SKILL_BALANCE.demoralize.enemyWaitMultiplier
     : 1;

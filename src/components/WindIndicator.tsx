@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Compass, Wind, Navigation, AlertCircle, Sparkles } from 'lucide-react';
+import React from 'react';
+import { Compass, Wind } from 'lucide-react';
 
 export type WindType = 'TAILWIND_PLAYER' | 'HEADWIND_PLAYER' | 'TAILWIND_ENEMY' | 'CROSSWIND' | 'CALM';
+export type WindProgressionStage = 0 | 1 | 2 | 3;
 
 export interface WindCondition {
   type: WindType;
@@ -85,22 +86,83 @@ export const WIND_CONDITIONS: Record<WindType, WindCondition> = {
   },
 };
 
+export const WIND_ACTIVE_SECONDS = 10;
+export const WIND_CALM_SECONDS = 16;
+
+export const getWindProgressionStage = (
+  conqueredCommunityCount: number,
+  ownedPropertyCount: number
+): WindProgressionStage => {
+  if (conqueredCommunityCount < 1 || ownedPropertyCount < 4) return 0;
+  if (conqueredCommunityCount < 2) return 1;
+  if (conqueredCommunityCount < 3) return 2;
+  return 3;
+};
+
+export const getWindPool = (
+  stage: WindProgressionStage
+): WindType[] => {
+  if (stage === 1) return ['TAILWIND_PLAYER'];
+  if (stage === 2) {
+    return ['TAILWIND_PLAYER', 'TAILWIND_PLAYER', 'TAILWIND_ENEMY'];
+  }
+  if (stage === 3) {
+    return [
+      'TAILWIND_PLAYER',
+      'TAILWIND_PLAYER',
+      'TAILWIND_ENEMY',
+      'HEADWIND_PLAYER',
+      'CROSSWIND',
+    ];
+  }
+  return [];
+};
+
+export const getWindStageLabel = (stage: WindProgressionStage) => {
+  if (stage === 1) return '入門：味方追い風';
+  if (stage === 2) return '応用：競合追い風';
+  if (stage === 3) return '全風種 解放済み';
+  return '未解放';
+};
+
 interface WindIndicatorProps {
   currentWind: WindCondition;
   nextChangeSeconds: number;
+  progressionStage?: WindProgressionStage;
   compact?: boolean;
 }
 
 export const WindIndicator: React.FC<WindIndicatorProps> = ({
   currentWind,
   nextChangeSeconds,
+  progressionStage = 3,
   compact = false,
 }) => {
+  if (progressionStage === 0) {
+    return (
+      <div
+        className="rs3-window flex items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-2 text-xs shadow"
+        title="グリダニアの基礎商戦では風補正は発生しません。進行後にタタルが説明します。"
+      >
+        <span className="flex items-center gap-1.5 font-extrabold text-slate-200">
+          <Compass className="h-4 w-4 shrink-0 text-cyan-400" />
+          市場の風：未解放
+        </span>
+        <small className="text-right text-[10px] font-bold text-slate-400">
+          補正なし・基本操作を練習
+        </small>
+      </div>
+    );
+  }
+
+  const countdownLabel =
+    currentWind.type === 'CALM' ? '次の風まで' : '静穏まで';
+
   if (compact) {
     return (
       <div
         className={`rs3-window border rounded-lg px-2.5 py-1.5 bg-gradient-to-r ${currentWind.bgGradient} ${currentWind.colorClass} shadow flex items-center justify-between text-xs transition-all duration-300`}
-        title={`${currentWind.description} 次の変化まで${nextChangeSeconds}秒`}
+        title={`${currentWind.description} ${countdownLabel}${nextChangeSeconds}秒。${getWindStageLabel(progressionStage)}`}
       >
         <div className="flex items-center gap-1.5 truncate">
           <Compass className="w-4 h-4 text-amber-400 shrink-0 animate-spin-slow" />
@@ -130,7 +192,7 @@ export const WindIndicator: React.FC<WindIndicatorProps> = ({
             </span>
           )}
           <span className="text-[10px] text-amber-300 bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-700 font-bold">
-            {nextChangeSeconds}s
+            {countdownLabel} {nextChangeSeconds}秒
           </span>
         </div>
       </div>
@@ -140,7 +202,7 @@ export const WindIndicator: React.FC<WindIndicatorProps> = ({
   return (
     <div
       className={`rs3-window border rounded-lg p-2 bg-gradient-to-r ${currentWind.bgGradient} ${currentWind.colorClass} shadow-md transition-all duration-300 text-xs`}
-      title={`${currentWind.description} 次の変化まで${nextChangeSeconds}秒`}
+      title={`${currentWind.description} ${countdownLabel}${nextChangeSeconds}秒。${getWindStageLabel(progressionStage)}`}
     >
       <div className="flex items-center justify-between">
         {/* Left: Wind Direction & Icon */}
@@ -169,9 +231,9 @@ export const WindIndicator: React.FC<WindIndicatorProps> = ({
         {/* Right: Multiplier Badge & Change Timer */}
         <div className="text-right shrink-0 ml-1">
           <div className="text-[9px] font-bold text-slate-300 flex items-center justify-end gap-1">
-            <span>風動</span>
+            <span>{countdownLabel}</span>
             <span className="font-mono text-amber-300 font-bold text-[10px] bg-slate-900/80 px-1 py-0.2 rounded border border-slate-700">
-              {nextChangeSeconds}s
+              {nextChangeSeconds}秒
             </span>
           </div>
 
