@@ -94,7 +94,11 @@
 .buyout-short-overlay,
 .buyout-finish-overlay {
   z-index: 280;
-  padding: clamp(.5rem, 3vw, 1.5rem);
+  padding:
+    max(clamp(.5rem, 3vw, 1.5rem), var(--game-safe-top))
+    max(clamp(.5rem, 3vw, 1.5rem), var(--game-safe-right))
+    max(clamp(.5rem, 3vw, 1.5rem), var(--game-safe-bottom))
+    max(clamp(.5rem, 3vw, 1.5rem), var(--game-safe-left));
   background:
     radial-gradient(circle at center, rgba(26, 55, 93, .35), transparent 55%),
     rgba(1, 4, 12, .92);
@@ -103,7 +107,7 @@
 
 .buyout-briefing {
   width: min(42rem, 100%);
-  max-height: calc(100dvh - 1rem);
+  max-height: calc(100dvh - var(--game-safe-top) - var(--game-safe-bottom) - 1rem);
   overflow-y: auto;
   border-color: rgba(245, 196, 81, .62);
   box-shadow: 0 0 42px rgba(245, 196, 81, .18), 0 24px 80px rgba(0, 0, 0, .72);
