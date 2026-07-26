@@ -16,6 +16,32 @@ export const BATTLE_CINEMATIC_TIMING = {
   finishNoticeMs: 1_450,
 } as const;
 
+export const RESULT_CONFIRM_ARM_DELAY_MS = 700;
+
+export const canConfirmBattleResult = ({
+  battlePhase,
+  hasWinner,
+  armed,
+  alreadyConfirmed,
+}: {
+  battlePhase: BattlePhase;
+  hasWinner: boolean;
+  armed: boolean;
+  alreadyConfirmed: boolean;
+}) =>
+  battlePhase === 'result' &&
+  hasWinner &&
+  armed &&
+  !alreadyConfirmed;
+
+export const getVictoryConfettiParticleCount = (
+  viewportWidth: number,
+  reducedMotion: boolean
+) => {
+  if (reducedMotion) return 0;
+  return viewportWidth <= 640 ? 42 : 110;
+};
+
 export const getCapitalVisualStage = (amount: number) => {
   if (amount <= 0) return 0;
   if (amount < 500) return 1;

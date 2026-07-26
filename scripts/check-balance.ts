@@ -19,13 +19,20 @@ import {
 } from '../src/utils/battleSettlement';
 import {
   BATTLE_CINEMATIC_TIMING,
+  canConfirmBattleResult,
   canShowShortNotice,
   getBattleCinematicLayer,
   getCapitalVisualBundleCount,
   getCapitalVisualBundleCountForAmount,
   getCapitalVisualStage,
+  getVictoryConfettiParticleCount,
+  RESULT_CONFIRM_ARM_DELAY_MS,
   shouldInertBattleFooter,
 } from '../src/utils/battlePresentation';
+import {
+  parsePendingBattleSession,
+  PENDING_BATTLE_SESSION_MAX_AGE_MS,
+} from '../src/utils/battleSession';
 import { calculateCartelHeadquartersDefense } from '../src/utils/cartel';
 import {
   calculateGaugeVelocity,
@@ -262,6 +269,90 @@ assert.equal(
   shouldInertBattleFooter(true, true, 'finisher_notice'),
   false,
   'the settled footer must stay interactive so the result analysis can open'
+);
+assert.equal(RESULT_CONFIRM_ARM_DELAY_MS, 700);
+assert.equal(
+  canConfirmBattleResult({
+    battlePhase: 'finisher_notice',
+    hasWinner: true,
+    armed: true,
+    alreadyConfirmed: false,
+  }),
+  false,
+  'settlement cannot run directly from the finishing-blow phase'
+);
+assert.equal(
+  canConfirmBattleResult({
+    battlePhase: 'result',
+    hasWinner: true,
+    armed: false,
+    alreadyConfirmed: false,
+  }),
+  false,
+  'the result dialog rejects a carried-over tap before arming'
+);
+assert.equal(
+  canConfirmBattleResult({
+    battlePhase: 'result',
+    hasWinner: true,
+    armed: true,
+    alreadyConfirmed: false,
+  }),
+  true,
+  'an armed result dialog accepts one explicit confirmation'
+);
+assert.equal(
+  canConfirmBattleResult({
+    battlePhase: 'result',
+    hasWinner: true,
+    armed: true,
+    alreadyConfirmed: true,
+  }),
+  false,
+  'a confirmed result cannot settle twice'
+);
+assert.equal(getVictoryConfettiParticleCount(402, false), 42);
+assert.equal(getVictoryConfettiParticleCount(1440, false), 110);
+assert.equal(getVictoryConfettiParticleCount(402, true), 0);
+
+const pendingBattleNow = 1_800_000_000_000;
+const pendingBattleProperty = INITIAL_PROPERTIES[0];
+const pendingBattleSession = parsePendingBattleSession(
+  JSON.stringify({
+    version: 1,
+    mode: 'normal',
+    targetProperty: pendingBattleProperty,
+    startedAt: pendingBattleNow - 5_000,
+  }),
+  pendingBattleNow
+);
+assert.equal(pendingBattleSession?.targetProperty.id, pendingBattleProperty.id);
+assert.equal(pendingBattleSession?.mode, 'normal');
+assert.equal(
+  parsePendingBattleSession(
+    JSON.stringify({
+      version: 1,
+      mode: 'normal',
+      targetProperty: pendingBattleProperty,
+      startedAt:
+        pendingBattleNow - PENDING_BATTLE_SESSION_MAX_AGE_MS - 1,
+    }),
+    pendingBattleNow
+  ),
+  null,
+  'stale interrupted battles do not reopen indefinitely'
+);
+assert.equal(
+  parsePendingBattleSession(
+    JSON.stringify({
+      version: 1,
+      mode: 'invalid',
+      targetProperty: pendingBattleProperty,
+      startedAt: pendingBattleNow,
+    }),
+    pendingBattleNow
+  ),
+  null
 );
 const capitalPresentationAmounts = [
   0,

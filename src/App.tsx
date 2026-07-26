@@ -69,6 +69,11 @@ import {
   calculateLiquidationCashback,
 } from './utils/battleSettlement';
 import {
+  clearPendingBattleSession,
+  loadPendingBattleSession,
+  persistPendingBattleSession,
+} from './utils/battleSession';
+import {
   applySavageSynergyUpgrades,
   buildUltimateProperty,
   buildSavageProperties,
@@ -159,6 +164,13 @@ export default function App() {
     initialSaveRef.current = loadGameSave();
   }
   const initialSave = initialSaveRef.current;
+  const pendingBattleSessionRef = useRef<
+    ReturnType<typeof loadPendingBattleSession> | undefined
+  >(undefined);
+  if (pendingBattleSessionRef.current === undefined) {
+    pendingBattleSessionRef.current = loadPendingBattleSession();
+  }
+  const pendingBattleSession = pendingBattleSessionRef.current;
 
   // --- Game Core State ---
   const [totalFunds, setTotalFunds] = useState<number>(initialSave?.totalFunds ?? 50_000);
@@ -204,19 +216,35 @@ export default function App() {
   );
 
   // UI States
-  const [activeTab, setActiveTab] = useState<AppTab>('market');
-  const [activeBattleProperty, setActiveBattleProperty] = useState<Property | null>(null);
-  const [activeBattleMode, setActiveBattleMode] = useState<BattleMode>('normal');
+  const [activeTab, setActiveTab] = useState<AppTab>(
+    pendingBattleSession?.mode === 'savage' ||
+      pendingBattleSession?.mode === 'ultimate'
+      ? 'savage'
+      : 'market'
+  );
+  const [activeBattleProperty, setActiveBattleProperty] =
+    useState<Property | null>(pendingBattleSession?.targetProperty ?? null);
+  const [activeBattleMode, setActiveBattleMode] = useState<BattleMode>(
+    pendingBattleSession?.mode ?? 'normal'
+  );
   const [showTrainingSelector, setShowTrainingSelector] = useState(false);
-  const [trainingLimitBreakCharge, setTrainingLimitBreakCharge] = useState(0);
+  const [trainingLimitBreakCharge, setTrainingLimitBreakCharge] = useState(
+    pendingBattleSession?.mode === 'training'
+      ? initialSave?.limitBreakCharge ?? 0
+      : 0
+  );
   const [endingNotice, setEndingNotice] = useState<'normal' | 'savage' | 'true' | null>(null);
-  const [battleTimeScale, setBattleTimeScale] = useState(1);
+  const [battleTimeScale, setBattleTimeScale] = useState(
+    pendingBattleSession ? 0 : 1
+  );
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [logs, setLogs] = useState<GameLog[]>([]);
   const [companyName, setCompanyName] = useState<string>(
     initialSave?.companyName || loadLegacyCompanyName() || GAME_WORLD.companyName
   );
-  const [showLaunchIntro, setShowLaunchIntro] = useState(!initialSave);
+  const [showLaunchIntro, setShowLaunchIntro] = useState(
+    !initialSave && !pendingBattleSession
+  );
   const [offlineIncomeNotice, setOfflineIncomeNotice] = useState(0);
   const [unlockNotice, setUnlockNotice] = useState<CommunityType | null>(null);
   const [seenUnlockIds, setSeenUnlockIds] = useState<FeatureUnlockId[]>(
@@ -648,6 +676,10 @@ export default function App() {
     ultimateCleared,
   ]);
 
+  useEffect(() => {
+    if (!activeBattleProperty) clearPendingBattleSession();
+  }, [activeBattleProperty]);
+
   // Handlers
   const handleStartBuyout = (property: Property) => {
     if (!unlockedCommunityIds.has(property.community)) {
@@ -668,6 +700,7 @@ export default function App() {
       return;
     }
     soundFx.playCoin();
+    persistPendingBattleSession('normal', property);
     setBattleTimeScale(0);
     setActiveBattleMode('normal');
     setActiveBattleProperty(property);
@@ -676,6 +709,7 @@ export default function App() {
   const handleStartSavageBuyout = (property: Property) => {
     if (!savageUnlocked || !savageUnlockedIds.has(property.id)) return;
     soundFx.playCoin();
+    persistPendingBattleSession('savage', property);
     setBattleTimeScale(0);
     setActiveBattleMode('savage');
     setActiveBattleProperty(property);
@@ -684,6 +718,7 @@ export default function App() {
   const handleStartUltimateBuyout = (property: Property) => {
     if (!ultimateUnlocked) return;
     soundFx.playCoin();
+    persistPendingBattleSession('ultimate', property);
     setBattleTimeScale(0);
     setActiveBattleMode('ultimate');
     setActiveBattleProperty(property);
@@ -696,6 +731,7 @@ export default function App() {
     persistGameState();
     setTrainingLimitBreakCharge(limitBreakCharge);
     setShowTrainingSelector(false);
+    persistPendingBattleSession('training', property);
     setBattleTimeScale(0);
     setActiveBattleMode('training');
     setActiveBattleProperty(property);
@@ -714,6 +750,13 @@ export default function App() {
     rebelledProperties,
     survivingRiskUpdates,
   }: BattleResult) => {
+    if (
+      !activeBattleProperty ||
+      targetProperty.id !== activeBattleProperty.id
+    ) {
+      return;
+    }
+    clearPendingBattleSession();
     if (activeBattleMode === 'training') {
       persistGameState();
       addGameLog(
@@ -1362,6 +1405,7 @@ export default function App() {
           onResetFunds={handleResetFunds}
           onBattleEnd={handleBattleEnd}
           onClose={() => {
+            clearPendingBattleSession();
             if (activeBattleMode === 'training') {
               persistGameState();
               setShowTrainingSelector(true);
