@@ -52,6 +52,7 @@ import {
 } from '../utils/enemyAi';
 import { calculateBattleReadiness } from '../utils/battleReadiness';
 import {
+  getCapitalVisualBundleCount,
   getCapitalVisualStage,
   shouldInertBattleFooter,
 } from '../utils/battlePresentation';
@@ -111,6 +112,7 @@ import '../battle-special-actions.css';
 import '../battle-stage-unified.css';
 import '../battle-wind-onboarding.css';
 import '../battle-integrated-field.css';
+import '../battle-capital-layer.css';
 
 interface BattleModalProps {
   targetProperty: Property;
@@ -306,7 +308,8 @@ const GilTower: React.FC<{
   const visibleCapital = Math.max(0, amount) + Math.max(0, reserveAmount);
   const visualStage = getCapitalVisualStage(visibleCapital);
   const committedStage = getCapitalVisualStage(amount);
-  const bundleCount = visualStage;
+  const bundleCount = getCapitalVisualBundleCount(visualStage);
+  const committedBundleCount = getCapitalVisualBundleCount(committedStage);
   const chipAsset = side === 'player' ? gilChipPlayer : defenseChipEnemy;
   const medallionAsset = side === 'player' ? gilMedallionPlayer : defenseMedallionEnemy;
   const capitalRatio = visibleCapital / Math.max(marketPrice, 1);
@@ -332,7 +335,7 @@ const GilTower: React.FC<{
             src={index === 0 ? medallionAsset : chipAsset}
             alt=""
             aria-hidden="true"
-            className={`${index === 0 ? 'gil-chip-image gil-chip-image--medallion' : 'gil-chip-image gil-chip-image--stack'}${index >= committedStage ? ' gil-chip-image--reserve' : ''}${motion === side && index === Math.max(0, committedStage - 1) ? ' gil-chip-image--falling' : ''}`}
+            className={`${index === 0 ? 'gil-chip-image gil-chip-image--medallion' : 'gil-chip-image gil-chip-image--stack'}${index >= committedBundleCount ? ' gil-chip-image--reserve' : ''}${motion === side && index === Math.max(0, committedBundleCount - 1) ? ' gil-chip-image--falling' : ''}`}
             style={{
               '--chip-index': index,
               '--chip-count': bundleCount,
@@ -514,6 +517,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const conditionTimerRef = useRef<number | null>(null);
   const openingSlowTimerRef = useRef<number | null>(null);
   const decisiveImpactTimerRef = useRef<number | null>(null);
+  const decisiveClearTimerRef = useRef<number | null>(null);
   const decisiveResolveTimerRef = useRef<number | null>(null);
   const livingDeadNoticeTimerRef = useRef<number | null>(null);
   const motionTimerRef = useRef<number | null>(null);
@@ -1040,6 +1044,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (conditionTimerRef.current) window.clearTimeout(conditionTimerRef.current);
     if (openingSlowTimerRef.current) window.clearTimeout(openingSlowTimerRef.current);
     if (decisiveImpactTimerRef.current) window.clearTimeout(decisiveImpactTimerRef.current);
+    if (decisiveClearTimerRef.current) window.clearTimeout(decisiveClearTimerRef.current);
     if (decisiveResolveTimerRef.current) window.clearTimeout(decisiveResolveTimerRef.current);
     if (livingDeadNoticeTimerRef.current) window.clearTimeout(livingDeadNoticeTimerRef.current);
     if (motionTimerRef.current) window.clearTimeout(motionTimerRef.current);
@@ -1374,11 +1379,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       updateGauge(result === 'player' ? -100 : 100);
       setDecisiveBlow({ winner: result, impacted: true });
       soundFx.playCapitalImpact(result === 'player' ? 'player' : 'opponent', 1);
-    }, 380);
+    }, 420);
+    decisiveClearTimerRef.current = window.setTimeout(() => {
+      setDecisiveBlow(null);
+      setStatusText(
+        result === 'player'
+          ? '決着――競合の防衛線が崩れる'
+          : '決着――自社の防衛線が崩れる'
+      );
+    }, 1400);
     decisiveResolveTimerRef.current = window.setTimeout(() => {
       decisiveRef.current = false;
       finalizeBattle(result, method, rawOwnership, resolvedDefeatReason);
-    }, 1500);
+    }, 1800);
   };
 
   const triggerWalkingDead = () => {

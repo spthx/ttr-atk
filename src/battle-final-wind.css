@@ -485,7 +485,7 @@
     rgba(1, 8, 24, .24);
   text-align: center;
   backdrop-filter: saturate(.55) contrast(1.3);
-  animation: decisive-slow-screen .76s steps(2) both;
+  animation: decisive-slow-screen 1.4s steps(2) both;
 }
 
 .battle-decisive-blow--opponent {
@@ -523,7 +523,7 @@
 .buyout-screen--decisive .buyout-main,
 .buyout-screen--decisive .buyout-header,
 .buyout-screen--decisive .buyout-footer {
-  animation: decisive-world-slow .76s cubic-bezier(.12, .72, .2, 1) both;
+  animation: decisive-world-slow 1.4s cubic-bezier(.12, .72, .2, 1) both;
 }
 .buyout-screen--decisive-opponent .buyout-main { filter: saturate(.65) contrast(1.2) sepia(.15); }
 
