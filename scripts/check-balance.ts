@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
-import { INITIAL_CARTELS, INITIAL_PROPERTIES, INITIAL_SKILLS } from '../src/data/initialData';
+import {
+  INITIAL_CARTELS,
+  INITIAL_GROUP_SYNERGIES,
+  INITIAL_PROPERTIES,
+  INITIAL_SKILLS,
+} from '../src/data/initialData';
 import { ALLIANCE_CANDIDATES, GRAND_COMPANY_NAMES } from '../src/data/allianceData';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
 import { decideEnemyAction, type EnemyDecisionContext } from '../src/utils/enemyAi';
@@ -11,10 +16,20 @@ import {
   SAVE_STORAGE_KEY,
 } from '../src/utils/saveData';
 import {
+  applySavageSynergyUpgrades,
+  buildUltimateProperty,
   buildSavageProperties,
-  getSavageCommunityProgress,
+  getSavagePropertyYieldMultiplier,
+  getSavageSynergyRanks,
   getSavageTargetIds,
-  SAVAGE_CITY_PRICE_FLOORS,
+  getUnlockedSavageRaidIds,
+  normalizeSavageClearedRaidIds,
+  SAVAGE_GROUP_MULTIPLIER_BASE,
+  SAVAGE_GROUP_MULTIPLIER_BONUS_PER_RANK,
+  SAVAGE_PROPERTY_YIELD_BONUS,
+  SAVAGE_RAID_DEFINITIONS,
+  SAVAGE_YIELD_BONUS_PER_RANK,
+  ULTIMATE_RAID_DEFINITION,
 } from '../src/utils/savage';
 import {
   calculateAllianceSupport,
@@ -22,6 +37,7 @@ import {
 } from '../src/utils/alliance';
 import {
   BATTLE_GAUGE_SPEED_FACTOR,
+  calculateBattleVictoryReward,
   ENEMY_INITIAL_COMMITMENT_RATIO,
   PASSIVE_REVENUE_MULTIPLIER,
   TACTICAL_SKILL_BALANCE,
@@ -44,6 +60,7 @@ import {
   SHORT_MANUAL_FINISH_GAUGE,
   resolveLivingDeadOutcome,
   SAVAGE_ENEMY_BUDGET_MULTIPLIER,
+  ULTIMATE_ENEMY_BUDGET_MULTIPLIER,
   getEnemyDifficultyLevel,
 } from '../src/utils/gameBalance';
 
@@ -106,18 +123,90 @@ for (let index = 4; index <= 8; index += 1) {
 
 const savageTargetIds = getSavageTargetIds(INITIAL_PROPERTIES);
 const savageProperties = buildSavageProperties(INITIAL_PROPERTIES, new Set(), '検証商会');
-const savageProgress = getSavageCommunityProgress(savageProperties, new Set());
-assert.equal(savageTargetIds.length, expectedCampaignCounts.reduce((sum, count) => sum + count, 0));
+assert.equal(savageTargetIds.length, 4);
 assert.equal(savageProperties.length, savageTargetIds.length);
 assert.equal(new Set(savageTargetIds).size, savageTargetIds.length);
-assert.equal(savageProgress.length, COMMUNITY_CAMPAIGN_ORDER.length);
-assert.equal(savageProgress.every((city) => !city.conquered), true);
+assert.deepEqual(SAVAGE_RAID_DEFINITIONS.map((raid) => raid.layer), [1, 2, 3, 4]);
+assert.deepEqual(
+  SAVAGE_RAID_DEFINITIONS.map((raid) => raid.marketPrice),
+  [...SAVAGE_RAID_DEFINITIONS].map((raid) => raid.marketPrice).sort((a, b) => a - b),
+  'Savage prices rise from layer 1 through layer 4'
+);
 savageProperties.forEach((property) => {
   assert.match(property.name, /商戦 零式：第[1-4]層$/);
   assert.equal(property.annualRevenue, 0);
-  assert.ok(property.marketPrice >= SAVAGE_CITY_PRICE_FLOORS[property.community] * 0.72);
-  assert.match(property.description, /所有権・毎秒収益・通常物件の独立は発生しません/);
+  assert.match(property.description, /所有権・毎秒収益・独立危険度は変化しません/);
 });
+assert.deepEqual(
+  Array.from(getUnlockedSavageRaidIds(new Set())),
+  [SAVAGE_RAID_DEFINITIONS[0].id]
+);
+assert.deepEqual(
+  Array.from(getUnlockedSavageRaidIds(new Set([SAVAGE_RAID_DEFINITIONS[0].id]))),
+  [SAVAGE_RAID_DEFINITIONS[0].id, SAVAGE_RAID_DEFINITIONS[1].id]
+);
+
+const normalCampaignIds = COMMUNITY_CAMPAIGN_ORDER.flatMap((community) =>
+  getCampaignProperties(INITIAL_PROPERTIES, community).map((property) => property.id)
+);
+const raidMemberIds = SAVAGE_RAID_DEFINITIONS.flatMap((raid) => raid.memberPropertyIds);
+assert.equal(raidMemberIds.length, normalCampaignIds.length);
+assert.equal(new Set(raidMemberIds).size, raidMemberIds.length);
+assert.deepEqual([...raidMemberIds].sort(), [...normalCampaignIds].sort());
+
+const synergyIds = new Set(INITIAL_GROUP_SYNERGIES.map((synergy) => synergy.id));
+SAVAGE_RAID_DEFINITIONS.forEach((raid) => {
+  assert.equal(
+    raid.id,
+    raid.battlePropertyId,
+    `four-layer save key reuses its representative normal encounter: ${raid.id}`
+  );
+  assert.ok(
+    INITIAL_PROPERTIES.some((property) => property.id === raid.battlePropertyId),
+    `Savage battle property exists: ${raid.battlePropertyId}`
+  );
+  raid.memberPropertyIds.forEach((id) => {
+    assert.ok(
+      INITIAL_PROPERTIES.some((property) => property.id === id),
+      `Savage member property exists: ${id}`
+    );
+  });
+  raid.rewardSynergyIds.forEach((id) => {
+    assert.ok(synergyIds.has(id), `Savage reward synergy exists: ${id}`);
+  });
+});
+assert.deepEqual(
+  new Set(SAVAGE_RAID_DEFINITIONS.flatMap((raid) => raid.rewardSynergyIds)),
+  synergyIds,
+  'all existing synergies have a Savage upgrade route'
+);
+assert.deepEqual(
+  normalizeSavageClearedRaidIds(
+    SAVAGE_RAID_DEFINITIONS[0].memberPropertyIds,
+    false
+  ),
+  [SAVAGE_RAID_DEFINITIONS[0].id],
+  'a legacy regional layer migrates only after all of its former encounters were cleared'
+);
+assert.deepEqual(
+  normalizeSavageClearedRaidIds(
+    SAVAGE_RAID_DEFINITIONS[0].memberPropertyIds.slice(0, -1),
+    false
+  ),
+  [],
+  'partial legacy regional progress does not skip the new coalition encounter'
+);
+assert.deepEqual(
+  normalizeSavageClearedRaidIds(savageTargetIds.slice(0, 2), true),
+  savageTargetIds.slice(0, 2),
+  'current four-layer progress remains direct'
+);
+assert.deepEqual(
+  normalizeSavageClearedRaidIds([], false, true),
+  savageTargetIds,
+  'legacy completed tier unlocks all four coalition layers'
+);
+
 const fullyClearedSavage = buildSavageProperties(
   INITIAL_PROPERTIES,
   new Set(savageTargetIds),
@@ -125,20 +214,60 @@ const fullyClearedSavage = buildSavageProperties(
 );
 assert.equal(fullyClearedSavage.every((property) => property.owner === 'player'), true);
 assert.equal(
-  getSavageCommunityProgress(fullyClearedSavage, new Set(savageTargetIds))
-    .every((city) => city.conquered),
-  true
-);
-assert.equal(
   INITIAL_PROPERTIES.some((property) => property.owner === 'player'),
   false,
   'savage derivation never mutates normal ownership'
 );
-for (let index = 1; index < COMMUNITY_CAMPAIGN_ORDER.length; index += 1) {
-  const previousMax = Math.max(...getCampaignProperties(savageProperties, COMMUNITY_CAMPAIGN_ORDER[index - 1]).map((property) => property.marketPrice));
-  const currentMax = Math.max(...getCampaignProperties(savageProperties, COMMUNITY_CAMPAIGN_ORDER[index]).map((property) => property.marketPrice));
-  assert.ok(currentMax > previousMax, `savage price curve: stage ${index + 1}`);
-}
+
+const savageRanks = getSavageSynergyRanks(new Set(savageTargetIds));
+const upgradedSynergies = applySavageSynergyUpgrades(
+  INITIAL_GROUP_SYNERGIES,
+  new Set(savageTargetIds)
+);
+upgradedSynergies.forEach((synergy) => {
+  const rank = savageRanks.get(synergy.id) ?? 0;
+  const base = INITIAL_GROUP_SYNERGIES.find((item) => item.id === synergy.id)!;
+  assert.equal(
+    synergy.bonusYieldMultiplier,
+    Number((base.bonusYieldMultiplier + rank * SAVAGE_YIELD_BONUS_PER_RANK).toFixed(2))
+  );
+  assert.equal(
+    synergy.battleGroupMultiplier,
+    Number((SAVAGE_GROUP_MULTIPLIER_BASE + rank * SAVAGE_GROUP_MULTIPLIER_BONUS_PER_RANK).toFixed(2))
+  );
+});
+assert.equal(
+  getSavagePropertyYieldMultiplier('prop_coffee_aurora', new Set(savageTargetIds)),
+  1 + SAVAGE_PROPERTY_YIELD_BONUS
+);
+assert.equal(
+  getSavagePropertyYieldMultiplier('prop_dofor_hq', new Set(savageTargetIds)),
+  1,
+  'optional cartel properties are not silently upgraded'
+);
+
+const ultimateProperty = buildUltimateProperty(false, '検証商会');
+assert.equal(ultimateProperty.id, ULTIMATE_RAID_DEFINITION.id);
+assert.equal(ultimateProperty.annualRevenue, 0);
+assert.ok(
+  ultimateProperty.marketPrice > savageProperties[savageProperties.length - 1].marketPrice
+);
+assert.match(ultimateProperty.description, /単独・最終高難度交易戦/);
+assert.equal(
+  calculateBattleVictoryReward(600_000_000, true, 'savage', false),
+  30_000_000,
+  'first Savage clear grants its one-time record reward'
+);
+assert.equal(
+  calculateBattleVictoryReward(600_000_000, true, 'savage', true),
+  0,
+  'Savage replay cannot farm the record reward'
+);
+assert.equal(
+  calculateBattleVictoryReward(3_000_000_000, true, 'ultimate', false),
+  0,
+  'Ultimate is an honor clear and never a repeatable cash source'
+);
 
 const optionalCartelIds = new Set([
   'prop_dofor_ship',
@@ -242,6 +371,25 @@ assert.equal(
   Math.round(sameTargetNormalBudget * SAVAGE_ENEMY_BUDGET_MULTIPLIER)
 );
 assert.equal(getEnemyDifficultyLevel(savageBudgetTarget, false, true), 5);
+const ultimateBudget = calculateEnemyBudget({
+  targetProperty: ultimateProperty,
+  industryInfluence: noInfluence,
+  regionalInfluence: noInfluence,
+  isTutorial: false,
+  isUltimate: true,
+});
+const ultimateAsNormalBudget = calculateEnemyBudget({
+  targetProperty: ultimateProperty,
+  industryInfluence: noInfluence,
+  regionalInfluence: noInfluence,
+  isTutorial: false,
+});
+assert.equal(
+  ultimateBudget,
+  Math.round(ultimateAsNormalBudget * ULTIMATE_ENEMY_BUDGET_MULTIPLIER)
+);
+assert.ok(ultimateBudget > savageBudget);
+assert.equal(getEnemyDifficultyLevel(ultimateProperty, false, false, true), 6);
 
 const baseAiContext: EnemyDecisionContext = {
   enemyOwnership: 50,
@@ -263,7 +411,9 @@ assert.equal(decideEnemyAction({ ...baseAiContext, effectiveCapitalGap: 200_000 
 assert.equal(decideEnemyAction({ ...baseAiContext, enemyOwnership: 20, enemyReservePercent: 10 }).intent, 'EMERGENCY_DEFENSE');
 const normalEnemyDecision = decideEnemyAction(baseAiContext);
 const savageEnemyDecision = decideEnemyAction({ ...baseAiContext, difficultyLevel: 5 });
+const ultimateEnemyDecision = decideEnemyAction({ ...baseAiContext, difficultyLevel: 6 });
 assert.ok(savageEnemyDecision.waitMs <= normalEnemyDecision.waitMs, 'savage AI reacts at least as fast');
+assert.ok(ultimateEnemyDecision.waitMs <= savageEnemyDecision.waitMs, 'Ultimate AI reacts at least as fast');
 const slowedEnemyDecision = decideEnemyAction({ ...baseAiContext, slowed: true });
 assert.ok(
   Math.abs(
@@ -425,17 +575,47 @@ const restoredLegacySave = loadGameSave();
 assert.ok(restoredLegacySave);
 assert.deepEqual(restoredLegacySave.savageClearedPropertyIds, []);
 assert.equal(restoredLegacySave.normalEndingSeen, false);
+assert.equal(restoredLegacySave.savageEndingSeen, false);
+assert.equal(restoredLegacySave.ultimateCleared, false);
 assert.equal(restoredLegacySave.trueEndingSeen, false);
+assert.equal(restoredLegacySave.selectedBattleSynergyId, null);
+assert.equal(restoredLegacySave.savageProgressVersion, undefined);
 savedPayload = JSON.stringify({
   ...legacySchemaThreePayload,
   savageClearedPropertyIds: savageTargetIds.slice(0, 3),
+  savageProgressVersion: 2,
   normalEndingSeen: true,
   trueEndingSeen: false,
 });
 const restoredSavageSave = loadGameSave();
 assert.deepEqual(restoredSavageSave?.savageClearedPropertyIds, savageTargetIds.slice(0, 3));
+assert.equal(restoredSavageSave?.savageProgressVersion, 2);
 assert.equal(restoredSavageSave?.normalEndingSeen, true);
 assert.equal(restoredSavageSave?.trueEndingSeen, false);
+savedPayload = JSON.stringify({
+  ...legacySchemaThreePayload,
+  savageClearedPropertyIds: normalCampaignIds,
+  normalEndingSeen: true,
+  trueEndingSeen: true,
+});
+const restoredOldTrueEndingSave = loadGameSave();
+assert.equal(restoredOldTrueEndingSave?.savageEndingSeen, true);
+assert.equal(restoredOldTrueEndingSave?.ultimateCleared, false);
+assert.equal(restoredOldTrueEndingSave?.trueEndingSeen, false);
+savedPayload = JSON.stringify({
+  ...legacySchemaThreePayload,
+  savageClearedPropertyIds: savageTargetIds,
+  savageProgressVersion: 2,
+  normalEndingSeen: true,
+  savageEndingSeen: true,
+  ultimateCleared: true,
+  trueEndingSeen: true,
+  selectedBattleSynergyId: 'KUGANE_TRADE_GATEWAY',
+});
+const restoredUltimateSave = loadGameSave();
+assert.equal(restoredUltimateSave?.ultimateCleared, true);
+assert.equal(restoredUltimateSave?.trueEndingSeen, true);
+assert.equal(restoredUltimateSave?.selectedBattleSynergyId, 'KUGANE_TRADE_GATEWAY');
 Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
 
 const preFinalTargets = COMMUNITY_CAMPAIGN_ORDER.slice(0, 9).flatMap((community) =>
@@ -457,6 +637,8 @@ console.log(JSON.stringify({
     minPrice: Math.min(...savageProperties.map((property) => property.marketPrice)),
     maxPrice: Math.max(...savageProperties.map((property) => property.marketPrice)),
     enemyBudgetMultiplier: SAVAGE_ENEMY_BUDGET_MULTIPLIER,
+    ultimatePrice: ultimateProperty.marketPrice,
+    ultimateEnemyBudgetMultiplier: ULTIMATE_ENEMY_BUDGET_MULTIPLIER,
   },
   enemyBudgetRatios: {
     tutorial: enemyBudgetRatio('prop_starter_farm', true),

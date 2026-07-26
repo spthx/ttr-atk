@@ -13,13 +13,13 @@ const INTRO_STEPS = [
   {
     eyebrow: 'FANTASY TRADE CAMPAIGN',
     title: 'タタルの大繁盛店',
-    body: 'ギルを積み、風を読み、各都市の企業を買収。エオルゼアから新大陸まで交易路を広げます。',
+    body: 'ギルを積み、風を読み、各都市の事業や交易契約を獲得。エオルゼアから新大陸まで交易路を広げます。',
     icon: MapPinned,
   },
   {
-    eyebrow: 'MONEY BUYOUT BATTLE',
-    title: 'ギルを積み、魂を奪え。',
-    body: '自社と傘下企業のギルを積み、競合の防衛資金と所有率を押し切れば買収成立です。',
+    eyebrow: 'REAL-TIME TRADE BATTLE',
+    title: 'ギルを積み、商機をつかめ。',
+    body: '自社と傘下カンパニーのギルを積み、競合の防衛資金と所有率を押し切れば取得交渉成立です。',
     icon: Coins,
   },
   {

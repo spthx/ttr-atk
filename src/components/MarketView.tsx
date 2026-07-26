@@ -22,6 +22,7 @@ interface MarketViewProps {
   navigationRequest?: { id: number; mode: 'map' | 'targets'; community: CommunityType | 'ALL' } | null;
   currentWind: WindCondition;
   windCountdown: number;
+  propertyRevenueMultipliers?: ReadonlyMap<string, number>;
   campaignMode?: 'normal' | 'savage';
   onStartBuyout: (property: Property) => void;
 }
@@ -33,6 +34,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
   navigationRequest,
   currentWind,
   windCountdown,
+  propertyRevenueMultipliers,
   campaignMode = 'normal',
   onStartBuyout,
 }) => {
@@ -64,7 +66,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
     '【底値気配】一部の独立物件で一時的な価格下落！安値買いの仕込みチャンス！',
     '【アライアンス動向】東アルデナード商会圏が交渉資金を積み増した模様。',
     '【産業トピックス】馬・畜産業で需要が急増。毎秒収益への期待が高まる。',
-    '【市場気配】全体的に押し目買いが優勢。買収工作の絶好のタイミング！',
+    '【市場気配】全体的に押し目買いが優勢。取得交渉の好機です！',
   ];
 
 
@@ -189,7 +191,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
           <div className="relative z-10 flex min-h-36 max-w-2xl flex-col justify-center px-5 py-5">
             <p className={`text-[10px] font-black tracking-[0.28em] ${campaignMode === 'savage' ? 'text-rose-300' : 'text-amber-300'}`}>{campaignMode === 'savage' ? 'SAVAGE TRADE RAID' : 'EORZEA GRAND MARKET'}</p>
             <h2 className="mt-1 text-2xl font-black text-white drop-shadow-lg">{campaignMode === 'savage' ? '挑戦する零式商戦を選ぶ' : '次に攻める都市を選ぶ'}</h2>
-            <p className="mt-1 text-xs text-slate-200">{campaignMode === 'savage' ? '各都市の通常商戦を再構成した1～4層の高難度交易レイドです。' : '都市を選ぶと、買収できる敵企業だけを表示します。'}</p>
+            <p className="mt-1 text-xs text-slate-200">{campaignMode === 'savage' ? '各都市の通常商戦を再構成した1～4層の高難度交易レイドです。' : '都市を選ぶと、交渉できる事業・契約だけを表示します。'}</p>
           </div>
           <button type="button" onClick={() => setShowGuide((open) => !open)} className="absolute bottom-3 right-3 z-20 flex items-center gap-1 rounded-lg border border-cyan-400/30 bg-slate-950/80 px-2.5 py-1.5 text-[10px] font-bold text-cyan-200">
             <CircleHelp className="h-3.5 w-3.5" /> 遊び方
@@ -205,7 +207,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
               <p className="mt-0.5 text-[10px] text-slate-500">{campaignMode === 'savage' ? '踏破都市' : '制覇数'} {communityProgress.filter((city) => city.conquered).length}/{communityProgress.length}</p>
             </div>
             <button type="button" onClick={() => { setSelectedCommunity('ALL'); setViewMode('targets'); }} className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[10px] font-bold text-slate-300">
-              {campaignMode === 'savage' ? '全層から探す' : '全企業から探す'} <ChevronRight className="h-3.5 w-3.5" />
+              {campaignMode === 'savage' ? '全層から探す' : '全対象から探す'} <ChevronRight className="h-3.5 w-3.5" />
             </button>
           </div>
 
@@ -218,11 +220,11 @@ export const MarketView: React.FC<MarketViewProps> = ({
               <button key={community.id} type="button" disabled={!unlocked} onClick={() => { setSelectedCommunity(community.id); setViewMode('targets'); }} className={`group relative min-h-24 overflow-hidden rounded-xl border p-3 text-left transition-all ${unlocked ? 'active:scale-95' : 'cursor-not-allowed opacity-55'} ${community.conquered ? 'border-emerald-400/50 bg-emerald-950/45' : unlocked ? 'border-cyan-500/35 bg-slate-950 hover:border-cyan-300/70' : 'border-slate-800 bg-slate-950/80'}`} style={{ animationDelay: `${index * 28}ms` }}>
                 <img src={getFankitJobArt(community.id)} alt="" aria-hidden="true" className="absolute -bottom-5 -right-4 h-24 w-24 object-contain opacity-20 transition-transform group-hover:scale-110" />
                 <span className="relative z-10 flex items-center gap-1 text-xs font-black text-slate-100">{!unlocked && <LockKeyhole className="h-3 w-3 text-slate-500" />}{community.id}</span>
-                <span className="relative z-10 mt-1 block text-[9px] text-cyan-300">{community.marketCharacter}</span>
+                <span className="relative z-10 mt-1 block text-[11px] text-cyan-300">{community.marketCharacter}</span>
                 <span className={`relative z-10 mt-3 inline-block rounded px-1.5 py-0.5 text-[9px] font-black ${community.conquered ? 'bg-emerald-400/20 text-emerald-200' : 'bg-slate-800 text-slate-300'}`}>
                   {community.conquered ? (campaignMode === 'savage' ? '零式踏破済み' : '制覇済み') : unlocked ? `${community.owned}/${community.total} ${campaignMode === 'savage' ? '層踏破' : '取得'}` : `${prerequisite}制覇で解放`}
                 </span>
-                {unlocked && <span className="relative z-10 mt-1 block text-[8px] font-bold text-amber-300">{campaignMode === 'savage' ? '通常の地域補正は無効' : `地域補正 +${regionalBonus}%`}</span>}
+                {unlocked && <span className="relative z-10 mt-1 block text-[10px] font-bold text-amber-300">{campaignMode === 'savage' ? '通常の地域補正は無効' : `地域補正 +${regionalBonus}%`}</span>}
               </button>
               );
             })}
@@ -239,9 +241,9 @@ export const MarketView: React.FC<MarketViewProps> = ({
           <button type="button" onClick={() => setViewMode('map')} className="mb-1 flex items-center gap-1 text-[10px] font-bold text-cyan-300 hover:text-cyan-200">
             <MapPinned className="h-3.5 w-3.5" /> 都市マップへ戻る
           </button>
-          <h2 className="text-base font-black text-white">{selectedCommunity === 'ALL' ? '全都市の買収対象' : `${selectedCommunity}の買収対象`}</h2>
+          <h2 className="text-base font-black text-white">{selectedCommunity === 'ALL' ? '全都市の交渉対象' : `${selectedCommunity}の交渉対象`}</h2>
         </div>
-        <div className="flex items-center gap-2 text-[10px] text-slate-400"><ListFilter className="h-4 w-4 text-amber-400" />買収対象 {activeTargetCount}社</div>
+        <div className="flex items-center gap-2 text-[10px] text-slate-400"><ListFilter className="h-4 w-4 text-amber-400" />交渉対象 {activeTargetCount}件</div>
       </section>
 
       {/* Insufficient Funds Warning Banner */}
@@ -318,7 +320,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
             onChange={(e) => setSelectedOwnerFilter(e.target.value)}
             className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
           >
-            <option value="ALL">全所有者</option>
+            <option value="ALL">全所属</option>
             <option value="INDEPENDENT">独立（未所属）</option>
             <option value="CARTEL">アライアンス</option>
             <option value="PLAYER">自社所有</option>
@@ -332,7 +334,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
           onClick={() => setShowOwnedProperties((open) => !open)}
           className="flex w-full items-center justify-between rounded-xl border border-emerald-500/25 bg-emerald-950/20 px-4 py-2.5 text-left text-xs font-bold text-emerald-200"
         >
-          <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" />買収済みショップ {ownedFilteredCount}件</span>
+          <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" />取得済み事業・契約 {ownedFilteredCount}件</span>
           <span className="text-[10px] text-emerald-300">{showOwnedCards ? '畳む ▲' : '開く ▼'}</span>
         </button>
       )}
@@ -343,6 +345,13 @@ export const MarketView: React.FC<MarketViewProps> = ({
           const isPlayerOwned = prop.owner === 'player';
           const rateInfo = marketRates[prop.id] || { price: prop.marketPrice, change: 0 };
           const activePrice = rateInfo.price;
+          const savageRevenueMultiplier =
+            propertyRevenueMultipliers?.get(prop.id) ?? 1;
+          const displayedRevenue = Math.round(
+            prop.annualRevenue *
+              PASSIVE_REVENUE_MULTIPLIER *
+              savageRevenueMultiplier
+          );
           const fee = Math.round(activePrice * 0.03);
           const canAffordFee = totalFunds >= fee;
 
@@ -451,10 +460,17 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
                   <div className="flex items-center justify-between text-xs border-t border-slate-800/80 pt-1.5">
                     <span className="flex items-center gap-1 text-slate-400">
-                      {campaignMode === 'savage' ? '零式報酬収益' : '毎秒収益'}
+                      {campaignMode === 'savage' ? '通常編の毎秒収益' : '毎秒収益'}
                       <HelpTip term="毎秒収益" description={HELP_TEXT.passiveRevenue} />
                     </span>
-                    <span className="font-bold text-emerald-400">+{formatCurrency(prop.annualRevenue * PASSIVE_REVENUE_MULTIPLIER)}/s</span>
+                    <span className="text-right font-bold text-emerald-400">
+                      +{formatCurrency(displayedRevenue)}/秒
+                      {savageRevenueMultiplier > 1 && (
+                        <small className="ml-1 block text-[11px] text-violet-300">
+                          零式強化 +{Math.round((savageRevenueMultiplier - 1) * 100)}%
+                        </small>
+                      )}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -478,7 +494,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
                   >
                     {canAffordFee ? (
                       <>
-                        <span>{campaignMode === 'savage' ? '零式へ挑戦' : '買収工作を開始'} (手数料 {formatCurrency(fee)})</span>
+                        <span>{campaignMode === 'savage' ? '零式へ挑戦' : '取得交渉を開始'} (手数料 {formatCurrency(fee)})</span>
                         <ArrowRight className="w-4 h-4" />
                       </>
                     ) : (
