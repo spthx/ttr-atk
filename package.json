@@ -11,7 +11,7 @@
     "build:game": "vite build --config vite.game.config.ts --outDir public/game --emptyOutDir",
     "build:pages": "vite build --config vite.game.config.ts --outDir dist --emptyOutDir",
     "dev": "vinext dev",
-    "build": "pnpm run build:game && vinext build",
+    "build": "npm run build:game && vinext build",
     "start": "vinext start",
     "lint": "tsc --noEmit",
     "check:balance": "tsx scripts/check-balance.ts"
