@@ -52,7 +52,7 @@ import {
 } from '../utils/enemyAi';
 import { calculateBattleReadiness } from '../utils/battleReadiness';
 import {
-  getCapitalVisualBundleCount,
+  getCapitalVisualBundleCountForAmount,
   getCapitalVisualStage,
   shouldInertBattleFooter,
 } from '../utils/battlePresentation';
@@ -305,18 +305,18 @@ const GilTower: React.FC<{
   side: 'player' | 'enemy';
   motion: BattleMotion;
 }> = ({ amount, reserveAmount = 0, marketPrice, side, motion }) => {
-  const visibleCapital = Math.max(0, amount) + Math.max(0, reserveAmount);
-  const visualStage = getCapitalVisualStage(visibleCapital);
-  const committedStage = getCapitalVisualStage(amount);
-  const bundleCount = getCapitalVisualBundleCount(visualStage);
-  const committedBundleCount = getCapitalVisualBundleCount(committedStage);
+  const committedCapital = Math.max(0, amount);
+  const visualStage = getCapitalVisualStage(committedCapital);
+  const committedStage = visualStage;
+  const bundleCount = getCapitalVisualBundleCountForAmount(committedCapital);
+  const committedBundleCount = bundleCount;
   const chipAsset = side === 'player' ? gilChipPlayer : defenseChipEnemy;
   const medallionAsset = side === 'player' ? gilMedallionPlayer : defenseMedallionEnemy;
-  const capitalRatio = visibleCapital / Math.max(marketPrice, 1);
+  const capitalRatio = committedCapital / Math.max(marketPrice, 1);
 
   return (
     <div
-      className={`gil-tower gil-tower--${side} gil-tower--stage-${visualStage} ${reserveAmount > 0 ? 'gil-tower--reserve-backed' : ''} ${motion === side ? 'gil-tower--impact' : ''}`}
+      className={`gil-tower gil-tower--${side} gil-tower--stage-${visualStage} ${motion === side ? 'gil-tower--impact' : ''}`}
       data-capital-stage={visualStage}
       data-capital-ratio={Math.max(0, Math.round(capitalRatio * 100))}
     >
@@ -328,14 +328,16 @@ const GilTower: React.FC<{
             : `${formatCurrency(amount)}を投入済み`
         }
       >
-        {bundleCount === 0 && <span className="gil-tower__empty">NO CAPITAL</span>}
+        {bundleCount === 0 && (
+          <span className="gil-tower__empty" aria-hidden="true"><i /></span>
+        )}
         {Array.from({ length: bundleCount }).map((_, index) => (
           <img
             key={`${side}-${index}`}
             src={index === 0 ? medallionAsset : chipAsset}
             alt=""
             aria-hidden="true"
-            className={`${index === 0 ? 'gil-chip-image gil-chip-image--medallion' : 'gil-chip-image gil-chip-image--stack'}${index >= committedBundleCount ? ' gil-chip-image--reserve' : ''}${motion === side && index === Math.max(0, committedBundleCount - 1) ? ' gil-chip-image--falling' : ''}`}
+            className={`${index === 0 ? 'gil-chip-image gil-chip-image--medallion' : 'gil-chip-image gil-chip-image--stack'}${motion === side && index === Math.max(0, committedBundleCount - 1) ? ' gil-chip-image--falling' : ''}`}
             style={{
               '--chip-index': index,
               '--chip-count': bundleCount,
@@ -345,7 +347,15 @@ const GilTower: React.FC<{
         ))}
         {visualStage >= 7 && (
           <span className="gil-tower__overflow" aria-hidden="true">
-            {Array.from({ length: 7 }).map((_, index) => <i key={index} />)}
+            {Array.from({ length: 12 }).map((_, index) => (
+              <i
+                key={index}
+                style={{
+                  '--overflow-x': `${8 + ((index * 19) % 84)}%`,
+                  animationDelay: `${-(index * 0.23)}s`,
+                } as React.CSSProperties}
+              />
+            ))}
           </span>
         )}
       </div>
@@ -682,6 +692,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     totalPlayerInvested / Math.max(1, targetProperty.marketPrice) * 100;
   const enemyCapitalProgress =
     enemyInvested / Math.max(1, targetProperty.marketPrice) * 100;
+  const playerCapitalVisualStage = getCapitalVisualStage(totalPlayerInvested);
+  const enemyCapitalVisualStage = getCapitalVisualStage(enemyInvested);
   const capitalPressureLabel = effectivePlayerShare >= 58
     ? '自社優勢'
     : effectivePlayerShare <= 42
@@ -2332,6 +2344,36 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           <i className="battlefield-pressure-lane__enemy" />
           <span className="battlefield-pressure-lane__front"><i /><i /><i /></span>
         </div>
+        {playerCapitalVisualStage >= 7 && (
+          <span className="battlefield-capital-deluge battlefield-capital-deluge--player" aria-hidden="true">
+            {Array.from({ length: 18 }).map((_, index) => (
+              <i
+                key={index}
+                style={{
+                  '--deluge-x': `${3 + ((index * 17) % 45)}%`,
+                  '--deluge-size': `${0.18 + (index % 4) * 0.055}rem`,
+                  animationDelay: `${-(index * 0.19)}s`,
+                  animationDuration: `${1.35 + (index % 5) * 0.14}s`,
+                } as React.CSSProperties}
+              />
+            ))}
+          </span>
+        )}
+        {enemyCapitalVisualStage >= 7 && (
+          <span className="battlefield-capital-deluge battlefield-capital-deluge--enemy" aria-hidden="true">
+            {Array.from({ length: 18 }).map((_, index) => (
+              <i
+                key={index}
+                style={{
+                  '--deluge-x': `${52 + ((index * 17) % 45)}%`,
+                  '--deluge-size': `${0.18 + (index % 4) * 0.055}rem`,
+                  animationDelay: `${-(index * 0.21)}s`,
+                  animationDuration: `${1.4 + (index % 5) * 0.13}s`,
+                } as React.CSSProperties}
+              />
+            ))}
+          </span>
+        )}
         {(isTraining || isSavage || isUltimate) && (
           <div className={`battlefield-raid-marker ${isUltimate ? 'battlefield-raid-marker--ultimate' : ''}`}>
             {isTraining ? (

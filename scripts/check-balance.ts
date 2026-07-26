@@ -19,6 +19,7 @@ import {
 } from '../src/utils/battleSettlement';
 import {
   getCapitalVisualBundleCount,
+  getCapitalVisualBundleCountForAmount,
   getCapitalVisualStage,
   shouldInertBattleFooter,
 } from '../src/utils/battlePresentation';
@@ -287,6 +288,16 @@ assert.ok(
 );
 assert.equal(capitalPresentationStages[0], 0);
 assert.equal(capitalPresentationStages.at(-1), 7);
+assert.equal(getCapitalVisualStage(499), 1);
+assert.equal(getCapitalVisualStage(500), 2);
+assert.equal(getCapitalVisualStage(49_999), 3);
+assert.equal(getCapitalVisualStage(50_000), 4);
+assert.equal(getCapitalVisualStage(499_999), 4);
+assert.equal(getCapitalVisualStage(500_000), 5);
+assert.equal(getCapitalVisualStage(9_999_999), 5);
+assert.equal(getCapitalVisualStage(10_000_000), 6);
+assert.equal(getCapitalVisualStage(999_999_999), 6);
+assert.equal(getCapitalVisualStage(1_000_000_000), 7);
 const capitalBundleCounts = capitalPresentationStages.map(
   getCapitalVisualBundleCount
 );
@@ -299,6 +310,22 @@ assert.ok(
 );
 assert.equal(getCapitalVisualBundleCount(0), 0);
 assert.equal(getCapitalVisualBundleCount(7), 13);
+const capitalAmountBundleCounts = capitalPresentationAmounts.map(
+  getCapitalVisualBundleCountForAmount
+);
+assert.ok(
+  capitalAmountBundleCounts.every(
+    (count, index) =>
+      index === 0 || count >= capitalAmountBundleCounts[index - 1]
+  ),
+  'committed-capital bundle counts grow monotonically with absolute capital'
+);
+assert.equal(getCapitalVisualBundleCountForAmount(0), 0);
+assert.equal(getCapitalVisualBundleCountForAmount(200), 1);
+assert.equal(getCapitalVisualBundleCountForAmount(500), 2);
+assert.equal(getCapitalVisualBundleCountForAmount(4_999), 3);
+assert.equal(getCapitalVisualBundleCountForAmount(50_000), 5);
+assert.equal(getCapitalVisualBundleCountForAmount(1_000_000_000), 13);
 assert.equal(
   shouldInertBattleFooter(true, true, 'result'),
   true,
