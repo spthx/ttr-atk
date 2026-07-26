@@ -45,6 +45,7 @@ import {
   PlayerBattleAction,
 } from '../utils/enemyAi';
 import { calculateBattleReadiness } from '../utils/battleReadiness';
+import { shouldInertBattleFooter } from '../utils/battlePresentation';
 import { StrengthComparison } from './StrengthComparison';
 import {
   BATTLE_GAUGE_SPEED_FACTOR,
@@ -634,11 +635,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const playerRecastSeconds = commandReady
     ? 0
     : Math.max(0, ((100 - commandProgress) / commandProgressPerTick) * 0.05);
-  const presentationLocked = !!battleAnnouncement || !!conditionAnnouncement;
+  const presentationLocked =
+    !!battleAnnouncement ||
+    !!conditionAnnouncement;
+  const decisiveLocked = !!decisiveBlow;
   const actionsLocked =
     !!winner ||
     battlePhase !== 'active' ||
     presentationLocked ||
+    decisiveLocked ||
     showHelp ||
     showLog;
   const backgroundInert =
@@ -646,7 +651,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     showHelp ||
     showLog ||
     battlePhase !== 'active' ||
-    presentationLocked;
+    presentationLocked ||
+    decisiveLocked;
+  const footerInert = shouldInertBattleFooter(
+    backgroundInert,
+    !!winner,
+    battlePhase
+  );
   const isPaused = battlePhase !== 'active' || showHelp || showLog || presentationLocked;
   const timeScale = isPaused
     ? 0
@@ -935,6 +946,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     resolvedDefeatReason: DefeatReason = 'CAPITAL_COLLAPSE'
   ) => {
     if (endedRef.current || decisiveRef.current) return;
+    setPanel('capital');
+    setShowHelp(false);
+    setShowLog(false);
     if (!cinematic) {
       finalizeBattle(result, method, rawOwnership, resolvedDefeatReason);
       return;
@@ -2092,7 +2106,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         )}
       </main>
 
-      <footer className={`buyout-footer ${winner ? 'buyout-footer--settled' : ''}`} inert={backgroundInert}>
+      <footer className={`buyout-footer ${winner ? 'buyout-footer--settled' : ''}`} inert={footerInert}>
         {winner ? (
           <>
             <span>{winner === 'player'

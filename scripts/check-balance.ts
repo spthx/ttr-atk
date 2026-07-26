@@ -13,6 +13,7 @@ import {
   type EnemyDecisionContext,
 } from '../src/utils/enemyAi';
 import { calculateBattleReadiness } from '../src/utils/battleReadiness';
+import { shouldInertBattleFooter } from '../src/utils/battlePresentation';
 import { calculateRebellionProbability } from '../src/utils/formatter';
 import {
   getWindPool,
@@ -120,6 +121,21 @@ assert.ok(getWindPool(3).includes('CROSSWIND'));
 assert.ok(
   WIND_ACTIVE_SECONDS + WIND_CALM_SECONDS >= 26,
   'non-calm wind events are separated by a readable calm interval'
+);
+assert.equal(
+  shouldInertBattleFooter(true, false, 'finisher_notice'),
+  true,
+  'the live battle footer remains inert during locked presentations'
+);
+assert.equal(
+  shouldInertBattleFooter(true, true, 'finisher_notice'),
+  false,
+  'the settled footer must stay interactive so the result analysis can open'
+);
+assert.equal(
+  shouldInertBattleFooter(true, true, 'result'),
+  true,
+  'the result dialog keeps the settled footer inert behind its modal surface'
 );
 
 const readinessProperty = {

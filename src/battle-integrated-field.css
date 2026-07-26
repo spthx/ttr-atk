@@ -683,6 +683,16 @@
   margin-top: 0;
 }
 
+.buyout-screen .buyout-header span,
+.buyout-screen .buyout-header small,
+.buyout-screen .buyout-footer > span,
+.buyout-screen .command-deck--compact .investment-levels small,
+.buyout-screen .command-deck--compact .investment-levels b,
+.buyout-screen .command-deck--compact .command-primary span,
+.buyout-screen .command-deck--compact .command-panel--capital > p {
+  font-size: .75rem !important;
+}
+
 .command-deck--compact .investment-levels button,
 .command-deck--compact .command-primary {
   min-height: 2.75rem;
@@ -764,6 +774,12 @@
   flex: 0 0 auto;
   margin: .45rem .5rem 0;
   font-size: .75rem;
+}
+
+.buyout-screen .battle-drawer .command-wind-context > span,
+.buyout-screen .battle-drawer .command-wind-context small,
+.buyout-screen .battle-drawer .empty-funds {
+  font-size: .75rem !important;
 }
 
 .battle-drawer .command-panel--funds {
@@ -855,6 +871,27 @@
   animation: integrated-drawer-in .2s ease-out both;
 }
 
+.buyout-screen .buyout-log p,
+.buyout-screen .dialog-close {
+  font-size: .75rem !important;
+}
+
+.buyout-screen .battle-living-dead strong,
+.buyout-screen .battle-living-dead span,
+.buyout-screen .battle-living-dead > b {
+  font-size: .75rem;
+}
+
+.buyout-screen .battle-living-dead span {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .buyout-screen .buyout-header__actions button,
 .buyout-screen .buyout-dialog > header button {
   width: 2.75rem !important;
@@ -867,6 +904,7 @@
 }
 
 .buyout-screen .buyout-footer button {
+  min-width: 2.75rem;
   font-size: .75rem !important;
 }
 
@@ -1231,12 +1269,22 @@
     max-width: 5.7rem;
   }
 
+  .integrated-battlefield .battle-wind-sigil {
+    display: grid;
+    width: min(14rem, calc(100% - .12rem));
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    row-gap: .12rem;
+  }
+
   .integrated-battlefield .battle-wind-sigil span {
-    display: inline;
-    max-width: 12rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: block;
+    max-width: none;
+    grid-column: 1 / -1;
+    overflow: visible;
+    line-height: 1.2;
+    text-align: center;
+    text-overflow: clip;
+    white-space: normal;
   }
 
   .battle-action-strip {
