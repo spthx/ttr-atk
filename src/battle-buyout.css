@@ -642,7 +642,11 @@
   z-index: 150;
   display: grid;
   place-items: center;
-  padding: 1rem;
+  padding:
+    max(1rem, var(--game-safe-top))
+    max(1rem, var(--game-safe-right))
+    max(1rem, var(--game-safe-bottom))
+    max(1rem, var(--game-safe-left));
   background: rgba(0,3,10,.88);
   backdrop-filter: blur(6px);
 }

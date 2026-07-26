@@ -1376,3 +1376,919 @@
     animation: none !important;
   }
 }
+
+/*
+ * Character-first mobile pass.
+ * Long labels move inside a clipped ticker; actions use compact icon tiles;
+ * the single investment control links amount selection and confirmation.
+ */
+.battle-marquee {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.battle-marquee > span {
+  display: inline-block;
+  min-width: max-content;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.battle-marquee--active {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 .55rem, #000 calc(100% - .55rem), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 .55rem, #000 calc(100% - .55rem), transparent);
+}
+
+.battle-marquee--active > span {
+  animation: battle-marquee-scroll var(--marquee-duration) ease-in-out var(--marquee-delay) infinite;
+}
+
+.buyout-header .battle-title-ticker {
+  display: block;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.integrated-battlefield .ownership-board__labels > b {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: .3rem;
+}
+
+.integrated-battlefield .ownership-board__labels > b .battle-marquee {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.integrated-battlefield .ownership-board__labels > b > strong {
+  flex: 0 0 auto;
+  color: inherit;
+  font: 1000 .78rem/1 ui-monospace, monospace;
+}
+
+.integrated-battlefield .ownership-fighter {
+  position: relative;
+}
+
+.battle-status-rail {
+  position: absolute;
+  z-index: 32;
+  right: .2rem;
+  bottom: -.15rem;
+  left: .2rem;
+  display: flex;
+  min-height: 1.5rem;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .18rem;
+  pointer-events: none;
+}
+
+.battle-status-rail--enemy {
+  justify-content: flex-end;
+}
+
+.battle-status-rail > span {
+  position: relative;
+  display: grid;
+  width: 1.55rem;
+  height: 1.55rem;
+  place-items: center;
+  border: 1px solid rgba(125, 211, 252, .72);
+  border-radius: .35rem;
+  color: #dff7ff;
+  background: rgba(3, 31, 52, .94);
+  box-shadow: 0 0 .5rem rgba(56, 189, 248, .3);
+}
+
+.battle-status-rail--enemy > span {
+  border-color: rgba(251, 113, 133, .75);
+  color: #ffe4e6;
+  background: rgba(76, 5, 25, .94);
+  box-shadow: 0 0 .5rem rgba(244, 63, 94, .28);
+}
+
+.battle-status-rail > span > svg {
+  width: .9rem;
+  height: .9rem;
+}
+
+.battle-status-rail > span > b {
+  position: absolute;
+  right: -.2rem;
+  bottom: -.22rem;
+  min-width: .9rem;
+  padding: .08rem .18rem;
+  border-radius: 999px;
+  color: #07111f;
+  background: #e0f2fe;
+  font: 1000 .75rem/1 ui-monospace, monospace;
+  text-align: center;
+  box-shadow: 0 .1rem .2rem rgba(0, 0, 0, .62);
+}
+
+.battle-status-rail--enemy > span > b {
+  color: #4c0519;
+  background: #fecdd3;
+}
+
+.battle-status-rail > .battle-status-rail__living {
+  border-color: rgba(216, 180, 254, .82);
+  color: #f3e8ff;
+  background: rgba(59, 7, 100, .94);
+}
+
+.battle-flying-texts {
+  position: absolute;
+  z-index: 46;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.battle-flying-texts .gil-floater {
+  top: auto;
+  right: auto;
+  bottom: calc(28% + var(--floater-index, 0) * 1.25rem);
+  left: 8%;
+  max-width: 38%;
+  translate: 0 0;
+  padding: .3rem .48rem;
+  overflow: hidden;
+  border: 1px solid rgba(125, 211, 252, .68);
+  border-radius: .42rem;
+  color: #e0f2fe;
+  background: rgba(3, 31, 52, .92);
+  font: 1000 .75rem/1.15 ui-monospace, monospace;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 0 .45rem rgba(56, 189, 248, .9), 0 .12rem .2rem #000;
+  box-shadow: 0 0 .8rem rgba(56, 189, 248, .22);
+  animation: battle-float-positive 1.4s cubic-bezier(.2, .75, .28, 1) both;
+}
+
+.battle-flying-texts .gil-floater--enemy {
+  right: 8%;
+  left: auto;
+}
+
+.battle-flying-texts .gil-floater--center {
+  right: auto;
+  left: 50%;
+  max-width: 58%;
+  translate: -50% 0;
+}
+
+.battle-flying-texts .gil-floater--negative {
+  top: calc(49% + var(--floater-index, 0) * 1.1rem);
+  bottom: auto;
+  border-color: rgba(251, 113, 133, .78);
+  color: #ffe4e6;
+  background: rgba(76, 5, 25, .94);
+  text-shadow: 0 0 .5rem rgba(244, 63, 94, .92), 0 .12rem .2rem #000;
+  box-shadow: 0 0 .8rem rgba(244, 63, 94, .24);
+  animation-name: battle-float-negative;
+}
+
+.battle-flying-texts .gil-floater--notice {
+  right: auto;
+  bottom: 42%;
+  left: 50%;
+  max-width: 64%;
+  translate: -50% 0;
+  border-color: rgba(216, 180, 254, .78);
+  color: #f3e8ff;
+  background: rgba(46, 16, 74, .94);
+  text-shadow: 0 0 .52rem rgba(192, 132, 252, .9), 0 .12rem .2rem #000;
+  animation-name: battle-float-notice;
+}
+
+.battle-action-strip__fankit-icon {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: 1.8rem;
+  height: 1.8rem;
+  object-fit: contain;
+  filter: drop-shadow(0 0 .3rem rgba(110, 231, 183, .5));
+}
+
+.battle-action-strip__action.is-ready {
+  filter: saturate(1.12);
+}
+
+.battle-action-strip__action.is-ready:not(:disabled) {
+  box-shadow: inset 0 0 .8rem rgba(255, 255, 255, .08), 0 0 .55rem rgba(125, 211, 252, .2);
+}
+
+.investment-hold-button {
+  --investment-hold-duration: 700ms;
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 4.35rem;
+  grid-template-columns: 2.35rem auto minmax(0, 1fr);
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  gap: .15rem .55rem;
+  padding: .55rem .7rem .68rem;
+  overflow: hidden;
+  border: 1px solid #ffe58a;
+  border-radius: .72rem;
+  color: #fff7cf;
+  background: linear-gradient(110deg, #4e2d05, #7c4a08 44%, #382304);
+  box-shadow: 0 .2rem 0 #5c3506, 0 .42rem 1rem rgba(245, 196, 81, .18), inset 0 0 1rem rgba(255, 238, 155, .1);
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.investment-hold-button::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(112deg, transparent, rgba(255, 255, 255, .12), transparent);
+}
+
+.investment-hold-button__fill {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  width: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(14, 165, 233, .22), rgba(103, 232, 249, .76)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, .13) 0 .45rem, transparent .45rem .9rem);
+  box-shadow: .2rem 0 .9rem rgba(103, 232, 249, .72);
+}
+
+.investment-hold-button.is-holding .investment-hold-button__fill {
+  animation: investment-hold-fill var(--investment-hold-duration) linear forwards;
+}
+
+.investment-hold-button > svg {
+  position: relative;
+  z-index: 2;
+  width: 2rem;
+  height: 2rem;
+  grid-row: 1 / -1;
+  color: #fde68a;
+  filter: drop-shadow(0 0 .32rem rgba(250, 204, 21, .55));
+}
+
+.investment-hold-button__value {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  min-width: 5.2rem;
+  align-content: center;
+  gap: .08rem;
+  text-align: left;
+}
+
+.investment-hold-button__value small {
+  color: #fde68a;
+  font-size: .75rem;
+  font-weight: 900;
+}
+
+.investment-hold-button__value b {
+  overflow: hidden;
+  color: #fff;
+  font: 1000 1.08rem/1.05 ui-monospace, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 .12rem .2rem rgba(0, 0, 0, .8);
+}
+
+.investment-hold-button__instruction {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  justify-self: end;
+  overflow: hidden;
+  color: #fef3c7;
+  font-size: .75rem;
+  font-weight: 900;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.investment-hold-button__steps {
+  position: absolute;
+  z-index: 3;
+  right: .62rem;
+  bottom: .3rem;
+  left: 3.55rem;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: .2rem;
+}
+
+.investment-hold-button__steps > i {
+  height: .24rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, .72);
+  box-shadow: inset 0 0 0 1px rgba(254, 243, 199, .25);
+}
+
+.investment-hold-button__steps > i.is-selected {
+  background: #fff4a8;
+  box-shadow: 0 0 .45rem rgba(250, 204, 21, .9);
+}
+
+.investment-hold-button__steps > i.is-locked {
+  opacity: .22;
+}
+
+.investment-hold-button.is-recharging {
+  border-color: rgba(148, 163, 184, .58);
+  color: #dbe5f4;
+  background: linear-gradient(110deg, #172033, #26354d 50%, #111827);
+  box-shadow: 0 .18rem 0 #080d16, inset 0 0 1rem rgba(125, 211, 252, .05);
+}
+
+.investment-hold-button.is-recharging > svg {
+  color: #94a3b8;
+  filter: none;
+}
+
+.investment-hold-button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(.65);
+  opacity: .48;
+}
+
+.command-deck--compact .command-panel--capital {
+  grid-template-columns: minmax(0, 1fr);
+  gap: .22rem;
+}
+
+.command-deck--compact .command-panel--capital > p {
+  min-height: .9rem;
+}
+
+@keyframes battle-marquee-scroll {
+  0%, 16% { transform: translateX(0); }
+  48%, 68% { transform: translateX(var(--marquee-shift)); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes battle-float-positive {
+  0% { opacity: 0; transform: translateY(.95rem) scale(.82); }
+  18%, 62% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-3rem) scale(1.05); }
+}
+
+@keyframes battle-float-negative {
+  0% { opacity: 0; transform: translateY(-.85rem) scale(.84); }
+  18%, 62% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(3rem) scale(1.05); }
+}
+
+@keyframes battle-float-notice {
+  0% { opacity: 0; transform: translateY(.3rem) scale(.82); }
+  22%, 66% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-.5rem) scale(1.08); }
+}
+
+@keyframes investment-hold-fill {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+@media (min-width: 900px) {
+  .integrated-battlefield {
+    max-height: 22rem;
+    flex-basis: clamp(20rem, 38dvh, 22rem) !important;
+  }
+
+  .integrated-battlefield .ownership-duel {
+    grid-template-columns: 8rem minmax(0, 1fr) 8rem;
+  }
+
+  .integrated-battlefield .ownership-fighter {
+    height: 8rem;
+  }
+
+  .integrated-battlefield .ownership-fighter .ownership-avatar {
+    width: 7.5rem;
+    height: 8rem;
+  }
+
+  .integrated-battlefield > .battlefield-capital {
+    padding-top: 7.8rem !important;
+  }
+
+  .battle-action-strip__action {
+    grid-template-columns: 1.8rem minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .integrated-battlefield {
+    max-height: 26rem;
+    flex-basis: clamp(23.5rem, 49dvh, 26rem) !important;
+  }
+
+  .integrated-battlefield::after {
+    bottom: 3.45rem;
+  }
+
+  .integrated-battlefield .ownership-duel {
+    inset: 1.9rem .12rem auto;
+    grid-template-columns: 7.6rem minmax(0, 1fr) 7.6rem;
+    gap: .06rem;
+  }
+
+  .integrated-battlefield .ownership-fighter {
+    height: 9.5rem;
+  }
+
+  .integrated-battlefield .ownership-fighter .ownership-avatar {
+    width: 7.35rem;
+    height: 9.5rem;
+  }
+
+  .integrated-battlefield .ownership-duel .ownership-track {
+    margin-top: .52rem;
+  }
+
+  .integrated-battlefield .battle-wind-sigil {
+    top: 1.34rem;
+    width: min(7.55rem, calc(100% - .1rem));
+  }
+
+  .integrated-battlefield > .battlefield-capital {
+    padding-top: 10.4rem !important;
+  }
+
+  .integrated-battlefield .battlefield-overview > p {
+    right: 12%;
+    left: 12%;
+  }
+
+  .battle-status-rail {
+    bottom: -.08rem;
+  }
+
+  .battle-action-strip {
+    grid-template-columns: repeat(auto-fit, minmax(3.65rem, 1fr));
+    gap: .18rem;
+    padding: .2rem;
+  }
+
+  .battle-action-strip__action {
+    display: grid;
+    min-height: 3.45rem;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 1.7rem 1fr;
+    justify-items: center;
+    gap: .08rem;
+    padding: .22rem .18rem .34rem;
+    text-align: center;
+  }
+
+  .battle-action-strip__action > svg,
+  .battle-action-strip__fankit-icon {
+    width: 1.65rem;
+    height: 1.65rem;
+  }
+
+  .battle-action-strip__action > span:not(.battle-action-strip__lb-bars):not(.battle-action-strip__overflow) {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .battle-action-strip__action b {
+    display: block;
+    width: 100%;
+    font-size: .75rem;
+    text-align: center;
+  }
+
+  .battle-action-strip__action small {
+    display: none;
+  }
+
+  .battle-action-strip__action em {
+    display: none;
+  }
+
+  .battle-action-strip__action--lb {
+    padding-bottom: .5rem;
+  }
+
+  .battle-action-strip__lb-bars {
+    right: .2rem;
+    bottom: .16rem;
+    left: .2rem;
+  }
+
+  .command-deck--compact {
+    padding: .24rem .3rem .3rem;
+  }
+
+  .command-deck--compact .command-deck__summary {
+    display: none;
+  }
+
+  .investment-hold-button {
+    min-height: 4.35rem;
+    grid-template-columns: 2.2rem auto minmax(0, 1fr);
+    padding: .48rem .62rem .66rem;
+  }
+
+  .investment-hold-button > svg {
+    width: 1.85rem;
+    height: 1.85rem;
+  }
+
+  .investment-hold-button__value {
+    min-width: 4.9rem;
+  }
+
+  .investment-hold-button__value b {
+    font-size: 1rem;
+  }
+
+  .investment-hold-button__instruction {
+    font-size: .75rem;
+  }
+
+  .command-deck--compact .command-panel--capital > p {
+    font-size: .75rem !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .integrated-battlefield .battle-wind-sigil {
+    display: grid;
+    width: min(7.55rem, calc(100% - .1rem));
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .integrated-battlefield .battle-wind-sigil span {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .integrated-battlefield .ownership-board__labels > b {
+    gap: .18rem;
+  }
+
+  .integrated-battlefield .ownership-board__labels > b > strong {
+    font-size: .75rem;
+  }
+}
+
+@media (max-height: 700px) {
+  .integrated-battlefield {
+    max-height: 18rem;
+    flex-basis: 18rem !important;
+  }
+
+  .integrated-battlefield .ownership-duel {
+    top: 1.55rem;
+    grid-template-columns: 5.8rem minmax(0, 1fr) 5.8rem;
+  }
+
+  .integrated-battlefield .ownership-fighter {
+    height: 5.9rem;
+  }
+
+  .integrated-battlefield .ownership-fighter .ownership-avatar {
+    width: 5.6rem;
+    height: 5.9rem;
+  }
+
+  .integrated-battlefield > .battlefield-capital {
+    padding-top: 6.15rem !important;
+  }
+
+  .integrated-battlefield .battle-wind-sigil {
+    top: 1.25rem;
+    width: min(8.5rem, calc(100% - .1rem));
+  }
+
+  .investment-hold-button {
+    min-height: 3.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battle-marquee--active > span,
+  .battle-flying-texts .gil-floater,
+  .investment-hold-button__fill {
+    animation: none !important;
+  }
+
+  .battle-marquee--active > span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .battle-flying-texts .gil-floater {
+    opacity: 1;
+  }
+
+  .investment-hold-button.is-holding .investment-hold-button__fill {
+    width: 0;
+  }
+}
+
+/*
+ * Capital-anchored actors.
+ * Characters and capital piles share one visual row. Actor feet stay just
+ * above the budget panel while ownership and wind keep a protected top lane.
+ */
+.integrated-battlefield .ownership-duel {
+  right: 19%;
+  left: 19%;
+  display: block;
+}
+
+.integrated-battlefield .ownership-duel .ownership-track {
+  width: 100%;
+  margin-inline: 0;
+}
+
+.integrated-battlefield .battle-wind-sigil {
+  top: 1.72rem;
+  width: min(11rem, calc(100% - .35rem));
+  max-width: calc(100% - .35rem) !important;
+}
+
+.integrated-battlefield .battlefield-overview > p {
+  top: 5rem;
+  right: 19%;
+  bottom: auto;
+  left: 19%;
+}
+
+.integrated-battlefield > .battlefield-capital {
+  padding-top: 5.25rem !important;
+}
+
+.integrated-battlefield .player-capital-stack,
+.integrated-battlefield .enemy-capital-stack {
+  --capital-info-height: 3.25rem;
+  position: relative;
+  display: grid;
+  min-height: 0;
+  flex: 1 1 auto;
+  grid-template-rows: minmax(0, 1fr) var(--capital-info-height);
+  overflow: visible;
+}
+
+.integrated-battlefield .capital-visual-row {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  min-height: 8.6rem;
+  overflow: visible;
+}
+
+.integrated-battlefield .capital-visual-row > .gil-tower {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  width: 100%;
+  min-height: 0;
+}
+
+.integrated-battlefield .capital-visual-row .gil-tower__chips {
+  position: absolute;
+  top: .3rem;
+  bottom: 1.65rem;
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips {
+  right: -.05rem;
+  left: 25%;
+}
+
+.integrated-battlefield .capital-visual-row .gil-tower--enemy .gil-tower__chips {
+  right: 25%;
+  left: -.05rem;
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image {
+  width: auto;
+  max-width: calc(100% - 1rem);
+  height: auto;
+  max-height: calc(100% - 2.25rem);
+  object-fit: contain;
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image--medallion {
+  bottom: .65rem !important;
+  width: auto;
+  max-width: calc(100% - 1rem);
+  max-height: calc(100% - 1rem);
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image:nth-of-type(2) {
+  bottom: .45rem;
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image:nth-of-type(3) {
+  bottom: .82rem;
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image:nth-of-type(4) {
+  bottom: 1.18rem;
+}
+
+.integrated-battlefield .capital-visual-row .gil-chip-image:nth-of-type(5) {
+  bottom: 1.55rem;
+}
+
+.integrated-battlefield .capital-visual-row .gil-tower > strong {
+  position: absolute;
+  z-index: 26;
+  top: .22rem;
+  max-width: 64%;
+  padding: .18rem .3rem;
+  overflow: hidden;
+  border-radius: .3rem;
+  background: rgba(2, 6, 23, .84);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.integrated-battlefield .capital-visual-row .gil-tower--player > strong {
+  right: .08rem;
+}
+
+.integrated-battlefield .capital-visual-row .gil-tower--enemy > strong {
+  left: .08rem;
+}
+
+.integrated-battlefield .capital-visual-row .gil-tower > small {
+  display: none;
+}
+
+.integrated-battlefield .capital-visual-row .ownership-fighter {
+  position: absolute;
+  z-index: 22;
+  bottom: .5rem;
+  width: 7.35rem;
+  height: 9.5rem;
+  pointer-events: none;
+}
+
+.integrated-battlefield .capital-visual-row .ownership-fighter--player {
+  left: -.2rem;
+}
+
+.integrated-battlefield .capital-visual-row .ownership-fighter--enemy {
+  right: -.2rem;
+}
+
+.integrated-battlefield .capital-visual-row .ownership-fighter .ownership-avatar {
+  right: auto;
+  bottom: 0;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  translate: -50% 0;
+  object-fit: contain;
+  object-position: center bottom;
+}
+
+.integrated-battlefield .capital-visual-row .ownership-avatar--player {
+  transform: scaleX(-1);
+}
+
+.integrated-battlefield .capital-visual-row .ownership-avatar--player.avatar-attack {
+  transform: translateX(18px) scaleX(-1) rotate(-5deg);
+}
+
+.integrated-battlefield .capital-visual-row .ownership-avatar--enemy.avatar-hit {
+  transform: translateX(-14px) rotate(5deg);
+}
+
+.integrated-battlefield .capital-visual-row .battle-status-rail {
+  right: .2rem;
+  top: .15rem;
+  bottom: auto;
+  left: .2rem;
+}
+
+.integrated-battlefield .player-budget-overlay,
+.integrated-battlefield .enemy-budget-overlay {
+  position: relative;
+  z-index: 30;
+  inset: auto;
+  width: 100%;
+  height: var(--capital-info-height);
+  min-height: var(--capital-info-height);
+  box-sizing: border-box;
+}
+
+@media (min-width: 900px) {
+  .integrated-battlefield .ownership-duel {
+    right: 22%;
+    left: 22%;
+  }
+
+  .integrated-battlefield .battlefield-overview > p {
+    right: 24%;
+    left: 24%;
+  }
+
+  .integrated-battlefield > .battlefield-capital {
+    padding-top: 4.75rem !important;
+  }
+
+  .integrated-battlefield .capital-visual-row {
+    min-height: 8.75rem;
+  }
+
+  .integrated-battlefield .capital-visual-row .ownership-fighter {
+    width: 7.5rem;
+    height: 8rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .integrated-battlefield .ownership-duel {
+    top: 1.9rem;
+    right: 18%;
+    left: 18%;
+  }
+
+  .integrated-battlefield .battle-wind-sigil {
+    top: 1.72rem;
+    width: min(10.5rem, calc(100% - .2rem));
+  }
+
+  .integrated-battlefield .battlefield-overview > p {
+    display: none;
+  }
+
+  .integrated-battlefield > .battlefield-capital {
+    padding-top: 5.25rem !important;
+  }
+
+  .integrated-battlefield .capital-visual-row {
+    min-height: 8.6rem;
+  }
+}
+
+@media (max-height: 700px) {
+  .integrated-battlefield .ownership-duel {
+    top: 1.55rem;
+    right: 17%;
+    left: 17%;
+  }
+
+  .integrated-battlefield .battle-wind-sigil {
+    top: 1.62rem;
+  }
+
+  .integrated-battlefield .battlefield-overview > p {
+    display: none;
+  }
+
+  .integrated-battlefield > .battlefield-capital {
+    padding-top: 4.2rem !important;
+  }
+
+  .integrated-battlefield .player-capital-stack,
+  .integrated-battlefield .enemy-capital-stack {
+    --capital-info-height: 2.9rem;
+  }
+
+  .integrated-battlefield .capital-visual-row {
+    min-height: 6.35rem;
+  }
+
+  .integrated-battlefield .capital-visual-row .ownership-fighter {
+    width: 5.6rem;
+    height: 5.9rem;
+  }
+
+  .integrated-battlefield .capital-visual-row .gil-tower__chips {
+    bottom: 1.25rem;
+  }
+}
