@@ -193,7 +193,7 @@
 .buyout-footer--settled {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: .75rem;
-  padding-bottom: max(1.15rem, calc(env(safe-area-inset-bottom) + .9rem));
+  padding-bottom: max(1.15rem, calc(var(--game-safe-bottom) + .9rem));
   background: linear-gradient(90deg, rgba(4, 15, 28, .98), rgba(30, 23, 5, .98));
 }
 

@@ -231,7 +231,7 @@
   .command-deck {
     max-height: 12.5rem;
     overflow: hidden;
-    padding-bottom: max(.45rem, env(safe-area-inset-bottom));
+    padding-bottom: max(.45rem, var(--game-safe-bottom));
   }
 
   .command-panel--funds {

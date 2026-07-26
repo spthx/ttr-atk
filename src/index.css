@@ -1,5 +1,20 @@
 @import "tailwindcss";
 @import "./ending.css";
+
+:root {
+  --game-safe-top: env(safe-area-inset-top, 0px);
+  --game-safe-right: env(safe-area-inset-right, 0px);
+  --game-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --game-safe-left: env(safe-area-inset-left, 0px);
+}
+
+html.game-embedded {
+  --game-safe-top: 0px;
+  --game-safe-right: 0px;
+  --game-safe-bottom: 0px;
+  --game-safe-left: 0px;
+}
+
 html,
 body,
 #root {
@@ -11,6 +26,17 @@ body,
 
 body {
   position: relative;
+}
+
+.game-app-shell {
+  padding-top: var(--game-safe-top);
+  padding-right: var(--game-safe-right);
+  padding-left: var(--game-safe-left);
+}
+
+.pb-safe {
+  height: calc(3.5rem + var(--game-safe-bottom));
+  padding-bottom: var(--game-safe-bottom);
 }
 
 @media (max-width: 639px) {
@@ -182,11 +208,34 @@ body {
   animation: launch-curtain .55s ease-out;
 }
 
+.launch-intro__content {
+  padding:
+    calc(1.25rem + var(--game-safe-top))
+    calc(1.25rem + var(--game-safe-right))
+    calc(1.25rem + var(--game-safe-bottom))
+    calc(1.25rem + var(--game-safe-left));
+}
+
+@media (min-width: 640px) {
+  .launch-intro__content {
+    padding:
+      calc(2.5rem + var(--game-safe-top))
+      calc(2.5rem + var(--game-safe-right))
+      calc(2.5rem + var(--game-safe-bottom))
+      calc(2.5rem + var(--game-safe-left));
+  }
+}
+
 .launch-intro__panel {
   animation: launch-panel .48s cubic-bezier(.2,.8,.2,1);
 }
 
 .city-unlock {
+  padding:
+    calc(1rem + var(--game-safe-top))
+    calc(1rem + var(--game-safe-right))
+    calc(1rem + var(--game-safe-bottom))
+    calc(1rem + var(--game-safe-left));
   animation: launch-curtain .35s ease-out;
 }
 
@@ -393,7 +442,8 @@ body {
   .launch-intro__content {
     gap: .75rem;
     justify-content: flex-start;
-    padding-block: .75rem;
+    padding-top: calc(.75rem + var(--game-safe-top));
+    padding-bottom: calc(.75rem + var(--game-safe-bottom));
   }
 
   .launch-intro__panel {
@@ -495,7 +545,7 @@ body {
   }
 
   .battle-mobile-dock {
-    padding-bottom: max(.35rem, env(safe-area-inset-bottom));
+    padding-bottom: max(.35rem, var(--game-safe-bottom));
   }
 }
 
@@ -814,7 +864,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: .25rem .75rem;
-  padding: .7rem 1rem calc(.7rem + env(safe-area-inset-bottom));
+  padding: .7rem 1rem calc(.7rem + var(--game-safe-bottom));
   border-top: 1px solid rgba(71, 85, 105, .45);
   color: #7f8da1;
   background: rgba(2, 6, 23, .92);
