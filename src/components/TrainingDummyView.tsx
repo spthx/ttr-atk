@@ -140,6 +140,7 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
               >
                 現在の資金・支援元・装備で、LEVEL別の木人へ何度でも挑戦できます。
                 木人は開幕の耐久資本から追加防衛を行いません。
+                訓練中も通常の毎秒収益とオフライン収益は商会資金へ加算されます。
               </p>
             </div>
             <button

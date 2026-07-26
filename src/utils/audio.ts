@@ -74,6 +74,33 @@ class SoundEffects {
     }
   }
 
+  // Short two-tone cue used only when the shared command gauge becomes ready.
+  playCommandReady() {
+    if (!this.enabled) return;
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+      [659.25, 987.77].forEach((frequency, index) => {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const start = now + index * 0.065;
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(frequency, start);
+        gain.gain.setValueAtTime(0.11, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.14);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.15);
+      });
+    } catch {
+      // Audio fallback
+    }
+  }
+
   // Massive Cash / Demand Investment Sound
   playBigCash() {
     if (!this.enabled) return;

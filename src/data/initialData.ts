@@ -381,7 +381,7 @@ export const INITIAL_SKILLS: TacticalSkill[] = [
     name: '疾風怒濤の計',
     costType: 'low',
     cooldownMs: TACTICAL_SKILL_BALANCE.fastAction.cooldownMs,
-    description: '10秒間、命令ゲージの進行速度を約1.8倍にする。',
+    description: '10秒間、行動準備ゲージの進行速度を約1.8倍にする。',
     effectType: 'COOLDOWN_REDUCTION',
     unlockRequirements: '「馬・畜産」の事業（騎獣牧場・保存食加工・陸上輸送）のいずれかを保有',
     requiredIndustries: ['馬・畜産'],

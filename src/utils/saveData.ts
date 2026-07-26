@@ -37,8 +37,8 @@ export interface GameSaveData {
   /** One manual battle-synergy slot. Missing/unknown values fall back in App. */
   selectedBattleSynergyId?: string | null;
   /**
-   * True while a no-economy training battle is open.
-   * Optional so existing schema-v3 saves remain compatible.
+   * Legacy schema-v3 field. Training no longer pauses passive income.
+   * Kept optional so older saves load, then normalized to false.
    */
   passiveIncomePaused?: boolean;
   lastSavedAt: number;
@@ -138,7 +138,7 @@ export const loadGameSave = (): GameSaveData | null => {
         typeof parsed.selectedBattleSynergyId === 'string'
           ? parsed.selectedBattleSynergyId
           : null,
-      passiveIncomePaused: parsed.passiveIncomePaused === true,
+      passiveIncomePaused: false,
       lastSavedAt: parsed.lastSavedAt,
     };
   } catch (error) {
