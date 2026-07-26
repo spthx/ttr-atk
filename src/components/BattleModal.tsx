@@ -599,6 +599,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const commandReadySoundArmedRef = useRef(false);
   const decisiveRef = useRef(false);
   const terminalRef = useRef<TerminalResolution | null>(null);
+  const terminalMotionPlayedRef = useRef(false);
   const lastPressureCauseRef = useRef<TerminalCause>('pressure');
   const liquidityWarningShownRef = useRef(false);
   const resultConfirmArmedRef = useRef(false);
@@ -1551,12 +1552,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         reducedMotion
       );
       if (particleCount > 0) {
+        const compactEffects = window.innerWidth <= 1024;
         confetti({
           particleCount,
-          spread: window.innerWidth <= 640 ? 72 : 96,
-          startVelocity: window.innerWidth <= 640 ? 26 : 34,
-          ticks: window.innerWidth <= 640 ? 80 : 120,
-          scalar: window.innerWidth <= 640 ? 0.78 : 0.92,
+          spread: compactEffects ? 72 : 96,
+          startVelocity: compactEffects ? 26 : 34,
+          ticks: compactEffects ? 80 : 120,
+          scalar: compactEffects ? 0.78 : 0.92,
           origin: { y: 0.48 },
           disableForReducedMotion: true,
         });
@@ -1630,7 +1632,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             ? '蘇生猶予終了――自社の防衛線が崩壊する'
             : `FINAL OFFER――${TERMINAL_CAUSE_LABELS[cause]}が押し切る！`
     );
-    playMotion(result === 'player' ? 'player' : 'enemy');
+    if (!terminalMotionPlayedRef.current) {
+      terminalMotionPlayedRef.current = true;
+      playMotion(result === 'player' ? 'player' : 'enemy');
+    }
     const reducedMotion = window.matchMedia?.(
       '(prefers-reduced-motion: reduce)'
     ).matches ?? false;
@@ -1646,7 +1651,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setTerminalCinematicStage('impact');
       updateGauge(result === 'player' ? -100 : 100);
       setDecisiveBlow({ winner: result, impacted: true });
-      playMotion(result === 'player' ? 'player' : 'enemy');
     }, anticipationMs);
     decisiveResolveTimerRef.current = window.setTimeout(() => {
       decisiveResolveTimerRef.current = null;

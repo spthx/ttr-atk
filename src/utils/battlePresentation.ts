@@ -8,7 +8,7 @@ export const BATTLE_CINEMATIC_TIMING = {
   finishNoticeMs: 1_450,
 } as const;
 
-export const RESULT_CONFIRM_ARM_DELAY_MS = 700;
+export const RESULT_CONFIRM_ARM_DELAY_MS = 1_200;
 
 /**
  * One terminal sequence owns the final offer, impact and result reveal.
@@ -196,7 +196,7 @@ export const getVictoryConfettiParticleCount = (
   reducedMotion: boolean
 ) => {
   if (reducedMotion) return 0;
-  return viewportWidth <= 640 ? 42 : 110;
+  return viewportWidth <= 1024 ? 42 : 110;
 };
 
 export const getCapitalVisualStage = (amount: number) => {

@@ -281,7 +281,7 @@ assert.equal(
   false,
   'the settled footer must stay interactive so the result analysis can open'
 );
-assert.equal(RESULT_CONFIRM_ARM_DELAY_MS, 700);
+assert.equal(RESULT_CONFIRM_ARM_DELAY_MS, 1_200);
 assert.equal(
   canConfirmBattleResult({
     battlePhase: 'finisher_notice',
@@ -323,6 +323,11 @@ assert.equal(
   'a confirmed result cannot settle twice'
 );
 assert.equal(getVictoryConfettiParticleCount(402, false), 42);
+assert.equal(
+  getVictoryConfettiParticleCount(1024, false),
+  42,
+  'tablet-sized victory effects use the compact particle budget'
+);
 assert.equal(getVictoryConfettiParticleCount(1440, false), 110);
 assert.equal(getVictoryConfettiParticleCount(402, true), 0);
 
