@@ -1,14 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Property, IndustryType, CommunityType } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER, TRADE_COMMUNITIES } from '../data/worldData';
-import { formatCurrency } from '../utils/formatter';
+import { formatCurrency, formatNumber } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
-import { ArrowRight, ShieldAlert, CheckCircle2, TrendingUp, TrendingDown, Newspaper, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole, Dumbbell, Gauge } from 'lucide-react';
-import {
-  WindIndicator,
-  type WindCondition,
-  type WindProgressionStage,
-} from './WindIndicator';
+import { ArrowRight, ShieldAlert, CheckCircle2, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole, Dumbbell, Gauge, WalletCards } from 'lucide-react';
 import { BeginnerGuide } from './BeginnerGuide';
 import { HelpTip } from './HelpTip';
 import { StrengthComparison } from './StrengthComparison';
@@ -18,18 +13,14 @@ import type { BattleReadinessResult } from '../utils/battleReadiness';
 import {
   countsTowardCityConquest,
   getCampaignProperties,
-  PASSIVE_REVENUE_MULTIPLIER,
 } from '../utils/gameBalance';
+import '../market-strength.css';
 
 interface MarketViewProps {
   properties: Property[];
   totalFunds: number;
   unlockedCommunityIds: Set<CommunityType>;
   navigationRequest?: { id: number; mode: 'map' | 'targets'; community: CommunityType | 'ALL' } | null;
-  currentWind: WindCondition;
-  windCountdown: number;
-  windProgressionStage: WindProgressionStage;
-  propertyRevenueMultipliers?: ReadonlyMap<string, number>;
   campaignMode?: 'normal' | 'savage';
   getStrengthComparison: (property: Property) => BattleReadinessResult;
   onStartBuyout: (property: Property) => void;
@@ -61,15 +52,25 @@ const getPropertyPresentation = (description: string) => {
   return { text: text.trim(), tags };
 };
 
+const READINESS_PRESENTATION = {
+  advantage: { label: '余力あり' },
+  even: { label: '接戦' },
+  challenge: { label: '要工夫' },
+  danger: { label: '準備不足' },
+} as const;
+
+const READINESS_PRIORITY: Record<BattleReadinessResult['grade'], number> = {
+  advantage: 3,
+  even: 2,
+  challenge: 1,
+  danger: 0,
+};
+
 export const MarketView: React.FC<MarketViewProps> = ({
   properties,
   totalFunds,
   unlockedCommunityIds,
   navigationRequest,
-  currentWind,
-  windCountdown,
-  windProgressionStage,
-  propertyRevenueMultipliers,
   campaignMode = 'normal',
   getStrengthComparison,
   onStartBuyout,
@@ -91,57 +92,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
     setShowOwnedProperties(false);
     setViewMode(navigationRequest.mode);
   }, [navigationRequest]);
-
-  // Real-time market fluctuation state for FX-like observation
-  const [marketRates, setMarketRates] = useState<Record<string, { price: number; change: number }>>({});
-  const [latestNews, setLatestNews] = useState<string>(
-    '【市場速報】各都市の取引所が開始。全産業で売買が活発になっています！'
-  );
-
-  const newsItems = [
-    '【市場ニュース】各都市の両替商が調達条件を見直し、農園・土地事業へ買いが集中！',
-    '【下落気配】一部の独立事業で一時的な価格下落。安値交渉の好機です！',
-    '【企業連合動向】東アルデナード商会圏が交渉資金を積み増した模様。',
-    '【産業トピックス】馬・畜産業で需要が急増。毎秒収益への期待が高まる。',
-    '【市場気配】全体的に押し目買いが優勢。取得交渉の好機です！',
-  ];
-
-
-  // Fluctuate property prices periodically
-  useEffect(() => {
-    // Initial rates
-    const initial: Record<string, { price: number; change: number }> = {};
-    properties.forEach((p) => {
-      const change = (Math.random() * 20 - 10); // -10% to +10%
-      initial[p.id] = {
-        price: Math.max(1000, Math.round(p.marketPrice * (1 + change / 100))),
-        change: Math.round(change * 10) / 10,
-      };
-    });
-    setMarketRates(initial);
-
-    const interval = setInterval(() => {
-      setMarketRates((prev) => {
-        const next = { ...prev };
-        const targetProp = properties[Math.floor(Math.random() * properties.length)];
-        if (targetProp) {
-          const delta = (Math.random() * 8 - 4); // -4% to +4% shift
-          const currentChange = Math.max(-15, Math.min(25, (next[targetProp.id]?.change || 0) + delta));
-          next[targetProp.id] = {
-            price: Math.max(1000, Math.round(targetProp.marketPrice * (1 + currentChange / 100))),
-            change: Math.round(currentChange * 10) / 10,
-          };
-        }
-        return next;
-      });
-
-      if (Math.random() < 0.4) {
-        setLatestNews(newsItems[Math.floor(Math.random() * newsItems.length)]);
-      }
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [properties]);
 
   const industries: IndustryType[] = [
     '馬・畜産',
@@ -192,42 +142,47 @@ export const MarketView: React.FC<MarketViewProps> = ({
   const visibleProperties = filteredProperties.filter((property) => showOwnedCards || property.owner !== 'player');
   const activeTargetCount = filteredProperties.length - ownedFilteredCount;
   const ownedProperties = properties.filter((property) => property.owner === 'player');
-  const companyPassiveRevenue = ownedProperties.reduce(
-    (total, property) =>
-      total +
-      Math.round(
-        property.annualRevenue *
-          PASSIVE_REVENUE_MULTIPLIER *
-          (propertyRevenueMultipliers?.get(property.id) ?? 1)
-      ),
-    0
+  const readinessSource =
+    viewMode === 'targets'
+      ? filteredProperties
+      : properties.filter((property) =>
+          unlockedCommunityIds.has(property.community)
+        );
+  const accessibleReadiness = readinessSource
+    .filter(
+      (property) =>
+        property.owner !== 'player'
+    )
+    .map((property) => getStrengthComparison(property));
+  const readinessCounts = accessibleReadiness.reduce(
+    (counts, result) => {
+      counts[result.grade] += 1;
+      return counts;
+    },
+    { advantage: 0, even: 0, challenge: 0, danger: 0 }
   );
   const companyStrengthSummary = (
     <section
-      className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 rounded-xl border border-cyan-400/25 bg-slate-950/85 px-3 py-2.5 shadow-lg sm:grid-cols-[auto_repeat(3,minmax(0,1fr))]"
-      aria-label={`現在の商会戦力。自社資金${formatCurrency(totalFunds)}、支援元${ownedProperties.length}件、毎秒収益${formatCurrency(companyPassiveRevenue)}`}
+      className="market-readiness-overview"
+      aria-label={`${viewMode === 'targets' ? '表示中' : '挑戦可能'}の相手。余力あり${readinessCounts.advantage}件、接戦${readinessCounts.even}件、要工夫${readinessCounts.challenge}件、準備不足${readinessCounts.danger}件`}
     >
-      <div className="flex items-center gap-2 text-xs font-black text-cyan-100">
-        <Gauge className="h-4 w-4 text-cyan-300" />
-        <span>現在の商会戦力</span>
-      </div>
-      <dl className="col-span-1 grid grid-cols-3 gap-1.5 sm:contents">
-        <div className="rounded-lg bg-slate-900/90 px-2 py-1.5 text-center">
-          <dt className="text-[10px] text-slate-500">自社資金</dt>
-          <dd className="truncate text-xs font-black text-amber-200">{formatCurrency(totalFunds)}</dd>
-        </div>
-        <div className="rounded-lg bg-slate-900/90 px-2 py-1.5 text-center">
-          <dt className="text-[10px] text-slate-500">支援元</dt>
-          <dd className="text-xs font-black text-cyan-200">{ownedProperties.length}件</dd>
-        </div>
-        <div className="rounded-lg bg-slate-900/90 px-2 py-1.5 text-center">
-          <dt className="text-[10px] text-slate-500">毎秒収益</dt>
-          <dd className="truncate text-xs font-black text-emerald-300">+{formatCurrency(companyPassiveRevenue)}/秒</dd>
-        </div>
+      <header>
+        <span><Gauge />{viewMode === 'targets' ? '表示中の挑戦目安' : '挑戦可能な相手'}</span>
+        <small>自社動員と競合防衛を比較</small>
+      </header>
+      <dl className="market-readiness-overview__grades">
+        {(Object.keys(READINESS_PRESENTATION) as BattleReadinessResult['grade'][]).map((grade) => (
+          <div key={grade} data-grade={grade}>
+            <dt>{READINESS_PRESENTATION[grade].label}</dt>
+            <dd>{readinessCounts[grade]}<small>件</small></dd>
+          </div>
+        ))}
       </dl>
-      <p className="col-span-2 text-[10px] leading-4 text-slate-500 sm:col-start-2 sm:col-end-5">
-        敵カードの「自社・動員見込」と「競合・総防衛予算」で挑戦しやすさを比較できます。
-      </p>
+      <footer>
+        <span><WalletCards />自社資金 <b>{formatCurrency(totalFunds)}</b></span>
+        <span>支援元 <b>{ownedProperties.length}件</b></span>
+        <small>勝率ではなく、商戦へ持ち込める資本の準備目安です。</small>
+      </footer>
     </section>
   );
 
@@ -261,15 +216,15 @@ export const MarketView: React.FC<MarketViewProps> = ({
   if (viewMode === 'map') {
     return (
       <div className="market-screen-enter space-y-3 font-sans">
-        <section className="relative min-h-36 overflow-hidden rounded-2xl border border-amber-400/40 shadow-2xl">
+        <section className="relative flex min-h-44 flex-col overflow-hidden rounded-2xl border border-amber-400/40 shadow-2xl sm:min-h-36">
           <img src={campaignMode === 'savage' ? FANKIT_ART.battleBackdrop : FANKIT_ART.marketBackdrop} alt="FFXIVファンキットによる交易世界の背景" className="absolute inset-0 h-full w-full object-cover object-center" />
           <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/85 to-slate-950/25" />
-          <div className="relative z-10 flex min-h-36 max-w-2xl flex-col justify-center px-5 py-5">
-            <p className={`text-[10px] font-black tracking-[0.28em] ${campaignMode === 'savage' ? 'text-rose-300' : 'text-amber-300'}`}>{campaignMode === 'savage' ? 'SAVAGE TRADE RAID' : 'GRAND WORLD MARKET'}</p>
+          <div className="relative z-10 flex min-h-0 max-w-2xl flex-1 flex-col justify-center px-5 pb-2 pt-5 sm:min-h-36 sm:py-5">
+            <p className={`text-[10px] font-black tracking-[0.28em] ${campaignMode === 'savage' ? 'text-rose-300' : 'text-amber-300'}`}>{campaignMode === 'savage' ? 'SAVAGE TRADE RAID' : 'GRAND TRADE CAMPAIGN'}</p>
             <h2 className="mt-1 text-2xl font-black text-white drop-shadow-lg">{campaignMode === 'savage' ? '挑戦する零式商戦を選ぶ' : '次に攻める都市を選ぶ'}</h2>
             <p className="mt-1 text-xs text-slate-200">{campaignMode === 'savage' ? '各都市の通常商戦を再構成した1～4層の高難度交易レイドです。' : '都市を選ぶと、交渉できる事業・契約だけを表示します。'}</p>
           </div>
-          <div className="absolute bottom-3 right-3 z-20 flex items-center gap-2">
+          <div className="relative z-20 flex items-center justify-end gap-2 px-5 pb-4 sm:absolute sm:bottom-3 sm:right-3 sm:p-0">
             {campaignMode === 'normal' && onOpenTraining && (
               <button type="button" onClick={onOpenTraining} className="flex min-h-11 items-center gap-1 rounded-lg border border-amber-400/40 bg-slate-950/85 px-3 py-2 text-xs font-black text-amber-200">
                 <Dumbbell className="h-4 w-4" /> 木人練習
@@ -300,14 +255,52 @@ export const MarketView: React.FC<MarketViewProps> = ({
             {communityProgress.map((community, index) => {
               const unlocked = unlockedCommunityIds.has(community.id);
               const prerequisite = COMMUNITY_CAMPAIGN_ORDER[index - 1];
+              const remainingTargets = getCampaignProperties(
+                properties,
+                community.id
+              ).filter((property) => property.owner !== 'player');
+              const easiestTarget = unlocked
+                ? remainingTargets
+                    .map((property) => {
+                      return {
+                        property,
+                        result: getStrengthComparison(property),
+                      };
+                    })
+                    .sort(
+                      (left, right) =>
+                        READINESS_PRIORITY[right.result.grade] -
+                          READINESS_PRIORITY[left.result.grade] ||
+                        right.result.assessmentRatio -
+                          left.result.assessmentRatio
+                    )[0] ?? null
+                : null;
               return (
-              <button key={community.id} type="button" disabled={!unlocked} onClick={() => { setSelectedCommunity(community.id); setViewMode('targets'); }} className={`group relative min-h-24 overflow-hidden rounded-xl border p-3 text-left transition-all ${unlocked ? 'active:scale-95' : 'cursor-not-allowed opacity-55'} ${community.conquered ? 'border-emerald-400/50 bg-emerald-950/45' : unlocked ? 'border-cyan-500/35 bg-slate-950 hover:border-cyan-300/70' : 'border-slate-800 bg-slate-950/80'}`} style={{ animationDelay: `${index * 28}ms` }}>
+              <button
+                key={community.id}
+                type="button"
+                disabled={!unlocked}
+                onClick={() => { setSelectedCommunity(community.id); setViewMode('targets'); }}
+                className={`campaign-city-card group relative min-h-28 overflow-hidden rounded-xl border p-3 text-left transition-all ${unlocked ? 'active:scale-95' : 'cursor-not-allowed opacity-55'} ${community.conquered ? 'border-emerald-400/50 bg-emerald-950/45' : unlocked ? 'border-cyan-500/35 bg-slate-950 hover:border-cyan-300/70' : 'border-slate-800 bg-slate-950/80'}`}
+                data-grade={easiestTarget?.result.grade}
+                style={{ animationDelay: `${index * 28}ms` }}
+              >
                 <img src={getFankitJobArt(community.id)} alt="" aria-hidden="true" className="absolute -bottom-5 -right-4 h-24 w-24 object-contain opacity-20 transition-transform group-hover:scale-110" />
                 <span className="relative z-10 flex items-center gap-1 text-xs font-black text-slate-100">{!unlocked && <LockKeyhole className="h-3 w-3 text-slate-500" />}{community.id}</span>
                 <span className="relative z-10 mt-1 block text-[11px] text-cyan-300">{community.marketCharacter}</span>
-                <span className={`relative z-10 mt-3 inline-block rounded px-1.5 py-0.5 text-[11px] font-black ${community.conquered ? 'bg-emerald-400/20 text-emerald-200' : 'bg-slate-800 text-slate-300'}`}>
+                <span className={`relative z-10 mt-2 inline-block rounded px-1.5 py-0.5 text-[11px] font-black ${community.conquered ? 'bg-emerald-400/20 text-emerald-200' : 'bg-slate-800 text-slate-300'}`}>
                   {community.conquered ? (campaignMode === 'savage' ? '零式踏破済み' : '制覇済み') : unlocked ? `${community.owned}/${community.total} ${campaignMode === 'savage' ? '層踏破' : '取得'}` : `${prerequisite}制覇で解放`}
                 </span>
+                {!community.conquered && easiestTarget && (
+                  <span className="campaign-city-card__readiness">
+                    <small>次の相手</small>
+                    <b>{READINESS_PRESENTATION[easiestTarget.result.grade].label}</b>
+                    <em aria-label={`自社${formatCurrency(easiestTarget.result.playerExpectedCapital)}、競合${formatCurrency(easiestTarget.result.enemyBudget)}`}>
+                      <span><small>自社</small><b>{formatNumber(easiestTarget.result.playerExpectedCapital)}</b></span>
+                      <span><small>競合</small><b>{formatNumber(easiestTarget.result.enemyBudget)}</b></span>
+                    </em>
+                  </span>
+                )}
               </button>
               );
             })}
@@ -360,28 +353,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
           </button>
         </div>
       )}
-
-      {/* Streamlined Market Ticker & Wind */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-2 shadow flex items-center gap-2 flex-1">
-          <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-[11px] shrink-0">
-            <Newspaper className="w-3.5 h-3.5 text-amber-400" />
-            <span>速報</span>
-          </div>
-          <div className="text-xs text-slate-200 font-mono truncate flex-1">
-            {latestNews}
-          </div>
-        </div>
-
-        <div className="shrink-0">
-          <WindIndicator
-            currentWind={currentWind}
-            nextChangeSeconds={windCountdown}
-            progressionStage={windProgressionStage}
-            compact
-          />
-        </div>
-      </div>
 
       {/* Filters Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
@@ -447,15 +418,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {visibleProperties.map((prop) => {
           const isPlayerOwned = prop.owner === 'player';
-          const rateInfo = marketRates[prop.id] || { price: prop.marketPrice, change: 0 };
-          const activePrice = rateInfo.price;
-          const savageRevenueMultiplier =
-            propertyRevenueMultipliers?.get(prop.id) ?? 1;
-          const displayedRevenue = Math.round(
-            prop.annualRevenue *
-              PASSIVE_REVENUE_MULTIPLIER *
-              savageRevenueMultiplier
-          );
+          const activePrice = prop.marketPrice;
           const fee = Math.round(activePrice * 0.03);
           const canAffordFee = totalFunds >= fee;
           const strengthComparison = isPlayerOwned
@@ -481,166 +444,102 @@ export const MarketView: React.FC<MarketViewProps> = ({
           return (
             <div
               key={prop.id}
-              className={`relative overflow-hidden bg-slate-900 border rounded-xl p-4 flex flex-col justify-between transition-all duration-200 hover:border-slate-600 shadow-md ${
-                isPlayerOwned
-                  ? 'border-emerald-500/30 bg-emerald-950/10'
-                  : prop.isCartelHQ
-                  ? 'border-red-500/40 bg-red-950/10'
-                  : 'border-slate-800'
-              }`}
+              className={`trade-target-card ${
+                isPlayerOwned ? 'trade-target-card--owned' : ''
+              } ${prop.isCartelHQ ? 'trade-target-card--hq' : ''}`}
+              data-grade={strengthComparison?.grade}
             >
               <img
                 src={getFankitJobArt(`${prop.id}-${prop.community}-${prop.industry}`)}
                 alt=""
                 aria-hidden="true"
-                className="pointer-events-none absolute -right-8 -top-7 h-36 w-36 object-contain opacity-[0.14] saturate-150"
+                className="trade-target-card__art"
               />
-              <div className="relative z-10">
-                {/* Community, Industry & Owner Badges */}
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-violet-950/70 text-violet-300 border border-violet-500/30 truncate">
-                      {prop.community}
-                    </span>
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-800 text-amber-400/90 border border-slate-700 truncate">
-                      {prop.industry}
-                    </span>
-                  </div>
+              <div className="trade-target-card__content">
+                <div className="trade-target-card__eyebrow">
+                  <span>{prop.community} ・ {prop.industry}</span>
                   <span
-                    className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${ownerBadgeColor}`}
+                    className={`trade-target-card__owner ${ownerBadgeColor}`}
                   >
                     {prop.ownerName}
                   </span>
                 </div>
 
-                {/* Property Name */}
-                <h3 className="text-base font-bold text-slate-100 flex items-center justify-between gap-2">
+                <h3 className="trade-target-card__title">
                   <span>{prop.name}</span>
                   {prop.id.startsWith('prop_starter_') && !isPlayerOwned && (
-                    <span className="shrink-0 rounded bg-cyan-500/15 px-1.5 py-0.5 text-[11px] font-black text-cyan-300 ring-1 ring-cyan-500/30">
+                    <span className="trade-target-card__badge trade-target-card__badge--starter">
                       初心者向け
                     </span>
                   )}
                   {prop.isCartelHQ && (
-                    <span className="text-[11px] bg-red-600 text-white font-black px-1.5 py-0.5 rounded">
+                    <span className="trade-target-card__badge trade-target-card__badge--hq">
                       企業連合本部
                     </span>
                   )}
                   {!countsTowardCityConquest(prop) && (
-                    <span className="shrink-0 rounded border border-violet-400/40 bg-violet-500/15 px-1.5 py-0.5 text-[11px] font-black text-violet-200">
+                    <span className="trade-target-card__badge trade-target-card__badge--optional">
                       任意の企業連合戦
                     </span>
                   )}
                 </h3>
 
-                {/* Description */}
-                {propertyPresentation.tags.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {propertyPresentation.tags.map((tag) => (
-                      <span key={tag} className="rounded border border-cyan-500/30 bg-cyan-950/40 px-1.5 py-0.5 text-[11px] font-bold text-cyan-200">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <p className="text-xs text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
-                  {propertyPresentation.text}
-                </p>
-
-                {/* Real-time FX Market Financial Metrics */}
-                <div className="mt-3.5 p-2.5 rounded-lg bg-slate-950/90 border border-slate-800/90 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-1 text-slate-400 font-semibold">
-                      現在相場価格
-                      <HelpTip term="現在相場価格" description={HELP_TEXT.marketPrice} />
-                    </span>
-                    <span className="text-amber-300 text-sm font-bold">{formatCurrency(activePrice)}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-1 text-slate-400">
-                      仲介手数料（相場の3%）
-                      <HelpTip term="仲介手数料" description={HELP_TEXT.brokerageFee} />
-                    </span>
-                    <span className="font-semibold text-rose-300">{formatCurrency(fee)}</span>
-                  </div>
-
-                  <details className="group border-t border-slate-800/80 pt-1.5 text-xs">
-                    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between text-slate-400">
-                      <span>相場変動・収益の詳細</span>
-                      <span className="text-[10px] text-cyan-300 group-open:hidden">開く ▼</span>
-                      <span className="hidden text-[10px] text-cyan-300 group-open:inline">畳む ▲</span>
-                    </summary>
-                    <div className="mt-1.5 space-y-2 border-t border-slate-800/60 pt-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-500">相場変動</span>
-                        {rateInfo.change < 0 ? (
-                          <span className="flex items-center font-bold text-emerald-400">
-                            <TrendingDown className="mr-0.5 h-3 w-3" />
-                            {rateInfo.change}%（下落）
-                          </span>
-                        ) : (
-                          <span className="flex items-center font-bold text-rose-400">
-                            <TrendingUp className="mr-0.5 h-3 w-3" />
-                            +{rateInfo.change}%
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="flex items-center gap-1 text-slate-500">
-                          {campaignMode === 'savage' ? '通常編の毎秒収益' : '毎秒収益'}
-                          <HelpTip term="毎秒収益" description={HELP_TEXT.passiveRevenue} />
-                        </span>
-                        <span className="text-right font-bold text-emerald-400">
-                          +{formatCurrency(displayedRevenue)}/秒
-                          {savageRevenueMultiplier > 1 && (
-                            <small className="ml-1 block text-[11px] text-violet-300">
-                              零式強化 +{Math.round((savageRevenueMultiplier - 1) * 100)}%
-                            </small>
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                  </details>
-                </div>
-              </div>
-
-              {strengthComparison && (
-                <div className="relative z-10 mt-3">
+                {strengthComparison && (
                   <StrengthComparison result={strengthComparison} compact summaryOnly />
-                </div>
-              )}
-
-              {/* Action Area */}
-              <div className="mt-4 pt-2">
-                {isPlayerOwned ? (
-                  <div className="w-full py-2 px-3 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center justify-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    {campaignMode === 'savage' ? '零式踏破済み（再取得不要）' : '自社保有中（毎秒収益を受取中）'}
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => handleBuyoutClick(prop, activePrice, fee, canAffordFee)}
-                    title={HELP_TEXT.brokerageFee}
-                    className={`min-h-11 w-full py-2.5 px-4 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 active:brightness-90 touch-manipulation select-none cursor-pointer ${
-                      canAffordFee
-                        ? 'bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-400 text-slate-950 shadow-amber-500/20 border border-amber-400/50'
-                        : 'bg-slate-800 hover:bg-slate-750 text-rose-300/90 border border-slate-700/80 hover:border-rose-500/50'
-                    }`}
-                  >
-                    {canAffordFee ? (
-                      <>
-                        <span>{campaignMode === 'savage' ? '零式へ挑戦' : '取得交渉を開始'} (手数料 {formatCurrency(fee)})</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    ) : (
-                      <>
-                        <ShieldAlert className="w-4 h-4 text-rose-400" />
-                        <span>手数料不足 (要 {formatCurrency(fee)})</span>
-                      </>
-                    )}
-                  </button>
                 )}
+
+                <div className="trade-target-card__action">
+                  {isPlayerOwned ? (
+                    <div className="trade-target-card__owned-state">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      {campaignMode === 'savage' ? '零式踏破済み' : '自社保有中'}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleBuyoutClick(prop, activePrice, fee, canAffordFee)}
+                      title={HELP_TEXT.brokerageFee}
+                      className={`trade-target-card__challenge ${
+                        canAffordFee
+                          ? 'trade-target-card__challenge--ready'
+                          : 'trade-target-card__challenge--blocked'
+                      }`}
+                    >
+                      {canAffordFee ? (
+                        <>
+                          <span className="trade-target-card__challenge-copy">
+                            <b>{campaignMode === 'savage' ? '零式へ挑戦' : '商戦へ挑戦'}</b>
+                            <small>開始手数料 {formatCurrency(fee)}</small>
+                          </span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      ) : (
+                        <>
+                          <ShieldAlert className="w-4 h-4 text-rose-400" />
+                          <span>手数料不足 (要 {formatCurrency(fee)})</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                <details className="trade-target-card__details">
+                  <summary>
+                    <span>事業・世界観を見る</span>
+                    <span className="trade-target-card__details-open">開く ▼</span>
+                    <span className="trade-target-card__details-close">畳む ▲</span>
+                  </summary>
+                  <div>
+                    {propertyPresentation.tags.length > 0 && (
+                      <p className="trade-target-card__tags">
+                        {propertyPresentation.tags.map((tag) => (
+                          <span key={tag}>{tag}</span>
+                        ))}
+                      </p>
+                    )}
+                    <p>{propertyPresentation.text}</p>
+                    {!isPlayerOwned && <small>基準となる交渉規模：{formatCurrency(activePrice)}</small>}
+                  </div>
+                </details>
               </div>
             </div>
           );

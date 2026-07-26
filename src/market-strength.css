@@ -1,0 +1,477 @@
+.market-readiness-overview {
+  position: relative;
+  display: grid;
+  gap: .72rem;
+  overflow: hidden;
+  padding: .9rem;
+  border: 1px solid rgba(251, 191, 36, .28);
+  border-radius: 1rem;
+  background:
+    radial-gradient(circle at 12% -30%, rgba(34, 211, 238, .16), transparent 48%),
+    linear-gradient(145deg, rgba(15, 23, 42, .97), rgba(2, 6, 23, .98));
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, .045),
+    0 .9rem 2.4rem rgba(2, 6, 23, .26);
+}
+
+.market-readiness-overview::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent, rgba(251, 191, 36, .09), transparent)
+      top / 100% 1px no-repeat;
+  content: '';
+}
+
+.market-readiness-overview > header,
+.market-readiness-overview > header > span,
+.market-readiness-overview > footer,
+.market-readiness-overview > footer > span {
+  display: flex;
+  align-items: center;
+}
+
+.market-readiness-overview > header {
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.market-readiness-overview > header > span {
+  gap: .45rem;
+  color: #ecfeff;
+  font-size: .82rem;
+  font-weight: 900;
+  letter-spacing: .035em;
+}
+
+.market-readiness-overview > header svg,
+.market-readiness-overview > footer svg {
+  width: 1rem;
+  height: 1rem;
+  color: #67e8f9;
+}
+
+.market-readiness-overview > header small {
+  color: #94a3b8;
+  font-size: .7rem;
+  font-weight: 700;
+}
+
+.market-readiness-overview__grades {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .42rem;
+}
+
+.market-readiness-overview__grades > div {
+  display: grid;
+  gap: .08rem;
+  min-width: 0;
+  padding: .5rem .42rem;
+  border: 1px solid rgba(148, 163, 184, .14);
+  border-radius: .68rem;
+  background: rgba(15, 23, 42, .72);
+  text-align: center;
+}
+
+.market-readiness-overview__grades dt {
+  overflow: hidden;
+  color: #cbd5e1;
+  font-size: .72rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-readiness-overview__grades dd {
+  color: #f8fafc;
+  font-size: 1.05rem;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+}
+
+.market-readiness-overview__grades dd small {
+  margin-left: .12rem;
+  color: #64748b;
+  font-size: .62rem;
+}
+
+.market-readiness-overview__grades [data-grade='advantage'] dd { color: #86efac; }
+.market-readiness-overview__grades [data-grade='even'] dd { color: #67e8f9; }
+.market-readiness-overview__grades [data-grade='challenge'] dd { color: #fde68a; }
+.market-readiness-overview__grades [data-grade='danger'] dd { color: #fda4af; }
+
+.market-readiness-overview > footer {
+  flex-wrap: wrap;
+  gap: .35rem .9rem;
+  padding-top: .55rem;
+  border-top: 1px solid rgba(148, 163, 184, .12);
+  color: #94a3b8;
+  font-size: .7rem;
+}
+
+.market-readiness-overview > footer > span {
+  gap: .3rem;
+  white-space: nowrap;
+}
+
+.market-readiness-overview > footer b {
+  color: #e2e8f0;
+  font-size: .75rem;
+}
+
+.market-readiness-overview > footer small {
+  margin-left: auto;
+  color: #64748b;
+  font-size: .66rem;
+}
+
+.campaign-city-card {
+  isolation: isolate;
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, .035),
+    0 .6rem 1.5rem rgba(2, 6, 23, .18);
+}
+
+.campaign-city-card::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(140deg, rgba(255, 255, 255, .025), transparent 42%);
+  content: '';
+}
+
+.campaign-city-card__readiness {
+  position: relative;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: .08rem .35rem;
+  margin-top: .48rem;
+  padding-top: .42rem;
+  border-top: 1px solid rgba(148, 163, 184, .16);
+}
+
+.campaign-city-card__readiness small {
+  color: #94a3b8;
+  font-size: .75rem;
+  font-weight: 800;
+}
+
+.campaign-city-card__readiness b {
+  color: #e2e8f0;
+  font-size: .75rem;
+  text-align: right;
+}
+
+.campaign-city-card[data-grade='advantage'] .campaign-city-card__readiness b { color: #86efac; }
+.campaign-city-card[data-grade='even'] .campaign-city-card__readiness b { color: #67e8f9; }
+.campaign-city-card[data-grade='challenge'] .campaign-city-card__readiness b { color: #fde68a; }
+.campaign-city-card[data-grade='danger'] .campaign-city-card__readiness b { color: #fda4af; }
+
+.campaign-city-card__readiness em {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .32rem;
+  color: #cbd5e1;
+  font-size: .75rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.campaign-city-card__readiness em > span {
+  display: grid;
+  gap: .04rem;
+  min-width: 0;
+  padding: .22rem .3rem;
+  border-radius: .35rem;
+  background: rgba(2, 6, 23, .48);
+}
+
+.campaign-city-card__readiness em small {
+  font-size: .75rem;
+  line-height: 1.15;
+}
+
+.campaign-city-card__readiness em b {
+  overflow: hidden;
+  font-size: .78rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-target-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: .92rem;
+  border: 1px solid rgba(148, 163, 184, .2);
+  border-radius: 1rem;
+  background:
+    linear-gradient(150deg, rgba(15, 23, 42, .98), rgba(2, 6, 23, .98));
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, .04),
+    0 .9rem 2.2rem rgba(2, 6, 23, .25);
+  transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+
+.trade-target-card:hover {
+  border-color: rgba(103, 232, 249, .34);
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, .05),
+    0 1rem 2.5rem rgba(2, 6, 23, .34);
+  transform: translateY(-1px);
+}
+
+.trade-target-card[data-grade='advantage'] { border-color: rgba(74, 222, 128, .28); }
+.trade-target-card[data-grade='even'] { border-color: rgba(34, 211, 238, .3); }
+.trade-target-card[data-grade='challenge'] { border-color: rgba(250, 204, 21, .3); }
+.trade-target-card[data-grade='danger'] { border-color: rgba(251, 113, 133, .3); }
+.trade-target-card--hq { box-shadow: inset 0 0 2rem rgba(136, 19, 55, .14), 0 .9rem 2.2rem rgba(2, 6, 23, .25); }
+.trade-target-card--owned { border-color: rgba(52, 211, 153, .28); }
+
+.trade-target-card__art {
+  position: absolute;
+  top: -1rem;
+  right: -1.5rem;
+  z-index: -1;
+  width: 9rem;
+  height: 9rem;
+  pointer-events: none;
+  object-fit: contain;
+  opacity: .11;
+  filter: saturate(1.25);
+}
+
+.trade-target-card__content {
+  display: grid;
+  gap: .72rem;
+  min-width: 0;
+}
+
+.trade-target-card__eyebrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+  min-width: 0;
+  color: #a5f3fc;
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
+.trade-target-card__eyebrow > span:first-child,
+.trade-target-card__owner {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-target-card__owner {
+  max-width: 48%;
+  padding: .18rem .4rem;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 999px;
+  font-size: .65rem;
+  letter-spacing: 0;
+}
+
+.trade-target-card__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .38rem;
+  min-width: 0;
+  margin: 0;
+  color: #f8fafc;
+  font-size: 1.02rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.trade-target-card__title > span:first-child {
+  min-width: 0;
+  margin-right: auto;
+}
+
+.trade-target-card__badge {
+  flex: 0 0 auto;
+  padding: .16rem .4rem;
+  border: 1px solid currentColor;
+  border-radius: .35rem;
+  font-size: .62rem;
+  font-weight: 900;
+}
+
+.trade-target-card__badge--starter { color: #67e8f9; background: rgba(8, 145, 178, .12); }
+.trade-target-card__badge--hq { color: #fecdd3; background: rgba(190, 24, 93, .18); }
+.trade-target-card__badge--optional { color: #ddd6fe; background: rgba(109, 40, 217, .14); }
+
+.trade-target-card__action {
+  min-width: 0;
+}
+
+.trade-target-card__challenge,
+.trade-target-card__owned-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: .65rem .9rem;
+  border: 1px solid;
+  border-radius: .78rem;
+  font-size: .82rem;
+  font-weight: 900;
+}
+
+.trade-target-card__challenge {
+  touch-action: manipulation;
+  transition: filter .14s ease, transform .14s ease, box-shadow .14s ease;
+}
+
+.trade-target-card__challenge-copy {
+  display: grid;
+  gap: .08rem;
+  text-align: left;
+}
+
+.trade-target-card__challenge-copy b {
+  font-size: .84rem;
+}
+
+.trade-target-card__challenge-copy small {
+  font-size: .7rem;
+  font-weight: 800;
+  opacity: .78;
+}
+
+.trade-target-card__challenge:active {
+  filter: brightness(.9);
+  transform: scale(.985);
+}
+
+.trade-target-card__challenge--ready {
+  border-color: rgba(253, 230, 138, .65);
+  color: #1c1917;
+  background:
+    linear-gradient(110deg, #b45309, #fbbf24 45%, #fde68a 70%, #b45309);
+  background-size: 170% 100%;
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, .55),
+    0 .45rem 1.2rem rgba(245, 158, 11, .18);
+}
+
+.trade-target-card__challenge--ready:hover {
+  filter: brightness(1.08);
+  background-position: 100% 0;
+}
+
+.trade-target-card__challenge--blocked {
+  border-color: rgba(251, 113, 133, .28);
+  color: #fda4af;
+  background: rgba(30, 41, 59, .8);
+}
+
+.trade-target-card__owned-state {
+  border-color: rgba(52, 211, 153, .28);
+  color: #a7f3d0;
+  background: rgba(6, 78, 59, .16);
+}
+
+.trade-target-card__details {
+  border-top: 1px solid rgba(148, 163, 184, .12);
+}
+
+.trade-target-card__details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.75rem;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: .72rem;
+  font-weight: 800;
+  list-style: none;
+}
+
+.trade-target-card__details > summary::-webkit-details-marker { display: none; }
+.trade-target-card__details-close { display: none; color: #67e8f9; }
+.trade-target-card__details-open { color: #67e8f9; }
+.trade-target-card__details[open] .trade-target-card__details-open { display: none; }
+.trade-target-card__details[open] .trade-target-card__details-close { display: inline; }
+
+.trade-target-card__details > div {
+  display: grid;
+  gap: .45rem;
+  padding: .15rem 0 .25rem;
+  color: #cbd5e1;
+  font-size: .75rem;
+  line-height: 1.55;
+}
+
+.trade-target-card__details p { margin: 0; }
+.trade-target-card__details small { color: #64748b; font-size: .68rem; }
+
+.trade-target-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem;
+}
+
+.trade-target-card__tags > span {
+  padding: .14rem .36rem;
+  border: 1px solid rgba(34, 211, 238, .22);
+  border-radius: .35rem;
+  color: #a5f3fc;
+  background: rgba(8, 145, 178, .09);
+  font-size: .65rem;
+  font-weight: 800;
+}
+
+@media (max-width: 639px) {
+  .market-readiness-overview {
+    gap: .62rem;
+    padding: .78rem;
+  }
+
+  .market-readiness-overview > header small {
+    display: none;
+  }
+
+  .market-readiness-overview > footer small {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  .campaign-city-card {
+    min-height: 8.8rem;
+  }
+
+  .trade-target-card {
+    padding: .78rem;
+  }
+
+  .trade-target-card__content {
+    gap: .62rem;
+  }
+
+  .trade-target-card__title {
+    font-size: .96rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trade-target-card,
+  .trade-target-card__challenge {
+    transition: none;
+  }
+}

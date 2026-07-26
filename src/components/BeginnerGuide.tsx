@@ -33,7 +33,7 @@ export const BeginnerGuide: React.FC<BeginnerGuideProps> = ({
           <div className="mb-1 flex items-center gap-1.5 font-black text-amber-300">
             <Building2 className="h-3.5 w-3.5" /> 1. 安い交渉対象を選ぶ
           </div>
-          <p className="leading-relaxed text-slate-400">「初心者向け」か、風なし動員比較が「◎自社優勢」「＝互角」の対象から開始。交渉時に相場の3%を支払います。</p>
+          <p className="leading-relaxed text-slate-400">「初心者向け」か、挑戦前の戦力比較が「◎余力あり」「＝接戦」の対象から開始。交渉時に相場の3%を支払います。</p>
         </div>
         <div className="rounded-lg border border-slate-800 bg-slate-950/75 p-2.5">
           <div className="mb-1 flex items-center gap-1.5 font-black text-amber-300">

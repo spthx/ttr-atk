@@ -32,12 +32,7 @@ import { EndingModal } from './components/EndingModal';
 import { HighEndRaidView } from './components/HighEndRaidView';
 import { TrainingDummyView } from './components/TrainingDummyView';
 import {
-  getWindPool,
   getWindProgressionStage,
-  WIND_ACTIVE_SECONDS,
-  WIND_CALM_SECONDS,
-  WIND_CONDITIONS,
-  type WindCondition,
 } from './components/WindIndicator';
 import { FANKIT_ART } from './data/fankitAssets';
 import { COMMUNITY_CAMPAIGN_ORDER, GAME_WORLD, TRADE_COMMUNITIES } from './data/worldData';
@@ -235,13 +230,6 @@ export default function App() {
     mode: 'map' | 'targets';
     community: CommunityType | 'ALL';
   } | null>(null);
-  const [marketWind, setMarketWind] = useState<WindCondition>(
-    WIND_CONDITIONS.CALM
-  );
-  const [windCountdown, setWindCountdown] = useState(0);
-  const marketWindRef = useRef<WindCondition>(WIND_CONDITIONS.CALM);
-  const windCountdownRef = useRef(0);
-
   const completeLaunchIntro = () => {
     const normalizedName = companyName.trim() || GAME_WORLD.companyName;
     setCompanyName(normalizedName);
@@ -299,56 +287,6 @@ export default function App() {
     conqueredCommunityCount,
     ownedProperties.length
   );
-
-  useEffect(() => {
-    const nextCountdown =
-      windProgressionStage === 0 ? 0 : WIND_CALM_SECONDS;
-    marketWindRef.current = WIND_CONDITIONS.CALM;
-    windCountdownRef.current = nextCountdown;
-    setMarketWind(WIND_CONDITIONS.CALM);
-    setWindCountdown(nextCountdown);
-  }, [windProgressionStage]);
-
-  useEffect(() => {
-    if (windProgressionStage === 0) return;
-    const timer = window.setInterval(() => {
-      const overlayPaused =
-        showLaunchIntro ||
-        showTrainingSelector ||
-        !!unlockNotice ||
-        !!featureUnlockNoticeId ||
-        !!endingNotice;
-      const scale = activeBattleProperty || overlayPaused ? 0 : 1;
-      if (scale <= 0) return;
-      const next = windCountdownRef.current - 0.25 * scale;
-      if (next > 0) {
-        windCountdownRef.current = next;
-        setWindCountdown(next);
-        return;
-      }
-
-      if (marketWindRef.current.type !== 'CALM') {
-        marketWindRef.current = WIND_CONDITIONS.CALM;
-        windCountdownRef.current = WIND_CALM_SECONDS;
-      } else {
-        const pool = getWindPool(windProgressionStage);
-        const nextType = pool[Math.floor(Math.random() * pool.length)];
-        marketWindRef.current = WIND_CONDITIONS[nextType];
-        windCountdownRef.current = WIND_ACTIVE_SECONDS;
-      }
-      setMarketWind(marketWindRef.current);
-      setWindCountdown(windCountdownRef.current);
-    }, 250);
-    return () => window.clearInterval(timer);
-  }, [
-    activeBattleProperty,
-    endingNotice,
-    featureUnlockNoticeId,
-    showLaunchIntro,
-    showTrainingSelector,
-    unlockNotice,
-    windProgressionStage,
-  ]);
 
   const unlockedCommunityIds = useMemo(() => {
     const unlocked = new Set<CommunityType>();
@@ -1201,11 +1139,7 @@ export default function App() {
             properties={properties}
             totalFunds={totalFunds}
             unlockedCommunityIds={unlockedCommunityIds}
-            currentWind={marketWind}
-            windCountdown={windCountdown}
-            windProgressionStage={windProgressionStage}
             navigationRequest={marketNavigationRequest}
-            propertyRevenueMultipliers={savagePropertyRevenueMultipliers}
             getStrengthComparison={(property) =>
               getBattleReadinessForTarget(property, 'normal')
             }

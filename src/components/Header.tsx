@@ -1,7 +1,7 @@
 import React from 'react';
-import { formatCurrency } from '../utils/formatter';
+import { formatCurrency, formatNumber } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
-import { Volume2, VolumeX, Building2, TrendingUp, ShieldCheck, Zap, MapPin, RotateCcw, Swords } from 'lucide-react';
+import { Volume2, VolumeX, Building2, Coins, Landmark, ShieldCheck, Zap, MapPin, RotateCcw, Swords } from 'lucide-react';
 import { HELP_TEXT } from '../data/helpText';
 import type { AppTab } from '../types';
 
@@ -77,7 +77,7 @@ export const Header: React.FC<HeaderProps> = ({
           className="w-8 h-8 shrink-0 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950 font-black shadow-md text-sm"
           aria-label="タタルの大繁盛商店"
         >
-          G
+          <Coins className="h-5 w-5" aria-hidden="true" />
         </div>
 
         {/* Metrics Bar */}
@@ -89,7 +89,8 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <span className="text-[10px] text-amber-300 font-semibold hidden sm:inline">資金</span>
             <span className="text-sm font-black text-amber-400 font-mono">
-              {formatCurrency(totalFunds)}
+              <span className="sm:hidden">{formatNumber(totalFunds)}</span>
+              <span className="hidden sm:inline">{formatCurrency(totalFunds)}</span>
             </span>
           </div>
 
@@ -122,9 +123,10 @@ export const Header: React.FC<HeaderProps> = ({
             className="bg-slate-950 border border-emerald-500/30 rounded-lg px-2 py-1 flex items-center gap-1"
             title={HELP_TEXT.passiveRevenue}
           >
-            <TrendingUp className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <Coins className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
             <span className="text-xs font-bold text-emerald-400 font-mono">
-              +{formatCurrency(passiveRevenue)}/秒
+              <span className="sm:hidden">+{formatNumber(passiveRevenue)}/秒</span>
+              <span className="hidden sm:inline">+{formatCurrency(passiveRevenue)}/秒</span>
             </span>
           </div>
 
@@ -192,7 +194,7 @@ export const Header: React.FC<HeaderProps> = ({
               : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
           }`}
         >
-          <TrendingUp className="w-4 h-4" />
+          <Landmark className="w-4 h-4" />
           <span title={`${companyName}の保有事業・契約`}>
             保有事業・契約 ({ownedCount})
           </span>
@@ -261,7 +263,7 @@ export const Header: React.FC<HeaderProps> = ({
             activeTab === 'portfolio' ? 'text-amber-400 font-extrabold' : 'text-slate-400'
           }`}
         >
-          <TrendingUp className="w-5 h-5 mb-0.5" />
+          <Landmark className="w-5 h-5 mb-0.5" />
           <span className="text-[11px] leading-none">保有事業</span>
           {ownedCount > 0 && (
             <span className="absolute top-1 right-2 w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-black text-[9px] flex items-center justify-center">
