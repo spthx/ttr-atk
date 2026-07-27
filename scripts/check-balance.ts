@@ -1593,6 +1593,29 @@ assert.deepEqual(
     remainingGaugeCapacity: 0,
   }
 );
+const terminalLimitBreakBeforeCover = -102;
+const terminalLimitBreakCovered = applyCoverToGaugeDelta({
+  currentGauge: -80,
+  nextGauge: terminalLimitBreakBeforeCover,
+  protects: 'opponent',
+  absorbRatio: BOSS_COVER_BALANCE.cover.absorbRatio,
+  remainingGaugeCapacity: BOSS_COVER_BALANCE.cover.gaugeCapacity,
+});
+assert.equal(
+  getBattleTerminalWinner(terminalLimitBreakBeforeCover),
+  'player',
+  'the raw LB would otherwise end the battle'
+);
+assert.equal(
+  getBattleTerminalWinner(terminalLimitBreakCovered.nextGauge),
+  null,
+  'boss Cover intercepts the full LB movement before terminal preview'
+);
+assert.equal(
+  terminalLimitBreakCovered.absorbedGauge,
+  14.3,
+  'Cover absorbs the movement from the pre-LB gauge, not the 99% preview'
+);
 assert.equal(BOSS_COVER_BALANCE.invincible.durationMs, 8_000);
 assert.equal(TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio, 0.4);
 assert.equal(livingDeadSkill.id, 'skill_sns_blitz', 'legacy save-compatible skill id');
