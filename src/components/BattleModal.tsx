@@ -126,9 +126,7 @@ import {
 } from '../utils/gameBalance';
 export { ENEMY_BALANCE_FACTOR, LIMIT_BREAK_MULTIPLIERS };
 import gilChipPlayer from '../assets/battle/gil-chip-player.png';
-import defenseChipEnemy from '../assets/battle/defense-chip-enemy.png';
 import gilMedallionPlayer from '../assets/battle/gil-medallion-player.png';
-import defenseMedallionEnemy from '../assets/battle/defense-medallion-enemy.png';
 import '../battle-buyout.css';
 import '../battle-balance.css';
 import '../battle-clarity.css';
@@ -428,8 +426,8 @@ const GilTower: React.FC<{
   const visualStage = getCapitalVisualStageForBundleCount(bundleCount);
   const spriteCount = getCapitalVisualSpriteCount(bundleCount);
   const committedStage = visualStage;
-  const chipAsset = side === 'player' ? gilChipPlayer : defenseChipEnemy;
-  const medallionAsset = side === 'player' ? gilMedallionPlayer : defenseMedallionEnemy;
+  const chipAsset = gilChipPlayer;
+  const medallionAsset = gilMedallionPlayer;
   const capitalRatio = committedCapital / Math.max(marketPrice, 1);
   const formation = getCapitalFormation(visualStage);
 
@@ -508,6 +506,39 @@ const GilTower: React.FC<{
       </div>
       <strong>{formatCurrency(amount)}</strong>
       <small>{amount > 0 ? `投入資金・段階${committedStage}` : reserveAmount > 0 ? '未投入資金を待機中' : '資金未投入'}</small>
+    </div>
+  );
+};
+
+const InvestmentStakePreview: React.FC<{
+  level: number;
+  committing: boolean;
+  motionSerial: number;
+}> = ({ level, committing, motionSerial }) => {
+  const pieces =
+    level <= 1
+      ? [{ type: 'coin' as const }]
+      : level === 2
+      ? [{ type: 'coin' as const }, { type: 'coin' as const }]
+      : Array.from(
+          { length: level === 3 ? 1 : level === 4 ? 2 : 20 },
+          () => ({ type: 'bundle' as const })
+        );
+
+  return (
+    <div
+      key={`${level}-${motionSerial}`}
+      className={`investment-stake-preview investment-stake-preview--level-${level} ${committing ? 'is-committing' : ''}`}
+      data-investment-level={level}
+      aria-hidden="true"
+    >
+      {pieces.map((piece, index) => (
+        <img
+          key={`${piece.type}-${index}`}
+          src={piece.type === 'coin' ? gilMedallionPlayer : gilChipPlayer}
+          alt=""
+        />
+      ))}
     </div>
   );
 };
@@ -3431,6 +3462,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <div className="player-capital-stack">
               <div className="capital-visual-row">
                 <GilTower amount={totalPlayerInvested} reserveAmount={cash} marketPrice={targetProperty.marketPrice} side="player" motion={motion} />
+                <InvestmentStakePreview
+                  level={selectedLevel}
+                  committing={motion === 'player'}
+                  motionSerial={motionSerial}
+                />
                 <div className="ownership-fighter ownership-fighter--player">
                   <img
                     key={`player-${motionSerial}`}
