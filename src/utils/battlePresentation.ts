@@ -5,11 +5,48 @@ export const BATTLE_CINEMATIC_TIMING = {
   conditionAnnouncementMs: 1_650,
   limitAnnouncementMs: 1_800,
   limitResolveMs: 1_850,
+  limitImpactHandoffMs: 650,
   finishNoticeMs: 1_450,
 } as const;
 
 export const RESULT_CONFIRM_ARM_DELAY_MS = 1_200;
 export const BATTLE_GAUGE_VISUAL_COMMIT_MS = 100;
+
+/**
+ * Skills read as a short chain of deliberate beats instead of one crowded
+ * frame: name card, actor wind-up, impact, then a brief readable result.
+ */
+export const SKILL_CINEMATIC_TIMING = {
+  nameMs: 360,
+  castMs: 360,
+  impactMs: 420,
+  resolveMs: 280,
+  totalMs: 1_420,
+} as const;
+
+export type SkillCinematicStage =
+  | 'name'
+  | 'cast'
+  | 'impact'
+  | 'resolve';
+
+export const getNextBattleSkillId = (
+  skillIds: readonly string[],
+  currentSkillId: string | null,
+  direction = 1
+) => {
+  if (skillIds.length === 0) return null;
+  const currentIndex = currentSkillId
+    ? skillIds.indexOf(currentSkillId)
+    : -1;
+  const offset = direction >= 0 ? 1 : -1;
+  if (currentIndex < 0) {
+    return offset > 0 ? skillIds[0] : skillIds[skillIds.length - 1];
+  }
+  return skillIds[
+    (currentIndex + offset + skillIds.length) % skillIds.length
+  ];
+};
 
 /**
  * One terminal sequence owns the final offer, impact and result reveal.

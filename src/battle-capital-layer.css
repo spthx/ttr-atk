@@ -550,3 +550,504 @@
     animation: none !important;
   }
 }
+
+/*
+ * Skill command pair.
+ * Selection never spends the shared command gauge; the adjacent execute
+ * button is the only place that commits the chosen action.
+ */
+.battle-action-strip__action--skill-select {
+  border-color: rgba(96, 165, 250, .5);
+  background:
+    linear-gradient(135deg, rgba(20, 56, 111, .94), rgba(8, 18, 42, .98));
+}
+
+.battle-action-strip__action--skill-select > svg {
+  color: #93c5fd;
+}
+
+.battle-action-strip__action--skill-execute {
+  border-color: rgba(192, 132, 252, .56);
+  background:
+    radial-gradient(circle at 82% 18%, rgba(216, 180, 254, .16), transparent 38%),
+    linear-gradient(135deg, rgba(72, 32, 112, .95), rgba(25, 12, 48, .99));
+}
+
+.battle-action-strip__action--skill-execute > svg {
+  color: #e9d5ff;
+  filter: drop-shadow(0 0 .3rem rgba(192, 132, 252, .76));
+}
+
+.battle-action-strip__action--skill-execute.is-ready:not(:disabled) {
+  border-color: rgba(253, 230, 138, .78);
+  box-shadow:
+    inset 0 0 .8rem rgba(255, 255, 255, .08),
+    0 0 .7rem rgba(192, 132, 252, .34);
+}
+
+/*
+ * Fixed-node capital formations.
+ * The six pieces change silhouette at each campaign band: scattered coins,
+ * uneven stacks, terraces, a treasury wall, sealed vaults, then an overflow
+ * field. No idle animation is used, so the richer composition costs almost
+ * nothing between investments.
+ */
+.integrated-battlefield .gil-tower {
+  --formation-light: #fff2a8;
+  --formation-mid: #eab308;
+  --formation-dark: #713f12;
+}
+
+.integrated-battlefield .gil-tower--enemy {
+  --formation-light: #ffe4e6;
+  --formation-mid: #f43f5e;
+  --formation-dark: #881337;
+}
+
+.integrated-battlefield .gil-tower__formation {
+  position: absolute;
+  z-index: 1;
+  inset: .35rem .3rem .45rem;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.integrated-battlefield .gil-tower__formation > i {
+  position: absolute;
+  bottom: .1rem;
+  left: 50%;
+  display: block;
+  width: 1.05rem;
+  height: .3rem;
+  border: 1px solid color-mix(in srgb, var(--formation-light), transparent 26%);
+  border-radius: 50%;
+  background:
+    linear-gradient(
+      180deg,
+      var(--formation-light),
+      var(--formation-mid) 48%,
+      var(--formation-dark)
+    );
+  box-shadow:
+    inset 0 .08rem .08rem rgba(255, 255, 255, .38),
+    0 .16rem .18rem rgba(0, 0, 0, .42);
+  transform: translateX(-50%);
+}
+
+.integrated-battlefield .gil-tower__formation > i:nth-child(2) { left: 31%; }
+.integrated-battlefield .gil-tower__formation > i:nth-child(3) { left: 69%; }
+.integrated-battlefield .gil-tower__formation > i:nth-child(4) { left: 18%; }
+.integrated-battlefield .gil-tower__formation > i:nth-child(5) { left: 82%; }
+.integrated-battlefield .gil-tower__formation > i:nth-child(6) { left: 45%; }
+
+.integrated-battlefield .gil-tower__formation--scatter > i {
+  width: .74rem;
+  height: .2rem;
+}
+
+.integrated-battlefield .gil-tower__formation--scatter > i:nth-child(2) {
+  bottom: 18%;
+  rotate: 15deg;
+}
+
+.integrated-battlefield .gil-tower__formation--scatter > i:nth-child(3) {
+  bottom: 7%;
+  rotate: -12deg;
+}
+
+.integrated-battlefield .gil-tower__formation--scatter > i:nth-child(n + 4) {
+  display: none;
+}
+
+.integrated-battlefield .gil-tower__formation--stacks > i {
+  width: 1.1rem;
+  height: clamp(.55rem, calc(var(--capital-stage) * .3rem), 1.45rem);
+  border-radius: .3rem .3rem .15rem .15rem;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      var(--formation-light) 0 .12rem,
+      var(--formation-mid) .13rem .24rem,
+      var(--formation-dark) .25rem .29rem
+    );
+}
+
+.integrated-battlefield .gil-tower__formation--stacks > i:nth-child(2) { height: 54%; }
+.integrated-battlefield .gil-tower__formation--stacks > i:nth-child(3) { height: 68%; }
+.integrated-battlefield .gil-tower__formation--stacks > i:nth-child(n + 4) { display: none; }
+
+.integrated-battlefield .gil-tower__formation--terrace > i,
+.integrated-battlefield .gil-tower__formation--wall > i {
+  width: 1.25rem;
+  border-radius: .2rem;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      var(--formation-light) 0 .1rem,
+      var(--formation-mid) .11rem .21rem,
+      var(--formation-dark) .22rem .27rem
+    );
+}
+
+.integrated-battlefield .gil-tower__formation--terrace > i:nth-child(1) { height: 52%; }
+.integrated-battlefield .gil-tower__formation--terrace > i:nth-child(2),
+.integrated-battlefield .gil-tower__formation--terrace > i:nth-child(3) { height: 34%; }
+.integrated-battlefield .gil-tower__formation--terrace > i:nth-child(4),
+.integrated-battlefield .gil-tower__formation--terrace > i:nth-child(5) { height: 20%; }
+.integrated-battlefield .gil-tower__formation--terrace > i:nth-child(6) { height: 68%; }
+
+.integrated-battlefield .gil-tower__formation--wall > i {
+  bottom: 2%;
+  width: 18%;
+  height: 62%;
+}
+
+.integrated-battlefield .gil-tower__formation--wall > i:nth-child(1) { left: 9%; }
+.integrated-battlefield .gil-tower__formation--wall > i:nth-child(2) { left: 25%; height: 78%; }
+.integrated-battlefield .gil-tower__formation--wall > i:nth-child(3) { left: 41%; height: 68%; }
+.integrated-battlefield .gil-tower__formation--wall > i:nth-child(4) { left: 57%; height: 84%; }
+.integrated-battlefield .gil-tower__formation--wall > i:nth-child(5) { left: 73%; height: 72%; }
+.integrated-battlefield .gil-tower__formation--wall > i:nth-child(6) { left: 89%; height: 58%; }
+
+.integrated-battlefield .gil-tower__formation--vault > i {
+  width: 31%;
+  height: 43%;
+  border: .16rem solid var(--formation-dark);
+  border-radius: .28rem;
+  background:
+    radial-gradient(circle at 50% 48%, var(--formation-light) 0 6%, transparent 7%),
+    repeating-linear-gradient(
+      0deg,
+      var(--formation-dark) 0 .12rem,
+      var(--formation-mid) .13rem .28rem
+    );
+  box-shadow:
+    inset 0 0 0 .12rem color-mix(in srgb, var(--formation-light), transparent 38%),
+    0 .34rem .35rem rgba(0, 0, 0, .52);
+}
+
+.integrated-battlefield .gil-tower__formation--vault > i:nth-child(1) { left: 28%; }
+.integrated-battlefield .gil-tower__formation--vault > i:nth-child(2) { left: 62%; height: 52%; }
+.integrated-battlefield .gil-tower__formation--vault > i:nth-child(3) { left: 46%; bottom: 38%; width: 28%; height: 34%; }
+.integrated-battlefield .gil-tower__formation--vault > i:nth-child(n + 4) { display: none; }
+
+.integrated-battlefield .gil-tower__formation--flood {
+  inset: -1.2rem -18% -.2rem;
+}
+
+.integrated-battlefield .gil-tower__formation--flood > i {
+  width: 38%;
+  height: 54%;
+  border-radius: 52% 48% 10% 10%;
+  opacity: .86;
+  clip-path: polygon(0 100%, 8% 48%, 30% 18%, 48% 32%, 63% 4%, 84% 40%, 100% 100%);
+}
+
+.integrated-battlefield .gil-tower__formation--flood > i:nth-child(1) { left: 12%; }
+.integrated-battlefield .gil-tower__formation--flood > i:nth-child(2) { left: 36%; height: 76%; }
+.integrated-battlefield .gil-tower__formation--flood > i:nth-child(3) { left: 61%; height: 65%; }
+.integrated-battlefield .gil-tower__formation--flood > i:nth-child(4) { left: 86%; height: 82%; }
+.integrated-battlefield .gil-tower__formation--flood > i:nth-child(5) { left: 50%; bottom: 37%; height: 58%; }
+.integrated-battlefield .gil-tower__formation--flood > i:nth-child(6) { left: 74%; bottom: 31%; height: 46%; }
+
+.integrated-battlefield .gil-chip-image {
+  z-index: 2;
+}
+
+/*
+ * One-action-at-a-time skill theatre.
+ * The field effect sits behind actors and capital; the compact nameplate is
+ * the only foreground message. Simulation runs at ×0.1 and freezes only on
+ * the impact frame.
+ */
+.battle-skill-field {
+  position: absolute;
+  z-index: 16;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.battle-skill-field::before,
+.battle-skill-field::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+}
+
+.battle-skill-field::before {
+  opacity: .88;
+  background:
+    radial-gradient(circle at 20% 58%, rgba(125, 211, 252, .5), transparent 24%),
+    linear-gradient(108deg, rgba(2, 132, 199, .14), transparent 47%);
+}
+
+.battle-skill-field::after {
+  opacity: 0;
+  background: rgba(255, 255, 255, .82);
+}
+
+.battle-skill-field > i {
+  position: absolute;
+  top: calc(20% + var(--skill-ray, 0) * 8%);
+  left: -24%;
+  width: 42%;
+  height: .13rem;
+  border-radius: 999px;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, #fff, #67e8f9, transparent);
+  box-shadow: 0 0 .8rem rgba(103, 232, 249, .9);
+  transform: rotate(calc(-9deg + var(--skill-ray, 0) * 2deg));
+}
+
+.battle-skill-field > i:nth-child(1) { --skill-ray: 0; }
+.battle-skill-field > i:nth-child(2) { --skill-ray: 1; }
+.battle-skill-field > i:nth-child(3) { --skill-ray: 2; }
+.battle-skill-field > i:nth-child(4) { --skill-ray: 3; }
+.battle-skill-field > i:nth-child(5) { --skill-ray: 4; }
+.battle-skill-field > i:nth-child(6) { --skill-ray: 5; }
+.battle-skill-field > i:nth-child(7) { --skill-ray: 6; }
+.battle-skill-field > i:nth-child(8) { --skill-ray: 7; }
+
+.battle-skill-field--stage-cast > i {
+  animation: skill-field-ray .52s cubic-bezier(.14, .72, .22, 1) both;
+}
+
+.battle-skill-field--stage-cast > i:nth-child(2) { animation-delay: .035s; }
+.battle-skill-field--stage-cast > i:nth-child(3) { animation-delay: .07s; }
+.battle-skill-field--stage-cast > i:nth-child(4) { animation-delay: .105s; }
+.battle-skill-field--stage-cast > i:nth-child(5) { animation-delay: .14s; }
+.battle-skill-field--stage-cast > i:nth-child(6) { animation-delay: .175s; }
+.battle-skill-field--stage-cast > i:nth-child(7) { animation-delay: .21s; }
+.battle-skill-field--stage-cast > i:nth-child(8) { animation-delay: .245s; }
+
+.battle-skill-field--stage-impact::after {
+  animation: skill-field-flash .28s ease-out both;
+}
+
+.battle-skill-field--demoralize::before,
+.battle-skill-field--independence-sabotage::before {
+  background:
+    radial-gradient(circle at 79% 56%, rgba(244, 63, 94, .58), transparent 24%),
+    repeating-linear-gradient(112deg, transparent 0 1.4rem, rgba(251, 113, 133, .13) 1.45rem 1.58rem);
+}
+
+.battle-skill-field--demoralize > i,
+.battle-skill-field--independence-sabotage > i {
+  right: -24%;
+  left: auto;
+  background: linear-gradient(90deg, transparent, #fb7185, #fff, transparent);
+  box-shadow: 0 0 .85rem rgba(244, 63, 94, .94);
+  animation-direction: reverse;
+}
+
+.battle-skill-field--era-wind::before,
+.battle-skill-field--cooldown-reduction::before {
+  background:
+    radial-gradient(ellipse at 18% 60%, rgba(250, 204, 21, .32), transparent 26%),
+    repeating-linear-gradient(104deg, transparent 0 1.1rem, rgba(103, 232, 249, .18) 1.16rem 1.27rem),
+    linear-gradient(100deg, rgba(8, 145, 178, .36), transparent 72%);
+}
+
+.battle-skill-field--era-wind > i,
+.battle-skill-field--cooldown-reduction > i {
+  height: .18rem;
+  background: linear-gradient(90deg, transparent, #22d3ee, #fff7ae, transparent);
+}
+
+.battle-skill-field--living-dead::before {
+  background:
+    radial-gradient(circle at 20% 58%, rgba(192, 132, 252, .52), transparent 25%),
+    repeating-conic-gradient(from 0deg at 20% 58%, rgba(216, 180, 254, .12) 0 6deg, transparent 7deg 18deg);
+}
+
+.battle-skill-nameplate {
+  position: absolute;
+  z-index: 56;
+  top: 18%;
+  left: 50%;
+  display: grid;
+  width: min(19rem, calc(100% - 2.6rem));
+  min-height: 4rem;
+  box-sizing: border-box;
+  place-items: center;
+  gap: .12rem;
+  padding: .5rem .85rem;
+  translate: -50% 0;
+  border: 2px solid #e2e8f0;
+  border-radius: .5rem;
+  color: #f8fafc;
+  background:
+    linear-gradient(135deg, rgba(5, 18, 46, .98), rgba(17, 24, 63, .98));
+  text-align: center;
+  box-shadow:
+    0 0 0 2px rgba(15, 23, 42, .96),
+    0 .6rem 1.2rem rgba(0, 0, 0, .66),
+    0 0 1.3rem rgba(96, 165, 250, .3);
+  pointer-events: none;
+  animation: skill-nameplate-enter .32s cubic-bezier(.16, .8, .2, 1) both;
+}
+
+.battle-skill-nameplate--enemy {
+  box-shadow:
+    0 0 0 2px rgba(76, 5, 25, .98),
+    0 .6rem 1.2rem rgba(0, 0, 0, .66),
+    0 0 1.25rem rgba(244, 63, 94, .42);
+}
+
+.battle-skill-nameplate small {
+  color: #93c5fd;
+  font: 900 .58rem/1 ui-monospace, monospace;
+  letter-spacing: .2em;
+}
+
+.battle-skill-nameplate strong {
+  max-width: 100%;
+  overflow: hidden;
+  font: 1000 1.05rem/1.05 sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 0 .55rem rgba(125, 211, 252, .72);
+}
+
+.battle-skill-nameplate em {
+  color: #fde68a;
+  font: 900 .68rem/1 sans-serif;
+  font-style: normal;
+}
+
+.integrated-battlefield--skill-stage-cast .ownership-fighter--player {
+  animation: skill-actor-step .36s cubic-bezier(.16, .72, .22, 1) both;
+}
+
+.integrated-battlefield--skill-stage-impact .ownership-fighter--player {
+  animation: skill-actor-lunge .38s cubic-bezier(.12, .8, .2, 1) both;
+}
+
+.integrated-battlefield--skill-stage-impact.integrated-battlefield--skill-demoralize .ownership-fighter--enemy,
+.integrated-battlefield--skill-stage-impact.integrated-battlefield--skill-independence-sabotage .ownership-fighter--enemy {
+  animation: skill-target-hit .38s ease-out both;
+}
+
+.integrated-battlefield--skill-cinematic .battle-commerce-flow,
+.integrated-battlefield--skill-cinematic .battle-wind-magic {
+  opacity: .14;
+}
+
+@keyframes skill-nameplate-enter {
+  from { opacity: 0; translate: -50% -.6rem; scale: .94; }
+  to { opacity: 1; translate: -50% 0; scale: 1; }
+}
+
+@keyframes skill-field-ray {
+  0% { opacity: 0; translate: 0 0; scale: .45 1; }
+  24%, 66% { opacity: .92; }
+  100% { opacity: 0; translate: 340% -1rem; scale: 1.4 1; }
+}
+
+@keyframes skill-field-flash {
+  0% { opacity: 0; }
+  24% { opacity: .9; }
+  100% { opacity: 0; }
+}
+
+@keyframes skill-actor-step {
+  0% { translate: 0 0; }
+  54% { translate: clamp(1rem, 4vw, 2.4rem) -.14rem; }
+  100% { translate: clamp(.7rem, 2.5vw, 1.5rem) 0; }
+}
+
+@keyframes skill-actor-lunge {
+  0% { translate: clamp(.7rem, 2.5vw, 1.5rem) 0; filter: brightness(1); }
+  42% { translate: clamp(2.4rem, 9vw, 6.5rem) -.2rem; filter: brightness(1.7); }
+  100% { translate: 0 0; filter: brightness(1); }
+}
+
+@keyframes skill-target-hit {
+  0%, 100% { translate: 0 0; filter: brightness(1); }
+  28% { translate: .8rem -.1rem; filter: brightness(2.1); }
+  52% { translate: -.36rem .1rem; filter: saturate(.45) brightness(.7); }
+}
+
+/*
+ * Flying values originate beside the actors and rise away from the capital
+ * piles. Negative text keeps its red treatment but no longer falls into the
+ * command area.
+ */
+.battle-flying-texts .gil-floater {
+  bottom: calc(31% + var(--floater-index, 0) * 1.1rem);
+  left: 14%;
+}
+
+.battle-flying-texts .gil-floater--enemy {
+  right: 14%;
+  left: auto;
+}
+
+.battle-flying-texts .gil-floater--negative {
+  top: auto;
+  bottom: calc(31% + var(--floater-index, 0) * 1.1rem);
+  animation-name: battle-float-negative-up;
+}
+
+@keyframes battle-float-negative-up {
+  0% { opacity: 0; transform: translateY(.85rem) scale(.84); }
+  18%, 62% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-3rem) scale(1.05); }
+}
+
+.buyout-screen--limit-impact .ownership-fighter--player {
+  animation: limit-break-actor-lunge .72s cubic-bezier(.1, .82, .18, 1) both;
+}
+
+.buyout-screen--limit-impact .ownership-fighter--enemy {
+  animation: limit-break-target-hit .68s ease-out both;
+}
+
+@keyframes limit-break-actor-lunge {
+  0% { translate: 0 0; filter: brightness(1); }
+  24% { translate: clamp(1rem, 4vw, 3rem) -.25rem; filter: brightness(1.55); }
+  48% { translate: clamp(3.2rem, 13vw, 9rem) 0; filter: brightness(2); }
+  100% { translate: 0 0; filter: brightness(1); }
+}
+
+@keyframes limit-break-target-hit {
+  0%, 100% { translate: 0 0; filter: brightness(1); }
+  30% { translate: 1rem -.14rem; filter: brightness(2.25); }
+  48% { translate: -.5rem .15rem; filter: saturate(.25) brightness(.58); }
+  68% { translate: .32rem 0; filter: brightness(1.25); }
+}
+
+@media (max-width: 639px) {
+  .battle-skill-nameplate {
+    top: 15%;
+    width: min(17rem, calc(100% - 2rem));
+  }
+
+  .battle-skill-nameplate strong {
+    font-size: .96rem;
+  }
+
+  .battle-flying-texts .gil-floater {
+    left: 10%;
+    max-width: 42%;
+  }
+
+  .battle-flying-texts .gil-floater--enemy {
+    right: 10%;
+    left: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battle-skill-field > i,
+  .battle-skill-field::after,
+  .battle-skill-nameplate,
+  .integrated-battlefield--skill-cinematic .ownership-fighter,
+  .buyout-screen--limit-impact .ownership-fighter,
+  .battle-flying-texts .gil-floater {
+    animation: none !important;
+  }
+}

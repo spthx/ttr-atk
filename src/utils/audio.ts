@@ -335,6 +335,188 @@ class SoundEffects {
     }
   }
 
+  /**
+   * First beat of a tactical action. This is intentionally short: the
+   * nameplate gets its own audible "ready" cue before movement begins.
+   */
+  playSkillCast(effectType: string) {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const hostile =
+        effectType === 'DEMORALIZE' ||
+        effectType === 'INDEPENDENCE_SABOTAGE';
+      const wind = effectType === 'ERA_WIND' || effectType === 'COOLDOWN_REDUCTION';
+      const notes = hostile
+        ? [220, 164.81]
+        : wind
+          ? [392, 587.33, 880]
+          : [329.63, 493.88, 659.25];
+      notes.forEach((frequency, index) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const start = now + index * 0.045;
+        osc.type = hostile ? 'sawtooth' : index === 0 ? 'triangle' : 'sine';
+        osc.frequency.setValueAtTime(frequency, start);
+        osc.frequency.exponentialRampToValueAtTime(
+          frequency * (hostile ? 0.72 : 1.22),
+          start + 0.2
+        );
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.linearRampToValueAtTime(wind ? 0.08 : 0.065, start + 0.025);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.24);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.25);
+      });
+    } catch {
+      // Audio fallback
+    }
+  }
+
+  /**
+   * Second beat: a stereo draw/whip that reads as the actor stepping forward.
+   * Noise is generated inside the existing WebAudio context so iOS does not
+   * have to start a competing media player.
+   */
+  playSkillWhoosh(effectType: string) {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const duration = effectType === 'ERA_WIND' ? 0.42 : 0.26;
+      const frameCount = Math.max(1, Math.floor(ctx.sampleRate * duration));
+      const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
+      const channel = buffer.getChannelData(0);
+      for (let index = 0; index < frameCount; index += 1) {
+        const envelope = Math.sin(Math.PI * index / frameCount);
+        channel[index] = (Math.random() * 2 - 1) * envelope;
+      }
+      const source = ctx.createBufferSource();
+      const filter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      const panner = typeof ctx.createStereoPanner === 'function'
+        ? ctx.createStereoPanner()
+        : null;
+      source.buffer = buffer;
+      filter.type = effectType === 'DEMORALIZE' ? 'lowpass' : 'bandpass';
+      filter.frequency.setValueAtTime(
+        effectType === 'ERA_WIND' ? 1_400 : 2_600,
+        now
+      );
+      filter.frequency.exponentialRampToValueAtTime(
+        effectType === 'ERA_WIND' ? 4_800 : 720,
+        now + duration
+      );
+      filter.Q.setValueAtTime(0.7, now);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(
+        effectType === 'ERA_WIND' ? 0.2 : 0.14,
+        now + duration * 0.35
+      );
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+      source.connect(filter);
+      filter.connect(gain);
+      if (panner) {
+        panner.pan.setValueAtTime(-0.65, now);
+        panner.pan.linearRampToValueAtTime(0.55, now + duration);
+        gain.connect(panner);
+        panner.connect(ctx.destination);
+      } else {
+        gain.connect(ctx.destination);
+      }
+      source.start(now);
+      source.stop(now + duration);
+    } catch {
+      // Audio fallback
+    }
+  }
+
+  /**
+   * Third beat: one resolved impact. Buffs get a bright seal, hostile actions
+   * get a lower cut, and capital actions keep the familiar coin weight.
+   */
+  playSkillImpact(
+    effectType: string,
+    side: 'player' | 'opponent' = 'player'
+  ) {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const hostile =
+        effectType === 'DEMORALIZE' ||
+        effectType === 'INDEPENDENCE_SABOTAGE';
+      const wind = effectType === 'ERA_WIND' || effectType === 'COOLDOWN_REDUCTION';
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(wind ? 0.2 : 0.24, now);
+      master.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+      master.connect(ctx.destination);
+
+      [hostile ? 196 : 523.25, hostile ? 98 : wind ? 1046.5 : 783.99]
+        .forEach((frequency, index) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          const start = now + index * 0.045;
+          osc.type = hostile ? 'sawtooth' : index === 0 ? 'triangle' : 'sine';
+          osc.frequency.setValueAtTime(frequency, start);
+          osc.frequency.exponentialRampToValueAtTime(
+            frequency * (hostile ? 0.44 : 1.34),
+            start + 0.3
+          );
+          gain.gain.setValueAtTime(index === 0 ? 0.75 : 0.42, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.34);
+          osc.connect(gain);
+          gain.connect(master);
+          osc.start(start);
+          osc.stop(start + 0.36);
+        });
+
+      if (effectType === 'CAPITAL_BOOST') {
+        this.playCapitalImpact(side, 0.82);
+      }
+    } catch {
+      // Audio fallback
+    }
+  }
+
+  /**
+   * LB impact is separated from the charging cue: draw, three fast cuts, then
+   * one capital hit. This keeps the sequence crisp instead of overlapping all
+   * layers at button press.
+   */
+  playLimitBreakImpact() {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      [0, 0.09, 0.19].forEach((delay, index) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const start = now + delay;
+        osc.type = index === 1 ? 'square' : 'sawtooth';
+        osc.frequency.setValueAtTime(2_200 - index * 320, start);
+        osc.frequency.exponentialRampToValueAtTime(180 + index * 70, start + 0.12);
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.linearRampToValueAtTime(0.11, start + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.14);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.15);
+      });
+      window.setTimeout(() => this.playCapitalImpact('player', 1), 230);
+    } catch {
+      this.playCapitalImpact('player', 1);
+    }
+  }
+
   // Layered coin-and-capital impact for the tug-of-war arena.
   playCapitalImpact(side: 'player' | 'opponent', intensity: number = 0.5) {
     if (!this.enabled) return;
@@ -538,7 +720,6 @@ class SoundEffects {
         osc.start(now + index * 0.08);
         osc.stop(now + 0.74);
       });
-      this.playCapitalImpact('player', 1);
     } catch {
       // Audio fallback
     }
