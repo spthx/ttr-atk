@@ -1,4 +1,9 @@
 import type { Property } from '../types';
+import {
+  BATTLE_LOYALTY_BALANCE,
+  getReacquisitionLevel,
+} from './gameBalance';
+import { calculateRebellionProbability } from './formatter';
 
 export interface PropertyRiskUpdate {
   id: string;
@@ -26,6 +31,40 @@ export const calculateLiquidationCashback = (
   );
 };
 
+export interface PostVictoryLoyaltySettlement {
+  survivors: Property[];
+  leaving: Property[];
+}
+
+export const resolvePostVictoryLoyalty = (
+  subsidiaries: Property[],
+  distributeGift: boolean,
+  random: () => number = Math.random
+): PostVictoryLoyaltySettlement => {
+  const adjustedSubsidiaries = subsidiaries.map((property) => ({
+    ...property,
+    loyaltyRisk: distributeGift
+      ? Math.max(
+          0,
+          property.loyaltyRisk -
+            BATTLE_LOYALTY_BALANCE.celebrationRiskReduction
+        )
+      : property.loyaltyRisk,
+  }));
+
+  return adjustedSubsidiaries.reduce<PostVictoryLoyaltySettlement>(
+    (result, property) => {
+      if (random() < calculateRebellionProbability(property.loyaltyRisk)) {
+        result.leaving.push({ ...property, loyaltyRisk: 100 });
+      } else {
+        result.survivors.push(property);
+      }
+      return result;
+    },
+    { survivors: [], leaving: [] }
+  );
+};
+
 export const applyNormalBattlePropertyUpdates = ({
   properties,
   winner,
@@ -49,6 +88,10 @@ export const applyNormalBattlePropertyUpdates = ({
         owner: 'independent',
         ownerName: '独立物件',
         loyaltyRisk: 0,
+        reacquisitionLevel: Math.min(
+          BATTLE_LOYALTY_BALANCE.maxReacquisitionLevel,
+          getReacquisitionLevel(property) + 1
+        ),
       };
     }
 

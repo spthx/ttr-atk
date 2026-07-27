@@ -8,7 +8,11 @@ import {
   calculateRebellionProbability,
 } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
-import { PASSIVE_REVENUE_MULTIPLIER } from '../utils/gameBalance';
+import {
+  getReacquisitionLevel,
+  getSubsidiarySupportMultiplier,
+  PASSIVE_REVENUE_MULTIPLIER,
+} from '../utils/gameBalance';
 import {
   Building2,
   RefreshCw,
@@ -52,7 +56,18 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
         )
       : 0;
 
-  const globalNemawashiCost = Math.round(totalAssetValue * 0.02);
+  const globalNemawashiTargets = ownedProperties.filter(
+    (property) => property.loyaltyRisk > 0
+  );
+  const globalNemawashiCost = Math.round(
+    globalNemawashiTargets.reduce(
+      (total, property) => total + property.marketPrice,
+      0
+    ) * 0.02
+  );
+  const canGlobalNemawashi =
+    globalNemawashiTargets.length > 0 &&
+    totalFunds >= globalNemawashiCost;
 
   const handleSingleNemawashi = (prop: Property) => {
     const cost = Math.round(prop.marketPrice * 0.02);
@@ -74,22 +89,6 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
             </h2>
           </div>
 
-          {/* Global Nemawashi Action */}
-          {ownedProperties.length > 0 && (
-            <button
-              onClick={onGlobalNemawashi}
-              disabled={totalFunds < globalNemawashiCost}
-              title={HELP_TEXT.nemawashi}
-              className={`min-h-11 px-4 py-2.5 rounded-lg font-bold text-xs flex items-center gap-2 shadow-md transition-all shrink-0 ${
-                totalFunds >= globalNemawashiCost
-                  ? 'bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer'
-                  : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
-              }`}
-            >
-              <RefreshCw className="w-4 h-4 text-indigo-300" />
-              全支援元一括ネマワシ（費用 {formatCurrency(globalNemawashiCost)}）
-            </button>
-          )}
         </div>
 
         {/* Stats Summary Bar */}
@@ -195,6 +194,12 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
                         </span>
                       </div>
                       <h4 className="text-base font-bold text-slate-100 mt-1">{prop.name}</h4>
+                      {getReacquisitionLevel(prop) > 0 && (
+                        <small className="mt-1 inline-flex rounded border border-cyan-500/35 bg-cyan-950/50 px-2 py-0.5 text-[11px] font-bold text-cyan-200">
+                          復帰強化 {getReacquisitionLevel(prop)}・支援力
+                          ×{getSubsidiarySupportMultiplier(prop).toFixed(1)}
+                        </small>
+                      )}
                     </div>
 
                     <span
@@ -279,6 +284,31 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
           </div>
         )}
       </div>
+
+      {ownedProperties.length > 0 && (
+        <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-4">
+          <p className="mb-3 text-xs leading-relaxed text-indigo-200">
+            個別ネマワシの結果を反映し、まだ独立危険度が残る支援元だけを一括対象にします。
+          </p>
+          <button
+            onClick={onGlobalNemawashi}
+            disabled={!canGlobalNemawashi}
+            title={HELP_TEXT.nemawashi}
+            className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold shadow-md transition-all ${
+              canGlobalNemawashi
+                ? 'cursor-pointer bg-indigo-600 text-white hover:bg-indigo-500'
+                : 'cursor-not-allowed border border-slate-700 bg-slate-800 text-slate-500'
+            }`}
+          >
+            <RefreshCw className="h-4 w-4 text-indigo-300" />
+            {globalNemawashiTargets.length > 0
+              ? `残り${globalNemawashiTargets.length}件を一括ネマワシ（費用 ${formatCurrency(
+                  globalNemawashiCost
+                )}）`
+              : '一括ネマワシが必要な支援元はありません'}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

@@ -46,6 +46,7 @@ import {
   saveGame,
 } from './utils/saveData';
 import {
+  BATTLE_LOYALTY_BALANCE,
   calculateEnemyBudget,
   calculateTotalAssetValue,
   getCampaignProperties,
@@ -798,6 +799,7 @@ export default function App() {
     settlementCost,
     battleCashDelta,
     victoryReward,
+    celebrationGiftCost,
     rebelledProperties,
     survivingRiskUpdates,
   }: BattleResult) => {
@@ -850,7 +852,8 @@ export default function App() {
         settlementCost +
         battleCashDelta +
         (winner === 'player' ? victoryReward : 0) +
-        liquidationCashback
+        liquidationCashback -
+        celebrationGiftCost
     );
     deferredBattleIncomeRef.current = 0;
     setTotalFunds(settledTotalFunds);
@@ -1028,6 +1031,16 @@ export default function App() {
         );
       });
     }
+    if (isNormalBattle && celebrationGiftCost > 0) {
+      addGameLog(
+        `【勝利のご祝儀】${formatCurrency(
+          celebrationGiftCost
+        )}を支援元へ配り、残った全支援元の独立危険度を -${
+          BATTLE_LOYALTY_BALANCE.celebrationRiskReduction
+        } 抑えました。`,
+        'success'
+      );
+    }
 
     setActiveBattleProperty(null);
     setActiveBattleMode('normal');
@@ -1058,13 +1071,16 @@ export default function App() {
 
   // Global Nemawashi
   const handleGlobalNemawashi = () => {
-    const totalAssetVal = ownedProperties.reduce(
+    const nemawashiTargets = ownedProperties.filter(
+      (property) => property.loyaltyRisk > 0
+    );
+    const totalAssetVal = nemawashiTargets.reduce(
       (sum, p) => sum + p.marketPrice,
       0
     );
     const cost = Math.round(totalAssetVal * 0.02);
 
-    if (totalFunds < cost) return;
+    if (nemawashiTargets.length === 0 || totalFunds < cost) return;
 
     setTotalFunds((prev) => prev - cost);
     setProperties((prev) =>
@@ -1076,7 +1092,7 @@ export default function App() {
     );
 
     addGameLog(
-      `【全支援元一括ネマワシ】全保有事業・契約の独立危険度を -30 一括減算しました（費用 ${formatCurrency(
+      `【全支援元一括ネマワシ】危険度が残る${nemawashiTargets.length}件の独立危険度を -30 一括減算しました（費用 ${formatCurrency(
         cost
       )}）`,
       'info'
@@ -1149,6 +1165,10 @@ export default function App() {
   const equippedSkills = useMemo(() => {
     return skills.filter((s) => equippedSkillIds.includes(s.id) && unlockedSkillIds.has(s.id));
   }, [skills, equippedSkillIds, unlockedSkillIds]);
+  const availableSkills = useMemo(
+    () => skills.filter((skill) => unlockedSkillIds.has(skill.id)),
+    [skills, unlockedSkillIds]
+  );
 
   const getBattleReadinessForTarget = (
     targetProperty: Property,
@@ -1239,6 +1259,14 @@ export default function App() {
         totalCommunityCount={TRADE_COMMUNITIES.length}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        onOpenMap={() => {
+          setActiveTab('market');
+          setMarketNavigationRequest((previous) => ({
+            id: (previous?.id || 0) + 1,
+            mode: 'map',
+            community: 'ALL',
+          }));
+        }}
         activeAllianceName={alliance.active ? alliance.allyName : null}
         activeSynergiesCount={activeSynergiesCount}
         tradeAllianceUnlocked={tradeAllianceUnlocked}
@@ -1449,6 +1477,7 @@ export default function App() {
           totalFunds={totalFunds}
           ownedProperties={ownedProperties}
           equippedSkills={equippedSkills}
+          availableSkills={availableSkills}
           alliance={alliance}
           activeSynergies={activeGroupSynergies}
           selectedBattleSynergy={selectedBattleSynergy}

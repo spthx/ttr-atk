@@ -13,6 +13,7 @@ interface SavedPropertyState {
   owner: Property['owner'];
   ownerName: string;
   loyaltyRisk: number;
+  reacquisitionLevel?: number;
 }
 
 export interface GameSaveData {
@@ -79,7 +80,10 @@ const isSavedProperty = (value: unknown): value is SavedPropertyState =>
   typeof value.id === 'string' &&
   typeof value.owner === 'string' &&
   typeof value.ownerName === 'string' &&
-  typeof value.loyaltyRisk === 'number';
+  typeof value.loyaltyRisk === 'number' &&
+  (value.reacquisitionLevel === undefined ||
+    (typeof value.reacquisitionLevel === 'number' &&
+      Number.isFinite(value.reacquisitionLevel)));
 
 export const loadLegacyCompanyName = () => {
   if (typeof window === 'undefined') return null;
@@ -174,6 +178,10 @@ export const restoreProperties = (save: GameSaveData | null): Property[] => {
             ? '独立物件'
             : property.ownerName,
       loyaltyRisk: Math.max(0, Math.min(100, saved.loyaltyRisk)),
+      reacquisitionLevel: Math.max(
+        0,
+        Math.min(2, Math.floor(saved.reacquisitionLevel ?? 0))
+      ),
     };
   });
 };
@@ -182,11 +190,18 @@ export const saveGame = (data: Omit<GameSaveData, 'schemaVersion' | 'lastSavedAt
   if (typeof window === 'undefined') return;
   const payload: GameSaveData = {
     ...data,
-    properties: data.properties.map(({ id, owner, ownerName, loyaltyRisk }) => ({
+    properties: data.properties.map(({
       id,
       owner,
       ownerName,
       loyaltyRisk,
+      reacquisitionLevel,
+    }) => ({
+      id,
+      owner,
+      ownerName,
+      loyaltyRisk,
+      reacquisitionLevel,
     })),
     schemaVersion: SAVE_SCHEMA_VERSION,
     lastSavedAt: Date.now(),

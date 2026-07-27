@@ -159,7 +159,7 @@ export const getBattleCashRecoveryWindMultipliers = (
 
 export const TACTICAL_SKILL_BALANCE = {
   fastAction: {
-    durationMs: 10_000,
+    durationMs: 12_000,
     cooldownMs: 18_000,
     baseCommandProgressPerTick: 2.8,
     boostedCommandProgressPerTick: 5,
@@ -168,16 +168,16 @@ export const TACTICAL_SKILL_BALANCE = {
     loyaltyRiskDivisor: 2,
   },
   disruption: {
-    durationMs: 9_000,
+    durationMs: 11_000,
     interruptChance: 0.7,
     collapseMarketRatio: 0.12,
   },
   demoralize: {
-    durationMs: 9_000,
-    enemyWaitMultiplier: 1.6,
+    durationMs: 12_000,
+    enemyWaitMultiplier: 1.75,
   },
   capitalBoost: {
-    marketRatio: 0.3,
+    marketRatio: 0.35,
   },
   livingDead: {
     waitingDurationMs: 10_000,
@@ -187,8 +187,8 @@ export const TACTICAL_SKILL_BALANCE = {
     requiredAssetValue: 1_000_000,
   },
   battleLitany: {
-    durationMs: 7_000,
-    pushMultiplier: 1.5,
+    durationMs: 10_000,
+    pushMultiplier: 1.65,
   },
   eraWind: {
     durationMs: 28_000,
@@ -309,8 +309,160 @@ export const ENEMY_BALANCE_FACTOR = {
   cartelHQ: 1.75,
 } as const;
 
+export const BATTLE_SUPPORT_BALANCE = {
+  subsidiaryMarketRatio: 0.52,
+  subsidiaryImpactBase: 1.2,
+  subsidiaryImpactPerMarketRatio: 9,
+  subsidiaryImpactCap: 7.5,
+  synergyMemberMarketRatio: 0.4,
+  synergyDefaultMultiplier: 1.35,
+  synergyImpactBase: 2.4,
+  synergyImpactPerMarketRatio: 8,
+  synergyImpactCap: 14,
+} as const;
+
+export const BATTLE_LOYALTY_BALANCE = {
+  individualRiskIncrease: 12,
+  limitBreakRiskIncrease: 8,
+  synergyRiskIncrease: 10,
+  celebrationRiskReduction: 20,
+  celebrationRewardRatio: 0.1,
+  reacquisitionSupportBonusPerLevel: 0.1,
+  reacquisitionRiskReductionPerLevel: 2,
+  maxReacquisitionLevel: 2,
+} as const;
+
+export const getReacquisitionLevel = (property: Property) =>
+  Math.max(
+    0,
+    Math.min(
+      BATTLE_LOYALTY_BALANCE.maxReacquisitionLevel,
+      Math.floor(property.reacquisitionLevel ?? 0)
+    )
+  );
+
+export const getSubsidiarySupportMultiplier = (property: Property) =>
+  1 +
+  getReacquisitionLevel(property) *
+    BATTLE_LOYALTY_BALANCE.reacquisitionSupportBonusPerLevel;
+
+export const getSubsidiaryRiskIncrease = (
+  property: Property,
+  baseIncrease: number
+) =>
+  Math.max(
+    1,
+    baseIncrease -
+      getReacquisitionLevel(property) *
+        BATTLE_LOYALTY_BALANCE.reacquisitionRiskReductionPerLevel
+  );
+
+export const calculateCelebrationGiftCost = (
+  subsidiaries: Property[],
+  victoryReward: number
+) => {
+  if (subsidiaries.length === 0 || victoryReward <= 0) return 0;
+  return Math.max(
+    1,
+    Math.round(
+      victoryReward * BATTLE_LOYALTY_BALANCE.celebrationRewardRatio
+    )
+  );
+};
+
+/**
+ * A target-independent company strength score used by the map comparison and
+ * victory growth presentation. Cash is immediately deployable; subsidiaries
+ * contribute their repeatable support value and stable revenue.
+ */
+export const calculateCompanyStrengthScore = (
+  totalFunds: number,
+  subsidiaries: Property[]
+) =>
+  Math.max(
+    0,
+    Math.round(
+      Math.max(0, totalFunds) +
+        subsidiaries.reduce(
+          (total, property) =>
+            total +
+            property.marketPrice *
+              BATTLE_SUPPORT_BALANCE.subsidiaryMarketRatio *
+              getSubsidiarySupportMultiplier(property) +
+            property.annualRevenue * PASSIVE_REVENUE_MULTIPLIER * 12,
+          0
+        )
+    )
+  );
+
+export interface CompanyStrengthLevel {
+  level: number;
+  progressPercent: number;
+  currentThreshold: number;
+  nextThreshold: number;
+}
+
+export const getCompanyStrengthLevel = (
+  strengthScore: number
+): CompanyStrengthLevel => {
+  const score = Math.max(0, strengthScore);
+  const level = Math.max(
+    1,
+    Math.min(99, Math.floor(Math.log2(score / 5_000 + 1) * 4) + 1)
+  );
+  const currentThreshold =
+    5_000 * (2 ** ((level - 1) / 4) - 1);
+  const nextThreshold =
+    5_000 * (2 ** (level / 4) - 1);
+  const progressPercent =
+    nextThreshold <= currentThreshold
+      ? 100
+      : Math.max(
+          0,
+          Math.min(
+            100,
+            ((score - currentThreshold) /
+              (nextThreshold - currentThreshold)) *
+              100
+          )
+        );
+  return {
+    level,
+    progressPercent,
+    currentThreshold: Math.round(currentThreshold),
+    nextThreshold: Math.round(nextThreshold),
+  };
+};
+
+export const getEnemyMinimumCommitment = (marketPrice: number) =>
+  Math.max(10, Math.round(Math.max(0, marketPrice) * 0.02));
+
 /** Normal-mode only. Savage and Ultimate keep their full encounter budgets. */
 export const NORMAL_ENEMY_BUDGET_MULTIPLIER = 0.96;
+
+export const NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS = {
+  tutorial: 0.72,
+  gridania: 0.82,
+  limsa: 0.86,
+  midgameAndLater: 1,
+} as const;
+
+export const getNormalEnemyCampaignMultiplier = (
+  targetProperty: Property,
+  isTutorial: boolean
+) => {
+  if (isTutorial) return NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS.tutorial;
+  const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
+    targetProperty.community
+  );
+  if (campaignIndex === 0) {
+    return NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS.gridania;
+  }
+  if (campaignIndex === 1) {
+    return NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS.limsa;
+  }
+  return NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS.midgameAndLater;
+};
 
 interface InfluenceBudgetModifier {
   enemyBudgetDiscount: number;
@@ -416,7 +568,8 @@ export const calculateEnemyBudget = ({
       : isSavage
         ? SAVAGE_ENEMY_BUDGET_MULTIPLIER *
           getSavageLayerBudgetMultiplier(targetProperty)
-        : NORMAL_ENEMY_BUDGET_MULTIPLIER)
+        : NORMAL_ENEMY_BUDGET_MULTIPLIER *
+          getNormalEnemyCampaignMultiplier(targetProperty, isTutorial))
   );
 };
 
@@ -467,7 +620,13 @@ export const calculateLimitBreakAmount = (
   if (tier === 0) return 0;
   const selfSlot = Math.round(targetMarketPrice * 0.28);
   const subsidiarySlots = participatingSubsidiaries.reduce(
-    (total, property) => total + Math.round(property.marketPrice * 0.28),
+    (total, property) =>
+      total +
+      Math.round(
+        property.marketPrice *
+          0.28 *
+          getSubsidiarySupportMultiplier(property)
+      ),
     0
   );
   return Math.round(
