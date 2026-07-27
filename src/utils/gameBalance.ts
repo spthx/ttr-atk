@@ -283,9 +283,9 @@ export const resolveLivingDeadOutcome = (
 };
 
 export const LIMIT_BREAK_MULTIPLIERS = {
-  1: 1.44,
-  2: 1.8,
-  3: 2.22,
+  1: 1.56,
+  2: 1.98,
+  3: 2.46,
 } as const;
 
 export type LimitBreakTier = 0 | 1 | 2 | 3;
@@ -308,6 +308,9 @@ export const ENEMY_BALANCE_FACTOR = {
   advanced: 1.55,
   cartelHQ: 1.75,
 } as const;
+
+/** Normal-mode only. Savage and Ultimate keep their full encounter budgets. */
+export const NORMAL_ENEMY_BUDGET_MULTIPLIER = 0.96;
 
 interface InfluenceBudgetModifier {
   enemyBudgetDiscount: number;
@@ -413,7 +416,7 @@ export const calculateEnemyBudget = ({
       : isSavage
         ? SAVAGE_ENEMY_BUDGET_MULTIPLIER *
           getSavageLayerBudgetMultiplier(targetProperty)
-        : 1)
+        : NORMAL_ENEMY_BUDGET_MULTIPLIER)
   );
 };
 

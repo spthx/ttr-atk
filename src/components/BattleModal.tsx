@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   CircleHelp,
   HandCoins,
+  MapPinned,
   ScrollText,
   ShieldAlert,
   Sparkles,
@@ -163,6 +164,7 @@ interface BattleModalProps {
 }
 
 type Panel = 'capital' | 'funds';
+type ResultStep = 'summary' | 'departures';
 type BattleMotion = 'idle' | 'player' | 'enemy' | 'rebel';
 type LogCategory = 'system' | 'player' | 'enemy' | 'funds' | 'skill' | 'result';
 type BattleAnnouncement = 'start' | 'limit';
@@ -643,6 +645,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [aiCycle, setAiCycle] = useState(0);
   const [finishTelegraphVisible, setFinishTelegraphVisible] = useState(false);
   const [resultConfirmArmed, setResultConfirmArmed] = useState(false);
+  const [resultStep, setResultStep] = useState<ResultStep>('summary');
   const [showLog, setShowLog] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [floaters, setFloaters] = useState<FloatingGil[]>([]);
@@ -804,7 +807,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       window.clearTimeout(focusTimer);
       document.removeEventListener('keydown', trapFocus);
     };
-  }, [battlePhase, panel, requestClose, showHelp, showLog]);
+  }, [battlePhase, panel, requestClose, resultStep, showHelp, showLog]);
 
   const updateLivingDeadState = (phase: LivingDeadPhase, remainingMs = 0) => {
     livingDeadPhaseRef.current = phase;
@@ -868,7 +871,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const effectivePlayerShare = effectiveCapitalTotal > 0
     ? effectivePlayerInvested / effectiveCapitalTotal * 100
     : 50;
-  const capitalPressurePosition = Math.max(4, Math.min(96, effectivePlayerShare));
   const playerCapitalProgress =
     totalPlayerInvested / Math.max(1, targetProperty.marketPrice) * 100;
   const enemyCapitalProgress =
@@ -2843,18 +2845,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     changeBattlePhase('result');
   };
 
-  const confirmResult = () => {
+  const completeBattleResult = () => {
     if (!winner) return;
-    if (
-      !canConfirmBattleResult({
-        battlePhase: battlePhaseRef.current,
-        hasWinner: true,
-        armed: resultConfirmArmedRef.current,
-        alreadyConfirmed: resultConfirmedRef.current,
-      })
-    ) {
-      return;
-    }
+    if (resultConfirmedRef.current) return;
     resultConfirmedRef.current = true;
     resultConfirmArmedRef.current = false;
     setResultConfirmArmed(false);
@@ -2878,6 +2871,37 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       finalOwnership,
       overkill,
     });
+  };
+
+  const confirmResult = () => {
+    if (!winner) return;
+    if (
+      !canConfirmBattleResult({
+        battlePhase: battlePhaseRef.current,
+        hasWinner: true,
+        armed: resultConfirmArmedRef.current,
+        alreadyConfirmed: resultConfirmedRef.current,
+      })
+    ) {
+      return;
+    }
+    if (rebelled.length > 0) {
+      soundFx.playWarning();
+      setResultStep('departures');
+      return;
+    }
+    completeBattleResult();
+  };
+
+  const confirmDepartureReport = () => {
+    if (
+      battlePhaseRef.current !== 'result' ||
+      resultStep !== 'departures' ||
+      !winner
+    ) {
+      return;
+    }
+    completeBattleResult();
   };
 
   const resultAnalysis = isTraining
@@ -3009,7 +3033,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           data-flow-intensity={ownershipRate > 1.7 ? 'surge' : ownershipRate > 0.65 ? 'fast' : 'calm'}
           style={{
             '--battle-frontline': `${ownership}%`,
-            '--capital-pressure': `${capitalPressurePosition}%`,
             '--field-flow-duration': `${Math.max(.46, 1.9 - Math.min(1, ownershipRate / 4))}s`,
           } as React.CSSProperties}
         >
@@ -3401,7 +3424,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <b><MarqueeText text={primarySkill.name} /></b>
                 <small>押してスキル切替</small>
               </span>
-              <em>{equippedSkills.findIndex((skill) => skill.id === primarySkill.id) + 1}/{equippedSkills.length}</em>
+              <span
+                className="battle-action-strip__skill-steps"
+                aria-hidden="true"
+              >
+                {equippedSkills.map((skill) => (
+                  <i
+                    key={skill.id}
+                    className={skill.id === primarySkill.id ? 'is-selected' : ''}
+                  />
+                ))}
+              </span>
             </button>
           )}
 
@@ -3744,6 +3777,59 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
       {battlePhase === 'result' && winner && (
         <div className="buyout-overlay buyout-result-overlay">
+          {resultStep === 'departures' ? (
+          <article
+            ref={phaseDialogRef}
+            className="buyout-dialog buyout-result buyout-departure-report"
+            role="dialog"
+            aria-modal="true"
+            aria-label="資金源の離脱報告"
+            tabIndex={-1}
+          >
+            <header>
+              <ShieldAlert />
+              <strong>{isProtectedBattle ? '一時離脱報告' : '独立離脱報告'}</strong>
+            </header>
+            <div className="departure-report__lead">
+              <img src={FANKIT_ART.tataru.windUp} alt="タタル" />
+              <p>
+                <b>{rebelled.length}件の支援元が戦列を離れました</b>
+                <span>
+                  {isProtectedBattle
+                    ? 'この戦いは保護対象のため、通常の保有状態と独立危険度には反映されません。'
+                    : '独立した事業・契約は支援元から外れ、評価額が商会資金へ強制清算されます。'}
+                </span>
+              </p>
+            </div>
+            <div className="departure-report__list">
+              {rebelled.map((property) => (
+                <article key={property.id}>
+                  <ShieldAlert />
+                  <span>
+                    <b>{property.name}</b>
+                    <small>{isProtectedBattle ? '演習内のみ一時離脱' : '独立・支援終了'}</small>
+                  </span>
+                  <strong>
+                    {isProtectedBattle
+                      ? '保有維持'
+                      : `${formatCurrency(property.marketPrice)}清算`}
+                  </strong>
+                </article>
+              ))}
+            </div>
+            <p className="departure-report__advice">
+              次の商戦では、独立危険度の高い支援元へ要求する前に「守りのサンバ」やネマワシで備えるでっす。
+            </p>
+            <button
+              type="button"
+              className="dialog-close result-confirm result-return-map"
+              onClick={confirmDepartureReport}
+            >
+              <MapPinned />
+              <span>{isTraining ? '確認して木人一覧へ戻る' : '確認して全体マップへ戻る'}</span>
+            </button>
+          </article>
+          ) : (
           <article
             ref={phaseDialogRef}
             className={`buyout-dialog buyout-result buyout-result--${winner}`}
@@ -3792,36 +3878,32 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <span><small>{isTraining ? '訓練中の一時離脱' : isHighEndRaid ? '記録戦中の一時離脱' : '資金源離脱'}</small><b>{rebelled.length}件</b></span>
             </div>
             {winner === 'player' && <p className="overkill-rating">{getOverkillRating(overkill)}</p>}
-            {rebelled.length > 0 && (
-              <p className="rebel-summary">
-                <ShieldAlert />
-                {isProtectedBattle
-                  ? `一時離脱（通常の事業・契約は保護）：${rebelled.map((item) => item.name).join('・')}`
-                  : `独立：${rebelled.map((item) => item.name).join('・')}`}
-              </p>
-            )}
             {!isTraining && winner === 'player' && nextCommunity && <p className="next-community"><CheckCircle2 />次の都市「{nextCommunity}」への交易路が開きます。</p>}
             <button
               type="button"
-              className="dialog-close result-confirm"
+              className="dialog-close result-confirm result-return-map"
               onClick={confirmResult}
               disabled={!resultConfirmArmed}
               aria-describedby="battle-result-confirm-note"
             >
-              {!resultConfirmArmed
+              {resultConfirmArmed && <MapPinned />}
+              <span>{!resultConfirmArmed
                 ? '結果を確認中…'
+                : rebelled.length > 0
+                ? '結果を確認して離脱報告へ'
                 : isTraining
                 ? '訓練結果を保存せず木人一覧へ戻る'
                 : winner === 'player'
                 ? isHighEndRaid
-                  ? '攻略結果を確定する'
-                  : '買収結果を確定する'
-                : '敗因を記録して戻る'}
+                  ? '攻略結果を確定して全体マップへ戻る'
+                  : '買収結果を確定して全体マップへ戻る'
+                : '敗因を記録して全体マップへ戻る'}</span>
             </button>
             <small id="battle-result-confirm-note" className="sr-only">
               このボタンを押すまで商戦結果は確定されず、画面も閉じません。
             </small>
           </article>
+          )}
         </div>
       )}
     </div>
