@@ -3325,8 +3325,8 @@
   position: absolute;
   z-index: 20;
   top: 2.18rem;
-  right: 0;
-  left: 0;
+  right: -30.65%;
+  left: -30.65%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 4.6rem minmax(0, 1fr);
   align-items: start;
@@ -3341,7 +3341,7 @@
   gap: .38rem;
   overflow: hidden;
   color: #fff3a6;
-  font: 900 clamp(.88rem, 2vw, 1.18rem)/1 ui-monospace, monospace;
+  font: 900 clamp(1.02rem, 2.35vw, 1.42rem)/1 ui-monospace, monospace;
   letter-spacing: .025em;
   text-shadow:
     0 .1rem .18rem #000,
@@ -3350,6 +3350,7 @@
 }
 
 .integrated-battlefield .ownership-capital-readout > strong:first-child {
+  grid-column: 1;
   justify-content: flex-start;
   color: #e0f2fe;
   text-shadow:
@@ -3358,8 +3359,11 @@
 }
 
 .integrated-battlefield .ownership-capital-readout > strong:last-child {
+  grid-column: 3;
   justify-content: flex-end;
+  padding-right: .2rem;
   color: #ffe4e6;
+  text-align: right;
   text-shadow:
     0 .1rem .18rem #000,
     0 0 .45rem rgba(244, 63, 94, .72);
@@ -4317,8 +4321,6 @@
 @media (max-width: 639px) {
   .integrated-battlefield .ownership-capital-readout {
     top: 2.08rem;
-    right: 0;
-    left: 0;
     grid-template-columns: minmax(0, 1fr) 2.8rem minmax(0, 1fr);
     gap: .16rem;
   }
@@ -4326,7 +4328,7 @@
   .integrated-battlefield .ownership-capital-readout > strong {
     display: block;
     overflow: visible;
-    font-size: clamp(.78rem, 3.7vw, .96rem);
+    font-size: clamp(.98rem, 4.5vw, 1.16rem);
   }
 
   .integrated-battlefield .ownership-capital-readout > strong:last-child {
@@ -4995,6 +4997,11 @@
     0 1px 0 #020617,
     0 0 .35rem rgba(250, 204, 21, .34),
     0 .15rem .28rem rgba(0, 0, 0, .92);
+}
+
+.buyout-screen--lightweight .integrated-battlefield .ownership-capital-readout {
+  right: 0;
+  left: 0;
 }
 
 .buyout-screen--lightweight .integrated-battlefield .ownership-capital-readout > strong:last-child {
