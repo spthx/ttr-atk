@@ -99,13 +99,16 @@ import {
 } from '../src/utils/trainingDummy';
 import {
   advanceBattleCashRecovery,
+  applyCoverToGaugeDelta,
   applyTrainingGaugeSpeed,
+  BOSS_COVER_BALANCE,
   BATTLE_CASH_RECOVERY_RATE_PER_SECOND,
   BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO,
   BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS,
   BATTLE_GAUGE_SPEED_FACTOR,
   BATTLE_LOYALTY_BALANCE,
   BATTLE_SUPPORT_BALANCE,
+  calculateSubsidiarySupportAmount,
   calculateCelebrationGiftCost,
   calculateCompanyStrengthScore,
   calculateBattleVictoryReward,
@@ -126,6 +129,7 @@ import {
   calculateLimitBreakOwnershipPush,
   countsTowardCityConquest,
   getCampaignProperties,
+  getBossAbilityTier,
   getBattleCashRecoveryWindMultipliers,
   getCompanyStrengthLevel,
   getEnemyMinimumCommitment,
@@ -137,6 +141,7 @@ import {
   getSubsidiaryRiskIncrease,
   getSubsidiarySupportMultiplier,
   holdTrainingGaugeAboveDefeat,
+  isNormalCityBoss,
   isSkillUnlocked,
   LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER,
   LIMIT_BREAK_MULTIPLIERS,
@@ -144,6 +149,7 @@ import {
   NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS,
   NORMAL_ENEMY_BUDGET_MULTIPLIER,
   resolveLivingDeadOutcome,
+  sortSubsidiariesBySupport,
   SAVAGE_ENEMY_BUDGET_MULTIPLIER,
   SAVAGE_LAYER_BUDGET_MULTIPLIERS,
   ULTIMATE_ENEMY_BUDGET_MULTIPLIER,
@@ -970,6 +976,26 @@ const campaignSummary = COMMUNITY_CAMPAIGN_ORDER.map((community, index) => {
       Math.max(1, property.annualRevenue * PASSIVE_REVENUE_MULTIPLIER);
     assert.ok(paybackSeconds >= 45 && paybackSeconds <= 210, `payback range: ${property.id}`);
   });
+  const boss = targets.at(-1)!;
+  assert.equal(isNormalCityBoss(INITIAL_PROPERTIES, boss), true);
+  targets.slice(0, -1).forEach((property) =>
+    assert.equal(isNormalCityBoss(INITIAL_PROPERTIES, property), false)
+  );
+  const expectedBossTier =
+    index >= 9
+      ? 'invincible'
+      : index >= 7
+        ? 'enhanced_cover'
+        : index >= 3
+          ? 'cover'
+          : 'boss';
+  assert.equal(
+    getBossAbilityTier({
+      targetProperty: boss,
+      isCityBoss: true,
+    }),
+    expectedBossTier
+  );
   return {
     stage: index + 1,
     targetCount: targets.length,
@@ -1388,6 +1414,17 @@ const savageLayerBudgets = savageProperties.map((targetProperty) => {
   );
 });
 assert.deepEqual(
+  savageProperties.map((property) =>
+    getBossAbilityTier({
+      targetProperty: property,
+      isCityBoss: false,
+      isSavage: true,
+    })
+  ),
+  ['cover', 'enhanced_cover', 'enhanced_cover', 'invincible'],
+  'every Savage layer is a boss and gains a visible defensive pattern'
+);
+assert.deepEqual(
   savageLayerBudgets.map((ratio) => Number(ratio.toFixed(3))),
   SAVAGE_LAYER_BUDGET_MULTIPLIERS.map((layerMultiplier) =>
     Number((SAVAGE_ENEMY_BUDGET_MULTIPLIER * layerMultiplier).toFixed(3))
@@ -1453,9 +1490,9 @@ const slowedEnemyDecision = decideEnemyAction({ ...baseAiContext, slowed: true }
 assert.ok(
   Math.abs(
     slowedEnemyDecision.waitMs / normalEnemyDecision.waitMs -
-    TACTICAL_SKILL_BALANCE.demoralize.enemyWaitMultiplier
+    1.9
   ) < 0.002,
-  'demoralize wait multiplier'
+  'legacy enemy slow input remains deterministic'
 );
 const protectedReserve = decideEnemyAction({ ...baseAiContext, enemyReservePercent: 14 });
 assert.equal(protectedReserve.intent, 'CONSERVE');
@@ -1468,7 +1505,7 @@ const livingDeadSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_sns_b
 const fastHorseSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_fast_horse')!;
 const moraleSupportSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_nemawashi')!;
 const disruptionSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_sabotage')!;
-const demoralizeSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_demoralize')!;
+const coverSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_demoralize')!;
 const capitalBoostSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_capital_boost')!;
 const synergyPushSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_synergy_push')!;
 const eraWindSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_era_wind')!;
@@ -1503,7 +1540,7 @@ assert.equal(isSkillUnlocked({
 assert.equal(capitalBoostSkill.oncePerBattle, true);
 assert.deepEqual(
   INITIAL_SKILLS.map((skill) => skill.name),
-  ['疾風怒濤の計', '守りのサンバ', '連環計', '消沈', '意気衝天', 'リビングデッド', 'バトルリタニー', '時代の風']
+  ['疾風怒濤の計', '守りのサンバ', '連環計', 'かばう', '意気衝天', 'リビングデッド', 'バトルリタニー', '時代の風']
 );
 assert.equal(fastHorseSkill.cooldownMs, TACTICAL_SKILL_BALANCE.fastAction.cooldownMs);
 assert.equal(
@@ -1521,8 +1558,42 @@ assert.equal(TACTICAL_SKILL_BALANCE.disruption.interruptChance, 0.75);
 assert.equal(TACTICAL_SKILL_BALANCE.disruption.durationMs, 15_000);
 assert.equal(TACTICAL_SKILL_BALANCE.disruption.collapseMarketRatio, 0.14);
 assert.match(disruptionSkill.description, /中断分は追加防衛枠から消費されない/);
-assert.equal(TACTICAL_SKILL_BALANCE.demoralize.durationMs, 16_000);
-assert.match(demoralizeSkill.description, /1\.90倍/);
+assert.equal(coverSkill.id, 'skill_demoralize', 'legacy equipped ability id remains valid');
+assert.equal(coverSkill.effectType, 'COVER');
+assert.equal(coverSkill.oncePerBattle, true);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 10_000);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.absorbRatio, 0.6);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity, 16);
+assert.match(coverSkill.description, /10秒間/);
+assert.deepEqual(
+  applyCoverToGaugeDelta({
+    currentGauge: 0,
+    nextGauge: 20,
+    protects: 'player',
+    absorbRatio: 0.6,
+    remainingGaugeCapacity: 16,
+  }),
+  {
+    nextGauge: 8,
+    absorbedGauge: 12,
+    remainingGaugeCapacity: 4,
+  }
+);
+assert.deepEqual(
+  applyCoverToGaugeDelta({
+    currentGauge: 0,
+    nextGauge: -30,
+    protects: 'opponent',
+    absorbRatio: 0.8,
+    remainingGaugeCapacity: 20,
+  }),
+  {
+    nextGauge: -10,
+    absorbedGauge: 20,
+    remainingGaugeCapacity: 0,
+  }
+);
+assert.equal(BOSS_COVER_BALANCE.invincible.durationMs, 8_000);
 assert.equal(TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio, 0.4);
 assert.equal(livingDeadSkill.id, 'skill_sns_blitz', 'legacy save-compatible skill id');
 assert.equal(livingDeadSkill.effectType, 'LIVING_DEAD');
@@ -1591,6 +1662,33 @@ const returningSubsidiary = {
 };
 assert.equal(getReacquisitionLevel(returningSubsidiary), 1);
 assert.equal(getSubsidiarySupportMultiplier(returningSubsidiary), 1.1);
+assert.equal(
+  calculateSubsidiarySupportAmount(returningSubsidiary),
+  Math.round(
+    returningSubsidiary.marketPrice *
+      BATTLE_SUPPORT_BALANCE.subsidiaryMarketRatio *
+      1.1
+  )
+);
+const supportOrderInput = [
+  { ...readinessProperty, id: 'support-low', name: '小口支援', marketPrice: 1_000 },
+  {
+    ...readinessProperty,
+    id: 'support-high',
+    name: '大口支援',
+    marketPrice: 2_000,
+  },
+];
+assert.deepEqual(
+  sortSubsidiariesBySupport(supportOrderInput).map((property) => property.id),
+  ['support-high', 'support-low'],
+  'funding sources are shown from strongest to weakest'
+);
+assert.deepEqual(
+  supportOrderInput.map((property) => property.id),
+  ['support-low', 'support-high'],
+  'support sorting never mutates the saved subsidiary order'
+);
 assert.equal(
   getSubsidiaryRiskIncrease(
     returningSubsidiary,

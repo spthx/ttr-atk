@@ -122,6 +122,10 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
             >
               <header>
                 <span>第{raid.layer}層</span>
+                <i className="savage-layer-card__boss-mark">
+                  <Crown />
+                  BOSS
+                </i>
                 <b>{cleared ? <CheckCircle2 /> : unlocked ? <Swords /> : <Lock />}</b>
               </header>
               <h3>{raid.encounterName}</h3>
@@ -201,7 +205,10 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
           {FANKIT_ART.jobs.map((src) => <img key={src} src={src} alt="" />)}
         </div>
         <div className="ultimate-raid-card__copy">
-          <small>ULTIMATE TRADE DUTY / 本作独自</small>
+          <small>
+            <span className="ultimate-raid-card__boss-mark"><Crown /> BOSS</span>
+            ULTIMATE TRADE DUTY / 本作独自
+          </small>
           <h2>{ULTIMATE_RAID_DEFINITION.name}</h2>
           <p>
             4層踏破で解放される、別枠の単独最終戦です。

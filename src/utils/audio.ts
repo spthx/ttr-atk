@@ -346,7 +346,6 @@ class SoundEffects {
       if (!ctx) return;
       const now = ctx.currentTime;
       const hostile =
-        effectType === 'DEMORALIZE' ||
         effectType === 'INDEPENDENCE_SABOTAGE';
       const wind = effectType === 'ERA_WIND' || effectType === 'COOLDOWN_REDUCTION';
       const notes = hostile
@@ -403,7 +402,7 @@ class SoundEffects {
         ? ctx.createStereoPanner()
         : null;
       source.buffer = buffer;
-      filter.type = effectType === 'DEMORALIZE' ? 'lowpass' : 'bandpass';
+      filter.type = effectType === 'COVER' ? 'lowpass' : 'bandpass';
       filter.frequency.setValueAtTime(
         effectType === 'ERA_WIND' ? 1_400 : 2_600,
         now
@@ -450,7 +449,6 @@ class SoundEffects {
       if (!ctx) return;
       const now = ctx.currentTime;
       const hostile =
-        effectType === 'DEMORALIZE' ||
         effectType === 'INDEPENDENCE_SABOTAGE';
       const wind = effectType === 'ERA_WIND' || effectType === 'COOLDOWN_REDUCTION';
       const master = ctx.createGain();

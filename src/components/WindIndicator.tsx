@@ -80,7 +80,7 @@ export const WIND_CONDITIONS: Record<WindType, WindCondition> = {
     enemyMultiplier: 1.0,
     speedMultiplier: 1.0,
     strengthStars: 3,
-    description: '市場の風向きは穏やか。標準的な資本力とスキルによる順当な駆け引きが展開中。',
+    description: '市場の風向きは穏やか。標準的な資本力とアビリティによる順当な駆け引きが展開中。',
     colorClass: 'text-cyan-300 border-cyan-500/50',
     bgGradient: 'from-cyan-950/80 to-slate-950/80',
   },
