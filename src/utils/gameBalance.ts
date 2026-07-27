@@ -159,25 +159,25 @@ export const getBattleCashRecoveryWindMultipliers = (
 
 export const TACTICAL_SKILL_BALANCE = {
   fastAction: {
-    durationMs: 12_000,
+    durationMs: 15_000,
     cooldownMs: 18_000,
     baseCommandProgressPerTick: 2.8,
-    boostedCommandProgressPerTick: 5,
+    boostedCommandProgressPerTick: 5.2,
   },
   moraleSupport: {
     loyaltyRiskDivisor: 2,
   },
   disruption: {
-    durationMs: 11_000,
-    interruptChance: 0.7,
-    collapseMarketRatio: 0.12,
+    durationMs: 15_000,
+    interruptChance: 0.75,
+    collapseMarketRatio: 0.14,
   },
   demoralize: {
-    durationMs: 12_000,
-    enemyWaitMultiplier: 1.75,
+    durationMs: 16_000,
+    enemyWaitMultiplier: 1.9,
   },
   capitalBoost: {
-    marketRatio: 0.35,
+    marketRatio: 0.4,
   },
   livingDead: {
     waitingDurationMs: 10_000,
@@ -187,16 +187,16 @@ export const TACTICAL_SKILL_BALANCE = {
     requiredAssetValue: 1_000_000,
   },
   battleLitany: {
-    durationMs: 10_000,
-    pushMultiplier: 1.65,
+    durationMs: 14_000,
+    pushMultiplier: 1.8,
   },
   eraWind: {
-    durationMs: 28_000,
+    durationMs: 36_000,
     cooldownMs: 0,
     minimumCost: 100_000,
     marketCostRatio: 0.02,
     useCostMultipliers: [1],
-    baseGaugePushPerSecond: 1.35,
+    baseGaugePushPerSecond: 1.55,
     pushStepPerUse: 0,
     maxUsesPerBattle: 1,
   },
@@ -314,11 +314,11 @@ export const BATTLE_SUPPORT_BALANCE = {
   subsidiaryImpactBase: 1.2,
   subsidiaryImpactPerMarketRatio: 9,
   subsidiaryImpactCap: 7.5,
-  synergyMemberMarketRatio: 0.4,
-  synergyDefaultMultiplier: 1.35,
-  synergyImpactBase: 2.4,
-  synergyImpactPerMarketRatio: 8,
-  synergyImpactCap: 14,
+  synergyMemberMarketRatio: 0.46,
+  synergyDefaultMultiplier: 1.45,
+  synergyImpactBase: 3,
+  synergyImpactPerMarketRatio: 9,
+  synergyImpactCap: 16,
 } as const;
 
 export const BATTLE_LOYALTY_BALANCE = {

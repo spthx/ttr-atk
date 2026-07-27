@@ -444,25 +444,6 @@
   animation-delay: .34s;
 }
 
-.limit-impact-field i {
-  position: absolute;
-  top: -12%;
-  left: calc(14% + var(--limit-x, 0%));
-  width: .85rem;
-  aspect-ratio: 1;
-  border: 2px solid #fff1a8;
-  border-radius: 50%;
-  background: #d99a16;
-  box-shadow: inset 0 0 .22rem #fff8c7, 0 0 .65rem rgba(250, 204, 21, .75);
-  opacity: .72;
-  animation: limit-coin-rain 1.05s .42s cubic-bezier(.2, .7, .25, 1) both;
-}
-
-.limit-impact-field i:nth-of-type(2) { --limit-x: 16%; animation-delay: .5s; }
-.limit-impact-field i:nth-of-type(3) { --limit-x: 34%; animation-delay: .58s; }
-.limit-impact-field i:nth-of-type(4) { --limit-x: 55%; animation-delay: .46s; }
-.limit-impact-field i:nth-of-type(5) { --limit-x: 72%; animation-delay: .62s; }
-
 .buyout-screen--limit-impact .ownership-board,
 .buyout-screen--limit-impact .capital-arena {
   animation: limit-board-impact .48s steps(2) 2;
@@ -480,7 +461,6 @@
   58% { opacity: 1; transform: translateX(8%) rotate(var(--slash-angle)) scaleX(1); filter: brightness(2.2); }
   100% { opacity: 0; transform: translateX(24%) rotate(var(--slash-angle)) scaleX(1.08); filter: brightness(1); }
 }
-@keyframes limit-coin-rain { 0% { opacity: 0; transform: translateY(0) rotate(0); } 18% { opacity: 1; } 100% { opacity: 0; transform: translateY(112vh) rotate(680deg); } }
 @keyframes limit-board-impact { 25% { transform: translate(-.16rem, .1rem); filter: brightness(1.55); } 75% { transform: translate(.16rem, -.08rem); } }
 
 @media (max-width: 639px) {
@@ -498,7 +478,6 @@
   .limit-impact-field::before,
   .limit-impact-field::after,
   .limit-impact-field span,
-  .limit-impact-field i,
   .buyout-screen--limit-impact .ownership-board,
   .buyout-screen--limit-impact .capital-arena {
     animation: none !important;

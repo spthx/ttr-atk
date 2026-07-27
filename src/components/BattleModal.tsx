@@ -335,21 +335,21 @@ const getQuickSkillSummary = (
   if (isTraining && isRivalOnlySkill(skill)) return '木人では対象なし';
   switch (skill.effectType) {
     case 'COOLDOWN_REDUCTION':
-      return '命令回復 約1.8倍・12秒';
+      return '命令回復 約1.9倍・15秒';
     case 'NEMAWASHI':
       return '全支援元の独立危険度を半減';
     case 'INDEPENDENCE_SABOTAGE':
-      return '防衛中断70%・11秒';
+      return '防衛中断75%・15秒';
     case 'DEMORALIZE':
-      return '競合待機 ×1.75・12秒';
+      return '競合待機 ×1.90・16秒';
     case 'CAPITAL_BOOST':
-      return '相場35%を即時支援';
+      return '相場40%を即時支援';
     case 'LIVING_DEAD':
       return '致死回避 → 30%復帰';
     case 'SYNERGY_PUSH':
-      return '押込速度 ×1.65・10秒';
+      return '押込速度 ×1.80・14秒';
     case 'ERA_WIND':
-      return '所有率 +0.68pt/秒相当・28秒';
+      return '所有率 +0.78pt/秒相当・36秒';
   }
 };
 
@@ -461,12 +461,19 @@ const GilTower: React.FC<{
             <i className="gil-tower__hoard-band gil-tower__hoard-band--near" />
           </span>
         )}
-        {visualStage > 0 && (
+        {visualStage >= 4 && (
           <span
             className={`gil-tower__formation gil-tower__formation--${formation}`}
             aria-hidden="true"
           >
-            {Array.from({ length: 6 }, (_, index) => <i key={index} />)}
+            {Array.from({ length: 6 }, (_, index) => (
+              <img
+                key={index}
+                src={chipAsset}
+                alt=""
+                aria-hidden="true"
+              />
+            ))}
           </span>
         )}
         {Array.from({ length: spriteCount }).map((_, index) => (
@@ -2603,21 +2610,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       playMotion('player');
       setStatusText(limitBreakResultText);
 
-      const reducedMotion = window.matchMedia?.(
-        '(prefers-reduced-motion: reduce)'
-      ).matches ?? false;
-      if (!reducedMotion) {
-        confetti({
-          particleCount: window.innerWidth <= 640 ? 30 : 72,
-          spread: 78,
-          startVelocity: window.innerWidth <= 640 ? 26 : 34,
-          ticks: window.innerWidth <= 640 ? 72 : 100,
-          scalar: window.innerWidth <= 640 ? 0.74 : 0.88,
-          origin: { y: 0.62 },
-          colors: ['#fef08a', '#f59e0b', '#34d399', '#ffffff'],
-          disableForReducedMotion: true,
-        });
-      }
       changeBattlePhase('active');
       setBattleAnnouncement(null);
       setLastPlayerAction(null);
@@ -2737,8 +2729,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const targetsRival = isRivalOnlySkill(skill);
     if (skill.effectType === 'COOLDOWN_REDUCTION') {
       setFastHorseRemaining(TACTICAL_SKILL_BALANCE.fastAction.durationMs);
-      setStatusText('疾風怒濤の計――12秒間、行動準備ゲージの進行速度が約1.8倍');
-      showFloater('命令回復 ×1.8', 'player');
+      setStatusText('疾風怒濤の計――15秒間、行動準備ゲージの進行速度が約1.9倍');
+      showFloater('命令回復 ×1.9 / 15秒', 'player');
     } else if (skill.effectType === 'NEMAWASHI') {
       setBattleSubs((current) => current.map((item) => ({
         ...item,
@@ -2750,12 +2742,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       showFloater('独立危険度 半減', 'player');
     } else if (skill.effectType === 'INDEPENDENCE_SABOTAGE') {
       setEnemyDisruptionRemaining(TACTICAL_SKILL_BALANCE.disruption.durationMs);
-      setStatusText('連環計――11秒間、競合の追加防衛を70%で中断');
-      showFloater('防衛中断 70%', 'enemy', 'negative');
+      setStatusText('連環計――15秒間、競合の追加防衛を75%で中断');
+      showFloater('防衛中断 75% / 15秒', 'enemy', 'negative');
     } else if (skill.effectType === 'DEMORALIZE') {
       setEnemySlowedRemaining(TACTICAL_SKILL_BALANCE.demoralize.durationMs);
       setStatusText('消沈――競合の指揮系統を乱し、命令待ち時間を延長');
-      showFloater('競合待機 ×1.75 / 12秒', 'enemy', 'negative');
+      showFloater('競合待機 ×1.90 / 16秒', 'enemy', 'negative');
     } else if (skill.effectType === 'CAPITAL_BOOST') {
       const amount = Math.round(
         targetProperty.marketPrice * TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio
@@ -2774,8 +2766,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       showFloater('LIVING DEAD / ARMED', 'player', 'notice');
     } else if (skill.effectType === 'SYNERGY_PUSH') {
       setPushMultiplierRemaining(TACTICAL_SKILL_BALANCE.battleLitany.durationMs);
-      setStatusText('バトルリタニー――10秒間、所有率の押し込み速度が1.65倍');
-      showFloater('押込速度 ×1.65 / 10秒', 'player');
+      setStatusText('バトルリタニー――14秒間、所有率の押し込み速度が1.80倍');
+      showFloater('押込速度 ×1.80 / 14秒', 'player');
     } else if (skill.effectType === 'ERA_WIND') {
       const nextUse = eraWindUses + 1;
       const pushPerSecond = getEraWindGaugePushPerSecond(eraWindUses);
@@ -2794,7 +2786,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         secondsRemaining: BATTLE_WIND_COOLDOWN_SECONDS,
       }));
       setStatusText(
-        `時代の風――${formatCurrency(nextEraWindCost)}を運用し、28秒間 所有率+${(pushPerSecond / 2).toFixed(2)}pt/秒相当`
+        `時代の風――${formatCurrency(nextEraWindCost)}を運用し、36秒間 所有率+${(pushPerSecond / 2).toFixed(2)}pt/秒相当`
       );
       showFloater(
         `時流 +${(pushPerSecond / 2).toFixed(2)}pt/秒`,
@@ -3182,7 +3174,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       {limitImpactActive && (
         <div className="limit-impact-field" aria-hidden="true">
           <span /><span /><span />
-          <i /><i /><i /><i /><i />
         </div>
       )}
 
@@ -3321,11 +3312,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             ))}
           </span>
         )}
-        {(isTraining || isSavage || isUltimate) && (
+        {(isSavage || isUltimate) && (
           <div className={`battlefield-raid-marker ${isUltimate ? 'battlefield-raid-marker--ultimate' : ''}`}>
-            {isTraining ? (
-              <><b>商戦木人</b><span>追加防衛なし・セーブ無影響</span></>
-            ) : isUltimate ? (
+            {isUltimate ? (
               <><b>絶商戦</b><span>最終高難度</span></>
             ) : (
               <>
@@ -4005,7 +3994,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <li><b>未投入資金</b><span>通常商戦へ持ち込める自社現金は対象相場と同額まで。超過分は商会に安全資金として残り、戦後も失われません。木人訓練は制限対象外です。</span></li>
               <li><b>商流回復</b><span>自社は開始時の持込資金、競合は開始時の総予算を基準に、双方0.3%/秒で手元資金だけを回復します。現在値は基準100%まで、累積は1戦20%まで。風は回復速度だけを変え、所有率へ直接加算しません。</span></li>
               <li><b>市場の風を読む</b><span>{isTraining ? '木人訓練では風は発生せず、自社・木人双方への補正もありません。' : 'グリダニアは風なし。進行後も開始から最低10秒は静穏です。その後は低頻度の市場気配、3秒の予兆を経て12～15秒だけ風が吹き、終了後は最低18秒の静穏を挟みます。'}</span></li>
-              {!isTraining && <li><b>時代の風</b><span>クガネの交易網を揃えると解放。敵資金を消さず、28秒間、自社向きの強い時流を追加します。1交渉につき1回です。</span></li>}
+              {!isTraining && <li><b>時代の風</b><span>クガネの交易網を揃えると解放。敵資金を消さず、36秒間、自社向きの強い時流を追加します。1交渉につき1回です。</span></li>}
               <li><b>LIMIT BREAK</b><span>攻防の資金衝突で通常比20％速く蓄積し、動員資金も20％増加。自社＋支援元が合計4/8/16枠で1/2/3本まで解放され、発動のたび全ゲージを0にします。同じ戦闘でも再蓄積すれば再発動できます。</span></li>
               <li><b>特殊アクション</b><span>商戦フィールド直下のアイコンからLB・選択中のSYNERGY・主要スキルを1タップで実行できます。未解放の枠は表示せず、全スキルと資金源はドロワーで開きます。</span></li>
               <li><b>効果通知</b><span>味方への良い効果は青く上昇し、競合への妨害や悪い効果は赤く下降します。詳しい履歴は戦局ログで後から確認できます。</span></li>
