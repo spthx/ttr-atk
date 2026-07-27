@@ -67,6 +67,7 @@ import {
   normalizeBattleStatusMessageText,
   RESULT_CONFIRM_ARM_DELAY_MS,
   SKILL_CINEMATIC_TIMING,
+  shouldProcessGaugeFrame,
   shouldInertBattleFooter,
   TERMINAL_CINEMATIC_TIMING,
   type BattleStatusMessageTone,
@@ -169,6 +170,7 @@ interface BattleModalProps {
   onAddFunds?: (amount: number) => void;
   onResetFunds?: () => void;
   onTimeScaleChange?: (scale: number) => void;
+  lightweightMode: boolean;
   onBattleEnd: (result: BattleResult) => void;
   onClose: () => void;
 }
@@ -534,6 +536,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   isUltimate = false,
   isTraining = false,
   onTimeScaleChange,
+  lightweightMode,
   onBattleEnd,
   onClose,
 }) => {
@@ -1210,19 +1213,34 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     !!winner,
     battlePhase
   );
-  const timeScale = terminalCinematicStage
-    ? terminalCinematicStage === 'anticipation' ? 0.1 : 0
-    : skillCinematic
-      ? skillCinematic.stage === 'impact' ? 0 : 0.1
-    : battlePhase !== 'active'
-      ? 0
-      : showHelp || showLog || presentationLocked
-        ? 0.1
-        : openingSlowActive
+  const lightweightPauseActive =
+    lightweightMode &&
+    (
+      battlePhase !== 'active' ||
+      !!terminalCinematicStage ||
+      !!skillCinematic ||
+      presentationLocked ||
+      decisiveLocked ||
+      showHelp ||
+      showLog ||
+      openingSlowActive ||
+      panel !== 'capital'
+    );
+  const timeScale = lightweightPauseActive
+    ? 0
+    : terminalCinematicStage
+      ? terminalCinematicStage === 'anticipation' ? 0.1 : 0
+      : skillCinematic
+        ? skillCinematic.stage === 'impact' ? 0 : 0.1
+      : battlePhase !== 'active'
+        ? 0
+        : showHelp || showLog || presentationLocked
           ? 0.1
-          : panel === 'capital'
-            ? 1
-            : 0.1;
+          : openingSlowActive
+            ? 0.1
+            : panel === 'capital'
+              ? 1
+              : 0.1;
   const enemyOwnershipForAi = Math.round((100 - ownership) / 5) * 5;
   const enemyDecision = useMemo(() => decideEnemyAction({
     enemyOwnership: enemyOwnershipForAi,
@@ -2305,7 +2323,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         lastTickRef.current = now;
         return;
       }
-      const dt = Math.min(0.1, (now - lastTickRef.current) / 1000) * timeScale;
+      const elapsedMs = now - lastTickRef.current;
+      if (!shouldProcessGaugeFrame(elapsedMs, lightweightMode)) {
+        animationRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      const dt = Math.min(0.1, elapsedMs / 1000) * timeScale;
       lastTickRef.current = now;
       const baseVelocity = calculateGaugeVelocity(
         totalPlayerInvested * currentWind.playerMultiplier,
@@ -2350,7 +2373,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [currentWind.enemyMultiplier, currentWind.playerMultiplier, currentWind.speedMultiplier, effectiveCapitalGap, enemyInvested, eraWindActive, eraWindPushPerSecond, influenceBonus, isTraining, pushMultiplier, targetProperty.marketPrice, timeScale, totalPlayerInvested, updateGauge, winner]);
+  }, [currentWind.enemyMultiplier, currentWind.playerMultiplier, currentWind.speedMultiplier, effectiveCapitalGap, enemyInvested, eraWindActive, eraWindPushPerSecond, influenceBonus, isTraining, lightweightMode, pushMultiplier, targetProperty.marketPrice, timeScale, totalPlayerInvested, updateGauge, winner]);
 
   const investCompanyFunds = () => {
     if (cash < selectedCost) {
@@ -3159,7 +3182,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   return (
     <div
       ref={rootDialogRef}
-      className={`buyout-screen buyout-screen--phase-${battlePhase} buyout-screen--living-${livingDeadPhase} ${isTraining ? 'buyout-screen--training' : ''} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''} ${skillCinematic ? `buyout-screen--skill-cinematic buyout-screen--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${isBurstTime ? 'buyout-screen--burst' : ''} ${decisiveBlow ? `buyout-screen--decisive buyout-screen--decisive-${decisiveBlow.winner}` : ''} ${terminalCinematicStage ? 'buyout-screen--terminal-cinematic' : ''}`}
+      className={`buyout-screen buyout-screen--phase-${battlePhase} buyout-screen--living-${livingDeadPhase} ${lightweightMode ? 'buyout-screen--lightweight' : ''} ${lightweightPauseActive ? 'buyout-screen--ambient-paused' : ''} ${isTraining ? 'buyout-screen--training' : ''} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''} ${skillCinematic ? `buyout-screen--skill-cinematic buyout-screen--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${isBurstTime ? 'buyout-screen--burst' : ''} ${decisiveBlow ? `buyout-screen--decisive buyout-screen--decisive-${decisiveBlow.winner}` : ''} ${terminalCinematicStage ? 'buyout-screen--terminal-cinematic' : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label={

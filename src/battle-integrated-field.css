@@ -2264,6 +2264,22 @@
   animation-play-state: paused !important;
 }
 
+/*
+ * Lightweight mode only suspends ambient loops while a choice or staged
+ * presentation owns the screen. The currently showcased skill, wind, LB and
+ * character motion remain live, so the pause reads as deliberate staging.
+ */
+.buyout-screen--lightweight.buyout-screen--ambient-paused .battle-commerce-flow > i,
+.buyout-screen--lightweight.buyout-screen--ambient-paused .battlefield-pressure-lane__player,
+.buyout-screen--lightweight.buyout-screen--ambient-paused .battlefield-pressure-lane__enemy,
+.buyout-screen--lightweight.buyout-screen--ambient-paused .battlefield-pressure-lane__front i,
+.buyout-screen--lightweight.buyout-screen--ambient-paused .ownership-track__enemy-flow::after,
+.buyout-screen--lightweight.buyout-screen--ambient-paused .capital-visual-row::before,
+.buyout-screen--lightweight.buyout-screen--ambient-paused .capital-visual-row::after,
+.buyout-screen--lightweight.buyout-screen--ambient-paused .gil-tower__overflow > i {
+  animation-play-state: paused !important;
+}
+
 .integrated-battlefield--terminal-anticipation {
   filter: saturate(.74) contrast(1.08);
 }

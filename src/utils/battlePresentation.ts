@@ -11,6 +11,14 @@ export const BATTLE_CINEMATIC_TIMING = {
 
 export const RESULT_CONFIRM_ARM_DELAY_MS = 1_200;
 export const BATTLE_GAUGE_VISUAL_COMMIT_MS = 100;
+export const LIGHTWEIGHT_GAUGE_FRAME_MS = 1_000 / 30;
+
+export const shouldProcessGaugeFrame = (
+  elapsedMs: number,
+  lightweightMode: boolean
+) =>
+  !lightweightMode ||
+  Math.max(0, elapsedMs) + Number.EPSILON >= LIGHTWEIGHT_GAUGE_FRAME_MS;
 
 /**
  * Skills read as a short chain of deliberate beats instead of one crowded
