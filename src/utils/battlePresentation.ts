@@ -9,6 +9,7 @@ export const BATTLE_CINEMATIC_TIMING = {
 } as const;
 
 export const RESULT_CONFIRM_ARM_DELAY_MS = 1_200;
+export const BATTLE_GAUGE_VISUAL_COMMIT_MS = 100;
 
 /**
  * One terminal sequence owns the final offer, impact and result reveal.
@@ -16,14 +17,14 @@ export const RESULT_CONFIRM_ARM_DELAY_MS = 1_200;
  * not use these stages as additional chances to mutate battle state.
  */
 export const TERMINAL_CINEMATIC_TIMING = {
-  anticipationMs: 900,
-  impactMs: 340,
-  resolutionMs: 560,
-  totalMs: 1_800,
-  reducedMotionAnticipationMs: 140,
-  reducedMotionImpactMs: 100,
-  reducedMotionResolutionMs: 460,
-  reducedMotionTotalMs: 700,
+  anticipationMs: 1_200,
+  impactMs: 520,
+  resolutionMs: 900,
+  totalMs: 2_620,
+  reducedMotionAnticipationMs: 180,
+  reducedMotionImpactMs: 140,
+  reducedMotionResolutionMs: 600,
+  reducedMotionTotalMs: 920,
 } as const;
 
 export type TerminalCinematicStage =
@@ -110,8 +111,27 @@ export const getTerminalCinematicPresentation = (
   };
 };
 
-export const BATTLE_STATUS_MESSAGE_DURATION_MS = 1_350;
+export const BATTLE_STATUS_MESSAGE_DURATION_MS = 1_650;
 export const BATTLE_STATUS_MESSAGE_MAX_CHARS_PER_LINE = 32;
+
+export const enqueueBattleStatusMessage = <
+  T extends { text: string; priority: number },
+>(
+  current: readonly T[],
+  next: T,
+  activeText: string | null = null,
+  maximum = 6
+) => {
+  if (
+    activeText === next.text ||
+    current.some((item) => item.text === next.text)
+  ) {
+    return [...current];
+  }
+  return [...current, next]
+    .sort((left, right) => right.priority - left.priority)
+    .slice(0, maximum);
+};
 
 export type BattleStatusMessageTone =
   | 'neutral'
@@ -296,22 +316,30 @@ export const getBattleCapitalVisualBundleCount = (
   const thresholdIndex = BATTLE_CAPITAL_RATIO_THRESHOLDS.findIndex(
     (threshold) => ratio <= threshold
   );
-  return thresholdIndex < 0
+  const baseBundleCount = thresholdIndex < 0
     ? CAPITAL_VISUAL_BUNDLE_COUNTS.at(-1) ?? 13
     : thresholdIndex + 1;
+  if (baseBundleCount <= 1) return baseBundleCount;
+
+  const campaignScaleBonus =
+    marketPrice >= 1_000_000_000 ? 2 : marketPrice >= 10_000_000 ? 1 : 0;
+  return Math.min(13, baseBundleCount + campaignScaleBonus);
 };
 
 export const getCapitalVisualStageForBundleCount = (bundleCount: number) => {
-  const normalized = Math.max(0, Math.floor(bundleCount));
-  if (normalized === 0) return 0;
-  if (normalized === 1) return 1;
-  if (normalized <= 2) return 2;
-  if (normalized <= 4) return 3;
-  if (normalized <= 6) return 4;
-  if (normalized <= 8) return 5;
-  if (normalized <= 11) return 6;
-  return 7;
+  // The live field owns thirteen distinct capital beats. Do not collapse them
+  // into seven visual classes: a player should see every additional offer
+  // build the mound, while the DOM renderer remains capped separately.
+  return Math.max(0, Math.min(13, Math.floor(bundleCount)));
 };
+
+/**
+ * A detailed hoard does not need one DOM image per visible bundle. Five
+ * foreground sprites plus the CSS-composited mound bands preserve the staged
+ * silhouette while keeping mobile paint and layout work bounded.
+ */
+export const getCapitalVisualSpriteCount = (bundleCount: number) =>
+  Math.max(0, Math.min(5, Math.floor(bundleCount)));
 
 export const shouldInertBattleFooter = (
   backgroundInert: boolean,

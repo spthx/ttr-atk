@@ -50,6 +50,7 @@ import {
   calculateTotalAssetValue,
   getCampaignProperties,
   getEnemyDifficultyLevel,
+  INITIAL_PLAYER_FUNDS,
   isSkillUnlocked,
   PASSIVE_REVENUE_MULTIPLIER,
   TACTICAL_SKILL_BALANCE,
@@ -177,7 +178,9 @@ export default function App() {
   const pendingBattleSession = pendingBattleSessionRef.current;
 
   // --- Game Core State ---
-  const [totalFunds, setTotalFunds] = useState<number>(initialSave?.totalFunds ?? 50_000);
+  const [totalFunds, setTotalFunds] = useState<number>(
+    initialSave?.totalFunds ?? INITIAL_PLAYER_FUNDS
+  );
   const [limitBreakCharge, setLimitBreakCharge] = useState<number>(
     initialSave?.limitBreakCharge ?? 0
   );

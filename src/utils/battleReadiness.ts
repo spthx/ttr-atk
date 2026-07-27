@@ -5,6 +5,7 @@ import {
   getChargedLimitBreakTier,
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
+  PLAYER_BATTLE_CASH_CAP_RATIO,
   TACTICAL_SKILL_BALANCE,
 } from './gameBalance';
 
@@ -38,6 +39,7 @@ export interface BattleReadinessInput {
   enemyDifficultyLevel: number;
   enemyBaseReactionSeconds: number;
   playerPushBonus: number;
+  cashCapRatio?: number | null;
 }
 
 export interface BattleReadinessResult {
@@ -68,6 +70,7 @@ export interface BattleReadinessResult {
   enemyDifficultyLevel: number;
   enemyBaseReactionSeconds: number;
   playerPushBonus: number;
+  battleCashLimit: number;
 }
 
 interface SupportRoute {
@@ -247,17 +250,31 @@ export const calculateBattleReadiness = ({
   enemyDifficultyLevel,
   enemyBaseReactionSeconds,
   playerPushBonus,
+  cashCapRatio = PLAYER_BATTLE_CASH_CAP_RATIO,
 }: BattleReadinessInput): BattleReadinessResult => {
   const minimumInvestment = Math.max(
     10,
     Math.round(Math.max(0, targetMarketPrice) * 0.02)
   );
   const directInvestmentAvailable = availableCash >= minimumInvestment;
-  const deployableCash =
+  const unrestrictedDeployableCash =
     !directInvestmentAvailable
       ? 0
       : Math.floor(Math.max(0, availableCash) / minimumInvestment) *
         minimumInvestment;
+  const battleCashLimit =
+    cashCapRatio === null
+      ? Math.max(0, availableCash)
+      : Math.max(
+          minimumInvestment,
+          Math.round(
+            Math.max(0, targetMarketPrice) * Math.max(0, cashCapRatio)
+          )
+        );
+  const deployableCash = Math.min(
+    unrestrictedDeployableCash,
+    battleCashLimit
+  );
   const supportRoute = getBestSupportRoute({
     targetMarketPrice,
     subsidiaries,
@@ -309,7 +326,10 @@ export const calculateBattleReadiness = ({
   const capitalComponents: BattleReadinessCapitalComponent[] = [
     {
       key: 'cash',
-      label: '自社現金（複数回投入）',
+      label:
+        unrestrictedDeployableCash > battleCashLimit
+          ? '自社現金（商戦持込上限）'
+          : '自社現金（複数回投入）',
       amount: deployableCash,
     },
   ];
@@ -366,5 +386,6 @@ export const calculateBattleReadiness = ({
     enemyDifficultyLevel,
     enemyBaseReactionSeconds,
     playerPushBonus,
+    battleCashLimit,
   };
 };

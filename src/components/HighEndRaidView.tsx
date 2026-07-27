@@ -188,7 +188,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
         })}
       </section>
 
-      <section
+      {ultimateUnlocked && <section
         className={`ultimate-raid-card ${
           ultimateCleared
             ? 'ultimate-raid-card--cleared'
@@ -227,9 +227,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
               onClick={() => onStartUltimate(ultimateProperty)}
             >
               <Crown />
-              {!ultimateUnlocked
-                ? '零式4層踏破で挑戦資格を解放'
-                : totalFunds < Math.round(ultimateProperty.marketPrice * 0.03)
+              {totalFunds < Math.round(ultimateProperty.marketPrice * 0.03)
                   ? '参加手数料が不足'
                   : ultimateCleared
                     ? '絶へ再挑戦'
@@ -242,7 +240,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
             )}
           </div>
         </div>
-      </section>
+      </section>}
     </div>
   );
 };

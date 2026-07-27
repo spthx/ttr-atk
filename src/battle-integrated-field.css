@@ -1563,7 +1563,7 @@
 
 .integrated-battlefield.integrated-battlefield--finisher-player
   .ownership-avatar.ownership-avatar--player {
-  animation: tataru-final-charge .76s cubic-bezier(.22, .76, .2, 1) both;
+  animation: tataru-final-charge 1.12s cubic-bezier(.22, .76, .2, 1) both;
 }
 
 .integrated-battlefield.integrated-battlefield--finisher-impact
@@ -2266,7 +2266,7 @@
   background:
     radial-gradient(circle at center, rgba(59, 130, 246, .22), transparent 38%),
     linear-gradient(180deg, transparent 18%, rgba(2, 6, 23, .5) 42% 62%, transparent 86%);
-  animation: battle-terminal-resolution-in .56s cubic-bezier(.2, .76, .2, 1) both;
+  animation: battle-terminal-resolution-in .72s cubic-bezier(.2, .76, .2, 1) both;
 }
 
 .battle-terminal-resolution > div {
@@ -3241,6 +3241,79 @@
   margin-inline: 0;
 }
 
+.integrated-battlefield .ownership-capital-readout {
+  position: absolute;
+  z-index: 20;
+  top: 2.18rem;
+  right: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4.6rem minmax(0, 1fr);
+  align-items: start;
+  gap: .35rem;
+  pointer-events: none;
+}
+
+.integrated-battlefield .ownership-capital-readout > strong {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: .38rem;
+  overflow: hidden;
+  color: #fff3a6;
+  font: 900 clamp(.88rem, 2vw, 1.18rem)/1 ui-monospace, monospace;
+  letter-spacing: .025em;
+  text-shadow:
+    0 .1rem .18rem #000,
+    0 0 .42rem rgba(250, 204, 21, .68);
+  white-space: nowrap;
+}
+
+.integrated-battlefield .ownership-capital-readout > strong:first-child {
+  justify-content: flex-start;
+  color: #e0f2fe;
+  text-shadow:
+    0 .1rem .18rem #000,
+    0 0 .45rem rgba(56, 189, 248, .72);
+}
+
+.integrated-battlefield .ownership-capital-readout > strong:last-child {
+  justify-content: flex-end;
+  color: #ffe4e6;
+  text-shadow:
+    0 .1rem .18rem #000,
+    0 0 .45rem rgba(244, 63, 94, .72);
+}
+
+.integrated-battlefield .ownership-capital-readout > strong[data-empty="true"] {
+  opacity: .52;
+}
+
+.integrated-battlefield .ownership-capital-readout > strong.is-acting {
+  animation: capital-readout-impact .52s ease-out both;
+}
+
+.integrated-battlefield .ownership-capital-readout small {
+  color: rgba(226, 232, 240, .8);
+  font: 800 .58rem/1 sans-serif;
+  letter-spacing: .08em;
+}
+
+.integrated-battlefield .ownership-capital-readout > span {
+  align-self: center;
+  color: rgba(250, 204, 21, .7);
+  font: 800 .52rem/1 ui-monospace, monospace;
+  letter-spacing: .18em;
+  text-align: center;
+  text-shadow: 0 .08rem .2rem #000;
+}
+
+@keyframes capital-readout-impact {
+  0% { filter: brightness(1); scale: 1; }
+  38% { filter: brightness(1.75); scale: 1.08; }
+  100% { filter: brightness(1); scale: 1; }
+}
+
 .integrated-battlefield .battle-wind-sigil {
   top: 1.72rem;
   width: min(11rem, calc(100% - .35rem));
@@ -4162,6 +4235,29 @@
 }
 
 @media (max-width: 639px) {
+  .integrated-battlefield .ownership-capital-readout {
+    top: 2.08rem;
+    right: 0;
+    left: 0;
+    grid-template-columns: minmax(0, 1fr) 2.8rem minmax(0, 1fr);
+    gap: .16rem;
+  }
+
+  .integrated-battlefield .ownership-capital-readout > strong {
+    display: block;
+    overflow: visible;
+    font-size: clamp(.78rem, 3.7vw, .96rem);
+  }
+
+  .integrated-battlefield .ownership-capital-readout > strong:last-child {
+    text-align: right;
+  }
+
+  .integrated-battlefield .ownership-capital-readout small,
+  .integrated-battlefield .ownership-capital-readout > span {
+    display: none;
+  }
+
   .integrated-battlefield .battle-wind-sigil {
     max-width: min(8.8rem, calc(100% - .2rem)) !important;
     padding-inline: .3rem;
