@@ -4376,3 +4376,67 @@
     animation-duration: 2.4s;
   }
 }
+
+/*
+ * Lightweight premium field.
+ *
+ * A single compressed texture supplies the lacquer and gold trim. Ownership
+ * remains a live CSS tint so the blue/red territory and golden frontier keep
+ * matching the actual gauge instead of being baked at 50%.
+ */
+.buyout-screen--lightweight .integrated-battlefield {
+  background:
+    #040916
+    url("./assets/battle/battlefield-premium-wide.webp")
+    center / cover no-repeat;
+}
+
+.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane {
+  background: transparent;
+}
+
+.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__player,
+.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__enemy {
+  animation: none;
+  will-change: auto;
+}
+
+.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__player {
+  background: rgba(14, 165, 233, .28);
+}
+
+.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__enemy {
+  background: rgba(225, 29, 72, .3);
+}
+
+.buyout-screen--lightweight .integrated-battlefield .ownership-track,
+.buyout-screen--lightweight .integrated-battlefield .ownership-track__player {
+  animation: none;
+  will-change: auto;
+}
+
+.buyout-screen--lightweight .integrated-battlefield .ownership-track {
+  background:
+    repeating-linear-gradient(-55deg, #68162d 0 9px, #a12645 9px 18px);
+}
+
+.buyout-screen--lightweight .integrated-battlefield .ownership-track__player {
+  background:
+    repeating-linear-gradient(55deg, #075979 0 9px, #1599c2 9px 18px);
+}
+
+.buyout-screen--lightweight .integrated-battlefield .battle-commerce-flow > i:nth-child(n + 5),
+.buyout-screen--lightweight .integrated-battlefield .ownership-track__marker > i:nth-child(n + 2) {
+  display: none;
+}
+
+.buyout-screen--lightweight .integrated-battlefield .battle-commerce-flow {
+  filter: none;
+}
+
+@media (max-width: 639px) {
+  .buyout-screen--lightweight .integrated-battlefield {
+    background-image:
+      url("./assets/battle/battlefield-premium-mobile.webp");
+  }
+}
