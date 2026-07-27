@@ -49,6 +49,7 @@ export const FANKIT_ART = {
   jobs: JOB_ART,
   commerceIcons: COMMERCE_ICONS,
   trainingDummies: TRAINING_DUMMY_ART,
+  paladin: publicAsset('ff14-fankit/job-paladin.png'),
   tataru: {
     dressUp: publicAsset('ff14-fankit/minion-dress-up-tataru.png'),
     windUp: publicAsset('ff14-fankit/minion-wind-up-tataru.png'),

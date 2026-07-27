@@ -1,5 +1,3 @@
-import { TACTICAL_SKILL_BALANCE } from './gameBalance';
-
 export type EnemyIntent =
   | 'CONSERVE'
   | 'WAIT_FOR_WIND'
@@ -112,9 +110,7 @@ export const decideEnemyAction = ({
     isTutorial,
     isCartelHQ
   );
-  const slowedMultiplier = slowed
-    ? TACTICAL_SKILL_BALANCE.demoralize.enemyWaitMultiplier
-    : 1;
+  const slowedMultiplier = slowed ? 1.9 : 1;
   const randomDelay = 0.9 + jitter(cycle) * 0.2;
   const responseScale = 1 + intellect * 0.075;
 

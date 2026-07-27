@@ -52,6 +52,7 @@ import {
   getCampaignProperties,
   getEnemyDifficultyLevel,
   INITIAL_PLAYER_FUNDS,
+  isNormalCityBoss,
   isSkillUnlocked,
   PASSIVE_REVENUE_MULTIPLIER,
   TACTICAL_SKILL_BALANCE,
@@ -1163,7 +1164,7 @@ export default function App() {
 
   const handleNewGame = () => {
     const accepted = window.confirm(
-      '保存済みの所持金・保有事業／契約・装備スキル・外部協力／公的後援を削除して、ニューゲームを始めますか？'
+      '保存済みの所持金・保有事業／契約・装備アビリティ・外部協力／公的後援を削除して、ニューゲームを始めますか？'
     );
     if (!accepted) return;
     clearGameSave();
@@ -1573,6 +1574,10 @@ export default function App() {
           isSavage={activeBattleMode === 'savage'}
           isUltimate={activeBattleMode === 'ultimate'}
           isTraining={activeBattleMode === 'training'}
+          isCityBoss={
+            activeBattleMode === 'normal' &&
+            isNormalCityBoss(properties, activeBattleProperty)
+          }
           onAddFunds={handleAddFunds}
           onResetFunds={handleResetFunds}
           onBattleEnd={handleBattleEnd}
