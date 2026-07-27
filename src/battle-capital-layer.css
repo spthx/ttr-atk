@@ -110,7 +110,7 @@
   box-shadow:
     0 0 .38rem rgba(250, 204, 21, .72),
     inset 0 .06rem .08rem rgba(255, 255, 255, .7);
-  animation: battlefield-capital-deluge-fall 1.55s linear infinite;
+  animation: battlefield-capital-deluge-fall .95s cubic-bezier(.18, .72, .28, 1) both;
 }
 
 .integrated-battlefield .battlefield-capital-deluge--enemy > i {
@@ -192,5 +192,361 @@
 
   .integrated-battlefield .battlefield-capital-deluge {
     display: none;
+  }
+}
+
+/*
+ * Thirteen-step hoard composition.
+ *
+ * The numeric stage can grow from a single coin to a field-filling treasury,
+ * but persistent DOM stays fixed at three repeated mound bands plus at most
+ * five foreground sprites. The bands are static between investments; only a
+ * newly committed offer receives the short rise/drop animation.
+ */
+.integrated-battlefield .gil-tower {
+  --hoard-scale-x: .34;
+  --hoard-scale-y: .3;
+  --hoard-opacity: 0;
+}
+
+.integrated-battlefield .gil-tower--stage-4 {
+  --hoard-scale-x: .48;
+  --hoard-scale-y: .34;
+  --hoard-opacity: .34;
+}
+
+.integrated-battlefield .gil-tower--stage-5 {
+  --hoard-scale-x: .6;
+  --hoard-scale-y: .46;
+  --hoard-opacity: .46;
+}
+
+.integrated-battlefield .gil-tower--stage-6 {
+  --hoard-scale-x: .72;
+  --hoard-scale-y: .58;
+  --hoard-opacity: .58;
+}
+
+.integrated-battlefield .gil-tower--stage-7 {
+  --hoard-scale-x: .84;
+  --hoard-scale-y: .72;
+  --hoard-opacity: .68;
+}
+
+.integrated-battlefield .gil-tower--stage-8 {
+  --hoard-scale-x: .96;
+  --hoard-scale-y: .88;
+  --hoard-opacity: .76;
+}
+
+.integrated-battlefield .gil-tower--stage-9 {
+  --hoard-scale-x: 1.08;
+  --hoard-scale-y: 1.02;
+  --hoard-opacity: .82;
+}
+
+.integrated-battlefield .gil-tower--stage-10 {
+  --hoard-scale-x: 1.2;
+  --hoard-scale-y: 1.18;
+  --hoard-opacity: .88;
+}
+
+.integrated-battlefield .gil-tower--stage-11 {
+  --hoard-scale-x: 1.34;
+  --hoard-scale-y: 1.36;
+  --hoard-opacity: .92;
+}
+
+.integrated-battlefield .gil-tower--stage-12 {
+  --hoard-scale-x: 1.5;
+  --hoard-scale-y: 1.58;
+  --hoard-opacity: .95;
+}
+
+.integrated-battlefield .gil-tower--stage-13 {
+  --hoard-scale-x: 1.68;
+  --hoard-scale-y: 1.85;
+  --hoard-opacity: .98;
+}
+
+.integrated-battlefield .gil-tower__hoard {
+  position: absolute;
+  z-index: 0;
+  inset: -1.15rem -7% .1rem;
+  overflow: visible;
+  opacity: var(--hoard-opacity);
+  pointer-events: none;
+  transform: scale(var(--hoard-scale-x), var(--hoard-scale-y));
+  transform-origin: center bottom;
+  transition:
+    opacity .28s ease,
+    transform .42s cubic-bezier(.16, .78, .22, 1);
+}
+
+.integrated-battlefield .gil-tower__hoard::after {
+  position: absolute;
+  z-index: -1;
+  right: 4%;
+  bottom: -2%;
+  left: 4%;
+  height: 58%;
+  border-radius: 50%;
+  content: "";
+  background: radial-gradient(
+    ellipse at center,
+    rgba(250, 204, 21, .36),
+    rgba(180, 83, 9, .13) 48%,
+    transparent 72%
+  );
+  box-shadow: 0 0 1rem rgba(250, 204, 21, .2);
+}
+
+.integrated-battlefield .gil-tower--enemy .gil-tower__hoard::after {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(251, 113, 133, .38),
+    rgba(136, 19, 55, .15) 48%,
+    transparent 72%
+  );
+  box-shadow: 0 0 1rem rgba(244, 63, 94, .22);
+}
+
+.integrated-battlefield .gil-tower__hoard-band {
+  position: absolute;
+  right: -4%;
+  bottom: 0;
+  left: -4%;
+  display: block;
+  height: 58%;
+  background-image: var(--capital-stack-image);
+  background-position: center bottom;
+  background-repeat: repeat-x;
+  background-size: auto 100%;
+  filter: drop-shadow(0 .24rem .2rem rgba(0, 0, 0, .56));
+}
+
+.integrated-battlefield .gil-tower__hoard-band--far {
+  z-index: 1;
+  bottom: 34%;
+  height: 44%;
+  opacity: .52;
+  background-size: auto 92%;
+}
+
+.integrated-battlefield .gil-tower__hoard-band--mid {
+  z-index: 2;
+  bottom: 16%;
+  height: 56%;
+  opacity: .76;
+  background-position-x: 32%;
+}
+
+.integrated-battlefield .gil-tower__hoard-band--near {
+  z-index: 3;
+  height: 64%;
+  background-position-x: 68%;
+}
+
+.integrated-battlefield .gil-tower--stage-4 .gil-tower__hoard-band--far,
+.integrated-battlefield .gil-tower--stage-4 .gil-tower__hoard-band--mid {
+  display: none;
+}
+
+.integrated-battlefield .gil-tower--stage-5 .gil-tower__hoard-band--far {
+  display: none;
+}
+
+.integrated-battlefield .gil-tower--stage-10 .gil-tower__chips,
+.integrated-battlefield .gil-tower--stage-11 .gil-tower__chips,
+.integrated-battlefield .gil-tower--stage-12 .gil-tower__chips,
+.integrated-battlefield .gil-tower--stage-13 .gil-tower__chips {
+  overflow: visible;
+}
+
+.integrated-battlefield .gil-tower--stage-12 .gil-tower__hoard,
+.integrated-battlefield .gil-tower--stage-13 .gil-tower__hoard {
+  inset-block-start: -2rem;
+}
+
+.integrated-battlefield .gil-tower--impact .gil-tower__hoard {
+  animation: capital-hoard-rise .56s cubic-bezier(.12, .78, .2, 1) both;
+}
+
+.integrated-battlefield .gil-tower__overflow > i {
+  animation-duration: .86s;
+  animation-iteration-count: 1;
+  animation-fill-mode: both;
+}
+
+@keyframes capital-hoard-rise {
+  0% {
+    opacity: .28;
+    transform:
+      translateY(.75rem)
+      scale(var(--hoard-scale-x), var(--hoard-scale-y));
+  }
+  52% {
+    filter: brightness(1.42);
+  }
+  100% {
+    opacity: var(--hoard-opacity);
+    transform: scale(var(--hoard-scale-x), var(--hoard-scale-y));
+  }
+}
+
+/*
+ * Event cards are the theatrical pause. Market wind gets a single directional
+ * sweep, while Era Wind receives a cyan-gold crest. These are finite beats and
+ * never become additional ambient loops.
+ */
+.battle-status-message::before,
+.battle-status-message::after {
+  position: absolute;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+}
+
+.battle-status-message--kind-player::before,
+.battle-status-message--kind-enemy::before,
+.battle-status-message--kind-cross::before,
+.battle-status-message--kind-era_wind::before {
+  top: 48%;
+  width: 72%;
+  height: .12rem;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, #67e8f9, #fff, transparent);
+  box-shadow: 0 0 .8rem rgba(103, 232, 249, .9);
+  animation: battle-message-wind-sweep .92s cubic-bezier(.16, .74, .2, 1) both;
+}
+
+.battle-status-message--kind-player::before,
+.battle-status-message--kind-era_wind::before {
+  left: -76%;
+}
+
+.battle-status-message--kind-enemy::before {
+  right: -76%;
+  background: linear-gradient(90deg, transparent, #fff, #fb7185, transparent);
+  box-shadow: 0 0 .8rem rgba(244, 63, 94, .92);
+  animation-name: battle-message-wind-sweep-enemy;
+}
+
+.battle-status-message--kind-cross::before {
+  left: -76%;
+  background: linear-gradient(90deg, transparent, #fde047, #fff, transparent);
+  box-shadow: 0 0 .85rem rgba(234, 179, 8, .9);
+}
+
+.battle-status-message--kind-era_wind {
+  --battle-message-accent: 250, 204, 21;
+  color: #fffbd1;
+  background:
+    radial-gradient(circle at 50% 120%, rgba(34, 211, 238, .34), transparent 52%),
+    linear-gradient(125deg, rgba(3, 32, 74, .99), rgba(4, 88, 103, .98) 52%, rgba(57, 38, 4, .98));
+  box-shadow:
+    0 .35rem .9rem rgba(0, 0, 0, .68),
+    0 0 1.15rem rgba(34, 211, 238, .5),
+    0 0 1.8rem rgba(250, 204, 21, .26),
+    inset 0 0 0 1px rgba(254, 240, 138, .42);
+}
+
+.battle-status-message--kind-era_wind::after {
+  top: 50%;
+  left: 50%;
+  width: 7.5rem;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border: 1px solid rgba(254, 240, 138, .72);
+  border-radius: 50%;
+  opacity: 0;
+  box-shadow:
+    0 0 0 .35rem rgba(34, 211, 238, .12),
+    0 0 1.2rem rgba(250, 204, 21, .38);
+  animation: era-wind-message-crest 1.1s ease-out both;
+}
+
+.battle-announcement--limit > div::before,
+.battle-announcement--limit > div::after {
+  position: absolute;
+  z-index: -1;
+  top: 50%;
+  left: 50%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+}
+
+.battle-announcement--limit > div::before {
+  width: clamp(11rem, 34vw, 20rem);
+  border: 2px solid rgba(254, 240, 138, .78);
+  box-shadow:
+    0 0 0 .5rem rgba(34, 211, 238, .08),
+    0 0 2rem rgba(250, 204, 21, .52),
+    inset 0 0 1.4rem rgba(103, 232, 249, .28);
+  animation: limit-break-seal 1.45s cubic-bezier(.16, .78, .22, 1) both;
+}
+
+.battle-announcement--limit > div::after {
+  width: clamp(15rem, 48vw, 28rem);
+  opacity: .48;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(255, 255, 255, .78) 0 1deg,
+    transparent 1deg 13deg
+  );
+  -webkit-mask-image: radial-gradient(circle, transparent 0 35%, #000 48%, transparent 72%);
+  mask-image: radial-gradient(circle, transparent 0 35%, #000 48%, transparent 72%);
+  animation: limit-break-rays 1.65s ease-out both;
+}
+
+@keyframes battle-message-wind-sweep {
+  0% { opacity: 0; translate: 0 -.5rem; scale: .45 1; }
+  24%, 64% { opacity: 1; }
+  100% { opacity: 0; translate: 240% .35rem; scale: 1.25 1; }
+}
+
+@keyframes battle-message-wind-sweep-enemy {
+  0% { opacity: 0; translate: 0 -.5rem; scale: .45 1; }
+  24%, 64% { opacity: 1; }
+  100% { opacity: 0; translate: -240% .35rem; scale: 1.25 1; }
+}
+
+@keyframes era-wind-message-crest {
+  0% { opacity: 0; scale: .35; rotate: -24deg; }
+  28%, 72% { opacity: .86; }
+  100% { opacity: 0; scale: 1.45; rotate: 16deg; }
+}
+
+@keyframes limit-break-seal {
+  0% { opacity: 0; scale: 1.8; rotate: -18deg; }
+  24%, 72% { opacity: .95; scale: 1; }
+  100% { opacity: 0; scale: .72; rotate: 12deg; }
+}
+
+@keyframes limit-break-rays {
+  0% { opacity: 0; scale: .6; rotate: -10deg; }
+  30%, 68% { opacity: .5; }
+  100% { opacity: 0; scale: 1.25; rotate: 18deg; }
+}
+
+@media (max-width: 639px) {
+  .integrated-battlefield .gil-tower--stage-11 .gil-tower__hoard,
+  .integrated-battlefield .gil-tower--stage-12 .gil-tower__hoard,
+  .integrated-battlefield .gil-tower--stage-13 .gil-tower__hoard {
+    inset-inline: -13%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .integrated-battlefield .gil-tower--impact .gil-tower__hoard,
+  .integrated-battlefield .gil-tower__overflow > i,
+  .battle-status-message::before,
+  .battle-status-message::after,
+  .battle-announcement--limit > div::before,
+  .battle-announcement--limit > div::after {
+    animation: none !important;
   }
 }

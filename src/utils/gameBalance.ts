@@ -2,12 +2,15 @@ import type { BattleMode, CommunityType, Property, TacticalSkill } from '../type
 import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
 
 export const PASSIVE_REVENUE_MULTIPLIER = 2;
+export const INITIAL_PLAYER_FUNDS = 20_000;
+export const PLAYER_BATTLE_CASH_CAP_RATIO = 1;
 export const BATTLE_GAUGE_SPEED_FACTOR = 4;
 export const TRAINING_GAUGE_SPEED_MULTIPLIER = 0.1;
 export const TRAINING_MIN_OWNERSHIP_PERCENT = 1;
 export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
-export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.45;
-export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 1.72;
+export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.58;
+export const SAVAGE_LAYER_BUDGET_MULTIPLIERS = [1, 1.08, 1.16, 1.25] as const;
+export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 2.2;
 export const LIMIT_BREAK_CHARGE_PER_BAR = 100;
 export const LIMIT_BREAK_MAX_BARS = 3;
 
@@ -15,6 +18,9 @@ export const applyTrainingGaugeSpeed = (
   velocity: number,
   isTraining: boolean
 ) => velocity * (isTraining ? TRAINING_GAUGE_SPEED_MULTIPLIER : 1);
+
+export const calculatePlayerBattleCashLimit = (marketPrice: number) =>
+  Math.max(10, Math.round(Math.max(0, marketPrice) * PLAYER_BATTLE_CASH_CAP_RATIO));
 export const holdTrainingGaugeAboveDefeat = (
   gauge: number,
   isTraining: boolean
@@ -185,14 +191,14 @@ export const TACTICAL_SKILL_BALANCE = {
     pushMultiplier: 1.5,
   },
   eraWind: {
-    durationMs: 12_000,
-    cooldownMs: 18_000,
+    durationMs: 28_000,
+    cooldownMs: 0,
     minimumCost: 100_000,
     marketCostRatio: 0.02,
-    useCostMultipliers: [1, 1.5, 2],
-    baseGaugePushPerSecond: 0.9,
-    pushStepPerUse: 0.2,
-    maxUsesPerBattle: 3,
+    useCostMultipliers: [1],
+    baseGaugePushPerSecond: 1.35,
+    pushStepPerUse: 0,
+    maxUsesPerBattle: 1,
   },
 } as const;
 
@@ -335,6 +341,14 @@ export const getCampaignProperties = (
       property.community === community && countsTowardCityConquest(property)
   );
 
+export const getSavageLayer = (targetProperty: Property) => {
+  const match = targetProperty.name.match(/商戦 零式：第([1-4])層/);
+  return match ? Math.max(1, Math.min(4, Number(match[1]))) : 1;
+};
+
+export const getSavageLayerBudgetMultiplier = (targetProperty: Property) =>
+  SAVAGE_LAYER_BUDGET_MULTIPLIERS[getSavageLayer(targetProperty) - 1];
+
 export const getEnemyDifficultyLevel = (
   targetProperty: Property,
   isTutorial: boolean,
@@ -343,7 +357,7 @@ export const getEnemyDifficultyLevel = (
 ) => {
   if (isTutorial) return 0;
   if (isUltimate) return 6;
-  if (isSavage) return 5;
+  if (isSavage) return getSavageLayer(targetProperty) >= 3 ? 6 : 5;
   if (targetProperty.id === 'prop_casino_grand') return 4;
   const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
   if (campaignIndex === 0) return 1;
@@ -397,7 +411,8 @@ export const calculateEnemyBudget = ({
     (isUltimate
       ? ULTIMATE_ENEMY_BUDGET_MULTIPLIER
       : isSavage
-        ? SAVAGE_ENEMY_BUDGET_MULTIPLIER
+        ? SAVAGE_ENEMY_BUDGET_MULTIPLIER *
+          getSavageLayerBudgetMultiplier(targetProperty)
         : 1)
   );
 };

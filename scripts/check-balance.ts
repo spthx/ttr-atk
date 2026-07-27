@@ -19,13 +19,16 @@ import {
 } from '../src/utils/battleSettlement';
 import {
   BATTLE_CINEMATIC_TIMING,
+  BATTLE_GAUGE_VISUAL_COMMIT_MS,
   BATTLE_STATUS_MESSAGE_DURATION_MS,
   canConfirmBattleResult,
+  enqueueBattleStatusMessage,
   getBattleCapitalVisualBundleCount,
   getTerminalCinematicPresentation,
   getBattleCinematicLayer,
   getCapitalVisualBundleCount,
   getCapitalVisualBundleCountForAmount,
+  getCapitalVisualSpriteCount,
   getCapitalVisualStage,
   getCapitalVisualStageForBundleCount,
   getVictoryConfettiParticleCount,
@@ -97,8 +100,11 @@ import {
   BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS,
   BATTLE_GAUGE_SPEED_FACTOR,
   calculateBattleVictoryReward,
+  calculatePlayerBattleCashLimit,
   ENEMY_INITIAL_COMMITMENT_RATIO,
+  INITIAL_PLAYER_FUNDS,
   PASSIVE_REVENUE_MULTIPLIER,
+  PLAYER_BATTLE_CASH_CAP_RATIO,
   TACTICAL_SKILL_BALANCE,
   TRAINING_GAUGE_SPEED_MULTIPLIER,
   TRAINING_MIN_OWNERSHIP_PERCENT,
@@ -123,8 +129,10 @@ import {
   LIMIT_BREAK_OWNERSHIP_CAPS,
   resolveLivingDeadOutcome,
   SAVAGE_ENEMY_BUDGET_MULTIPLIER,
+  SAVAGE_LAYER_BUDGET_MULTIPLIERS,
   ULTIMATE_ENEMY_BUDGET_MULTIPLIER,
   getEnemyDifficultyLevel,
+  getSavageLayerBudgetMultiplier,
   calculateEraWindCost,
   getEraWindGaugePushPerSecond,
 } from '../src/utils/gameBalance';
@@ -141,6 +149,9 @@ import {
 } from '../src/utils/battleWind';
 
 const noInfluence = { enemyBudgetDiscount: 0 };
+assert.equal(INITIAL_PLAYER_FUNDS, 20_000);
+assert.equal(PLAYER_BATTLE_CASH_CAP_RATIO, 1);
+assert.equal(calculatePlayerBattleCashLimit(2_000), 2_000);
 const expectedCampaignCounts = [3, 2, 3, 4, 2, 1, 1, 1, 1, 2];
 const expectedStageMaxPrices = [
   15_000,
@@ -288,6 +299,11 @@ assert.equal(
   'the settled footer must stay interactive so the result analysis can open'
 );
 assert.equal(RESULT_CONFIRM_ARM_DELAY_MS, 1_200);
+assert.equal(
+  BATTLE_GAUGE_VISUAL_COMMIT_MS,
+  100,
+  'the continuous gauge simulation commits React visuals at 10Hz'
+);
 assert.equal(
   canConfirmBattleResult({
     battlePhase: 'finisher_notice',
@@ -489,9 +505,27 @@ assert.equal(
   1,
   'the first visible offer is sparse in later chapters too'
 );
+assert.equal(
+  getBattleCapitalVisualBundleCount(100_000_000, 1_000_000_000),
+  1,
+  'a first 10% offer stays sparse even in the final chapter'
+);
+assert.ok(
+  getBattleCapitalVisualBundleCount(500_000_000, 1_000_000_000) >
+    getBattleCapitalVisualBundleCount(50_000, 100_000),
+  'the same relative pressure becomes a larger spectacle in late chapters'
+);
 assert.equal(getCapitalVisualStageForBundleCount(0), 0);
-assert.equal(getCapitalVisualStageForBundleCount(4), 3);
-assert.equal(getCapitalVisualStageForBundleCount(13), 7);
+assert.equal(getCapitalVisualStageForBundleCount(4), 4);
+assert.equal(getCapitalVisualStageForBundleCount(13), 13);
+assert.equal(getCapitalVisualStageForBundleCount(99), 13);
+assert.equal(getCapitalVisualSpriteCount(0), 0);
+assert.equal(getCapitalVisualSpriteCount(3), 3);
+assert.equal(
+  getCapitalVisualSpriteCount(13),
+  5,
+  'field-filling hoards keep a bounded foreground sprite count'
+);
 assert.equal(
   shouldInertBattleFooter(true, true, 'result'),
   true,
@@ -529,6 +563,27 @@ assert.equal(
   }),
   'battle_announcement',
   'only one full-screen cue is selected when action and condition timers coincide'
+);
+const queuedStatusMessages = enqueueBattleStatusMessage(
+  [
+    { text: '自社への追い風', priority: 1 },
+    { text: '風が静まった', priority: 0 },
+  ],
+  { text: '競合への追い風', priority: 2 }
+);
+assert.deepEqual(
+  queuedStatusMessages.map((message) => message.text),
+  ['競合への追い風', '自社への追い風', '風が静まった'],
+  'status events wait in a single priority-ordered presentation queue'
+);
+assert.equal(
+  enqueueBattleStatusMessage(
+    queuedStatusMessages,
+    { text: '競合への追い風', priority: 2 },
+    null
+  ).length,
+  3,
+  'the presentation queue does not stack duplicate event cards'
 );
 assert.ok(
   BATTLE_CINEMATIC_TIMING.limitAnnouncementMs <=
@@ -597,7 +652,7 @@ assert.equal(
   ),
   '一行目\n二行目'
 );
-assert.equal(BATTLE_STATUS_MESSAGE_DURATION_MS, 1_350);
+assert.equal(BATTLE_STATUS_MESSAGE_DURATION_MS, 1_650);
 assert.equal(
   selectBattleStatusMessage([
     {
@@ -674,6 +729,37 @@ assert.ok(
 );
 assert.equal(safeReadiness.grade, 'advantage');
 assert.notEqual(riskyReadiness.grade, 'advantage');
+const cappedCashReadiness = calculateBattleReadiness({
+  targetMarketPrice: 100_000,
+  availableCash: 500_000,
+  subsidiaries: [],
+  selectedBattleSynergy: null,
+  limitBreakCharge: 0,
+  allianceSupport: 0,
+  hasCapitalBoost: false,
+  enemyBudget: 100_000,
+  enemyDifficultyLevel: 2,
+  enemyBaseReactionSeconds: getEnemyBaseWaitMs(2, false, false) / 1000,
+  playerPushBonus: 0,
+});
+assert.equal(cappedCashReadiness.deployableCash, 100_000);
+assert.equal(cappedCashReadiness.battleCashLimit, 100_000);
+assert.match(cappedCashReadiness.capitalComponents[0].label, /持込上限/);
+const uncappedTrainingReadiness = calculateBattleReadiness({
+  targetMarketPrice: 100_000,
+  availableCash: 500_000,
+  subsidiaries: [],
+  selectedBattleSynergy: null,
+  limitBreakCharge: 0,
+  allianceSupport: 0,
+  hasCapitalBoost: false,
+  enemyBudget: 100_000,
+  enemyDifficultyLevel: 0,
+  enemyBaseReactionSeconds: 3.4,
+  playerPushBonus: 0,
+  cashCapRatio: null,
+});
+assert.equal(uncappedTrainingReadiness.deployableCash, 500_000);
 const noDirectCashReadiness = calculateBattleReadiness({
   targetMarketPrice: 100_000,
   availableCash: 1_999,
@@ -1165,9 +1251,38 @@ const sameTargetNormalBudget = calculateEnemyBudget({
 });
 assert.equal(
   savageBudget,
-  Math.round(sameTargetNormalBudget * SAVAGE_ENEMY_BUDGET_MULTIPLIER)
+  Math.round(
+    sameTargetNormalBudget *
+      SAVAGE_ENEMY_BUDGET_MULTIPLIER *
+      getSavageLayerBudgetMultiplier(savageBudgetTarget)
+  )
 );
 assert.equal(getEnemyDifficultyLevel(savageBudgetTarget, false, true), 5);
+const savageLayerBudgets = savageProperties.map((targetProperty) => {
+  const normalBudget = calculateEnemyBudget({
+    targetProperty,
+    industryInfluence: noInfluence,
+    regionalInfluence: noInfluence,
+    isTutorial: false,
+  });
+  return calculateEnemyBudget({
+    targetProperty,
+    industryInfluence: noInfluence,
+    regionalInfluence: noInfluence,
+    isTutorial: false,
+    isSavage: true,
+  }) / normalBudget;
+});
+assert.deepEqual(
+  savageLayerBudgets.map((ratio) => Number(ratio.toFixed(3))),
+  SAVAGE_LAYER_BUDGET_MULTIPLIERS.map((layerMultiplier) =>
+    Number((SAVAGE_ENEMY_BUDGET_MULTIPLIER * layerMultiplier).toFixed(3))
+  ),
+  'Savage budgets rise clearly from layer 1 through layer 4'
+);
+assert.equal(getEnemyDifficultyLevel(savageProperties[1], false, true), 5);
+assert.equal(getEnemyDifficultyLevel(savageProperties[2], false, true), 6);
+assert.equal(getEnemyDifficultyLevel(savageProperties[3], false, true), 6);
 const ultimateBudget = calculateEnemyBudget({
   targetProperty: ultimateProperty,
   industryInfluence: noInfluence,
@@ -1294,12 +1409,25 @@ assert.equal(TACTICAL_SKILL_BALANCE.livingDead.minimumOwnership, 1);
 assert.equal(TACTICAL_SKILL_BALANCE.livingDead.recoveryOwnership, 30);
 assert.equal(calculateEraWindCost(1_000_000, 0), 100_000);
 assert.equal(calculateEraWindCost(100_000_000, 0), 2_000_000);
-assert.equal(calculateEraWindCost(100_000_000, 1), 3_000_000);
-assert.equal(calculateEraWindCost(100_000_000, 2), 4_000_000);
-assert.ok(
-  getEraWindGaugePushPerSecond(0) <
-    getEraWindGaugePushPerSecond(2)
+assert.equal(calculateEraWindCost(100_000_000, 1), 2_000_000);
+assert.equal(TACTICAL_SKILL_BALANCE.eraWind.durationMs, 28_000);
+assert.equal(TACTICAL_SKILL_BALANCE.eraWind.maxUsesPerBattle, 1);
+assert.equal(getEraWindGaugePushPerSecond(0), 1.35);
+assert.equal(getEraWindGaugePushPerSecond(2), 1.35);
+assert.equal(
+  Number(
+    (
+      getEraWindGaugePushPerSecond(0) *
+      (TACTICAL_SKILL_BALANCE.eraWind.durationMs / 1000) /
+      2
+    ).toFixed(1)
+  ),
+  18.9,
+  'one full Era Wind pushes displayed ownership by about 18.9 points'
 );
+assert.equal(eraWindSkill.oncePerBattle, true);
+assert.match(eraWindSkill.description, /28秒間/);
+assert.match(eraWindSkill.description, /1交渉につき1回/);
 assert.match(livingDeadSkill.description, /1交渉につき1回/);
 assert.equal(calculateOwnershipFromGauge(98), 1);
 assert.equal(calculateOwnershipFromGauge(40), 30);
