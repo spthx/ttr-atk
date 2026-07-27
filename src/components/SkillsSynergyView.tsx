@@ -58,8 +58,8 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
           <div>
             <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
               <Zap className="w-5 h-5 text-amber-400" />
-              スキル装備
-              <HelpTip term="スキル" description="買収交渉中に使える特殊コマンドです。修得済みのスキルを最大8個まで装備できます。" />
+              アビリティ装備
+              <HelpTip term="アビリティ" description="買収交渉中に使える特殊コマンドです。修得済みのアビリティを最大8個まで装備できます。" />
             </h2>
             <p className="mt-1 text-xs text-slate-400">事業・契約や業界の条件を満たすと修得できます。使用後は再使用時間が必要です。</p>
             <p className="mt-1 text-xs text-cyan-300/80">主な名称はFFXIVのアクションをモチーフにし、交易戦での効果は本作独自にアレンジしています。</p>

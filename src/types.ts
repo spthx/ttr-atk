@@ -67,11 +67,11 @@ export interface TacticalSkill {
     | 'COOLDOWN_REDUCTION' // 疾風怒濤の計
     | 'NEMAWASHI' // 守りのサンバ (reduces L_risk)
     | 'INDEPENDENCE_SABOTAGE' // 連環計 (disrupts enemy funding)
-    | 'DEMORALIZE' // 消沈 (slows enemy AI)
+    | 'COVER' // かばう（旧skill_demoralize IDを維持）
     | 'CAPITAL_BOOST' // 意気衝天
     | 'LIVING_DEAD' // リビングデッド（旧skill_sns_blitz IDを維持）
     | 'SYNERGY_PUSH' // バトルリタニー
-    | 'ERA_WIND'; // 時代の風（本作の持続逆転スキル）
+    | 'ERA_WIND'; // 時代の風（本作の持続逆転アビリティ）
   unlockRequirements: string; // Text description
   requiredIndustries?: IndustryType[];
   requiredPropertyIds?: string[];

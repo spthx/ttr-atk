@@ -125,7 +125,7 @@ export const EndingModal: React.FC<EndingModalProps> = ({
               <b>{savageEnding ? '「絶商戦」挑戦資格 解放' : '「商戦 零式」タブ解放'}</b>
               {savageEnding
                 ? '4層踏破で解放された、別枠の単独最終高難度交易戦へ挑戦できます。'
-                : '通常制覇時の仲間・スキル・LBを持ち込み、本作独自の地域連合1～4層へ挑戦できます。'}
+                : '通常制覇時の仲間・アビリティ・LBを持ち込み、本作独自の地域連合1～4層へ挑戦できます。'}
             </span>
           </section>
         )}

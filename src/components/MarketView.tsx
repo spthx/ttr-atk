@@ -3,7 +3,7 @@ import { Property, IndustryType, CommunityType } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER, TRADE_COMMUNITIES } from '../data/worldData';
 import { formatCurrency, formatNumber } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
-import { ArrowRight, ShieldAlert, CheckCircle2, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole, Dumbbell, Gauge, WalletCards } from 'lucide-react';
+import { ArrowRight, ShieldAlert, CheckCircle2, Crown, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole, Dumbbell, Gauge, WalletCards } from 'lucide-react';
 import { BeginnerGuide } from './BeginnerGuide';
 import { HelpTip } from './HelpTip';
 import { StrengthComparison } from './StrengthComparison';
@@ -13,6 +13,7 @@ import type { BattleReadinessResult } from '../utils/battleReadiness';
 import {
   countsTowardCityConquest,
   getCampaignProperties,
+  isNormalCityBoss,
 } from '../utils/gameBalance';
 import '../market-strength.css';
 
@@ -443,6 +444,9 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 marketPrice: activePrice,
               });
           const propertyPresentation = getPropertyPresentation(prop.description);
+          const isBoss =
+            campaignMode === 'savage' ||
+            isNormalCityBoss(properties, prop);
 
           // Owner badge styles
           let ownerBadgeColor = 'bg-slate-800 text-slate-300 border-slate-700';
@@ -482,6 +486,16 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
                 <h3 className="trade-target-card__title">
                   <span>{prop.name}</span>
+                  {isBoss && (
+                    <span
+                      className="trade-target-card__badge trade-target-card__badge--boss"
+                      aria-label={campaignMode === 'savage' ? '零式ボス' : '都市ボス'}
+                      title={campaignMode === 'savage' ? '零式ボス' : '都市ボス'}
+                    >
+                      <Crown aria-hidden="true" />
+                      BOSS
+                    </span>
+                  )}
                   {prop.id.startsWith('prop_starter_') && !isPlayerOwned && (
                     <span className="trade-target-card__badge trade-target-card__badge--starter">
                       初心者向け

@@ -211,7 +211,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <Zap className="w-4 h-4" />
-          スキル・事業連携
+          アビリティ・事業連携
         </button>
 
         {tradeAllianceUnlocked && (
@@ -281,7 +281,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <Zap className="w-5 h-5 mb-0.5" />
-          <span className="text-[11px] leading-none">スキル</span>
+          <span className="text-[11px] leading-none">アビリティ</span>
         </button>
 
         {tradeAllianceUnlocked && (

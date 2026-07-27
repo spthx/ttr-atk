@@ -195,6 +195,225 @@
   }
 }
 
+/* Explicit duty-name wrapping: the suffix is never split into 討滅 / 戦. */
+.battle-announcement strong:has(.battle-announcement__duty) {
+  display: grid;
+  justify-items: center;
+  gap: .08em;
+  line-height: 1.08;
+}
+
+.battle-announcement__encounter {
+  max-width: min(88vw, 40rem);
+  overflow: hidden;
+  font-size: .62em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battle-announcement__duty {
+  white-space: nowrap;
+}
+
+/* Original horned-crown treatment; it signals a boss without copying a mascot. */
+.company-name-compact {
+  display: flex;
+  align-items: center;
+  gap: .28rem;
+}
+
+.company-name-compact .battle-marquee {
+  min-width: 0;
+}
+
+.battle-boss-mark {
+  display: inline-grid;
+  flex: 0 0 1.35rem;
+  width: 1.35rem;
+  height: 1.35rem;
+  place-items: center;
+  border: 1px solid rgba(251, 191, 36, .82);
+  border-radius: .38rem .38rem .52rem .52rem;
+  color: #fde68a;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(254, 243, 199, .3), transparent 34%),
+    linear-gradient(145deg, #78350f, #111827 72%);
+  box-shadow:
+    0 0 .6rem rgba(251, 191, 36, .32),
+    inset 0 0 .3rem rgba(255, 255, 255, .12);
+}
+
+.battle-boss-mark svg {
+  width: .95rem;
+  height: .95rem;
+  stroke-width: 2.7;
+}
+
+.battle-boss-mark--enhanced_cover,
+.battle-boss-mark--invincible {
+  color: #fda4af;
+  border-color: rgba(251, 113, 133, .9);
+  background: linear-gradient(145deg, #881337, #1f102a 72%);
+  box-shadow: 0 0 .72rem rgba(244, 63, 94, .42);
+}
+
+.battle-boss-mark--invincible {
+  color: #e9d5ff;
+  border-color: rgba(192, 132, 252, .95);
+  background: linear-gradient(145deg, #581c87, #190f2c 74%);
+}
+
+/* Paladin support is event-only: enter, cover, then leave the field. */
+.integrated-battlefield .capital-visual-row .cover-knight {
+  position: absolute;
+  z-index: 24;
+  bottom: .55rem;
+  width: 5rem;
+  height: 6.4rem;
+  pointer-events: none;
+  filter: drop-shadow(0 .35rem .3rem rgba(0, 0, 0, .78));
+}
+
+.integrated-battlefield .capital-visual-row .cover-knight--player {
+  left: 4.5rem;
+}
+
+.integrated-battlefield .capital-visual-row .cover-knight--enemy {
+  right: 4.5rem;
+}
+
+.cover-knight img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  image-rendering: pixelated;
+}
+
+.cover-knight--player img {
+  transform: scaleX(-1);
+}
+
+.cover-knight span {
+  position: absolute;
+  right: 50%;
+  bottom: -.18rem;
+  translate: 50% 0;
+  padding: .12rem .36rem;
+  border: 1px solid rgba(255, 255, 255, .74);
+  border-radius: 999px;
+  color: #eff6ff;
+  background: rgba(8, 20, 44, .92);
+  box-shadow: 0 0 .55rem rgba(96, 165, 250, .48);
+  font-size: .58rem;
+  font-weight: 950;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.cover-knight--enemy span {
+  color: #ffe4e6;
+  border-color: rgba(253, 164, 175, .82);
+  background: rgba(58, 8, 27, .94);
+  box-shadow: 0 0 .6rem rgba(244, 63, 94, .5);
+}
+
+.cover-knight--invincible span {
+  color: #f3e8ff;
+  border-color: rgba(216, 180, 254, .9);
+  background: rgba(46, 16, 101, .94);
+  box-shadow: 0 0 .75rem rgba(168, 85, 247, .64);
+}
+
+.cover-knight--active.cover-knight--player {
+  animation: cover-knight-enter-player .46s cubic-bezier(.16, .78, .2, 1) both;
+}
+
+.cover-knight--active.cover-knight--enemy {
+  animation: cover-knight-enter-enemy .46s cubic-bezier(.16, .78, .2, 1) both;
+}
+
+.cover-knight--leaving.cover-knight--player {
+  animation: cover-knight-leave-player .62s ease-in both;
+}
+
+.cover-knight--leaving.cover-knight--enemy {
+  animation: cover-knight-leave-enemy .62s ease-in both;
+}
+
+.integrated-battlefield--skill-cover .capital-arena__side:first-child::after,
+.buyout-screen--boss-cover .capital-arena__side:last-child::after,
+.buyout-screen--boss-enhanced_cover .capital-arena__side:last-child::after,
+.buyout-screen--boss-invincible .capital-arena__side:last-child::after {
+  content: "";
+  position: absolute;
+  z-index: 20;
+  inset: 14% 8% 18%;
+  border: 1px solid rgba(147, 197, 253, .5);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.integrated-battlefield--skill-cover .capital-arena__side:first-child::after {
+  animation: cover-shield-seal .62s ease-out both;
+}
+
+@keyframes cover-knight-enter-player {
+  from { opacity: 0; translate: -5.5rem .4rem; }
+  70% { opacity: 1; translate: .35rem 0; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes cover-knight-enter-enemy {
+  from { opacity: 0; translate: 5.5rem .4rem; }
+  70% { opacity: 1; translate: -.35rem 0; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes cover-knight-leave-player {
+  from { opacity: 1; translate: 0 0; }
+  to { opacity: 0; translate: -7rem .5rem; }
+}
+
+@keyframes cover-knight-leave-enemy {
+  from { opacity: 1; translate: 0 0; }
+  to { opacity: 0; translate: 7rem .5rem; }
+}
+
+@keyframes cover-shield-seal {
+  0% { opacity: 0; scale: .55; }
+  35% { opacity: .82; scale: 1; box-shadow: 0 0 1.4rem #60a5fa; }
+  100% { opacity: 0; scale: 1.16; }
+}
+
+@media (max-width: 639px) {
+  .integrated-battlefield .capital-visual-row .cover-knight {
+    bottom: .45rem;
+    width: 3.8rem;
+    height: 5rem;
+  }
+
+  .integrated-battlefield .capital-visual-row .cover-knight--player {
+    left: 3.55rem;
+  }
+
+  .integrated-battlefield .capital-visual-row .cover-knight--enemy {
+    right: 3.55rem;
+  }
+
+  .cover-knight span {
+    font-size: .52rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cover-knight,
+  .integrated-battlefield--skill-cover .capital-arena__side:first-child::after {
+    animation: none !important;
+  }
+}
+
 /*
  * Thirteen-step hoard composition.
  *
@@ -898,20 +1117,30 @@
   animation: skill-field-flash .28s ease-out both;
 }
 
-.battle-skill-field--demoralize::before,
 .battle-skill-field--independence-sabotage::before {
   background:
     radial-gradient(circle at 79% 56%, rgba(244, 63, 94, .58), transparent 24%),
     repeating-linear-gradient(112deg, transparent 0 1.4rem, rgba(251, 113, 133, .13) 1.45rem 1.58rem);
 }
 
-.battle-skill-field--demoralize > i,
 .battle-skill-field--independence-sabotage > i {
   right: -24%;
   left: auto;
   background: linear-gradient(90deg, transparent, #fb7185, #fff, transparent);
   box-shadow: 0 0 .85rem rgba(244, 63, 94, .94);
   animation-direction: reverse;
+}
+
+.battle-skill-field--cover::before {
+  background:
+    radial-gradient(circle at 21% 58%, rgba(96, 165, 250, .56), transparent 25%),
+    repeating-conic-gradient(from 0deg at 21% 58%, rgba(191, 219, 254, .14) 0 7deg, transparent 8deg 20deg);
+}
+
+.battle-skill-field--cover > i {
+  height: .18rem;
+  background: linear-gradient(90deg, transparent, #60a5fa, #fff, transparent);
+  box-shadow: 0 0 .9rem rgba(96, 165, 250, .92);
 }
 
 .battle-skill-field--era-wind::before,
@@ -997,7 +1226,6 @@
   animation: skill-actor-lunge .38s cubic-bezier(.12, .8, .2, 1) both;
 }
 
-.integrated-battlefield--skill-stage-impact.integrated-battlefield--skill-demoralize .ownership-fighter--enemy,
 .integrated-battlefield--skill-stage-impact.integrated-battlefield--skill-independence-sabotage .ownership-fighter--enemy {
   animation: skill-target-hit .38s ease-out both;
 }
