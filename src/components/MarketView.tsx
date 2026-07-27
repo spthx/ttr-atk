@@ -20,6 +20,7 @@ interface MarketViewProps {
   properties: Property[];
   totalFunds: number;
   unlockedCommunityIds: Set<CommunityType>;
+  conqueredCommunityIds: ReadonlySet<CommunityType>;
   navigationRequest?: { id: number; mode: 'map' | 'targets'; community: CommunityType | 'ALL' } | null;
   campaignMode?: 'normal' | 'savage';
   getStrengthComparison: (property: Property) => BattleReadinessResult;
@@ -70,6 +71,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
   properties,
   totalFunds,
   unlockedCommunityIds,
+  conqueredCommunityIds,
   navigationRequest,
   campaignMode = 'normal',
   getStrengthComparison,
@@ -111,10 +113,15 @@ export const MarketView: React.FC<MarketViewProps> = ({
           ...community,
           owned,
           total: targets.length,
-          conquered: targets.length > 0 && owned === targets.length,
+          currentlyControlled:
+            targets.length > 0 && owned === targets.length,
+          conquered:
+            campaignMode === 'savage'
+              ? targets.length > 0 && owned === targets.length
+              : conqueredCommunityIds.has(community.id),
         };
       }),
-    [properties]
+    [campaignMode, conqueredCommunityIds, properties]
   );
 
   const filteredProperties = useMemo(() => {
@@ -289,9 +296,17 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 <span className="relative z-10 flex items-center gap-1 text-xs font-black text-slate-100">{!unlocked && <LockKeyhole className="h-3 w-3 text-slate-500" />}{community.id}</span>
                 <span className="relative z-10 mt-1 block text-[11px] text-cyan-300">{community.marketCharacter}</span>
                 <span className={`relative z-10 mt-2 inline-block rounded px-1.5 py-0.5 text-[11px] font-black ${community.conquered ? 'bg-emerald-400/20 text-emerald-200' : 'bg-slate-800 text-slate-300'}`}>
-                  {community.conquered ? (campaignMode === 'savage' ? '零式踏破済み' : '制覇済み') : unlocked ? `${community.owned}/${community.total} ${campaignMode === 'savage' ? '層踏破' : '取得'}` : `${prerequisite}制覇で解放`}
+                  {community.conquered
+                    ? campaignMode === 'savage'
+                      ? '零式踏破済み'
+                      : community.currentlyControlled
+                        ? '制覇済み'
+                        : `制覇済み・現在 ${community.owned}/${community.total}`
+                    : unlocked
+                      ? `${community.owned}/${community.total} ${campaignMode === 'savage' ? '層踏破' : '取得'}`
+                      : `${prerequisite}制覇で解放`}
                 </span>
-                {!community.conquered && easiestTarget && (
+                {!community.currentlyControlled && easiestTarget && (
                   <span className="campaign-city-card__readiness">
                     <small>次の相手</small>
                     <b>{READINESS_PRESENTATION[easiestTarget.result.grade].label}</b>

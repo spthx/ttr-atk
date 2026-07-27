@@ -56,8 +56,14 @@ import {
   normalizeAllianceState,
   normalizeLimitBreakCharge,
   restoreProperties,
+  saveGame,
   SAVE_STORAGE_KEY,
 } from '../src/utils/saveData';
+import {
+  getCurrentlyControlledCommunityIds,
+  getUnlockedCommunityIds,
+  normalizeConqueredCommunityIds,
+} from '../src/utils/campaignProgress';
 import {
   applySavageSynergyUpgrades,
   buildUltimateProperty,
@@ -1660,6 +1666,97 @@ assert.equal(normalizeLimitBreakCharge(-20), 0);
 assert.equal(normalizeLimitBreakCharge(175), 175);
 assert.equal(normalizeLimitBreakCharge(999), 300);
 
+const firstCampaignCommunity = COMMUNITY_CAMPAIGN_ORDER[0];
+const secondCampaignCommunity = COMMUNITY_CAMPAIGN_ORDER[1];
+const thirdCampaignCommunity = COMMUNITY_CAMPAIGN_ORDER[2];
+const firstCampaignTargetIds = new Set(
+  getCampaignProperties(INITIAL_PROPERTIES, firstCampaignCommunity).map(
+    (property) => property.id
+  )
+);
+const conqueredFirstCityProperties = INITIAL_PROPERTIES.map((property) =>
+  firstCampaignTargetIds.has(property.id)
+    ? { ...property, owner: 'player' as const, ownerName: '進行テスト商会' }
+    : { ...property }
+);
+assert.ok(
+  getCurrentlyControlledCommunityIds(conqueredFirstCityProperties).includes(
+    firstCampaignCommunity
+  )
+);
+assert.deepEqual(
+  normalizeConqueredCommunityIds({
+    properties: conqueredFirstCityProperties,
+  }),
+  [firstCampaignCommunity],
+  'a fully controlled city becomes permanent campaign history'
+);
+
+const rebelledFirstCityProperties = conqueredFirstCityProperties.map(
+  (property) =>
+    property.id === Array.from(firstCampaignTargetIds)[0]
+      ? {
+          ...property,
+          owner: 'independent' as const,
+          ownerName: '独立物件',
+        }
+      : property
+);
+assert.ok(
+  !getCurrentlyControlledCommunityIds(rebelledFirstCityProperties).includes(
+    firstCampaignCommunity
+  ),
+  'rebellion removes current regional control'
+);
+const retainedConquestAfterRebellion = normalizeConqueredCommunityIds({
+  properties: rebelledFirstCityProperties,
+  savedCommunityIds: [firstCampaignCommunity],
+});
+assert.deepEqual(
+  retainedConquestAfterRebellion,
+  [firstCampaignCommunity],
+  'rebellion does not erase permanent route progress'
+);
+assert.ok(
+  getUnlockedCommunityIds(
+    new Set(retainedConquestAfterRebellion)
+  ).has(secondCampaignCommunity),
+  'the next city remains unlocked after a subsidiary rebels'
+);
+
+const laterCityHoldingId = getCampaignProperties(
+  INITIAL_PROPERTIES,
+  thirdCampaignCommunity
+)[0].id;
+const laterCityHoldingProperties = INITIAL_PROPERTIES.map((property) =>
+  property.id === laterCityHoldingId
+    ? { ...property, owner: 'player' as const, ownerName: '旧セーブ商会' }
+    : { ...property }
+);
+assert.deepEqual(
+  normalizeConqueredCommunityIds({
+    properties: laterCityHoldingProperties,
+  }),
+  COMMUNITY_CAMPAIGN_ORDER.slice(0, 2),
+  'legacy saves infer previously cleared routes from a later-city holding'
+);
+assert.deepEqual(
+  normalizeConqueredCommunityIds({
+    properties: rebelledFirstCityProperties,
+    seenUnlockIds: ['rival_wind'],
+  }),
+  COMMUNITY_CAMPAIGN_ORDER.slice(0, 2),
+  'legacy feature tutorials recover the minimum previously cleared route depth'
+);
+assert.equal(
+  normalizeConqueredCommunityIds({
+    properties: conqueredFirstCityProperties,
+    savedCommunityIds: [firstCampaignCommunity],
+  }).filter((communityId) => communityId === firstCampaignCommunity).length,
+  1,
+  'reacquiring a rebelled city does not create a second conquest'
+);
+
 const originalWindow = globalThis.window;
 let savedPayload = '';
 Object.defineProperty(globalThis, 'window', {
@@ -1667,7 +1764,9 @@ Object.defineProperty(globalThis, 'window', {
   value: {
     localStorage: {
       getItem: (key: string) => key === SAVE_STORAGE_KEY ? savedPayload : null,
-      setItem: () => undefined,
+      setItem: (key: string, value: string) => {
+        if (key === SAVE_STORAGE_KEY) savedPayload = value;
+      },
       removeItem: () => undefined,
     },
   },
@@ -1696,6 +1795,46 @@ assert.equal(restoredLegacySave.ultimateCleared, false);
 assert.equal(restoredLegacySave.trueEndingSeen, false);
 assert.equal(restoredLegacySave.selectedBattleSynergyId, null);
 assert.equal(restoredLegacySave.savageProgressVersion, undefined);
+assert.deepEqual(restoredLegacySave.conqueredCommunityIds, []);
+savedPayload = JSON.stringify({
+  ...legacySchemaThreePayload,
+  conqueredCommunityIds: [
+    firstCampaignCommunity,
+    secondCampaignCommunity,
+    '存在しない都市',
+  ],
+});
+const restoredCampaignHistory = loadGameSave();
+assert.deepEqual(restoredCampaignHistory?.conqueredCommunityIds, [
+  firstCampaignCommunity,
+  secondCampaignCommunity,
+]);
+saveGame({
+  companyName: '勝利確定テスト商会',
+  totalFunds: 98_765,
+  properties: conqueredFirstCityProperties,
+  equippedSkillIds: [],
+  alliance: {
+    allyId: '',
+    allyName: '',
+    active: false,
+    allyKind: 'company',
+    relationType: 'commercial_alliance',
+  },
+  conqueredCommunityIds: [firstCampaignCommunity],
+});
+const immediatelyCommittedVictory = loadGameSave();
+assert.equal(immediatelyCommittedVictory?.totalFunds, 98_765);
+assert.deepEqual(immediatelyCommittedVictory?.conqueredCommunityIds, [
+  firstCampaignCommunity,
+]);
+assert.equal(
+  immediatelyCommittedVictory?.properties.find(
+    (property) => property.id === Array.from(firstCampaignTargetIds)[0]
+  )?.owner,
+  'player',
+  'victory ownership and permanent route progress are durable in the same save'
+);
 savedPayload = JSON.stringify({
   ...legacySchemaThreePayload,
   passiveIncomePaused: true,

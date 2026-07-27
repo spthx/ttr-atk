@@ -1,5 +1,6 @@
 import { INITIAL_PROPERTIES } from '../data/initialData';
-import type { AllianceState, Property } from '../types';
+import type { AllianceState, CommunityType, Property } from '../types';
+import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
 import { LIMIT_BREAK_MAX_CHARGE } from './gameBalance';
 
 export const SAVE_SCHEMA_VERSION = 3;
@@ -30,6 +31,8 @@ export interface GameSaveData {
   /** Distinguishes four regional raid IDs from the former 20-encounter list. */
   savageProgressVersion?: 2;
   normalEndingSeen?: boolean;
+  /** Permanent route progress. A subsidiary leaving never relocks a cleared city. */
+  conqueredCommunityIds?: CommunityType[];
   /** Optional schema-v3 additions for the post-Savage Ultimate route. */
   savageEndingSeen?: boolean;
   ultimateCleared?: boolean;
@@ -128,6 +131,13 @@ export const loadGameSave = (): GameSaveData | null => {
         : [],
       savageProgressVersion: parsed.savageProgressVersion === 2 ? 2 : undefined,
       normalEndingSeen: parsed.normalEndingSeen === true,
+      conqueredCommunityIds: Array.isArray(parsed.conqueredCommunityIds)
+        ? parsed.conqueredCommunityIds.filter(
+            (id): id is CommunityType =>
+              typeof id === 'string' &&
+              COMMUNITY_CAMPAIGN_ORDER.includes(id as CommunityType)
+          )
+        : [],
       savageEndingSeen:
         parsed.savageEndingSeen === true ||
         (parsed.ultimateCleared === undefined && parsed.trueEndingSeen === true),
