@@ -203,16 +203,38 @@
   line-height: 1.08;
 }
 
-.battle-announcement__encounter {
+.battle-announcement strong > .battle-announcement__encounter {
   max-width: min(88vw, 40rem);
   overflow: hidden;
-  font-size: .62em;
+  color: #dbeafe;
+  font-size: clamp(.92rem, 3.2vw, 1.45rem);
+  letter-spacing: .06em;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.battle-announcement__duty {
+.battle-announcement strong > .battle-announcement__duty {
+  color: #fff8d6;
+  font-size: clamp(1.8rem, 6.5vw, 3.5rem);
+  letter-spacing: .1em;
+  line-height: 1;
+  text-shadow:
+    0 0 7px #fff,
+    0 0 24px rgba(245, 196, 81, .82),
+    0 3px 14px #000;
   white-space: nowrap;
+}
+
+@media (max-width: 639px) {
+  .battle-announcement strong > .battle-announcement__encounter {
+    max-width: 92vw;
+    font-size: clamp(.82rem, 3.8vw, 1rem);
+  }
+
+  .battle-announcement strong > .battle-announcement__duty {
+    font-size: clamp(1.8rem, 9vw, 2.35rem);
+  }
 }
 
 /* Original horned-crown treatment; it signals a boss without copying a mascot. */
