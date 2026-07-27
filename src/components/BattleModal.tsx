@@ -2110,17 +2110,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return true;
   };
 
-  const applyGaugeCandidate = (
+  const applyCoverToGaugeCandidate = (
     nextGauge: number,
-    cause: TerminalCause,
-    method: FinishMethod = 'NORMAL',
-    commitVisual = true
+    cause: TerminalCause
   ) => {
-    if (endedRef.current || terminalRef.current) return false;
-    if (cause !== 'enemy') {
-      lastPressureCauseRef.current = cause;
-    }
     const currentGauge = gaugeRef.current;
+    let absorbedGauge = 0;
     if (
       cause === 'enemy' &&
       playerCoverRemainingRef.current > 0 &&
@@ -2134,6 +2129,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         remainingGaugeCapacity: playerCoverCapacityRef.current,
       });
       nextGauge = covered.nextGauge;
+      absorbedGauge = covered.absorbedGauge;
       playerCoverCapacityRef.current = covered.remainingGaugeCapacity;
       if (covered.absorbedGauge >= 1) {
         showFloater(
@@ -2169,6 +2165,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           remainingGaugeCapacity: enemyCoverCapacityRef.current,
         });
         nextGauge = covered.nextGauge;
+        absorbedGauge = covered.absorbedGauge;
         enemyCoverCapacityRef.current = covered.remainingGaugeCapacity;
         if (covered.absorbedGauge >= 1) {
           showFloater(
@@ -2183,6 +2180,23 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           releaseCoverKnight('enemy');
         }
       }
+    }
+    return { nextGauge, absorbedGauge };
+  };
+
+  const applyGaugeCandidate = (
+    nextGauge: number,
+    cause: TerminalCause,
+    method: FinishMethod = 'NORMAL',
+    commitVisual = true,
+    coverAlreadyResolved = false
+  ) => {
+    if (endedRef.current || terminalRef.current) return false;
+    if (cause !== 'enemy') {
+      lastPressureCauseRef.current = cause;
+    }
+    if (!coverAlreadyResolved) {
+      nextGauge = applyCoverToGaugeCandidate(nextGauge, cause).nextGauge;
     }
     const trainingGauge = holdTrainingGaugeAboveDefeat(nextGauge, isTraining);
     if (trainingGauge !== nextGauge) {
@@ -2823,14 +2837,26 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         defenseResult.counterShock
       );
       const rawGaugeAfter = 100 - rawOwnershipAfter * 2;
+      // Resolve boss Cover/Invincible against the full LB movement before the
+      // terminal preview clamps the visible gauge to 99%. Otherwise only the
+      // tiny gap from that preview position would be intercepted.
+      const coveredLimitBreak = applyCoverToGaugeCandidate(
+        rawGaugeAfter,
+        'limit_break'
+      );
+      const resolvedGaugeAfter = coveredLimitBreak.nextGauge;
+      const coverOwnershipPushback = coveredLimitBreak.absorbedGauge / 2;
       const limitBreakResultText =
         `LIMIT BREAK ${limitBreakTier}！ 所有率+${ownershipPush.toFixed(1)}pt` +
         (defenseResult.actual > 0
           ? ` / 緊急防衛-${defenseOwnershipPushback.toFixed(1)}pt`
+          : '') +
+        (coverOwnershipPushback > 0
+          ? ` / かばう-${coverOwnershipPushback.toFixed(1)}pt`
           : '');
       addLog(limitBreakResultText, 'skill');
       soundFx.playLimitBreakImpact();
-      const pendingLimitWinner = getBattleTerminalWinner(rawGaugeAfter);
+      const pendingLimitWinner = getBattleTerminalWinner(resolvedGaugeAfter);
       if (pendingLimitWinner) {
         updateGauge(pendingLimitWinner === 'player' ? -99 : 99);
         setGaugeSpeed(0);
@@ -2848,9 +2874,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           limitTerminalHandoffTimerRef.current = null;
           if (endedRef.current || terminalRef.current) return;
           const terminalStarted = applyGaugeCandidate(
-            rawGaugeAfter,
+            resolvedGaugeAfter,
             'limit_break',
-            `LIMIT_BREAK_${limitBreakTier}` as FinishMethod
+            `LIMIT_BREAK_${limitBreakTier}` as FinishMethod,
+            true,
+            true
           );
           if (!terminalStarted && !terminalRef.current) {
             setLimitImpactActive(false);
@@ -2864,9 +2892,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         return;
       }
       const terminalLimitBreak = applyGaugeCandidate(
-        rawGaugeAfter,
+        resolvedGaugeAfter,
         'limit_break',
-        `LIMIT_BREAK_${limitBreakTier}` as FinishMethod
+        `LIMIT_BREAK_${limitBreakTier}` as FinishMethod,
+        true,
+        true
       );
       if (terminalLimitBreak) return;
       showFloater(`LB 所有率 +${ownershipPush.toFixed(1)}pt`, 'player');
