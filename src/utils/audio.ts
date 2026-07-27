@@ -496,22 +496,73 @@ class SoundEffects {
       const ctx = this.initCtx();
       if (!ctx) return;
       const now = ctx.currentTime;
-      [0, 0.09, 0.19].forEach((delay, index) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.72, now);
+      master.gain.exponentialRampToValueAtTime(0.001, now + 0.72);
+      master.connect(ctx.destination);
+
+      // A short metallic draw makes the following transients read as a blade,
+      // rather than another electronic gauge cue.
+      const draw = ctx.createOscillator();
+      const drawGain = ctx.createGain();
+      draw.type = 'triangle';
+      draw.frequency.setValueAtTime(340, now);
+      draw.frequency.exponentialRampToValueAtTime(2_600, now + 0.105);
+      drawGain.gain.setValueAtTime(0.001, now);
+      drawGain.gain.linearRampToValueAtTime(0.07, now + 0.025);
+      drawGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      draw.connect(drawGain);
+      drawGain.connect(master);
+      draw.start(now);
+      draw.stop(now + 0.15);
+
+      [0.1, 0.225, 0.36].forEach((delay, index) => {
         const start = now + delay;
-        osc.type = index === 1 ? 'square' : 'sawtooth';
-        osc.frequency.setValueAtTime(2_200 - index * 320, start);
-        osc.frequency.exponentialRampToValueAtTime(180 + index * 70, start + 0.12);
-        gain.gain.setValueAtTime(0.001, start);
-        gain.gain.linearRampToValueAtTime(0.11, start + 0.012);
-        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.14);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(start);
-        osc.stop(start + 0.15);
+        const duration = 0.105;
+        const noiseBuffer = ctx.createBuffer(
+          1,
+          Math.ceil(ctx.sampleRate * duration),
+          ctx.sampleRate
+        );
+        const samples = noiseBuffer.getChannelData(0);
+        for (let sample = 0; sample < samples.length; sample += 1) {
+          const progress = sample / samples.length;
+          samples[sample] =
+            (Math.random() * 2 - 1) * Math.pow(1 - progress, 2.4);
+        }
+
+        const slash = ctx.createBufferSource();
+        const slashFilter = ctx.createBiquadFilter();
+        const slashGain = ctx.createGain();
+        slash.buffer = noiseBuffer;
+        slashFilter.type = 'bandpass';
+        slashFilter.frequency.setValueAtTime(2_900 - index * 380, start);
+        slashFilter.Q.setValueAtTime(0.72, start);
+        slashGain.gain.setValueAtTime(0.001, start);
+        slashGain.gain.linearRampToValueAtTime(0.22, start + 0.006);
+        slashGain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+        slash.connect(slashFilter);
+        slashFilter.connect(slashGain);
+        slashGain.connect(master);
+        slash.start(start);
+
+        const blade = ctx.createOscillator();
+        const bladeGain = ctx.createGain();
+        blade.type = index === 1 ? 'sine' : 'triangle';
+        blade.frequency.setValueAtTime(3_200 - index * 420, start);
+        blade.frequency.exponentialRampToValueAtTime(
+          540 + index * 90,
+          start + 0.09
+        );
+        bladeGain.gain.setValueAtTime(0.001, start);
+        bladeGain.gain.linearRampToValueAtTime(0.1, start + 0.004);
+        bladeGain.gain.exponentialRampToValueAtTime(0.001, start + 0.115);
+        blade.connect(bladeGain);
+        bladeGain.connect(master);
+        blade.start(start);
+        blade.stop(start + 0.12);
       });
-      window.setTimeout(() => this.playCapitalImpact('player', 1), 230);
+      window.setTimeout(() => this.playCapitalImpact('player', 1), 470);
     } catch {
       this.playCapitalImpact('player', 1);
     }

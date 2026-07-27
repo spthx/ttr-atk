@@ -45,6 +45,11 @@ export interface Property {
   owner: OwnerType;
   ownerName: string; // 表示用の商会・企業連合・独立組織名
   loyaltyRisk: number; // L_risk in [0, 100]
+  /**
+   * Increases when a former subsidiary leaves, then carries into its
+   * reacquisition. Optional so existing schema-v3 saves remain compatible.
+   */
+  reacquisitionLevel?: number;
   cartelId?: string; // Cartel this belongs to
   isCartelHQ?: boolean;
   countsTowardCityConquest?: boolean; // Defaults to true. Optional cartel battles can opt out.
@@ -168,6 +173,7 @@ export interface BattleResult {
   settlementCost: number;
   battleCashDelta: number;
   victoryReward: number;
+  celebrationGiftCost: number;
   rebelledProperties: Property[];
   survivingRiskUpdates: Array<{
     id: string;

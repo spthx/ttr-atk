@@ -11,9 +11,9 @@ export const GAME_WORLD = {
   companyName: 'タタルの大繁盛商店',
   playerRole: '交易実務担当',
   advisorName: 'タタル',
-  advisorRole: '商会長・助言役',
+  advisorRole: '会計係・助言役',
   premise:
-    'プレイヤーは自分のカンパニーの交易実務担当として、市場調査・買収・資金管理を行う。タタルは報告を受け、方針と助言を示す。',
+    'プレイヤーは自分のカンパニーの交易実務担当として、市場調査・買収・資金管理を行う。タタルは重要な会計係として報告を受け、資金面の方針と助言を示す。',
 } as const;
 
 export const COMMUNITY_CAMPAIGN_ORDER: CommunityType[] = [

@@ -16,6 +16,7 @@ import { calculateBattleReadiness } from '../src/utils/battleReadiness';
 import {
   applyNormalBattlePropertyUpdates,
   calculateLiquidationCashback,
+  resolvePostVictoryLoyalty,
 } from '../src/utils/battleSettlement';
 import {
   BATTLE_CINEMATIC_TIMING,
@@ -101,6 +102,10 @@ import {
   BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO,
   BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS,
   BATTLE_GAUGE_SPEED_FACTOR,
+  BATTLE_LOYALTY_BALANCE,
+  BATTLE_SUPPORT_BALANCE,
+  calculateCelebrationGiftCost,
+  calculateCompanyStrengthScore,
   calculateBattleVictoryReward,
   calculatePlayerBattleCashLimit,
   ENEMY_INITIAL_COMMITMENT_RATIO,
@@ -120,21 +125,28 @@ import {
   countsTowardCityConquest,
   getCampaignProperties,
   getBattleCashRecoveryWindMultipliers,
+  getCompanyStrengthLevel,
+  getEnemyMinimumCommitment,
   getBattleTerminalWinner,
   getChargedLimitBreakTier,
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
+  getReacquisitionLevel,
+  getSubsidiaryRiskIncrease,
+  getSubsidiarySupportMultiplier,
   holdTrainingGaugeAboveDefeat,
   isSkillUnlocked,
   LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER,
   LIMIT_BREAK_MULTIPLIERS,
   LIMIT_BREAK_OWNERSHIP_CAPS,
+  NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS,
   NORMAL_ENEMY_BUDGET_MULTIPLIER,
   resolveLivingDeadOutcome,
   SAVAGE_ENEMY_BUDGET_MULTIPLIER,
   SAVAGE_LAYER_BUDGET_MULTIPLIERS,
   ULTIMATE_ENEMY_BUDGET_MULTIPLIER,
   getEnemyDifficultyLevel,
+  getNormalEnemyCampaignMultiplier,
   getSavageLayerBudgetMultiplier,
   calculateEraWindCost,
   getEraWindGaugePushPerSecond,
@@ -682,6 +694,13 @@ assert.equal(
   'complete'
 );
 assert.equal(
+  TERMINAL_CINEMATIC_TIMING.anticipationMs +
+    TERMINAL_CINEMATIC_TIMING.impactMs +
+    TERMINAL_CINEMATIC_TIMING.resolutionMs,
+  TERMINAL_CINEMATIC_TIMING.totalMs,
+  'the final offer, knockdown and WIN reveal form one sequential timeline'
+);
+assert.equal(
   normalizeBattleStatusMessageText(
     '一行目\n二行目\n表示してはいけない三行目'
   ),
@@ -757,13 +776,13 @@ const riskyReadiness = calculateBattleReadiness({
   enemyBaseReactionSeconds: getEnemyBaseWaitMs(2, false, false) / 1000,
   playerPushBonus: 0,
 });
-assert.ok(
-  safeReadiness.playerExpectedCapital >
-    riskyReadiness.playerExpectedCapital,
-  'readiness discounts subsidiary support by rebellion probability'
+assert.equal(
+  safeReadiness.playerExpectedCapital,
+  riskyReadiness.playerExpectedCapital,
+  'post-victory departure risk does not discount capital available in the current battle'
 );
 assert.equal(safeReadiness.grade, 'advantage');
-assert.notEqual(riskyReadiness.grade, 'advantage');
+assert.equal(riskyReadiness.grade, 'advantage');
 const cappedCashReadiness = calculateBattleReadiness({
   targetMarketPrice: 100_000,
   availableCash: 500_000,
@@ -860,7 +879,9 @@ const multiRequestReadiness = calculateBattleReadiness({
   enemyBaseReactionSeconds: 2,
   playerPushBonus: 0,
 });
-const perSafeRequestFailure = calculateRebellionProbability(18);
+const perSafeRequestFailure = calculateRebellionProbability(
+  BATTLE_LOYALTY_BALANCE.individualRiskIncrease
+);
 assert.ok(
   Math.abs(
     multiRequestReadiness.cumulativeSupportFailureProbability -
@@ -1100,6 +1121,11 @@ assert.deepEqual(
   [1, 2, 3, 4, 5],
   'training dummies provide exactly LEVEL 1 through LEVEL 5'
 );
+assert.equal(
+  TRAINING_DUMMY_DEFINITIONS[0].marketPrice,
+  7_500,
+  'LEVEL 1 training dummy keeps its reduced entry-level durability'
+);
 const trainingDummyIds = TRAINING_DUMMY_DEFINITIONS.map(
   (definition) => definition.id
 );
@@ -1246,6 +1272,13 @@ const restoredWorldCopy = restoreProperties({
     { id: 'prop_abyss_heavy', owner: 'independent', ownerName: '独立物件', loyaltyRisk: 0 },
     { id: 'prop_abyss_mine', owner: 'abyss', ownerName: '古い連盟表示', loyaltyRisk: 0 },
     { id: 'prop_starter_farm', owner: 'player', ownerName: '旧セーブ商会', loyaltyRisk: 12 },
+    {
+      id: 'prop_timber_ake',
+      owner: 'player',
+      ownerName: '旧セーブ商会',
+      loyaltyRisk: 0,
+      reacquisitionLevel: 2,
+    },
   ],
   equippedSkillIds: [],
   alliance: { allyId: '', allyName: '', active: false },
@@ -1255,6 +1288,18 @@ assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_abyss_he
 assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_abyss_heavy')?.owner, 'independent');
 assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_abyss_mine')?.ownerName, '知識・技術交易連盟');
 assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_starter_farm')?.ownerName, '旧セーブ商会');
+assert.equal(
+  restoredWorldCopy.find((property) => property.id === 'prop_starter_farm')
+    ?.reacquisitionLevel,
+  0,
+  'old schema-v3 saves default the reacquisition level to zero'
+);
+assert.equal(
+  restoredWorldCopy.find((property) => property.id === 'prop_timber_ake')
+    ?.reacquisitionLevel,
+  2,
+  'new schema-v3 saves restore the optional reacquisition level'
+);
 
 const enemyBudgetRatio = (propertyId: string, isTutorial = false) => {
   const property = INITIAL_PROPERTIES.find((candidate) => candidate.id === propertyId)!;
@@ -1265,7 +1310,9 @@ const enemyBudgetRatio = (propertyId: string, isTutorial = false) => {
     isTutorial,
   }) / property.marketPrice;
 };
-assert.ok(Math.abs(enemyBudgetRatio('prop_starter_farm', true) - 0.5599) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_starter_farm', true) - 0.4031) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_timber_ake') - 0.5526) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_land_transport') - 0.6331) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_casino_grand') - 1.1228) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_coffee_aurora') - 1.2202) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_heavy') - 1.5624) < 0.001);
@@ -1288,7 +1335,11 @@ assert.equal(
   savageBudget,
   Math.round(
     sameTargetNormalBudget *
-      (1 / NORMAL_ENEMY_BUDGET_MULTIPLIER) *
+      (1 /
+        (
+          NORMAL_ENEMY_BUDGET_MULTIPLIER *
+          getNormalEnemyCampaignMultiplier(savageBudgetTarget, false)
+        )) *
       SAVAGE_ENEMY_BUDGET_MULTIPLIER *
       getSavageLayerBudgetMultiplier(savageBudgetTarget)
   )
@@ -1307,7 +1358,13 @@ const savageLayerBudgets = savageProperties.map((targetProperty) => {
     regionalInfluence: noInfluence,
     isTutorial: false,
     isSavage: true,
-  }) / (normalBudget / NORMAL_ENEMY_BUDGET_MULTIPLIER);
+  }) / (
+    normalBudget /
+    (
+      NORMAL_ENEMY_BUDGET_MULTIPLIER *
+      getNormalEnemyCampaignMultiplier(targetProperty, false)
+    )
+  );
 });
 assert.deepEqual(
   savageLayerBudgets.map((ratio) => Number(ratio.toFixed(3))),
@@ -1335,7 +1392,13 @@ const ultimateAsNormalBudget = calculateEnemyBudget({
 assert.equal(
   ultimateBudget,
   Math.round(
-    (ultimateAsNormalBudget / NORMAL_ENEMY_BUDGET_MULTIPLIER) *
+    (
+      ultimateAsNormalBudget /
+      (
+        NORMAL_ENEMY_BUDGET_MULTIPLIER *
+        getNormalEnemyCampaignMultiplier(ultimateProperty, false)
+      )
+    ) *
       ULTIMATE_ENEMY_BUDGET_MULTIPLIER
   )
 );
@@ -1424,7 +1487,7 @@ assert.deepEqual(
 assert.equal(fastHorseSkill.cooldownMs, TACTICAL_SKILL_BALANCE.fastAction.cooldownMs);
 assert.equal(
   fastHorseSkill.cooldownMs - TACTICAL_SKILL_BALANCE.fastAction.durationMs,
-  8_000,
+  6_000,
   '疾風怒濤の計 cannot maintain permanent uptime'
 );
 const fastActionRatio =
@@ -1434,10 +1497,12 @@ assert.ok(fastActionRatio > 1.78 && fastActionRatio < 1.79);
 assert.equal(TACTICAL_SKILL_BALANCE.moraleSupport.loyaltyRiskDivisor, 2);
 assert.match(moraleSupportSkill.description, /半減/);
 assert.equal(TACTICAL_SKILL_BALANCE.disruption.interruptChance, 0.7);
+assert.equal(TACTICAL_SKILL_BALANCE.disruption.durationMs, 11_000);
 assert.equal(TACTICAL_SKILL_BALANCE.disruption.collapseMarketRatio, 0.12);
 assert.match(disruptionSkill.description, /中断分は追加防衛枠から消費されない/);
-assert.match(demoralizeSkill.description, /1\.6倍/);
-assert.equal(TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio, 0.3);
+assert.equal(TACTICAL_SKILL_BALANCE.demoralize.durationMs, 12_000);
+assert.match(demoralizeSkill.description, /1\.75倍/);
+assert.equal(TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio, 0.35);
 assert.equal(livingDeadSkill.id, 'skill_sns_blitz', 'legacy save-compatible skill id');
 assert.equal(livingDeadSkill.effectType, 'LIVING_DEAD');
 assert.equal(livingDeadSkill.cooldownMs, 0);
@@ -1476,7 +1541,115 @@ assert.equal(resolveLivingDeadOutcome('waiting', 0, 0), 'waiting_expired');
 assert.equal(resolveLivingDeadOutcome('recovery', 29.99, 1), 'none');
 assert.equal(resolveLivingDeadOutcome('recovery', 30, 1), 'recovered');
 assert.equal(resolveLivingDeadOutcome('recovery', 29.99, 0), 'failed');
-assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.pushMultiplier, 1.5);
+assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.durationMs, 10_000);
+assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.pushMultiplier, 1.65);
+assert.deepEqual(BATTLE_SUPPORT_BALANCE, {
+  subsidiaryMarketRatio: 0.52,
+  subsidiaryImpactBase: 1.2,
+  subsidiaryImpactPerMarketRatio: 9,
+  subsidiaryImpactCap: 7.5,
+  synergyMemberMarketRatio: 0.4,
+  synergyDefaultMultiplier: 1.35,
+  synergyImpactBase: 2.4,
+  synergyImpactPerMarketRatio: 8,
+  synergyImpactCap: 14,
+});
+assert.deepEqual(BATTLE_LOYALTY_BALANCE, {
+  individualRiskIncrease: 12,
+  limitBreakRiskIncrease: 8,
+  synergyRiskIncrease: 10,
+  celebrationRiskReduction: 20,
+  celebrationRewardRatio: 0.1,
+  reacquisitionSupportBonusPerLevel: 0.1,
+  reacquisitionRiskReductionPerLevel: 2,
+  maxReacquisitionLevel: 2,
+});
+const returningSubsidiary = {
+  ...readinessProperty,
+  reacquisitionLevel: 1,
+};
+assert.equal(getReacquisitionLevel(returningSubsidiary), 1);
+assert.equal(getSubsidiarySupportMultiplier(returningSubsidiary), 1.1);
+assert.equal(
+  getSubsidiaryRiskIncrease(
+    returningSubsidiary,
+    BATTLE_LOYALTY_BALANCE.individualRiskIncrease
+  ),
+  10
+);
+assert.equal(
+  calculateCelebrationGiftCost(
+    [{ ...readinessProperty, marketPrice: 100_000 }],
+    10_000
+  ),
+  1_000,
+  'the victory gift uses 10% of the earned victory reward'
+);
+assert.equal(
+  calculateCelebrationGiftCost(
+    [{ ...readinessProperty, marketPrice: 100_000 }],
+    300
+  ),
+  30,
+  'the victory gift scales with small victory rewards'
+);
+assert.equal(
+  calculateCelebrationGiftCost([], 10_000),
+  0,
+  'there is no gift choice without subsidiaries'
+);
+assert.equal(calculateRebellionProbability(30), 0);
+assert.ok(
+  calculateRebellionProbability(40) <
+    calculateRebellionProbability(60) &&
+    calculateRebellionProbability(60) <
+      calculateRebellionProbability(80),
+  'post-victory departure probability rises gradually above risk 30'
+);
+assert.equal(calculateRebellionProbability(100), 0.9);
+assert.equal(getEnemyMinimumCommitment(100_000), 2_000);
+assert.equal(getEnemyMinimumCommitment(100), 10);
+const strengthBeforeAcquisition = calculateCompanyStrengthScore(
+  20_000,
+  []
+);
+const strengthAfterAcquisition = calculateCompanyStrengthScore(
+  21_000,
+  [readinessProperty]
+);
+assert.ok(strengthAfterAcquisition > strengthBeforeAcquisition);
+assert.ok(
+  getCompanyStrengthLevel(strengthAfterAcquisition).level >=
+    getCompanyStrengthLevel(strengthBeforeAcquisition).level,
+  'company level never falls after a profitable acquisition'
+);
+const highRiskSettlementProperty = {
+  ...readinessProperty,
+  id: 'loyalty_high_risk',
+  loyaltyRisk: 50,
+};
+const noGiftLoyaltySettlement = resolvePostVictoryLoyalty(
+  [highRiskSettlementProperty],
+  false,
+  () => 0.05
+);
+assert.equal(noGiftLoyaltySettlement.leaving.length, 1);
+const giftLoyaltySettlement = resolvePostVictoryLoyalty(
+  [highRiskSettlementProperty],
+  true,
+  () => 0.05
+);
+assert.equal(
+  giftLoyaltySettlement.leaving.length,
+  0,
+  'the gift reduces risk before the single post-victory departure roll'
+);
+assert.equal(giftLoyaltySettlement.survivors[0].loyaltyRisk, 30);
+assert.deepEqual(
+  resolvePostVictoryLoyalty([], true, () => 0),
+  { survivors: [], leaving: [] },
+  'a battle with no subsidiaries has no departure settlement'
+);
 
 const rebelledSettlementProperty = {
   ...INITIAL_PROPERTIES[0],
@@ -1526,6 +1699,13 @@ assert.equal(
 );
 assert.equal(
   settledProperties.find(
+    (property) => property.id === rebelledSettlementProperty.id
+  )?.reacquisitionLevel,
+  1,
+  'a leaving subsidiary records one permanent reacquisition level'
+);
+assert.equal(
+  settledProperties.find(
     (property) => property.id === survivingSettlementProperty.id
   )?.loyaltyRisk,
   18,
@@ -1536,6 +1716,21 @@ assert.equal(
     (property) => property.id === targetSettlementProperty.id
   )?.owner,
   'player'
+);
+const reacquiredProperties = applyNormalBattlePropertyUpdates({
+  properties: settledProperties,
+  winner: 'player',
+  targetPropertyId: rebelledSettlementProperty.id,
+  companyName: '検証商会',
+  rebelledProperties: [],
+  survivingRiskUpdates: [],
+});
+assert.equal(
+  reacquiredProperties.find(
+    (property) => property.id === rebelledSettlementProperty.id
+  )?.reacquisitionLevel,
+  1,
+  'reacquisition keeps the returning subsidiary support upgrade'
 );
 
 const lbSubs = [
@@ -1578,6 +1773,12 @@ assert.ok(
 assert.equal(LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER, 1.2);
 assert.deepEqual(LIMIT_BREAK_MULTIPLIERS, { 1: 1.56, 2: 1.98, 3: 2.46 });
 assert.deepEqual(LIMIT_BREAK_OWNERSHIP_CAPS, { 1: 10, 2: 20, 3: 30 });
+assert.deepEqual(NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS, {
+  tutorial: 0.72,
+  gridania: 0.82,
+  limsa: 0.86,
+  midgameAndLater: 1,
+});
 assert.equal(ENEMY_INITIAL_COMMITMENT_RATIO, 0.25);
 assert.equal(BATTLE_CASH_RECOVERY_RATE_PER_SECOND, 0.003);
 assert.equal(BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO, 0.2);

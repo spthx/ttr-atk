@@ -4,7 +4,10 @@ import { soundFx } from '../utils/audio';
 import { Zap, Check, Lock, Sparkles, Layers, Swords } from 'lucide-react';
 import { HelpTip } from './HelpTip';
 import { HELP_TEXT } from '../data/helpText';
-import { isSkillUnlocked } from '../utils/gameBalance';
+import {
+  BATTLE_SUPPORT_BALANCE,
+  isSkillUnlocked,
+} from '../utils/gameBalance';
 import { INITIAL_PROPERTIES } from '../data/initialData';
 
 interface SkillsSynergyViewProps {
@@ -270,7 +273,10 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                   </div>
                   <div className="bg-slate-950 p-2 rounded border border-slate-800">
                     <span className="text-xs text-slate-400 block">戦闘連携の調達倍率</span>
-                    <strong className="text-amber-300 font-bold">×{(synergy.battleGroupMultiplier ?? 1.28).toFixed(2)}</strong>
+                    <strong className="text-amber-300 font-bold">×{(
+                      synergy.battleGroupMultiplier ??
+                      BATTLE_SUPPORT_BALANCE.synergyDefaultMultiplier
+                    ).toFixed(2)}</strong>
                   </div>
                 </div>
 

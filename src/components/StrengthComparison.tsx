@@ -134,7 +134,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
             {result.cumulativeSupportFailureProbability > 0 && (
               <span className={result.supportVolatile ? 'strength-comparison__risk' : ''}>
                 <ShieldAlert />
-                {result.supportRoute === '支援元一巡' ? '一巡離反' : '支援離反'}{' '}
+                {result.supportRoute === '支援元一巡' ? '勝利後の一巡離脱' : '勝利後の離脱'}{' '}
                 {Math.round(result.cumulativeSupportFailureProbability * 100)}%
               </span>
             )}
@@ -166,7 +166,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
           )}
           {result.supportVolatile && (
             <span className="strength-comparison__risk">
-              <ShieldAlert />支援離反 {Math.round(result.cumulativeSupportFailureProbability * 100)}%
+              <ShieldAlert />勝利後の離脱 {Math.round(result.cumulativeSupportFailureProbability * 100)}%
             </span>
           )}
         </div>

@@ -55,13 +55,13 @@ export const getNextBattleSkillId = (
  */
 export const TERMINAL_CINEMATIC_TIMING = {
   anticipationMs: 1_200,
-  impactMs: 520,
-  resolutionMs: 900,
-  totalMs: 2_620,
+  impactMs: 760,
+  resolutionMs: 1_100,
+  totalMs: 3_060,
   reducedMotionAnticipationMs: 180,
-  reducedMotionImpactMs: 140,
-  reducedMotionResolutionMs: 600,
-  reducedMotionTotalMs: 920,
+  reducedMotionImpactMs: 180,
+  reducedMotionResolutionMs: 700,
+  reducedMotionTotalMs: 1_060,
 } as const;
 
 export type TerminalCinematicStage =
