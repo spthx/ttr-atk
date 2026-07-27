@@ -2216,9 +2216,7 @@
 .buyout-screen--decisive .battlefield-capital-deluge,
 .buyout-screen--decisive .gil-tower__overflow,
 .buyout-screen--decisive .battle-flying-texts {
-  opacity: 0 !important;
-  animation: none !important;
-  transition: opacity .12s linear;
+  display: none !important;
 }
 
 .buyout-screen--terminal-cinematic .battlefield-pressure-lane__player,

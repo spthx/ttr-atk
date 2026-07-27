@@ -322,11 +322,11 @@ assert.equal(
   false,
   'a confirmed result cannot settle twice'
 );
-assert.equal(getVictoryConfettiParticleCount(402, false), 42);
+assert.equal(getVictoryConfettiParticleCount(402, false), 0);
 assert.equal(
   getVictoryConfettiParticleCount(1024, false),
-  42,
-  'tablet-sized victory effects use the compact particle budget'
+  0,
+  'tablet-sized victory effects avoid a second canvas animation'
 );
 assert.equal(getVictoryConfettiParticleCount(1440, false), 110);
 assert.equal(getVictoryConfettiParticleCount(402, true), 0);

@@ -42,6 +42,25 @@ class SoundEffects {
     this.stopCinematicAudio(fadeMs);
   }
 
+  /**
+   * Resume Web Audio synchronously inside a real pointer/key gesture.
+   * iOS may move a context to its non-standard `interrupted` state after an
+   * app switch; recreate it instead of scheduling silent oscillators.
+   */
+  unlock() {
+    if (!this.enabled || typeof window === 'undefined') return;
+    const state = this.ctx?.state as string | undefined;
+    if (state === 'closed' || state === 'interrupted') {
+      this.stopCinematicAudio();
+      this.ctx = null;
+      this.bufferCache.clear();
+    }
+    const ctx = this.initCtx();
+    if (ctx?.state === 'suspended') {
+      void ctx.resume().catch(() => {});
+    }
+  }
+
   private playFankitAudio(
     url: string,
     volume: number,
@@ -394,14 +413,8 @@ class SoundEffects {
   // Official fan-kit sound first; the synth remains a resilient autoplay/file fallback.
   playDutyStart() {
     if (!this.enabled) return;
-    if (!this.playFankitAudio(
-      FANKIT_AUDIO.dutyStart,
-      0.62,
-      () => this.playDutyStartSynth(),
-      'cinematic'
-    )) {
-      this.playDutyStartSynth();
-    }
+    this.stopCinematicAudio(40);
+    this.playDutyStartSynth();
   }
 
   playFeatureUnlocked() {
@@ -413,14 +426,8 @@ class SoundEffects {
 
   playLimitBreak() {
     if (!this.enabled) return;
-    if (!this.playFankitAudio(
-      FANKIT_AUDIO.limitBreak,
-      0.7,
-      () => this.playFinalPush(),
-      'cinematic'
-    )) {
-      this.playFinalPush();
-    }
+    this.stopCinematicAudio(40);
+    this.playFinalPush();
   }
 
   private playDutyStartSynth() {
@@ -538,14 +545,8 @@ class SoundEffects {
   }
   playVictory() {
     if (!this.enabled) return;
-    if (!this.playFankitAudio(
-      FANKIT_AUDIO.victory,
-      0.64,
-      () => this.playVictorySynth(),
-      'cinematic'
-    )) {
-      this.playVictorySynth();
-    }
+    this.stopCinematicAudio(40);
+    this.playVictorySynth();
   }
 
   // Original high-fantasy fallback fanfare (not based on an existing game melody).
@@ -596,14 +597,8 @@ class SoundEffects {
 
   playDefeat() {
     if (!this.enabled) return;
-    if (!this.playFankitAudio(
-      FANKIT_AUDIO.defeat,
-      0.64,
-      () => this.playDefeatSynth(),
-      'cinematic'
-    )) {
-      this.playDefeatSynth();
-    }
+    this.stopCinematicAudio(40);
+    this.playDefeatSynth();
   }
 
   // Defeat / loss fallback synth.
