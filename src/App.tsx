@@ -93,6 +93,8 @@ import {
 
 export { PASSIVE_REVENUE_MULTIPLIER };
 
+const LIGHTWEIGHT_MODE_STORAGE_KEY = 'ttr-lightweight-mode';
+
 type FeatureUnlockId =
   | 'market_wind'
   | 'rival_wind'
@@ -256,6 +258,13 @@ export default function App() {
     pendingBattleSession ? 0 : 1
   );
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [lightweightMode, setLightweightMode] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(LIGHTWEIGHT_MODE_STORAGE_KEY) !== 'off';
+    } catch {
+      return true;
+    }
+  });
   const [logs, setLogs] = useState<GameLog[]>([]);
   const [companyName, setCompanyName] = useState<string>(
     initialSave?.companyName || loadLegacyCompanyName() || GAME_WORLD.companyName
@@ -1372,6 +1381,46 @@ export default function App() {
           />
         )}
 
+        <button
+          type="button"
+          className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left shadow-lg transition-colors ${
+            lightweightMode
+              ? 'border-cyan-400/35 bg-cyan-950/35 text-cyan-50'
+              : 'border-slate-700 bg-slate-900/80 text-slate-300'
+          }`}
+          aria-pressed={lightweightMode}
+          onClick={() => {
+            setLightweightMode((current) => {
+              const next = !current;
+              try {
+                window.localStorage.setItem(
+                  LIGHTWEIGHT_MODE_STORAGE_KEY,
+                  next ? 'on' : 'off'
+                );
+              } catch {
+                // The preference remains valid for this session.
+              }
+              return next;
+            });
+          }}
+        >
+          <span className="min-w-0">
+            <span className="block text-xs font-black tracking-[.08em]">軽量モード</span>
+            <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">
+              演出・選択中は進行を停止／商戦ゲージは30fps
+            </span>
+          </span>
+          <span
+            className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${
+              lightweightMode
+                ? 'bg-cyan-300 text-slate-950'
+                : 'bg-slate-700 text-slate-300'
+            }`}
+          >
+            {lightweightMode ? 'ON' : 'OFF'}
+          </span>
+        </button>
+
         {/* Global activity stays closed until the player asks for it. */}
         {logs.length > 0 && (
           <details className="group rounded-xl border border-slate-800 bg-slate-900/80 shadow-lg">
@@ -1506,6 +1555,7 @@ export default function App() {
           limitBreakCharge={activeBattleMode === 'training' ? trainingLimitBreakCharge : limitBreakCharge}
           onLimitBreakChargeChange={activeBattleMode === 'training' ? setTrainingLimitBreakCharge : setLimitBreakCharge}
           onTimeScaleChange={setBattleTimeScale}
+          lightweightMode={lightweightMode}
           nextCommunity={(() => {
             if (activeBattleMode !== 'normal') return null;
             const wouldConquer = getCampaignProperties(properties, activeBattleProperty.community)

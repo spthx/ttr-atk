@@ -34,10 +34,12 @@ import {
   getCapitalVisualStage,
   getCapitalVisualStageForBundleCount,
   getVictoryConfettiParticleCount,
+  LIGHTWEIGHT_GAUGE_FRAME_MS,
   normalizeBattleStatusMessageText,
   RESULT_CONFIRM_ARM_DELAY_MS,
   selectBattleStatusMessage,
   SKILL_CINEMATIC_TIMING,
+  shouldProcessGaugeFrame,
   shouldInertBattleFooter,
   TERMINAL_CINEMATIC_TIMING,
 } from '../src/utils/battlePresentation';
@@ -318,6 +320,25 @@ assert.equal(
   BATTLE_GAUGE_VISUAL_COMMIT_MS,
   100,
   'the continuous gauge simulation commits React visuals at 10Hz'
+);
+assert.ok(
+  Math.abs(LIGHTWEIGHT_GAUGE_FRAME_MS - (1_000 / 30)) < 0.001,
+  'lightweight mode targets 30 gauge calculations per second'
+);
+assert.equal(
+  shouldProcessGaugeFrame(16, true),
+  false,
+  'lightweight mode skips sub-frame gauge calculations'
+);
+assert.equal(
+  shouldProcessGaugeFrame(34, true),
+  true,
+  'lightweight mode processes the accumulated 30fps gauge frame'
+);
+assert.equal(
+  shouldProcessGaugeFrame(16, false),
+  true,
+  'standard mode retains display-refresh gauge calculations'
 );
 assert.equal(
   SKILL_CINEMATIC_TIMING.nameMs +
