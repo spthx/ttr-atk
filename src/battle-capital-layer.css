@@ -240,32 +240,32 @@
 }
 
 .integrated-battlefield .gil-tower--stage-9 {
-  --hoard-scale-x: 1.08;
-  --hoard-scale-y: 1.02;
+  --hoard-scale-x: 1.18;
+  --hoard-scale-y: 1.1;
   --hoard-opacity: .82;
 }
 
 .integrated-battlefield .gil-tower--stage-10 {
-  --hoard-scale-x: 1.2;
-  --hoard-scale-y: 1.18;
+  --hoard-scale-x: 1.42;
+  --hoard-scale-y: 1.35;
   --hoard-opacity: .88;
 }
 
 .integrated-battlefield .gil-tower--stage-11 {
-  --hoard-scale-x: 1.34;
-  --hoard-scale-y: 1.36;
+  --hoard-scale-x: 1.72;
+  --hoard-scale-y: 1.62;
   --hoard-opacity: .92;
 }
 
 .integrated-battlefield .gil-tower--stage-12 {
-  --hoard-scale-x: 1.5;
-  --hoard-scale-y: 1.58;
+  --hoard-scale-x: 2.08;
+  --hoard-scale-y: 1.98;
   --hoard-opacity: .95;
 }
 
 .integrated-battlefield .gil-tower--stage-13 {
-  --hoard-scale-x: 1.68;
-  --hoard-scale-y: 1.85;
+  --hoard-scale-x: 2.55;
+  --hoard-scale-y: 2.45;
   --hoard-opacity: .98;
 }
 
@@ -365,7 +365,20 @@
 
 .integrated-battlefield .gil-tower--stage-12 .gil-tower__hoard,
 .integrated-battlefield .gil-tower--stage-13 .gil-tower__hoard {
-  inset-block-start: -2rem;
+  inset-block-start: -2.65rem;
+}
+
+.integrated-battlefield .gil-tower--stage-11 .gil-tower__hoard {
+  inset-inline: -12%;
+}
+
+.integrated-battlefield .gil-tower--stage-12 .gil-tower__hoard {
+  inset-inline: -22%;
+}
+
+.integrated-battlefield .gil-tower--stage-13 .gil-tower__hoard {
+  inset-block-start: -3.45rem;
+  inset-inline: -36%;
 }
 
 .integrated-battlefield .gil-tower--impact .gil-tower__hoard {
