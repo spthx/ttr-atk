@@ -172,9 +172,10 @@ export const TACTICAL_SKILL_BALANCE = {
     interruptChance: 0.75,
     collapseMarketRatio: 0.14,
   },
-  demoralize: {
-    durationMs: 16_000,
-    enemyWaitMultiplier: 1.9,
+  cover: {
+    durationMs: 10_000,
+    absorbRatio: 0.6,
+    gaugeCapacity: 16,
   },
   capitalBoost: {
     marketRatio: 0.4,
@@ -346,6 +347,22 @@ export const getSubsidiarySupportMultiplier = (property: Property) =>
   getReacquisitionLevel(property) *
     BATTLE_LOYALTY_BALANCE.reacquisitionSupportBonusPerLevel;
 
+export const calculateSubsidiarySupportAmount = (property: Property) =>
+  Math.round(
+    property.marketPrice *
+      BATTLE_SUPPORT_BALANCE.subsidiaryMarketRatio *
+      getSubsidiarySupportMultiplier(property)
+  );
+
+export const sortSubsidiariesBySupport = (properties: Property[]) =>
+  [...properties].sort((left, right) => {
+    const supportDifference =
+      calculateSubsidiarySupportAmount(right) -
+      calculateSubsidiarySupportAmount(left);
+    if (supportDifference !== 0) return supportDifference;
+    return left.name.localeCompare(right.name, 'ja');
+  });
+
 export const getSubsidiaryRiskIncrease = (
   property: Property,
   baseIncrease: number
@@ -495,6 +512,111 @@ export const getCampaignProperties = (
     (property) =>
       property.community === community && countsTowardCityConquest(property)
   );
+
+export type BossAbilityTier =
+  | 'none'
+  | 'boss'
+  | 'cover'
+  | 'enhanced_cover'
+  | 'invincible';
+
+export const isNormalCityBoss = (
+  properties: Property[],
+  targetProperty: Property
+) => {
+  const cityTargets = getCampaignProperties(
+    properties,
+    targetProperty.community
+  );
+  return cityTargets.at(-1)?.id === targetProperty.id;
+};
+
+export const getBossAbilityTier = ({
+  targetProperty,
+  isCityBoss,
+  isSavage = false,
+  isUltimate = false,
+}: {
+  targetProperty: Property;
+  isCityBoss: boolean;
+  isSavage?: boolean;
+  isUltimate?: boolean;
+}): BossAbilityTier => {
+  if (isUltimate) return 'invincible';
+  if (isSavage) {
+    const layer = getSavageLayer(targetProperty);
+    if (layer >= 4) return 'invincible';
+    if (layer >= 2) return 'enhanced_cover';
+    return 'cover';
+  }
+  if (!isCityBoss) return 'none';
+  const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
+    targetProperty.community
+  );
+  if (campaignIndex >= 9) return 'invincible';
+  if (campaignIndex >= 7) return 'enhanced_cover';
+  if (campaignIndex >= 3) return 'cover';
+  return 'boss';
+};
+
+export const BOSS_COVER_BALANCE = {
+  triggerPlayerOwnership: 60,
+  cover: {
+    durationMs: 6_000,
+    absorbRatio: 0.65,
+    gaugeCapacity: 16,
+  },
+  enhancedCover: {
+    durationMs: 8_000,
+    absorbRatio: 0.8,
+    gaugeCapacity: 28,
+  },
+  invincible: {
+    durationMs: 8_000,
+    absorbRatio: 1,
+    gaugeCapacity: Number.POSITIVE_INFINITY,
+  },
+} as const;
+
+export const applyCoverToGaugeDelta = ({
+  currentGauge,
+  nextGauge,
+  protects,
+  absorbRatio,
+  remainingGaugeCapacity,
+}: {
+  currentGauge: number;
+  nextGauge: number;
+  protects: 'player' | 'opponent';
+  absorbRatio: number;
+  remainingGaugeCapacity: number;
+}) => {
+  const delta = nextGauge - currentGauge;
+  const incoming =
+    protects === 'player' ? Math.max(0, delta) : Math.max(0, -delta);
+  if (incoming <= 0 || absorbRatio <= 0 || remainingGaugeCapacity <= 0) {
+    return {
+      nextGauge,
+      absorbedGauge: 0,
+      remainingGaugeCapacity: Math.max(0, remainingGaugeCapacity),
+    };
+  }
+  const absorbedGauge = Math.min(
+    incoming * Math.min(1, Math.max(0, absorbRatio)),
+    remainingGaugeCapacity
+  );
+  return {
+    nextGauge:
+      protects === 'player'
+        ? nextGauge - absorbedGauge
+        : nextGauge + absorbedGauge,
+    absorbedGauge,
+    remainingGaugeCapacity: Math.max(
+      0,
+      remainingGaugeCapacity - absorbedGauge
+    ),
+  };
+};
 
 export const getSavageLayer = (targetProperty: Property) => {
   const match = targetProperty.name.match(/商戦 零式：第([1-4])層/);

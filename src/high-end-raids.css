@@ -115,6 +115,29 @@
   justify-content: space-between;
 }
 
+.savage-layer-card__boss-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: .22rem;
+  margin-left: auto;
+  margin-right: .45rem;
+  padding: .16rem .38rem;
+  border: 1px solid rgba(251, 191, 36, .72);
+  border-radius: .38rem;
+  color: #fde68a;
+  background: rgba(69, 26, 3, .7);
+  box-shadow: 0 0 .65rem rgba(251, 191, 36, .18);
+  font-size: .58rem;
+  font-style: normal;
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+
+.savage-layer-card__boss-mark svg {
+  width: .78rem;
+  height: .78rem;
+}
+
 .savage-layer-card > header span {
   color: #fda4af;
   font-size: .78rem;
@@ -297,6 +320,26 @@
 
 .ultimate-raid-card__copy > small {
   color: #fde68a;
+}
+
+.ultimate-raid-card__boss-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: .22rem;
+  margin-right: .55rem;
+  padding: .18rem .42rem;
+  border: 1px solid rgba(216, 180, 254, .88);
+  border-radius: .38rem;
+  color: #f3e8ff;
+  background: rgba(88, 28, 135, .72);
+  box-shadow: 0 0 .75rem rgba(168, 85, 247, .34);
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+
+.ultimate-raid-card__boss-mark svg {
+  width: .82rem;
+  height: .82rem;
 }
 
 .ultimate-raid-card__copy h2 {

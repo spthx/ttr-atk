@@ -313,6 +313,21 @@
 .trade-target-card__badge--starter { color: #67e8f9; background: rgba(8, 145, 178, .12); }
 .trade-target-card__badge--hq { color: #fecdd3; background: rgba(190, 24, 93, .18); }
 .trade-target-card__badge--optional { color: #ddd6fe; background: rgba(109, 40, 217, .14); }
+.trade-target-card__badge--boss {
+  display: inline-flex;
+  align-items: center;
+  gap: .2rem;
+  color: #fbbf24;
+  background:
+    linear-gradient(135deg, rgba(120, 53, 15, .48), rgba(17, 24, 39, .88));
+  box-shadow: 0 0 .7rem rgba(251, 191, 36, .2);
+}
+
+.trade-target-card__badge--boss svg {
+  width: .8rem;
+  height: .8rem;
+  stroke-width: 2.7;
+}
 
 .trade-target-card__action {
   min-width: 0;
