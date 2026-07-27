@@ -599,7 +599,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const commandReadySoundArmedRef = useRef(false);
   const decisiveRef = useRef(false);
   const terminalRef = useRef<TerminalResolution | null>(null);
-  const terminalMotionPlayedRef = useRef(false);
   const lastPressureCauseRef = useRef<TerminalCause>('pressure');
   const liquidityWarningShownRef = useRef(false);
   const resultConfirmArmedRef = useRef(false);
@@ -1632,10 +1631,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             ? '蘇生猶予終了――自社の防衛線が崩壊する'
             : `FINAL OFFER――${TERMINAL_CAUSE_LABELS[cause]}が押し切る！`
     );
-    if (!terminalMotionPlayedRef.current) {
-      terminalMotionPlayedRef.current = true;
-      playMotion(result === 'player' ? 'player' : 'enemy');
-    }
     const reducedMotion = window.matchMedia?.(
       '(prefers-reduced-motion: reduce)'
     ).matches ?? false;

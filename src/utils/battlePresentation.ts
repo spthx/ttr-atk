@@ -196,7 +196,10 @@ export const getVictoryConfettiParticleCount = (
   reducedMotion: boolean
 ) => {
   if (reducedMotion) return 0;
-  return viewportWidth <= 1024 ? 42 : 110;
+  // Canvas confetti can force an iPad WebContent reload when it overlaps the
+  // terminal field animations. Compact/tablet finishes use the CSS resolution
+  // beat only; the richer particle finish remains on desktop.
+  return viewportWidth <= 1024 ? 0 : 110;
 };
 
 export const getCapitalVisualStage = (amount: number) => {

@@ -258,6 +258,20 @@ export default function App() {
     mode: 'map' | 'targets';
     community: CommunityType | 'ALL';
   } | null>(null);
+  const deferredBattleIncomeRef = useRef(0);
+
+  useEffect(() => {
+    const unlockAudio = () => soundFx.unlock();
+    window.addEventListener('pointerdown', unlockAudio, { capture: true });
+    window.addEventListener('keydown', unlockAudio, { capture: true });
+    window.addEventListener('pageshow', unlockAudio);
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio, { capture: true });
+      window.removeEventListener('keydown', unlockAudio, { capture: true });
+      window.removeEventListener('pageshow', unlockAudio);
+    };
+  }, []);
+
   const completeLaunchIntro = () => {
     const normalizedName = companyName.trim() || GAME_WORLD.companyName;
     setCompanyName(normalizedName);
@@ -645,21 +659,36 @@ export default function App() {
   useEffect(() => {
     const timer = setInterval(() => {
       if (passiveRevenue > 0) {
-        setTotalFunds((prev) => prev + passiveRevenue);
+        if (activeBattleProperty) {
+          // Do not rerender and synchronously rewrite the full save every
+          // second behind an iPad battle. Income still accrues and is applied
+          // as one state update when the modal closes.
+          deferredBattleIncomeRef.current += passiveRevenue;
+        } else {
+          setTotalFunds((prev) => prev + passiveRevenue);
+        }
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [passiveRevenue]);
+  }, [activeBattleProperty, passiveRevenue]);
 
   useEffect(() => {
-    if (showLaunchIntro) return;
+    if (activeBattleProperty || deferredBattleIncomeRef.current <= 0) return;
+    const deferredIncome = deferredBattleIncomeRef.current;
+    deferredBattleIncomeRef.current = 0;
+    setTotalFunds((current) => current + deferredIncome);
+  }, [activeBattleProperty]);
+
+  useEffect(() => {
+    if (showLaunchIntro || activeBattleProperty) return;
     const timer = window.setTimeout(() => {
       persistGameState();
     }, 400);
     return () => window.clearTimeout(timer);
   }, [
     alliance,
+    activeBattleProperty,
     activeBattleMode,
     companyName,
     equippedSkillIds,
