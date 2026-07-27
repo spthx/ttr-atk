@@ -24,6 +24,7 @@ import {
   canConfirmBattleResult,
   enqueueBattleStatusMessage,
   getBattleCapitalVisualBundleCount,
+  getNextBattleSkillId,
   getTerminalCinematicPresentation,
   getBattleCinematicLayer,
   getCapitalVisualBundleCount,
@@ -35,6 +36,7 @@ import {
   normalizeBattleStatusMessageText,
   RESULT_CONFIRM_ARM_DELAY_MS,
   selectBattleStatusMessage,
+  SKILL_CINEMATIC_TIMING,
   shouldInertBattleFooter,
   TERMINAL_CINEMATIC_TIMING,
 } from '../src/utils/battlePresentation';
@@ -127,6 +129,7 @@ import {
   LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER,
   LIMIT_BREAK_MULTIPLIERS,
   LIMIT_BREAK_OWNERSHIP_CAPS,
+  NORMAL_ENEMY_BUDGET_MULTIPLIER,
   resolveLivingDeadOutcome,
   SAVAGE_ENEMY_BUDGET_MULTIPLIER,
   SAVAGE_LAYER_BUDGET_MULTIPLIERS,
@@ -303,6 +306,38 @@ assert.equal(
   BATTLE_GAUGE_VISUAL_COMMIT_MS,
   100,
   'the continuous gauge simulation commits React visuals at 10Hz'
+);
+assert.equal(
+  SKILL_CINEMATIC_TIMING.nameMs +
+    SKILL_CINEMATIC_TIMING.castMs +
+    SKILL_CINEMATIC_TIMING.impactMs +
+    SKILL_CINEMATIC_TIMING.resolveMs,
+  SKILL_CINEMATIC_TIMING.totalMs,
+  'skill name, cast, impact and result beats form one non-overlapping timeline'
+);
+assert.equal(
+  getNextBattleSkillId(
+    ['skill_fast_horse', 'skill_demoralize', 'skill_capital_boost'],
+    'skill_fast_horse'
+  ),
+  'skill_demoralize',
+  'skill selection changes without executing the selected action'
+);
+assert.equal(
+  getNextBattleSkillId(
+    ['skill_fast_horse', 'skill_demoralize', 'skill_capital_boost'],
+    'skill_capital_boost'
+  ),
+  'skill_fast_horse',
+  'skill selection wraps like the five-step investment selector'
+);
+assert.equal(
+  getNextBattleSkillId(
+    ['skill_fast_horse', 'skill_demoralize'],
+    null
+  ),
+  'skill_fast_horse',
+  'a missing legacy selection safely starts at the first equipped skill'
 );
 assert.equal(
   canConfirmBattleResult({
@@ -1230,11 +1265,11 @@ const enemyBudgetRatio = (propertyId: string, isTutorial = false) => {
     isTutorial,
   }) / property.marketPrice;
 };
-assert.ok(Math.abs(enemyBudgetRatio('prop_starter_farm', true) - 0.5832) < 0.001);
-assert.ok(Math.abs(enemyBudgetRatio('prop_casino_grand') - 1.1696) < 0.001);
-assert.ok(Math.abs(enemyBudgetRatio('prop_coffee_aurora') - 1.271) < 0.001);
-assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_heavy') - 1.6275) < 0.001);
-assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_hq') - 2.3625) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_starter_farm', true) - 0.5599) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_casino_grand') - 1.1228) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_coffee_aurora') - 1.2202) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_heavy') - 1.5624) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_hq') - 2.268) < 0.001);
 const savageBudgetTarget = savageProperties[0];
 const savageBudget = calculateEnemyBudget({
   targetProperty: savageBudgetTarget,
@@ -1253,6 +1288,7 @@ assert.equal(
   savageBudget,
   Math.round(
     sameTargetNormalBudget *
+      (1 / NORMAL_ENEMY_BUDGET_MULTIPLIER) *
       SAVAGE_ENEMY_BUDGET_MULTIPLIER *
       getSavageLayerBudgetMultiplier(savageBudgetTarget)
   )
@@ -1271,7 +1307,7 @@ const savageLayerBudgets = savageProperties.map((targetProperty) => {
     regionalInfluence: noInfluence,
     isTutorial: false,
     isSavage: true,
-  }) / normalBudget;
+  }) / (normalBudget / NORMAL_ENEMY_BUDGET_MULTIPLIER);
 });
 assert.deepEqual(
   savageLayerBudgets.map((ratio) => Number(ratio.toFixed(3))),
@@ -1298,7 +1334,10 @@ const ultimateAsNormalBudget = calculateEnemyBudget({
 });
 assert.equal(
   ultimateBudget,
-  Math.round(ultimateAsNormalBudget * ULTIMATE_ENEMY_BUDGET_MULTIPLIER)
+  Math.round(
+    (ultimateAsNormalBudget / NORMAL_ENEMY_BUDGET_MULTIPLIER) *
+      ULTIMATE_ENEMY_BUDGET_MULTIPLIER
+  )
 );
 assert.ok(ultimateBudget > savageBudget);
 assert.equal(getEnemyDifficultyLevel(ultimateProperty, false, false, true), 6);
@@ -1506,7 +1545,7 @@ const lbSubs = [
 ];
 const lbTier = getLimitBreakTier(lbSubs.length + 1);
 assert.equal(lbTier, 1);
-assert.equal(calculateLimitBreakAmount(1_000, lbSubs, lbTier), 2_822);
+assert.equal(calculateLimitBreakAmount(1_000, lbSubs, lbTier), 3_058);
 assert.equal(BATTLE_GAUGE_SPEED_FACTOR, 4);
 assert.equal(TRAINING_GAUGE_SPEED_MULTIPLIER, 0.1);
 assert.equal(TRAINING_MIN_OWNERSHIP_PERCENT, 1);
@@ -1537,7 +1576,7 @@ assert.ok(
   'training dummy allows at least thirty command cycles before its protected floor'
 );
 assert.equal(LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER, 1.2);
-assert.deepEqual(LIMIT_BREAK_MULTIPLIERS, { 1: 1.44, 2: 1.8, 3: 2.22 });
+assert.deepEqual(LIMIT_BREAK_MULTIPLIERS, { 1: 1.56, 2: 1.98, 3: 2.46 });
 assert.deepEqual(LIMIT_BREAK_OWNERSHIP_CAPS, { 1: 10, 2: 20, 3: 30 });
 assert.equal(ENEMY_INITIAL_COMMITMENT_RATIO, 0.25);
 assert.equal(BATTLE_CASH_RECOVERY_RATE_PER_SECOND, 0.003);

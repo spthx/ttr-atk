@@ -47,8 +47,8 @@
   background:
     linear-gradient(
       90deg,
-      var(--field-player) 0 var(--capital-pressure),
-      var(--field-enemy) var(--capital-pressure) 100%
+      var(--field-player) 0 var(--battle-frontline),
+      var(--field-enemy) var(--battle-frontline) 100%
     );
   opacity: .42;
 }
@@ -94,7 +94,7 @@
 }
 
 .battlefield-pressure-lane__player {
-  right: calc(100% - var(--capital-pressure));
+  right: calc(100% - var(--battle-frontline));
   left: 0;
   background:
     linear-gradient(90deg, rgba(14, 165, 233, .18), rgba(56, 189, 248, .38)),
@@ -103,7 +103,7 @@
 
 .battlefield-pressure-lane__enemy {
   right: 0;
-  left: var(--capital-pressure);
+  left: var(--battle-frontline);
   background:
     linear-gradient(270deg, rgba(225, 29, 72, .2), rgba(251, 113, 133, .38)),
     repeating-linear-gradient(0deg, transparent 0 1.25rem, rgba(254, 205, 211, .12) 1.25rem 1.38rem);
@@ -112,7 +112,7 @@
 .battlefield-pressure-lane__front {
   position: absolute;
   inset-block: 0;
-  left: var(--capital-pressure);
+  left: var(--battle-frontline);
   width: 1.15rem;
   translate: -50% 0;
 }
