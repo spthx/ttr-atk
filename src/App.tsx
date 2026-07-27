@@ -74,6 +74,10 @@ import {
   persistPendingBattleSession,
 } from './utils/battleSession';
 import {
+  getUnlockedCommunityIds,
+  normalizeConqueredCommunityIds,
+} from './utils/campaignProgress';
+import {
   applySavageSynergyUpgrades,
   buildUltimateProperty,
   buildSavageProperties,
@@ -178,6 +182,16 @@ export default function App() {
     initialSave?.limitBreakCharge ?? 0
   );
   const [properties, setProperties] = useState<Property[]>(() => restoreProperties(initialSave));
+  const [conqueredCommunityIds, setConqueredCommunityIds] = useState<
+    CommunityType[]
+  >(() =>
+    normalizeConqueredCommunityIds({
+      properties: restoreProperties(initialSave),
+      savedCommunityIds: initialSave?.conqueredCommunityIds,
+      seenUnlockIds: initialSave?.seenUnlockIds,
+      normalEndingSeen: initialSave?.normalEndingSeen,
+    })
+  );
   const [skills, setSkills] = useState<TacticalSkill[]>(INITIAL_SKILLS);
   const [equippedSkillIds, setEquippedSkillIds] = useState<string[]>(
     initialSave?.equippedSkillIds ?? []
@@ -306,21 +320,24 @@ export default function App() {
   }, [ownedProperties]);
 
   const communityProgress = useMemo(() => {
+    const conqueredIds = new Set(conqueredCommunityIds);
     return TRADE_COMMUNITIES.map((community) => {
       const communityProperties = getCampaignProperties(properties, community.id);
       const owned = communityProperties.filter(
         (property) => property.owner === 'player'
       ).length;
+      const currentlyControlled =
+        communityProperties.length > 0 && owned === communityProperties.length;
 
       return {
         ...community,
         owned,
         total: communityProperties.length,
-        conquered:
-          communityProperties.length > 0 && owned === communityProperties.length,
+        conquered: conqueredIds.has(community.id),
+        currentlyControlled,
       };
     });
-  }, [properties]);
+  }, [conqueredCommunityIds, properties]);
 
   const conqueredCommunityCount = communityProgress.filter(
     (community) => community.conquered
@@ -330,16 +347,14 @@ export default function App() {
     ownedProperties.length
   );
 
-  const unlockedCommunityIds = useMemo(() => {
-    const unlocked = new Set<CommunityType>();
-    COMMUNITY_CAMPAIGN_ORDER.forEach((communityId, index) => {
-      const priorCitiesConquered = COMMUNITY_CAMPAIGN_ORDER
-        .slice(0, index)
-        .every((priorId) => communityProgress.find((city) => city.id === priorId)?.conquered);
-      if (index === 0 || priorCitiesConquered) unlocked.add(communityId);
-    });
-    return unlocked;
-  }, [communityProgress]);
+  const conqueredCommunityIdSet = useMemo(
+    () => new Set(conqueredCommunityIds),
+    [conqueredCommunityIds]
+  );
+  const unlockedCommunityIds = useMemo(
+    () => getUnlockedCommunityIds(conqueredCommunityIdSet),
+    [conqueredCommunityIdSet]
+  );
 
   const tradeAllianceUnlocked = !!communityProgress.find(
     (community) => community.id === 'ウルダハ'
@@ -426,7 +441,7 @@ export default function App() {
         entry.playerBonus = 0.08;
         entry.enemyBudgetDiscount = 0.05;
       }
-      if (community.conquered) {
+      if (community.currentlyControlled) {
         entry.label = '地域制覇';
         entry.playerBonus = 0.12;
         entry.enemyBudgetDiscount = 0.08;
@@ -619,7 +634,8 @@ export default function App() {
     return Math.round(base * bonusMultiplier * PASSIVE_REVENUE_MULTIPLIER);
   }, [bonusMultiplier, ownedProperties, savageClearedSet]);
 
-  const persistGameState = () => {
+  type SavePayload = Parameters<typeof saveGame>[0];
+  const persistGameState = (overrides: Partial<SavePayload> = {}) => {
     saveGame({
       companyName: companyName.trim() || GAME_WORLD.companyName,
       totalFunds,
@@ -631,11 +647,13 @@ export default function App() {
       savageClearedPropertyIds,
       savageProgressVersion: 2,
       normalEndingSeen,
+      conqueredCommunityIds,
       savageEndingSeen,
       ultimateCleared,
       trueEndingSeen,
       selectedBattleSynergyId,
       passiveIncomePaused: false,
+      ...overrides,
     });
   };
 
@@ -694,6 +712,7 @@ export default function App() {
     equippedSkillIds,
     limitBreakCharge,
     normalEndingSeen,
+    conqueredCommunityIds,
     properties,
     savageClearedPropertyIds,
     savageEndingSeen,
@@ -785,9 +804,13 @@ export default function App() {
     ) {
       return;
     }
-    clearPendingBattleSession();
     if (activeBattleMode === 'training') {
-      persistGameState();
+      const settledTrainingFunds =
+        totalFunds + deferredBattleIncomeRef.current;
+      deferredBattleIncomeRef.current = 0;
+      setTotalFunds(settledTrainingFunds);
+      persistGameState({ totalFunds: settledTrainingFunds });
+      clearPendingBattleSession();
       addGameLog(
         winner === 'player'
           ? `【木人討滅成功】${targetProperty.name}を討滅しました。訓練用の出資・LB増減・勝敗は保存されません。`
@@ -816,26 +839,65 @@ export default function App() {
       ? calculateLiquidationCashback(rebelledProperties)
       : 0;
     // 仲介手数料に加え、直接出資の一部が買収費用・撤退損として確定する。
-    setTotalFunds((prev) =>
-      Math.max(
-        0,
-        prev -
-          brokerageFee -
-          settlementCost +
-          battleCashDelta +
-          (winner === 'player' ? victoryReward : 0) +
-          liquidationCashback
-      )
+    const settledTotalFunds = Math.max(
+      0,
+      totalFunds +
+        deferredBattleIncomeRef.current -
+        brokerageFee -
+        settlementCost +
+        battleCashDelta +
+        (winner === 'player' ? victoryReward : 0) +
+        liquidationCashback
     );
+    deferredBattleIncomeRef.current = 0;
+    setTotalFunds(settledTotalFunds);
+
+    const currentlyConquersTargetCity =
+      isNormalBattle &&
+      winner === 'player' &&
+      getCampaignProperties(
+        projectedProperties,
+        targetProperty.community
+      ).every((property) => property.owner === 'player');
+    const newlyConquered =
+      currentlyConquersTargetCity &&
+      !conqueredCommunityIdSet.has(targetProperty.community);
+    const projectedConqueredCommunityIds = newlyConquered
+      ? COMMUNITY_CAMPAIGN_ORDER.filter(
+          (communityId) =>
+            conqueredCommunityIdSet.has(communityId) ||
+            communityId === targetProperty.community
+        )
+      : conqueredCommunityIds;
+    if (newlyConquered) {
+      setConqueredCommunityIds(projectedConqueredCommunityIds);
+    }
+
+    const breaksAlliance =
+      isNormalBattle &&
+      winner === 'player' &&
+      shouldBreakAllianceForTarget(alliance, targetProperty);
+    const projectedAlliance: AllianceState = breaksAlliance
+      ? {
+          allyId: '',
+          allyName: '',
+          active: false,
+          allyKind: 'company',
+          relationType: 'commercial_alliance',
+        }
+      : alliance;
+    let projectedSavageClearedPropertyIds = savageClearedPropertyIds;
+    let projectedUltimateCleared = ultimateCleared;
 
     if (activeBattleMode === 'savage') {
       const clearedAfterBattle = new Set(savageClearedPropertyIds);
       const firstClear =
         winner === 'player' && !clearedAfterBattle.has(targetProperty.id);
       if (winner === 'player') clearedAfterBattle.add(targetProperty.id);
+      projectedSavageClearedPropertyIds = Array.from(clearedAfterBattle);
 
       if (winner === 'player') {
-        setSavageClearedPropertyIds(Array.from(clearedAfterBattle));
+        setSavageClearedPropertyIds(projectedSavageClearedPropertyIds);
         const raid = getSavageRaidDefinition(targetProperty.id);
         const rewardNames = raid?.rewardSynergyIds
           .map((id) => INITIAL_GROUP_SYNERGIES.find((synergy) => synergy.id === id)?.name)
@@ -867,6 +929,7 @@ export default function App() {
       setActiveTab('savage');
     } else if (activeBattleMode === 'ultimate') {
       if (winner === 'player') {
+        projectedUltimateCleared = true;
         setUltimateCleared(true);
         addGameLog(
           `【絶商戦踏破】${targetProperty.name} を攻略しました。最終記録と称号を獲得しました！`,
@@ -883,15 +946,6 @@ export default function App() {
       }
       setActiveTab('savage');
     } else if (winner === 'player') {
-      const wasConquered = getCampaignProperties(
-        properties,
-        targetProperty.community
-      ).every((property) => property.owner === 'player');
-      const conquersCity = getCampaignProperties(
-        projectedProperties,
-        targetProperty.community
-      ).every((property) => property.owner === 'player');
-      const newlyConquered = !wasConquered && conquersCity;
       const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
       const nextCommunity = COMMUNITY_CAMPAIGN_ORDER[campaignIndex + 1];
       if (newlyConquered && nextCommunity) {
@@ -920,14 +974,8 @@ export default function App() {
       );
 
       // Commercial partners own properties; public Grand Company patrons never do.
-      if (shouldBreakAllianceForTarget(alliance, targetProperty)) {
-        setAlliance({
-          allyId: '',
-          allyName: '',
-          active: false,
-          allyKind: 'company',
-          relationType: 'commercial_alliance',
-        });
+      if (breaksAlliance) {
+        setAlliance(projectedAlliance);
         addGameLog(
           `【協力協定 自動解除】協定企業の傘下事業へ交渉を仕掛けたため、${alliance.allyName} との協定を解除しました。`,
           'danger'
@@ -953,6 +1001,18 @@ export default function App() {
     if (isNormalBattle) {
       setProperties(projectedProperties);
     }
+
+    // Commit the resolved battle before removing its recovery marker. This
+    // closes the reload window between the result screen and the autosave.
+    persistGameState({
+      totalFunds: settledTotalFunds,
+      properties: projectedProperties,
+      alliance: projectedAlliance,
+      conqueredCommunityIds: projectedConqueredCommunityIds,
+      savageClearedPropertyIds: projectedSavageClearedPropertyIds,
+      ultimateCleared: projectedUltimateCleared,
+    });
+    clearPendingBattleSession();
 
     // 2. Handle Rebellion & Strategic Bankruptcy Liquidation Cashback
     if (isNormalBattle && rebelledProperties.length > 0) {
@@ -1211,6 +1271,7 @@ export default function App() {
             properties={properties}
             totalFunds={totalFunds}
             unlockedCommunityIds={unlockedCommunityIds}
+            conqueredCommunityIds={conqueredCommunityIdSet}
             navigationRequest={marketNavigationRequest}
             getStrengthComparison={(property) =>
               getBattleReadinessForTarget(property, 'normal')
