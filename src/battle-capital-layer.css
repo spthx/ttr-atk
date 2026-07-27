@@ -468,15 +468,7 @@
 
 .battle-announcement--limit > div::before,
 .battle-announcement--limit > div::after {
-  position: absolute;
-  z-index: -1;
-  top: 50%;
-  left: 50%;
-  aspect-ratio: 1;
-  translate: -50% -50%;
-  border-radius: 50%;
-  content: "";
-  pointer-events: none;
+  display: none;
 }
 
 .battle-announcement--limit > div::before {
@@ -782,6 +774,43 @@
 
 .integrated-battlefield .gil-chip-image {
   z-index: 2;
+}
+
+/*
+ * Use the same painted gil bundles as the foreground stack. The former CSS
+ * rectangles became thin bars on phones and stopped reading as coins.
+ */
+.integrated-battlefield .gil-tower__formation > img {
+  position: absolute;
+  bottom: .1rem;
+  left: 50%;
+  display: block;
+  width: min(2.8rem, 30%);
+  height: min(4.7rem, 70%);
+  object-fit: contain;
+  object-position: center bottom;
+  filter: brightness(.82) saturate(.9);
+  opacity: .78;
+  translate: -50% 0;
+}
+
+.integrated-battlefield .gil-tower__formation > img:nth-child(2) { left: 30%; height: 56%; }
+.integrated-battlefield .gil-tower__formation > img:nth-child(3) { left: 70%; height: 62%; }
+.integrated-battlefield .gil-tower__formation > img:nth-child(4) { left: 14%; height: 46%; }
+.integrated-battlefield .gil-tower__formation > img:nth-child(5) { left: 86%; height: 50%; }
+.integrated-battlefield .gil-tower__formation > img:nth-child(6) { left: 48%; bottom: 24%; height: 54%; opacity: .62; }
+
+.integrated-battlefield .gil-tower__formation--terrace > img:nth-child(1),
+.integrated-battlefield .gil-tower__formation--wall > img:nth-child(1) { height: 68%; }
+.integrated-battlefield .gil-tower__formation--wall > img { width: min(3rem, 32%); }
+.integrated-battlefield .gil-tower__formation--vault > img,
+.integrated-battlefield .gil-tower__formation--flood > img { width: min(3.35rem, 36%); }
+.integrated-battlefield .gil-tower__formation--flood {
+  inset: -1.2rem -18% -.2rem;
+}
+.integrated-battlefield .gil-tower__formation--flood > img {
+  height: 78%;
+  opacity: .88;
 }
 
 /*

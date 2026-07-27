@@ -1487,22 +1487,22 @@ assert.deepEqual(
 assert.equal(fastHorseSkill.cooldownMs, TACTICAL_SKILL_BALANCE.fastAction.cooldownMs);
 assert.equal(
   fastHorseSkill.cooldownMs - TACTICAL_SKILL_BALANCE.fastAction.durationMs,
-  6_000,
+  3_000,
   '疾風怒濤の計 cannot maintain permanent uptime'
 );
 const fastActionRatio =
   TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick /
   TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick;
-assert.ok(fastActionRatio > 1.78 && fastActionRatio < 1.79);
+assert.ok(fastActionRatio > 1.85 && fastActionRatio < 1.86);
 assert.equal(TACTICAL_SKILL_BALANCE.moraleSupport.loyaltyRiskDivisor, 2);
 assert.match(moraleSupportSkill.description, /半減/);
-assert.equal(TACTICAL_SKILL_BALANCE.disruption.interruptChance, 0.7);
-assert.equal(TACTICAL_SKILL_BALANCE.disruption.durationMs, 11_000);
-assert.equal(TACTICAL_SKILL_BALANCE.disruption.collapseMarketRatio, 0.12);
+assert.equal(TACTICAL_SKILL_BALANCE.disruption.interruptChance, 0.75);
+assert.equal(TACTICAL_SKILL_BALANCE.disruption.durationMs, 15_000);
+assert.equal(TACTICAL_SKILL_BALANCE.disruption.collapseMarketRatio, 0.14);
 assert.match(disruptionSkill.description, /中断分は追加防衛枠から消費されない/);
-assert.equal(TACTICAL_SKILL_BALANCE.demoralize.durationMs, 12_000);
-assert.match(demoralizeSkill.description, /1\.75倍/);
-assert.equal(TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio, 0.35);
+assert.equal(TACTICAL_SKILL_BALANCE.demoralize.durationMs, 16_000);
+assert.match(demoralizeSkill.description, /1\.90倍/);
+assert.equal(TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio, 0.4);
 assert.equal(livingDeadSkill.id, 'skill_sns_blitz', 'legacy save-compatible skill id');
 assert.equal(livingDeadSkill.effectType, 'LIVING_DEAD');
 assert.equal(livingDeadSkill.cooldownMs, 0);
@@ -1514,10 +1514,10 @@ assert.equal(TACTICAL_SKILL_BALANCE.livingDead.recoveryOwnership, 30);
 assert.equal(calculateEraWindCost(1_000_000, 0), 100_000);
 assert.equal(calculateEraWindCost(100_000_000, 0), 2_000_000);
 assert.equal(calculateEraWindCost(100_000_000, 1), 2_000_000);
-assert.equal(TACTICAL_SKILL_BALANCE.eraWind.durationMs, 28_000);
+assert.equal(TACTICAL_SKILL_BALANCE.eraWind.durationMs, 36_000);
 assert.equal(TACTICAL_SKILL_BALANCE.eraWind.maxUsesPerBattle, 1);
-assert.equal(getEraWindGaugePushPerSecond(0), 1.35);
-assert.equal(getEraWindGaugePushPerSecond(2), 1.35);
+assert.equal(getEraWindGaugePushPerSecond(0), 1.55);
+assert.equal(getEraWindGaugePushPerSecond(2), 1.55);
 assert.equal(
   Number(
     (
@@ -1526,11 +1526,11 @@ assert.equal(
       2
     ).toFixed(1)
   ),
-  18.9,
-  'one full Era Wind pushes displayed ownership by about 18.9 points'
+  27.9,
+  'one full Era Wind pushes displayed ownership by about 27.9 points'
 );
 assert.equal(eraWindSkill.oncePerBattle, true);
-assert.match(eraWindSkill.description, /28秒間/);
+assert.match(eraWindSkill.description, /36秒間/);
 assert.match(eraWindSkill.description, /1交渉につき1回/);
 assert.match(livingDeadSkill.description, /1交渉につき1回/);
 assert.equal(calculateOwnershipFromGauge(98), 1);
@@ -1541,18 +1541,18 @@ assert.equal(resolveLivingDeadOutcome('waiting', 0, 0), 'waiting_expired');
 assert.equal(resolveLivingDeadOutcome('recovery', 29.99, 1), 'none');
 assert.equal(resolveLivingDeadOutcome('recovery', 30, 1), 'recovered');
 assert.equal(resolveLivingDeadOutcome('recovery', 29.99, 0), 'failed');
-assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.durationMs, 10_000);
-assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.pushMultiplier, 1.65);
+assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.durationMs, 14_000);
+assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.pushMultiplier, 1.8);
 assert.deepEqual(BATTLE_SUPPORT_BALANCE, {
   subsidiaryMarketRatio: 0.52,
   subsidiaryImpactBase: 1.2,
   subsidiaryImpactPerMarketRatio: 9,
   subsidiaryImpactCap: 7.5,
-  synergyMemberMarketRatio: 0.4,
-  synergyDefaultMultiplier: 1.35,
-  synergyImpactBase: 2.4,
-  synergyImpactPerMarketRatio: 8,
-  synergyImpactCap: 14,
+  synergyMemberMarketRatio: 0.46,
+  synergyDefaultMultiplier: 1.45,
+  synergyImpactBase: 3,
+  synergyImpactPerMarketRatio: 9,
+  synergyImpactCap: 16,
 });
 assert.deepEqual(BATTLE_LOYALTY_BALANCE, {
   individualRiskIncrease: 12,
