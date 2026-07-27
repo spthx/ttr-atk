@@ -61,12 +61,15 @@ import {
   getBattleCapitalVisualBundleCount,
   getCapitalVisualSpriteCount,
   getCapitalVisualStageForBundleCount,
+  getNextBattleSkillId,
   getVictoryConfettiParticleCount,
   normalizeBattleStatusMessageText,
   RESULT_CONFIRM_ARM_DELAY_MS,
+  SKILL_CINEMATIC_TIMING,
   shouldInertBattleFooter,
   TERMINAL_CINEMATIC_TIMING,
   type BattleStatusMessageTone,
+  type SkillCinematicStage,
   type TerminalCinematicStage,
 } from '../utils/battlePresentation';
 import { getTrainingDummyDefinition } from '../utils/trainingDummy';
@@ -159,7 +162,7 @@ interface BattleModalProps {
   onClose: () => void;
 }
 
-type Panel = 'capital' | 'funds' | 'skills';
+type Panel = 'capital' | 'funds';
 type BattleMotion = 'idle' | 'player' | 'enemy' | 'rebel';
 type LogCategory = 'system' | 'player' | 'enemy' | 'funds' | 'skill' | 'result';
 type BattleAnnouncement = 'start' | 'limit';
@@ -213,6 +216,14 @@ interface BattleConditionAnnouncement {
   text: string;
   priority: number;
   sound?: 'warning' | 'skill' | 'cash';
+}
+
+interface SkillCinematic {
+  skillId: string;
+  skillName: string;
+  effectType: TacticalSkill['effectType'];
+  stage: SkillCinematicStage;
+  targetsRival: boolean;
 }
 
 const MarqueeText: React.FC<{
@@ -356,6 +367,15 @@ const riskPresentation = (risk: number) => {
   return { label: '独立寸前', className: 'risk-red' };
 };
 
+const getCapitalFormation = (stage: number) => {
+  if (stage <= 1) return 'scatter';
+  if (stage <= 3) return 'stacks';
+  if (stage <= 5) return 'terrace';
+  if (stage <= 7) return 'wall';
+  if (stage <= 9) return 'vault';
+  return 'flood';
+};
+
 const GilTower: React.FC<{
   amount: number;
   reserveAmount?: number;
@@ -374,6 +394,7 @@ const GilTower: React.FC<{
   const chipAsset = side === 'player' ? gilChipPlayer : defenseChipEnemy;
   const medallionAsset = side === 'player' ? gilMedallionPlayer : defenseMedallionEnemy;
   const capitalRatio = committedCapital / Math.max(marketPrice, 1);
+  const formation = getCapitalFormation(visualStage);
 
   return (
     <div
@@ -381,6 +402,7 @@ const GilTower: React.FC<{
       data-capital-stage={visualStage}
       data-capital-bundles={bundleCount}
       data-capital-ratio={Math.max(0, Math.round(capitalRatio * 100))}
+      data-capital-formation={formation}
       style={{
         '--capital-stack-image': `url("${chipAsset}")`,
         '--capital-stage': visualStage,
@@ -402,6 +424,14 @@ const GilTower: React.FC<{
             <i className="gil-tower__hoard-band gil-tower__hoard-band--far" />
             <i className="gil-tower__hoard-band gil-tower__hoard-band--mid" />
             <i className="gil-tower__hoard-band gil-tower__hoard-band--near" />
+          </span>
+        )}
+        {visualStage > 0 && (
+          <span
+            className={`gil-tower__formation gil-tower__formation--${formation}`}
+            aria-hidden="true"
+          >
+            {Array.from({ length: 6 }, (_, index) => <i key={index} />)}
           </span>
         )}
         {Array.from({ length: spriteCount }).map((_, index) => (
@@ -576,6 +606,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   );
   const [skillCooldowns, setSkillCooldowns] = useState<Record<string, number>>({});
   const [usedSkillIds, setUsedSkillIds] = useState<Set<string>>(() => new Set());
+  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(
+    () => equippedSkills[0]?.id ?? null
+  );
+  const [skillCinematic, setSkillCinematic] =
+    useState<SkillCinematic | null>(null);
   const [livingDeadPhase, setLivingDeadPhase] = useState<LivingDeadPhase>('inactive');
   const [livingDeadRemaining, setLivingDeadRemaining] = useState(0);
   const [motion, setMotion] = useState<BattleMotion>('idle');
@@ -629,7 +664,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const finishTimerRef = useRef<number | null>(null);
   const resultConfirmTimerRef = useRef<number | null>(null);
   const limitImpactTimerRef = useRef<number | null>(null);
+  const limitTerminalHandoffTimerRef = useRef<number | null>(null);
   const conditionTimerRef = useRef<number | null>(null);
+  const skillCinematicTimersRef = useRef<number[]>([]);
   const openingSlowTimerRef = useRef<number | null>(null);
   const decisiveImpactTimerRef = useRef<number | null>(null);
   const decisiveResolveTimerRef = useRef<number | null>(null);
@@ -647,13 +684,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const livingDeadPhaseRef = useRef<LivingDeadPhase>('inactive');
   const livingDeadRemainingRef = useRef(0);
   const fundsDrawerRef = useRef<HTMLElement | null>(null);
-  const skillsDrawerRef = useRef<HTMLElement | null>(null);
   const helpDialogRef = useRef<HTMLElement | null>(null);
   const logDialogRef = useRef<HTMLElement | null>(null);
   const phaseDialogRef = useRef<HTMLElement | null>(null);
   const rootDialogRef = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(onClose);
   const initialFocusRef = useRef<HTMLElement | null>(null);
+
+  const clearSkillCinematicTimers = useCallback(() => {
+    skillCinematicTimersRef.current.forEach((timer) =>
+      window.clearTimeout(timer)
+    );
+    skillCinematicTimersRef.current = [];
+  }, []);
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -704,9 +747,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ? logDialogRef.current
         : panel === 'funds'
           ? fundsDrawerRef.current
-          : panel === 'skills'
-            ? skillsDrawerRef.current
-            : battlePhase === 'briefing' || battlePhase === 'result'
+          : battlePhase === 'briefing' || battlePhase === 'result'
               ? phaseDialogRef.current
               : rootDialogRef.current;
     if (!activeSurface) return;
@@ -858,12 +899,25 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     : getFankitJobArt(
         `${targetProperty.id}-${targetProperty.community}-${targetProperty.industry}-${targetProperty.ownerName}`
       );
-  const primarySkill = (
-    isTraining
-      ? equippedSkills.find((skill) => !isRivalOnlySkill(skill))
-      : equippedSkills[0]
-  ) ?? equippedSkills[0] ?? null;
-  const additionalSkillCount = Math.max(0, equippedSkills.length - 1);
+  useEffect(() => {
+    if (
+      selectedSkillId &&
+      equippedSkills.some((skill) => skill.id === selectedSkillId)
+    ) {
+      return;
+    }
+    const fallback = (
+      isTraining
+        ? equippedSkills.find((skill) => !isRivalOnlySkill(skill))
+        : equippedSkills[0]
+    ) ?? equippedSkills[0] ?? null;
+    setSelectedSkillId(fallback?.id ?? null);
+  }, [equippedSkills, isTraining, selectedSkillId]);
+
+  const primarySkill =
+    equippedSkills.find((skill) => skill.id === selectedSkillId) ??
+    equippedSkills[0] ??
+    null;
   const primarySkillCooldown = primarySkill
     ? skillCooldowns[primarySkill.id] || 0
     : 0;
@@ -880,6 +934,28 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const primaryEraWindUnavailable =
     primarySkill?.effectType === 'ERA_WIND' &&
     (eraWindUseLimitReached || cash < nextEraWindCost);
+  const primarySkillExecutionBlocked =
+    !primarySkill ||
+    primarySkillUnavailable ||
+    primaryEraWindUnavailable ||
+    !commandReady ||
+    primarySkillCooldown > 0 ||
+    primarySkillUsed;
+  const primarySkillStateText = !primarySkill
+    ? '未選択'
+    : primarySkillUnavailable
+      ? '対象なし'
+      : primarySkill.effectType === 'ERA_WIND' && eraWindUseLimitReached
+        ? '使用済み'
+        : primarySkill.effectType === 'ERA_WIND' && cash < nextEraWindCost
+          ? `${formatCurrency(nextEraWindCost)}必要`
+          : primarySkillUsed
+            ? '使用済み'
+            : primarySkillCooldown > 0
+              ? `${(primarySkillCooldown / 1000).toFixed(1)}秒`
+              : commandReady
+                ? '発動可'
+                : '準備中';
   const ownershipRate = Math.abs(gaugeSpeed) / 2;
   const battleDirection = gaugeSpeed < -0.08 ? 'player' : gaugeSpeed > 0.08 ? 'enemy' : 'even';
   const enemyReserveCapacity = Math.max(1, enemyBudget);
@@ -1037,7 +1113,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     : TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick;
   const presentationLocked =
     !!battleAnnouncement ||
-    !!conditionAnnouncement;
+    !!conditionAnnouncement ||
+    !!skillCinematic;
   const decisiveLocked = !!terminalRef.current || !!decisiveBlow;
   const actionsLocked =
     !!winner ||
@@ -1060,6 +1137,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   );
   const timeScale = terminalCinematicStage
     ? terminalCinematicStage === 'anticipation' ? 0.1 : 0
+    : skillCinematic
+      ? skillCinematic.stage === 'impact' ? 0 : 0.1
     : battlePhase !== 'active'
       ? 0
       : showHelp || showLog || presentationLocked
@@ -1213,15 +1292,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (finishTimerRef.current) window.clearTimeout(finishTimerRef.current);
     if (resultConfirmTimerRef.current) window.clearTimeout(resultConfirmTimerRef.current);
     if (limitImpactTimerRef.current) window.clearTimeout(limitImpactTimerRef.current);
+    if (limitTerminalHandoffTimerRef.current) {
+      window.clearTimeout(limitTerminalHandoffTimerRef.current);
+    }
     if (conditionTimerRef.current) window.clearTimeout(conditionTimerRef.current);
     if (openingSlowTimerRef.current) window.clearTimeout(openingSlowTimerRef.current);
     if (decisiveImpactTimerRef.current) window.clearTimeout(decisiveImpactTimerRef.current);
     if (decisiveResolveTimerRef.current) window.clearTimeout(decisiveResolveTimerRef.current);
     if (livingDeadNoticeTimerRef.current) window.clearTimeout(livingDeadNoticeTimerRef.current);
     if (motionTimerRef.current) window.clearTimeout(motionTimerRef.current);
+    clearSkillCinematicTimers();
     confetti.reset();
     soundFx.stopBattleCinematicAudio(80);
-  }, [onTimeScaleChange]);
+  }, [clearSkillCinematicTimers, onTimeScaleChange]);
 
   useEffect(() => {
     if (
@@ -1303,6 +1386,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       conditionAnnouncement ||
       battleAnnouncement ||
       limitImpactActive ||
+      skillCinematic ||
       terminalRef.current ||
       endedRef.current ||
       conditionAnnouncementQueue.length === 0
@@ -1324,6 +1408,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     conditionAnnouncement,
     conditionAnnouncementQueue,
     limitImpactActive,
+    skillCinematic,
   ]);
 
   const announceCurrentWind = () => {
@@ -1562,6 +1647,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setBattleAnnouncement(null);
     setConditionAnnouncement(null);
     setConditionAnnouncementQueue([]);
+    clearSkillCinematicTimers();
+    setSkillCinematic(null);
     setLimitImpactActive(false);
     setFloaters([]);
     const resolvedOwnership = Math.max(0, rawOwnership);
@@ -1655,6 +1742,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       cause,
     };
     soundFx.stopBattleCinematicAudio(80);
+    clearSkillCinematicTimers();
+    setSkillCinematic(null);
     decisiveRef.current = true;
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
@@ -1675,6 +1764,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (limitImpactTimerRef.current) {
       window.clearTimeout(limitImpactTimerRef.current);
       limitImpactTimerRef.current = null;
+    }
+    if (limitTerminalHandoffTimerRef.current) {
+      window.clearTimeout(limitTerminalHandoffTimerRef.current);
+      limitTerminalHandoffTimerRef.current = null;
     }
     setBattleAnnouncement(null);
     setConditionAnnouncement(null);
@@ -2378,16 +2471,46 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           ? ` / 緊急防衛-${defenseOwnershipPushback.toFixed(1)}pt`
           : '');
       addLog(limitBreakResultText, 'skill');
+      soundFx.playLimitBreakImpact();
+      const pendingLimitWinner = getBattleTerminalWinner(rawGaugeAfter);
+      if (pendingLimitWinner) {
+        updateGauge(pendingLimitWinner === 'player' ? -99 : 99);
+        setGaugeSpeed(0);
+        setStatusText(limitBreakResultText);
+        showFloater(`LB 所有率 +${ownershipPush.toFixed(1)}pt`, 'player');
+        if (defenseResult.actual > 0) {
+          showFloater(
+            `緊急防衛 -${defenseOwnershipPushback.toFixed(1)}pt`,
+            'enemy',
+            'negative'
+          );
+        }
+        playMotion(leaving.length ? 'rebel' : 'player');
+        limitTerminalHandoffTimerRef.current = window.setTimeout(() => {
+          limitTerminalHandoffTimerRef.current = null;
+          if (endedRef.current || terminalRef.current) return;
+          const terminalStarted = applyGaugeCandidate(
+            rawGaugeAfter,
+            'limit_break',
+            `LIMIT_BREAK_${limitBreakTier}` as FinishMethod
+          );
+          if (!terminalStarted && !terminalRef.current) {
+            setLimitImpactActive(false);
+            changeBattlePhase('active');
+            setBattleAnnouncement(null);
+            setLastPlayerAction(null);
+            setAiProgress(0);
+            setAiCycle((cycle) => cycle + 1);
+          }
+        }, BATTLE_CINEMATIC_TIMING.limitImpactHandoffMs);
+        return;
+      }
       const terminalLimitBreak = applyGaugeCandidate(
         rawGaugeAfter,
         'limit_break',
         `LIMIT_BREAK_${limitBreakTier}` as FinishMethod
       );
-      if (terminalLimitBreak) {
-        return;
-      }
-      soundFx.playCapitalImpact('player', 1);
-      soundFx.playBigCash();
+      if (terminalLimitBreak) return;
       showFloater(`LB 所有率 +${ownershipPush.toFixed(1)}pt`, 'player');
       if (defenseResult.actual > 0) {
         showFloater(
@@ -2513,48 +2636,32 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       : `${alliance.allyName}へ協力支援を要請。${formatCurrency(amount)}を調達。`, 'funds');
   };
 
-  const useSkill = (skill: TacticalSkill) => {
-    if (skill.effectType === 'ERA_WIND') {
-      if (eraWindUseLimitReached) {
-        soundFx.playWarning();
-        setStatusText('時代の風は1交渉につき1回だけ使用できます');
-        return;
-      }
-      if (cash < nextEraWindCost) {
-        soundFx.playWarning();
-        setStatusText(
-          `時代の風に必要な運用資金は${formatCurrency(nextEraWindCost)}です`
-        );
-        return;
-      }
-    }
-    if (
-      (isTraining && isRivalOnlySkill(skill)) ||
-      (skillCooldowns[skill.id] || 0) > 0 ||
-      (skill.oncePerBattle && usedSkillIds.has(skill.id)) ||
-      !consumeCommand()
-    ) return;
+  const selectSkill = (skill: TacticalSkill) => {
+    if (actionsLocked || skillCinematic) return;
+    setSelectedSkillId(skill.id);
     setPanel('capital');
-    setSkillCooldowns((current) => ({ ...current, [skill.id]: skill.cooldownMs }));
-    if (skill.oncePerBattle) {
-      setUsedSkillIds((current) => new Set(current).add(skill.id));
-    }
-    const targetsRival =
-      skill.effectType === 'INDEPENDENCE_SABOTAGE' ||
-      skill.effectType === 'DEMORALIZE';
-    showFloater(
-      skill.name,
-      targetsRival ? 'enemy' : 'player',
-      targetsRival ? 'negative' : 'positive'
+    soundFx.playGaugeTick(0.96);
+    setStatusText(
+      `${skill.name}を選択――「スキル発動」で実行`
     );
-    playMotion('player');
-    if (skill.effectType !== 'ERA_WIND') {
-      soundFx.playSkillSpark();
-    }
+  };
 
+  const cycleSkillSelection = () => {
+    if (actionsLocked || skillCinematic || equippedSkills.length === 0) return;
+    const nextId = getNextBattleSkillId(
+      equippedSkills.map((skill) => skill.id),
+      primarySkill?.id ?? null
+    );
+    const nextSkill = equippedSkills.find((skill) => skill.id === nextId);
+    if (nextSkill) selectSkill(nextSkill);
+  };
+
+  const resolveSkillEffect = (skill: TacticalSkill) => {
+    const targetsRival = isRivalOnlySkill(skill);
     if (skill.effectType === 'COOLDOWN_REDUCTION') {
       setFastHorseRemaining(TACTICAL_SKILL_BALANCE.fastAction.durationMs);
       setStatusText('疾風怒濤の計――10秒間、行動準備ゲージの進行速度が約1.8倍');
+      showFloater('命令回復 ×1.8', 'player');
     } else if (skill.effectType === 'NEMAWASHI') {
       setBattleSubs((current) => current.map((item) => ({
         ...item,
@@ -2563,12 +2670,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ),
       })));
       setStatusText('守りのサンバ――全支援元の独立危険度が半減');
+      showFloater('独立危険度 半減', 'player');
     } else if (skill.effectType === 'INDEPENDENCE_SABOTAGE') {
       setEnemyDisruptionRemaining(TACTICAL_SKILL_BALANCE.disruption.durationMs);
       setStatusText('連環計――9秒間、競合の追加防衛を70%で中断');
+      showFloater('防衛中断 70%', 'enemy', 'negative');
     } else if (skill.effectType === 'DEMORALIZE') {
       setEnemySlowedRemaining(TACTICAL_SKILL_BALANCE.demoralize.durationMs);
       setStatusText('消沈――競合の指揮系統を乱し、命令待ち時間を延長');
+      showFloater('競合待機 ×1.6', 'enemy', 'negative');
     } else if (skill.effectType === 'CAPITAL_BOOST') {
       const amount = Math.round(
         targetProperty.marketPrice * TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio
@@ -2588,6 +2698,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     } else if (skill.effectType === 'SYNERGY_PUSH') {
       setPushMultiplierRemaining(TACTICAL_SKILL_BALANCE.battleLitany.durationMs);
       setStatusText('バトルリタニー――7秒間、所有率の押し込み速度が1.5倍');
+      showFloater('押込速度 ×1.5', 'player');
     } else if (skill.effectType === 'ERA_WIND') {
       const nextUse = eraWindUses + 1;
       const pushPerSecond = getEraWindGaugePushPerSecond(eraWindUses);
@@ -2609,19 +2720,91 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         `時代の風――${formatCurrency(nextEraWindCost)}を運用し、28秒間 所有率+${(pushPerSecond / 2).toFixed(2)}pt/秒相当`
       );
       showFloater(
-        `風が……来る！ 所有率+${(pushPerSecond / 2).toFixed(2)}pt/秒`,
+        `時流 +${(pushPerSecond / 2).toFixed(2)}pt/秒`,
         'player',
         'positive'
       );
-      announceCondition({
-        kind: 'era_wind',
-        tone: 'ally',
-        text: `風が……来る！\n所有率 +${(pushPerSecond / 2).toFixed(2)}pt/秒相当・28秒`,
-        priority: 1,
-        sound: 'skill',
-      });
     }
+    soundFx.playSkillImpact(
+      skill.effectType,
+      targetsRival ? 'opponent' : 'player'
+    );
     addLog(`${skill.name}を使用。${skill.description}`, 'skill');
+  };
+
+  const useSkill = (skill: TacticalSkill) => {
+    if (skill.effectType === 'ERA_WIND') {
+      if (eraWindUseLimitReached) {
+        soundFx.playWarning();
+        setStatusText('時代の風は1交渉につき1回だけ使用できます');
+        return;
+      }
+      if (cash < nextEraWindCost) {
+        soundFx.playWarning();
+        setStatusText(
+          `時代の風に必要な運用資金は${formatCurrency(nextEraWindCost)}です`
+        );
+        return;
+      }
+    }
+    if (
+      skillCinematic ||
+      (isTraining && isRivalOnlySkill(skill)) ||
+      (skillCooldowns[skill.id] || 0) > 0 ||
+      (skill.oncePerBattle && usedSkillIds.has(skill.id)) ||
+      !consumeCommand()
+    ) return;
+
+    setPanel('capital');
+    setSkillCooldowns((current) => ({ ...current, [skill.id]: skill.cooldownMs }));
+    if (skill.oncePerBattle) {
+      setUsedSkillIds((current) => new Set(current).add(skill.id));
+    }
+
+    clearSkillCinematicTimers();
+    const targetsRival = isRivalOnlySkill(skill);
+    const baseCinematic: Omit<SkillCinematic, 'stage'> = {
+      skillId: skill.id,
+      skillName: skill.name,
+      effectType: skill.effectType,
+      targetsRival,
+    };
+    setSkillCinematic({ ...baseCinematic, stage: 'name' });
+    setStatusText(`${skill.name}――発動`);
+    soundFx.playSkillCast(skill.effectType);
+
+    const castTimer = window.setTimeout(() => {
+      if (endedRef.current || terminalRef.current) return;
+      setSkillCinematic({ ...baseCinematic, stage: 'cast' });
+      playMotion('player');
+      soundFx.playSkillWhoosh(skill.effectType);
+    }, SKILL_CINEMATIC_TIMING.nameMs);
+
+    const impactTimer = window.setTimeout(() => {
+      if (endedRef.current || terminalRef.current) return;
+      setSkillCinematic({ ...baseCinematic, stage: 'impact' });
+      resolveSkillEffect(skill);
+    }, SKILL_CINEMATIC_TIMING.nameMs + SKILL_CINEMATIC_TIMING.castMs);
+
+    const resolveTimer = window.setTimeout(() => {
+      if (endedRef.current || terminalRef.current) return;
+      setSkillCinematic({ ...baseCinematic, stage: 'resolve' });
+    }, SKILL_CINEMATIC_TIMING.nameMs +
+      SKILL_CINEMATIC_TIMING.castMs +
+      SKILL_CINEMATIC_TIMING.impactMs);
+
+    const completeTimer = window.setTimeout(() => {
+      skillCinematicTimersRef.current = [];
+      if (endedRef.current || terminalRef.current) return;
+      setSkillCinematic(null);
+    }, SKILL_CINEMATIC_TIMING.totalMs);
+
+    skillCinematicTimersRef.current = [
+      castTimer,
+      impactTimer,
+      resolveTimer,
+      completeTimer,
+    ];
   };
 
   const resultSettlementCost = isTraining
@@ -2754,7 +2937,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   return (
     <div
       ref={rootDialogRef}
-      className={`buyout-screen buyout-screen--phase-${battlePhase} buyout-screen--living-${livingDeadPhase} ${isTraining ? 'buyout-screen--training' : ''} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''} ${isBurstTime ? 'buyout-screen--burst' : ''} ${decisiveBlow ? `buyout-screen--decisive buyout-screen--decisive-${decisiveBlow.winner}` : ''} ${terminalCinematicStage ? 'buyout-screen--terminal-cinematic' : ''}`}
+      className={`buyout-screen buyout-screen--phase-${battlePhase} buyout-screen--living-${livingDeadPhase} ${isTraining ? 'buyout-screen--training' : ''} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''} ${skillCinematic ? `buyout-screen--skill-cinematic buyout-screen--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${isBurstTime ? 'buyout-screen--burst' : ''} ${decisiveBlow ? `buyout-screen--decisive buyout-screen--decisive-${decisiveBlow.winner}` : ''} ${terminalCinematicStage ? 'buyout-screen--terminal-cinematic' : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label={
@@ -2818,7 +3001,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
       <main className="buyout-main">
         <section
-          className={`battle-stage integrated-battlefield integrated-battlefield--push-${battleDirection} integrated-battlefield--motion-${motion} ${windVisible && eraWindActive ? `integrated-battlefield--era-wind integrated-battlefield--era-wind-${Math.min(3, eraWindUses)}` : ''} ${windVisible && windTelegraphVisible ? 'integrated-battlefield--wind-telegraph' : ''} ${decisiveBlow?.winner === 'player' ? 'integrated-battlefield--finisher-player' : decisiveBlow?.winner === 'opponent' ? 'integrated-battlefield--finisher-enemy' : ''} ${decisiveBlow?.impacted ? 'integrated-battlefield--finisher-impact' : ''} ${terminalCinematicStage ? `integrated-battlefield--terminal-${terminalCinematicStage} integrated-battlefield--terminal-winner-${terminalRef.current?.winner ?? 'player'}` : ''} ${winner ? 'integrated-battlefield--settled' : ''} ownership-board--wind-${windSide} ${isSavage ? 'integrated-battlefield--savage' : ''} ${isUltimate ? 'integrated-battlefield--ultimate' : ''}`}
+          className={`battle-stage integrated-battlefield integrated-battlefield--push-${battleDirection} integrated-battlefield--motion-${motion} ${skillCinematic ? `integrated-battlefield--skill-cinematic integrated-battlefield--skill-stage-${skillCinematic.stage} integrated-battlefield--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${windVisible && eraWindActive ? `integrated-battlefield--era-wind integrated-battlefield--era-wind-${Math.min(3, eraWindUses)}` : ''} ${windVisible && windTelegraphVisible ? 'integrated-battlefield--wind-telegraph' : ''} ${decisiveBlow?.winner === 'player' ? 'integrated-battlefield--finisher-player' : decisiveBlow?.winner === 'opponent' ? 'integrated-battlefield--finisher-enemy' : ''} ${decisiveBlow?.impacted ? 'integrated-battlefield--finisher-impact' : ''} ${terminalCinematicStage ? `integrated-battlefield--terminal-${terminalCinematicStage} integrated-battlefield--terminal-winner-${terminalRef.current?.winner ?? 'player'}` : ''} ${winner ? 'integrated-battlefield--settled' : ''} ownership-board--wind-${windSide} ${isSavage ? 'integrated-battlefield--savage' : ''} ${isUltimate ? 'integrated-battlefield--ultimate' : ''}`}
           aria-label="所有率、両陣営、投入資金、行動予兆の統合商戦フィールド"
           inert={backgroundInert && !conditionAnnouncement}
           data-company-invested={companyInvested}
@@ -2838,6 +3021,31 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         <span className="battle-commerce-flow" aria-hidden="true">
           {Array.from({ length: 8 }, (_, index) => <i key={index} />)}
         </span>
+        {skillCinematic && (
+          <>
+            <span
+              className={`battle-skill-field battle-skill-field--${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')} battle-skill-field--stage-${skillCinematic.stage}`}
+              aria-hidden="true"
+            >
+              {Array.from({ length: 8 }, (_, index) => <i key={index} />)}
+            </span>
+            <div
+              className={`battle-skill-nameplate battle-skill-nameplate--${skillCinematic.targetsRival ? 'enemy' : 'ally'} battle-skill-nameplate--stage-${skillCinematic.stage}`}
+              role="status"
+              aria-live="assertive"
+            >
+              <small>TACTICAL ACTION</small>
+              <strong>{skillCinematic.skillName}</strong>
+              <em>{skillCinematic.stage === 'name'
+                ? '発動'
+                : skillCinematic.stage === 'cast'
+                  ? '構え'
+                  : skillCinematic.stage === 'impact'
+                    ? '効果発生'
+                    : '効果確定'}</em>
+            </div>
+          </>
+        )}
         {conditionAnnouncement && !battleAnnouncement && !terminalCinematicStage && (
           <div
             className={`battle-status-message battle-status-message--${conditionAnnouncement.tone} battle-status-message--kind-${conditionAnnouncement.kind}`}
@@ -3182,40 +3390,36 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           {primarySkill && (
             <button
               type="button"
-              className={`battle-action-strip__action battle-action-strip__action--skill ${primarySkill.effectType === 'LIVING_DEAD' ? 'is-living-dead' : ''} ${primarySkillUnavailable ? 'is-unavailable' : ''}`}
-              onClick={() => useSkill(primarySkill)}
-              disabled={primarySkillUnavailable || primaryEraWindUnavailable || !commandReady || primarySkillCooldown > 0 || primarySkillUsed || actionsLocked}
-              title={`${primarySkill.name}：${getQuickSkillSummary(primarySkill, isTraining)}`}
+              className="battle-action-strip__action battle-action-strip__action--skill-select"
+              onClick={cycleSkillSelection}
+              disabled={equippedSkills.length <= 1 || actionsLocked}
+              aria-label={`選択スキル変更。現在${primarySkill.name}。押すと次のスキル`}
+              title={`${primarySkill.name}：${getQuickSkillSummary(primarySkill, isTraining)}。押すと次のスキル`}
             >
-              {primarySkill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
+              <Swords />
               <span>
                 <b><MarqueeText text={primarySkill.name} /></b>
-                <small>{getQuickSkillSummary(primarySkill, isTraining)}</small>
+                <small>押してスキル切替</small>
               </span>
-              <em>{primarySkillUnavailable
-                ? '対象なし'
-                : primarySkill.effectType === 'ERA_WIND' && eraWindUseLimitReached
-                  ? '3/3使用済み'
-                  : primarySkill.effectType === 'ERA_WIND' && cash < nextEraWindCost
-                    ? `${formatCurrency(nextEraWindCost)}必要`
-                : primarySkillUsed
-                ? '使用済み'
-                : primarySkillCooldown > 0
-                  ? '再使用待ち'
-                  : commandReady
-                    ? '発動可'
-                    : '準備中'}</em>
+              <em>{equippedSkills.findIndex((skill) => skill.id === primarySkill.id) + 1}/{equippedSkills.length}</em>
             </button>
           )}
 
-          {equippedSkills.length > 0 && (
+          {primarySkill && (
             <button
               type="button"
-              className={`battle-action-strip__action battle-action-strip__action--drawer ${panel === 'skills' ? 'active' : ''}`}
-              onClick={() => setPanel('skills')}
+              className={`battle-action-strip__action battle-action-strip__action--skill-execute ${primarySkill.effectType === 'LIVING_DEAD' ? 'is-living-dead' : ''} ${primarySkillExecutionBlocked ? 'is-unavailable' : 'is-ready'}`}
+              onClick={() => useSkill(primarySkill)}
+              disabled={primarySkillExecutionBlocked || actionsLocked}
+              aria-label={`スキル発動。${primarySkill.name}。${primarySkillStateText}`}
+              title={`${primarySkill.name}を発動：${getQuickSkillSummary(primarySkill, isTraining)}`}
             >
-              <Swords />
-              <span><b>スキル</b><small>{additionalSkillCount > 0 ? `ほか${additionalSkillCount}件` : '詳細'}</small></span>
+              {primarySkill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
+              <span>
+                <b>スキル発動</b>
+                <small><MarqueeText text={getQuickSkillSummary(primarySkill, isTraining)} /></small>
+              </span>
+              <em>{primarySkillStateText}</em>
             </button>
           )}
 
@@ -3348,56 +3552,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           </div>
         )}
 
-        {panel === 'skills' && (
-          <div className="battle-drawer-shell" role="presentation">
-            <button type="button" className="battle-drawer-backdrop" onClick={() => setPanel('capital')} aria-label="スキル一覧を閉じる" />
-            <section ref={skillsDrawerRef} className="battle-drawer battle-drawer--skills" role="dialog" aria-modal="true" aria-label="装備スキル" tabIndex={-1}>
-              <header>
-                <span><Swords /><b>装備スキル</b><small>選択中 ×0.1</small></span>
-                <button type="button" data-modal-close onClick={() => setPanel('capital')} aria-label="スキル一覧を閉じる"><X /></button>
-              </header>
-              <div className="battle-drawer__skill-list">
-                {equippedSkills.map((skill) => {
-                  const cooldown = skillCooldowns[skill.id] || 0;
-                  const used = !!skill.oncePerBattle && usedSkillIds.has(skill.id);
-                  const unavailable =
-                    isTraining && isRivalOnlySkill(skill);
-                  const eraBlocked =
-                    skill.effectType === 'ERA_WIND' &&
-                    (eraWindUseLimitReached || cash < nextEraWindCost);
-                  return (
-                    <button
-                      type="button"
-                      key={`drawer-${skill.id}`}
-                      className={`${skill.effectType === 'LIVING_DEAD' ? 'is-living-dead' : ''} ${unavailable ? 'is-unavailable' : ''}`}
-                      onClick={() => useSkill(skill)}
-                      disabled={unavailable || eraBlocked || !commandReady || cooldown > 0 || used || actionsLocked}
-                    >
-                      {skill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
-                      <span>
-                        <b>{skill.name}</b>
-                        <small>{unavailable ? '競合行動を対象とするため、追加行動のない木人では無効' : skill.description}</small>
-                      </span>
-                      <em>{unavailable
-                        ? '対象なし'
-                        : skill.effectType === 'ERA_WIND' && eraWindUseLimitReached
-                          ? '3/3使用済み'
-                          : skill.effectType === 'ERA_WIND' && cash < nextEraWindCost
-                            ? `${formatCurrency(nextEraWindCost)}必要`
-                        : used
-                        ? '使用済み'
-                        : cooldown > 0
-                          ? '再使用待ち'
-                          : commandReady
-                            ? '発動可'
-                            : '準備中'}</em>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          </div>
-        )}
       </main>
 
       <footer className={`buyout-footer ${winner ? 'buyout-footer--settled' : ''}`} inert={footerInert}>
