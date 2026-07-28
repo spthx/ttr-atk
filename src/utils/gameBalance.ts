@@ -192,7 +192,7 @@ export const TACTICAL_SKILL_BALANCE = {
     pushMultiplier: 1.8,
   },
   eraWind: {
-    durationMs: 24_000,
+    durationMs: 16_000,
     cooldownMs: 0,
     minimumCost: 100_000,
     marketCostRatio: 0.02,
@@ -576,12 +576,12 @@ export const getBossAbilityTier = ({
 export const BOSS_COVER_BALANCE = {
   triggerPlayerOwnership: 60,
   cover: {
-    durationMs: 6_000,
+    durationMs: 10_000,
     absorbRatio: 0.65,
     gaugeCapacity: 24,
   },
   enhancedCover: {
-    durationMs: 8_000,
+    durationMs: 12_000,
     absorbRatio: 0.8,
     gaugeCapacity: 36,
   },
