@@ -76,6 +76,7 @@
   inset: 2.75rem 0 0;
   overflow: hidden;
   pointer-events: none;
+  contain: strict;
 }
 
 .integrated-battlefield .battlefield-capital-deluge > i {
@@ -105,16 +106,20 @@
 @keyframes battlefield-capital-deluge-fall {
   0% {
     opacity: 0;
-    translate: 0 -1rem;
-    rotate: 0deg;
+    transform: translate3d(0, -1rem, 0) rotate(0deg);
   }
-  12%, 76% {
+  12%, 58% {
     opacity: .82;
   }
   100% {
     opacity: 0;
-    translate: .7rem calc(100vh + 2rem);
-    rotate: 560deg;
+    transform:
+      translate3d(
+        var(--deluge-drift, .2rem),
+        var(--deluge-fall-distance, 11.5rem),
+        0
+      )
+      rotate(480deg);
   }
 }
 
@@ -724,86 +729,6 @@
  * Selection never spends the shared command gauge; the adjacent execute
  * button is the only place that commits the chosen action.
  */
-.battle-action-strip__skill-capsule {
-  display: grid;
-  min-width: 0;
-  grid-column: span 2;
-  gap: .24rem;
-  padding: .24rem;
-  border: 1px solid rgba(125, 211, 252, .5);
-  border-radius: .72rem;
-  background:
-    linear-gradient(135deg, rgba(8, 31, 57, .98), rgba(27, 15, 49, .98));
-  box-shadow:
-    inset 0 0 .8rem rgba(125, 211, 252, .07),
-    0 .22rem .5rem rgba(0, 0, 0, .34);
-}
-
-.battle-action-strip__skill-capsule.is-fallback {
-  border-color: rgba(251, 191, 36, .78);
-  background:
-    linear-gradient(135deg, rgba(69, 38, 8, .97), rgba(37, 20, 47, .98));
-}
-
-.battle-action-strip__skill-current {
-  display: flex;
-  min-width: 0;
-  min-height: 2rem;
-  align-items: center;
-  justify-content: space-between;
-  gap: .45rem;
-  padding: .25rem .45rem;
-  border-radius: .5rem;
-  color: #f8fafc;
-  background: rgba(2, 6, 23, .68);
-  text-align: left;
-}
-
-.battle-action-strip__skill-current > span {
-  display: grid;
-  min-width: 0;
-  gap: .08rem;
-}
-
-.battle-action-strip__skill-current small {
-  color: #7dd3fc;
-  font-size: .52rem;
-  font-weight: 900;
-  letter-spacing: .08em;
-}
-
-.battle-action-strip__skill-capsule.is-fallback
-  .battle-action-strip__skill-current small {
-  color: #fde68a;
-}
-
-.battle-action-strip__skill-current b {
-  min-width: 0;
-  overflow: hidden;
-  font-size: .7rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.battle-action-strip__skill-current em {
-  flex: 0 0 auto;
-  padding: .15rem .32rem;
-  border: 1px solid rgba(226, 232, 240, .28);
-  border-radius: 999px;
-  color: #cbd5e1;
-  font-size: .52rem;
-  font-style: normal;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.battle-action-strip__skill-controls {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr);
-  gap: .22rem;
-}
-
 .battle-action-strip__action--skill-select {
   padding-bottom: .72rem;
   border-color: rgba(96, 165, 250, .5);
@@ -880,6 +805,59 @@
   outline-offset: 2px;
 }
 
+.briefing-facts.briefing-facts--summary {
+  margin-bottom: .5rem;
+}
+
+.briefing-advanced-details {
+  margin: 0 0 .65rem;
+  overflow: clip;
+  border: 1px solid rgba(125, 211, 252, .34);
+  border-radius: .58rem;
+  background: rgba(3, 11, 25, .78);
+}
+
+.briefing-advanced-details > summary {
+  display: grid;
+  min-height: 2.75rem;
+  grid-template-columns: 1rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .42rem;
+  padding: .45rem .58rem;
+  cursor: pointer;
+  color: #dbeafe;
+  font-size: .68rem;
+  font-weight: 900;
+  list-style: none;
+}
+
+.briefing-advanced-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.briefing-advanced-details > summary svg {
+  width: 1rem;
+  color: #7dd3fc;
+}
+
+.briefing-advanced-details > summary b {
+  color: #fde68a;
+  white-space: nowrap;
+}
+
+.briefing-advanced-details[open] > summary {
+  border-bottom: 1px solid rgba(125, 211, 252, .22);
+  background: rgba(14, 50, 82, .34);
+}
+
+.briefing-advanced-details__body {
+  padding: .55rem;
+}
+
+.result-battle-details > summary {
+  min-height: 2.75rem;
+}
+
 @media (max-width: 639px) {
   .buyout-main {
     overflow-y: auto;
@@ -892,27 +870,9 @@
     margin-top: 0;
   }
 
-  .battle-action-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-auto-flow: row dense;
-  }
-
-  .battle-action-strip__skill-capsule {
-    grid-column: 1 / -1;
-  }
-
-  .battle-action-strip__skill-current {
-    min-height: 1.8rem;
-    padding-block: .18rem;
-  }
-
-  .battle-action-strip__skill-controls {
-    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
-  }
-
   .battle-action-strip__action--skill-select,
   .battle-action-strip__action--skill-execute {
-    min-height: 3.35rem;
+    min-height: 3.8rem;
     grid-template-rows: 1.5rem minmax(1.55rem, auto);
     padding-bottom: .3rem;
   }
@@ -2233,11 +2193,6 @@
 }
 
 .integrated-battlefield--capital-impact
-  .battlefield-capital-deluge > i {
-  animation-duration: .62s !important;
-}
-
-.integrated-battlefield--capital-impact
   .gil-tower__overflow > i,
 .integrated-battlefield--capital-afterglow
   .gil-tower__overflow > i {
@@ -2378,10 +2333,9 @@
 }
 
 .buyout-screen--lightweight
-  .integrated-battlefield--capital-impact
   .battlefield-capital-deluge > i {
   box-shadow: none;
-  animation-duration: .44s !important;
+  animation-duration: .34s !important;
 }
 
 .buyout-screen--lightweight .integrated-battlefield--capital-small {
@@ -2448,6 +2402,10 @@
     height: 3.75rem;
   }
 
+  .integrated-battlefield .battlefield-capital-deluge > i {
+    --deluge-fall-distance: 8.5rem;
+  }
+
   .buyout-screen .integrated-battlefield
     :is(
       .investment-stake-preview--cargo-bag,
@@ -2458,13 +2416,14 @@
     height: 3.05rem;
   }
 
-  .integrated-battlefield .ownership-capital-readout {
+  .buyout-screen .integrated-battlefield .ownership-capital-readout {
     right: auto;
     left: 50%;
     width: calc(100vw - 1rem);
     max-width: calc(100vw - 1rem);
     grid-template-columns: minmax(0, 1fr) .2rem minmax(0, 1fr);
     gap: .1rem;
+    box-sizing: border-box;
     transform: translateX(-50%);
   }
 
@@ -2521,4 +2480,78 @@
 @keyframes capital-cue-reduced {
   from { opacity: .55; }
   to { opacity: 1; }
+}
+
+/*
+ * Victory waits at the baseline during anticipation. The light contact starts
+ * only at terminal hitstop, so standard and compact timelines share the same
+ * readable order: prepare, nudge, recoil, return.
+ */
+.buyout-screen
+  .integrated-battlefield--terminal-anticipation.integrated-battlefield--terminal-winner-player
+  .ownership-avatar.ownership-avatar--player {
+  transform: scaleX(-1);
+  animation: none;
+}
+
+.buyout-screen
+  .integrated-battlefield--terminal-hitstop.integrated-battlefield--terminal-winner-player
+  .ownership-avatar.ownership-avatar--player {
+  transform: translateX(1.125rem) scaleX(-1);
+  animation: none;
+}
+
+.buyout-screen
+  .integrated-battlefield--terminal-hitstop.integrated-battlefield--terminal-winner-player
+  .ownership-avatar.ownership-avatar--enemy {
+  transform: translateX(.7rem);
+  opacity: 1;
+  animation: none;
+}
+
+.buyout-screen
+  .integrated-battlefield--terminal-impact.integrated-battlefield--terminal-winner-player
+  .ownership-avatar.ownership-avatar--player {
+  animation: tataru-final-poke-return .34s ease-out both;
+}
+
+.buyout-screen
+  .integrated-battlefield--terminal-impact.integrated-battlefield--terminal-winner-player
+  .ownership-avatar.ownership-avatar--enemy {
+  animation: enemy-final-poke-return .34s ease-out both;
+}
+
+.buyout-screen
+  .integrated-battlefield--terminal-resolution.integrated-battlefield--terminal-winner-player
+  .ownership-avatar.ownership-avatar--player {
+  transform: scaleX(-1);
+  animation: none;
+}
+
+.buyout-screen
+  .integrated-battlefield--terminal-resolution.integrated-battlefield--terminal-winner-player
+  .ownership-avatar.ownership-avatar--enemy {
+  transform: none;
+  transform-origin: center bottom;
+  opacity: 1;
+  filter: drop-shadow(0 .28rem .3rem rgba(0, 0, 0, .72));
+  animation: none;
+}
+
+@keyframes tataru-final-poke-return {
+  0% { transform: translateX(1.125rem) scaleX(-1); }
+  100% { transform: scaleX(-1); }
+}
+
+@keyframes enemy-final-poke-return {
+  0% { transform: translateX(.7rem); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .buyout-screen
+    .integrated-battlefield--terminal-winner-player
+    .ownership-avatar {
+    animation: none !important;
+  }
 }

@@ -53,10 +53,9 @@ import {
 import { calculateBattleReadiness } from '../utils/battleReadiness';
 import { resolvePostVictoryLoyalty } from '../utils/battleSettlement';
 import {
-  CAPITAL_DELUGE_PARTICLE_COUNT,
-  CAPITAL_OVERFLOW_PARTICLE_COUNT,
   BATTLE_CINEMATIC_TIMING,
   BATTLE_GAUGE_VISUAL_COMMIT_MS,
+  BATTLE_STATE_UPDATE_INTERVAL_MS,
   BATTLE_STATUS_MESSAGE_DURATION_MS,
   canConfirmBattleResult,
   enqueueBattleStatusMessage,
@@ -66,6 +65,7 @@ import {
   getCapitalVisualSpriteCount,
   getCapitalVisualStageForBundleCount,
   getCapitalCommitTiming,
+  getCapitalDropParticleCount,
   getNextBattleSkillId,
   getSkillCinematicTiming,
   getVictoryConfettiParticleCount,
@@ -100,6 +100,7 @@ import {
   calculateCelebrationGiftCost,
   calculateBattleVictoryReward,
   calculateCompanyStrengthScore,
+  calculateDirectInvestmentGaugeImpact,
   calculateSubsidiarySupportAmount,
   calculateEraWindCost,
   calculateEnemyBudget,
@@ -552,23 +553,6 @@ const GilTower: React.FC<{
             } as React.CSSProperties}
           />
         ))}
-        {visualStage >= 10 && motion === side && (
-          <span className="gil-tower__overflow" aria-hidden="true">
-            {Array.from({
-              length: lightweightMode
-                ? Math.min(3, CAPITAL_OVERFLOW_PARTICLE_COUNT)
-                : CAPITAL_OVERFLOW_PARTICLE_COUNT,
-            }).map((_, index) => (
-              <i
-                key={index}
-                style={{
-                  '--overflow-x': `${8 + ((index * 19) % 84)}%`,
-                  animationDelay: `${index * 0.055}s`,
-                } as React.CSSProperties}
-              />
-            ))}
-          </span>
-        )}
       </div>
     </div>
   );
@@ -1071,6 +1055,25 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         activeCapitalSnapshot.compact
       )
     : null;
+  const regularCapitalDropVisible =
+    capitalCommit?.stage === 'impact' ||
+    capitalCommit?.stage === 'afterglow';
+  const terminalCapitalDropVisible =
+    !!terminalCapitalSnapshot &&
+    (
+      terminalCinematicStage === 'hitstop' ||
+      terminalCinematicStage === 'impact' ||
+      terminalCinematicStage === 'resolution'
+    );
+  const capitalDropParticleCount =
+    (regularCapitalDropVisible || terminalCapitalDropVisible) &&
+    activeCapitalTiming &&
+    activeCapitalSnapshot
+      ? getCapitalDropParticleCount(
+          activeCapitalTiming.tier,
+          activeCapitalSnapshot.compact
+        )
+      : 0;
   const playerCapitalMotion: BattleMotion =
     capitalPresentationStage === 'impact' ||
     capitalPresentationStage === 'afterglow'
@@ -1128,15 +1131,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     displayedPlayerInvested / Math.max(1, targetProperty.marketPrice) * 100;
   const enemyCapitalProgress =
     enemyInvested / Math.max(1, targetProperty.marketPrice) * 100;
-  const playerCapitalVisualStage = getCapitalVisualStageForBundleCount(
-    getBattleCapitalVisualBundleCount(
-      displayedPlayerInvested,
-      targetProperty.marketPrice
-    )
-  );
-  const enemyCapitalVisualStage = getCapitalVisualStageForBundleCount(
-    getBattleCapitalVisualBundleCount(enemyInvested, targetProperty.marketPrice)
-  );
   const capitalPressureLabel = effectivePlayerShare >= 58
     ? '自社優勢'
     : effectivePlayerShare <= 42
@@ -2142,7 +2136,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     clearCapitalCommitTimers();
     capitalCommitActiveRef.current = false;
     setCapitalCommit(null);
-    setTerminalCapitalSnapshot(null);
+    if (!keepTerminalResolution) {
+      setTerminalCapitalSnapshot(null);
+    }
     clearSkillCinematicTimers();
     setSkillCinematic(null);
     setLimitImpactActive(false);
@@ -2174,6 +2170,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setFinishTelegraphVisible(false);
       setTerminalCinematicStage(null);
       setDecisiveBlow(null);
+      setTerminalCapitalSnapshot(null);
     }, finishNoticeDuration);
     setStatusText(
       isTraining
@@ -2603,12 +2600,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ) return;
     const interval = window.setInterval(() => {
       if (terminalRef.current) return;
-      const elapsed = 50 * timeScale;
+      const elapsed = BATTLE_STATE_UPDATE_INTERVAL_MS * timeScale;
+      const tickScale = BATTLE_STATE_UPDATE_INTERVAL_MS / 50;
       const commandProgressPerTick = fastHorse
         ? TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick
         : TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick;
       setCommandProgress((value) =>
-        Math.min(100, value + commandProgressPerTick * timeScale)
+        Math.min(
+          100,
+          value + commandProgressPerTick * timeScale * tickScale
+        )
       );
       setSkillCooldowns((current) => {
         let changed = false;
@@ -2648,7 +2649,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         livingDeadRemainingRef.current = nextRemaining;
         setLivingDeadRemaining(nextRemaining);
       }
-    }, 50);
+    }, BATTLE_STATE_UPDATE_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, [
     battlePhase,
@@ -3031,7 +3032,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       compact: lightweightMode || reducedMotion,
     };
     setTerminalCapitalSnapshot(presentationSnapshot);
-    const impact = Math.min(14, (1.2 + (selectedCost / Math.max(targetProperty.marketPrice, 1)) * 20) * currentWind.playerMultiplier);
+    const impact = calculateDirectInvestmentGaugeImpact({
+      investmentAmount: selectedCost,
+      marketPrice: targetProperty.marketPrice,
+      windMultiplier: currentWind.playerMultiplier,
+      levelOneTraining: trainingDummyDefinition?.level === 1,
+    });
     const rawGaugeAfter = gaugeRef.current - impact;
     updateCash((value) => value - selectedCost);
     setCompanyInvested((value) => value + selectedCost);
@@ -4052,39 +4058,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <span>{normalizeBattleStatusMessageText(conditionAnnouncement.text)}</span>
           </div>
         )}
-        {playerCapitalVisualStage >= 10 && playerCapitalMotion === 'player' && (
+        {capitalDropParticleCount > 0 && (
           <span className="battlefield-capital-deluge battlefield-capital-deluge--player" aria-hidden="true">
-            {Array.from({
-              length: lightweightMode
-                ? Math.min(4, CAPITAL_DELUGE_PARTICLE_COUNT)
-                : CAPITAL_DELUGE_PARTICLE_COUNT,
-            }).map((_, index) => (
+            {Array.from({ length: capitalDropParticleCount }).map((_, index) => (
               <i
                 key={index}
                 style={{
-                  '--deluge-x': `${3 + ((index * 17) % 45)}%`,
-                  '--deluge-size': `${0.18 + (index % 4) * 0.055}rem`,
-                  animationDelay: `${index * 0.045}s`,
-                  animationDuration: `${0.78 + (index % 4) * 0.08}s`,
-                } as React.CSSProperties}
-              />
-            ))}
-          </span>
-        )}
-        {enemyCapitalVisualStage >= 10 && motion === 'enemy' && (
-          <span className="battlefield-capital-deluge battlefield-capital-deluge--enemy" aria-hidden="true">
-            {Array.from({
-              length: lightweightMode
-                ? Math.min(4, CAPITAL_DELUGE_PARTICLE_COUNT)
-                : CAPITAL_DELUGE_PARTICLE_COUNT,
-            }).map((_, index) => (
-              <i
-                key={index}
-                style={{
-                  '--deluge-x': `${52 + ((index * 17) % 45)}%`,
-                  '--deluge-size': `${0.18 + (index % 4) * 0.055}rem`,
-                  animationDelay: `${index * 0.05}s`,
-                  animationDuration: `${0.8 + (index % 4) * 0.08}s`,
+                  '--deluge-x': `${8 + (index % 6) * 7.2}%`,
+                  '--deluge-drift': `${((index % 3) - 1) * 0.24}rem`,
+                  '--deluge-size': `${0.18 + (index % 4) * 0.045}rem`,
+                  animationDelay: activeCapitalSnapshot?.compact
+                    ? `${(index % 6) * 0.01}s`
+                    : `${Math.floor(index / 6) * 0.16 + (index % 6) * 0.025}s`,
+                  animationDuration: `${0.76 + (index % 3) * 0.08}s`,
                 } as React.CSSProperties}
               />
             ))}
@@ -4476,75 +4462,61 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           )}
 
           {primarySkill && (
-            <div
-              className={`battle-action-strip__skill-capsule ${usingSkillFallback ? 'is-fallback' : ''}`}
-              role="group"
-              aria-label={`アビリティ操作。選択中は${primarySkill.name}${usingSkillFallback ? '。未装備のため今回だけ臨時選択' : ''}`}
+            <button
+              type="button"
+              className="battle-action-strip__action battle-action-strip__action--skill-select"
+              onClick={cycleSkillSelection}
+              disabled={battleSkillPool.length <= 1 || actionsLocked}
+              aria-label={
+                battleSkillPool.length > 1
+                  ? `スキル変更ボタン。選択中は${primarySkill.name}。押すたび次のスキルへ変更${usingSkillFallback ? '。未装備のため今回だけ臨時選択' : ''}`
+                  : `スキル選択。選択中は${primarySkill.name}。変更候補なし${usingSkillFallback ? '。未装備のため今回だけ臨時選択' : ''}`
+              }
+              title={
+                battleSkillPool.length > 1
+                  ? `スキルを変更（選択中：${primarySkill.name}）／${getQuickSkillSummary(primarySkill, isTraining)}`
+                  : `選択中：${primarySkill.name}（変更候補なし）`
+              }
             >
-              <div className="battle-action-strip__skill-current">
-                <span>
-                  <small>
-                    {usingSkillFallback ? '今回だけ臨時選択' : '装備アビリティ'}
-                  </small>
-                  <b><MarqueeText text={primarySkill.name} /></b>
-                </span>
-                <em>{primarySkillStateText}</em>
-              </div>
-              <div className="battle-action-strip__skill-controls">
-                <button
-                  type="button"
-                  className="battle-action-strip__action battle-action-strip__action--skill-select"
-                  onClick={cycleSkillSelection}
-                  disabled={battleSkillPool.length <= 1 || actionsLocked}
-                  aria-label={
-                    battleSkillPool.length > 1
-                      ? `アビリティを変更。選択中は${primarySkill.name}。押すたび次の候補へ変更`
-                      : `選択中は${primarySkill.name}。変更候補なし`
-                  }
-                  title={
-                    battleSkillPool.length > 1
-                      ? `アビリティを変更（選択中：${primarySkill.name}）`
-                      : `選択中：${primarySkill.name}（変更候補なし）`
-                  }
-                >
-                  <RefreshCw />
-                  <span>
-                    <b>① 変更</b>
-                    <small>
-                      {battleSkillPool.length > 1
-                        ? `候補 ${battleSkillPool.length}件`
-                        : '変更なし'}
-                    </small>
-                  </span>
-                  <span
-                    className="battle-action-strip__skill-steps"
-                    aria-hidden="true"
-                  >
-                    {battleSkillPool.map((skill) => (
-                      <i
-                        key={skill.id}
-                        className={skill.id === primarySkill.id ? 'is-selected' : ''}
-                      />
-                    ))}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={`battle-action-strip__action battle-action-strip__action--skill-execute ${primarySkill.effectType === 'LIVING_DEAD' ? 'is-living-dead' : ''} ${primarySkillExecutionBlocked ? 'is-unavailable' : 'is-ready'}`}
-                  onClick={() => useSkill(primarySkill)}
-                  disabled={primarySkillExecutionBlocked || actionsLocked}
-                  aria-label={`選択中のアビリティを発動。${primarySkill.name}。${primarySkillStateText}`}
-                  title={`${primarySkill.name}を発動／${getQuickSkillSummary(primarySkill, isTraining)}`}
-                >
-                  {primarySkill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
-                  <span>
-                    <b>② 発動</b>
-                    <small>{usingSkillFallback ? '臨時使用' : '効果を実行'}</small>
-                  </span>
-                  <em>{primarySkillStateText}</em>
-                </button>
-              </div>
-            </div>
+              <RefreshCw />
+              <span>
+                <b>{battleSkillPool.length > 1 ? '① スキル切替' : '① 選択中'}</b>
+                <small>
+                  <MarqueeText
+                    text={`${usingSkillFallback ? '今回だけ：' : '選択中：'}${primarySkill.name}`}
+                  />
+                </small>
+              </span>
+              <span
+                className="battle-action-strip__skill-steps"
+                aria-hidden="true"
+              >
+                {battleSkillPool.map((skill) => (
+                  <i
+                    key={skill.id}
+                    className={skill.id === primarySkill.id ? 'is-selected' : ''}
+                  />
+                ))}
+              </span>
+            </button>
+          )}
+
+          {primarySkill && (
+            <button
+              type="button"
+              className={`battle-action-strip__action battle-action-strip__action--skill-execute ${primarySkill.effectType === 'LIVING_DEAD' ? 'is-living-dead' : ''} ${primarySkillExecutionBlocked ? 'is-unavailable' : 'is-ready'}`}
+              onClick={() => useSkill(primarySkill)}
+              disabled={primarySkillExecutionBlocked || actionsLocked}
+              aria-label={`選択中のスキルを発動するボタン。${primarySkill.name}。${primarySkillStateText}${usingSkillFallback ? '。今回だけ臨時使用' : ''}`}
+              title={`選択中の${primarySkill.name}を発動／${getQuickSkillSummary(primarySkill, isTraining)}`}
+            >
+              {primarySkill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
+              <span>
+                <b>② スキル発動</b>
+                <small><MarqueeText text={primarySkill.name} /></small>
+              </span>
+              <em>{primarySkillStateText}</em>
+            </button>
           )}
 
           <button
@@ -4746,8 +4718,29 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <span>VS</span>
               <b className="company-name-full" title={targetProperty.name}>{targetProperty.name}</b>
             </div>
-            <StrengthComparison result={battleReadiness} isTraining={isTraining} />
-            <dl className="briefing-facts">
+            <dl className="briefing-facts briefing-facts--summary">
+              <div>
+                <dt>{isTraining ? '木人耐久資本' : '現在相場'}</dt>
+                <dd>{formatCurrency(targetProperty.marketPrice)}</dd>
+              </div>
+              <div>
+                <dt>{isTraining ? '参加費' : '仲介手数料'}</dt>
+                <dd>{formatCurrency(brokerageFee)}</dd>
+              </div>
+              <div>
+                <dt>{isTraining ? '訓練用持込資金' : '自社持込資金'}</dt>
+                <dd>{formatCurrency(initialBattleCashRef.current)}</dd>
+              </div>
+            </dl>
+            <details className="briefing-advanced-details">
+              <summary>
+                <ScrollText />
+                <span>戦力差・競合詳細を見る</span>
+                <b>{battleReadiness.symbol}{battleReadiness.label}</b>
+              </summary>
+              <div className="briefing-advanced-details__body">
+                <StrengthComparison result={battleReadiness} isTraining={isTraining} />
+                <dl className="briefing-facts">
               <div>
                 <dt>{isTraining ? '訓練区分' : isHighEndRaid ? '競合連合・対象地域' : '対象都市・業界'}</dt>
                 <dd>
@@ -4778,8 +4771,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <div><dt>{isTraining ? '木人行動' : '競合戦術'}</dt><dd>{isTraining ? '追加防衛・敵AI行動なし' : `${isUltimate ? '絶商戦' : isSavage ? '零式レイド' : 'AI'} LEVEL ${enemyDifficultyLevel}`}</dd></div>
               <div><dt>{isTraining ? '訓練用出資の精算' : '自社直接出資の確定損'}</dt><dd>{isTraining ? 'なし（セーブ資金差引 0）' : '勝利35%／敗北・撤退75%'}</dd></div>
               <div><dt>LBゲージ</dt><dd>{limitBreakCapacityTier === 0 ? '未解放（自社＋支援元が合計4枠で解放）' : isTraining ? `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}（訓練専用・終了時に破棄）` : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}（最大${limitBreakCapacityTier}本・次戦へ継承）`}</dd></div>
-            </dl>
-            <section className="briefing-section">
+                </dl>
+                <section className="briefing-section">
               <h3><Sparkles />今回の事業連携・戦闘連携</h3>
               {briefingSynergies.length > 0
                 ? <ul>{briefingSynergies.map((effect) => <li key={effect}>{effect}</li>)}</ul>
@@ -4797,29 +4790,31 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   今回使用できるアビリティはありません。資金投入と支援元で商戦を進めます。
                 </p>
               )}
-            </section>
-            <section className="briefing-section">
+                </section>
+                <section className="briefing-section">
               <h3><Users />外部協力・公的後援</h3>
               <p>{alliance.active
                 ? alliancePublicPatronage
                   ? `公的後援：${alliance.allyName}／通商支援1回 +${formatCurrency(allianceSupport)}相当（所有・LB参加件数には不算入）`
                   : `協力協定：${alliance.allyName}／協力支援1回 +${formatCurrency(allianceSupport)}`
                 : '今回利用できる外部協力・公的後援はありません。'}</p>
-            </section>
-            {isProtectedBattle && (
-              <section className="briefing-section briefing-savage">
+                </section>
+                {isProtectedBattle && (
+                  <section className="briefing-section briefing-savage">
                 <h3><Swords />{isTraining ? '商戦木人ルール' : isUltimate ? '絶商戦ルール' : '零式ルール'}</h3>
                 <p>{isTraining ? '参加費・報酬・精算・清算はすべて0。通常事業・契約の保有状態、独立危険度、零式・絶の進行は変化せず、同じLEVELへ何度でも再挑戦できます。' : '通常編の地域・業界・交易網補正は無効。通常事業・契約の保有状態・収益・独立危険度は変化せず、失敗後も同じ戦いへ再挑戦できます。'}</p>
-              </section>
-            )}
-            <section className="briefing-section">
+                  </section>
+                )}
+                <section className="briefing-section">
               <h3><ShieldAlert />勝敗条件</h3>
               <p>{isTraining ? '木人は全耐久資本を開幕に配置します。所有率100％まで押し切ると訓練成功です。木人側に押されても自社1％で踏みとどまり、任意に訓練を終了できます。' : '未投入資金や追加防衛枠が残っていても、所有率0％になった側は敗北します。'}</p>
               {!isTraining && <p>勝敗は所有率100％への到達だけで決まります。追加防衛枠が0でも停止せず、商流回復と継続圧力を含めて攻防が続きます。</p>}
               {battleSkillPool.some((skill) => skill.effectType === 'LIVING_DEAD') && (
                 <p className="briefing-living-dead">例外：リビングデッド待機中は1％で踏みとどまり、10秒以内に正規化所有率30％へ戻せば続行できます。</p>
               )}
-            </section>
+                </section>
+              </div>
+            </details>
             <button type="button" className="dialog-close briefing-start" onClick={startBattle}>
               {isTraining
                 ? '木人訓練を開始'
@@ -4862,12 +4857,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <span>{isTraining
               ? winner === 'player'
                 ? terminalUsesSelfCollapse
-                  ? '積み上がった圧力で木人が倒れた'
+                  ? '積み上がった資本で木人を押し切った'
                   : '最後の一手で木人耐久を削り切った'
                 : '訓練を終了した'
               : winner === 'player'
                 ? terminalUsesSelfCollapse
-                  ? `${TERMINAL_CAUSE_LABELS[terminalRef.current?.cause ?? 'pressure']}で競合が自壊！`
+                  ? `${TERMINAL_CAUSE_LABELS[terminalRef.current?.cause ?? 'pressure']}で競合の防衛線が崩れた！`
                   : `${TERMINAL_CAUSE_LABELS[terminalRef.current?.cause ?? 'pressure']}で契約成立！`
                 : defeatReason === 'WALKING_DEAD_FAILED'
                   ? '蘇生猶予終了'

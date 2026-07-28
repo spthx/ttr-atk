@@ -19,17 +19,16 @@ import {
   resolvePostVictoryLoyalty,
 } from '../src/utils/battleSettlement';
 import {
-  CAPITAL_DELUGE_PARTICLE_COUNT,
-  CAPITAL_OVERFLOW_PARTICLE_COUNT,
-  CAPITAL_PRIMARY_DROP_COUNT,
   BATTLE_CINEMATIC_TIMING,
   BATTLE_GAUGE_VISUAL_COMMIT_MS,
+  BATTLE_STATE_UPDATE_INTERVAL_MS,
   BATTLE_HIT_STOP_TIMING,
   BATTLE_STATUS_MESSAGE_DURATION_MS,
   canConfirmBattleResult,
   enqueueBattleStatusMessage,
   getBattleCapitalVisualBundleCount,
   getCapitalCommitTiming,
+  getCapitalDropParticleCount,
   getNextBattleSkillId,
   resolveBattleSkillSelection,
   getTerminalCinematicPresentation,
@@ -121,6 +120,7 @@ import {
   BATTLE_GAUGE_SPEED_FACTOR,
   BATTLE_LOYALTY_BALANCE,
   BATTLE_SUPPORT_BALANCE,
+  calculateDirectInvestmentGaugeImpact,
   calculateSubsidiarySupportAmount,
   calculateCelebrationGiftCost,
   calculateCompanyStrengthScore,
@@ -166,6 +166,7 @@ import {
   sortSubsidiariesBySupport,
   SAVAGE_ENEMY_BUDGET_MULTIPLIER,
   SAVAGE_LAYER_BUDGET_MULTIPLIERS,
+  STARTER_BAKERY_ENEMY_BUDGET_RATIO,
   ULTIMATE_ENEMY_BUDGET_MULTIPLIER,
   getEnemyDifficultyLevel,
   getNormalEnemyCampaignMultiplier,
@@ -341,6 +342,11 @@ assert.equal(
   100,
   'the continuous gauge simulation commits React visuals at 10Hz'
 );
+assert.equal(
+  BATTLE_STATE_UPDATE_INTERVAL_MS,
+  100,
+  'battle countdowns share a 10Hz state tick instead of rerendering at 20Hz'
+);
 assert.ok(
   Math.abs(LIGHTWEIGHT_GAUGE_FRAME_MS - (1_000 / 30)) < 0.001,
   'lightweight mode targets 30 gauge calculations per second'
@@ -454,8 +460,9 @@ assert.ok(
 assert.ok(
   compactHeavyCapitalCommit.totalMs <
     heavyCapitalCommit.totalMs &&
-    compactHeavyCapitalCommit.totalMs <= 950,
-  'lightweight staging keeps the full sequence inside its compact budget'
+    compactHeavyCapitalCommit.totalMs >= 1_400 &&
+    compactHeavyCapitalCommit.totalMs <= 1_550,
+  'lightweight staging reduces animated nodes without erasing the heavy pause'
 );
 assert.equal(
   getNextBattleSkillId(
@@ -753,12 +760,24 @@ assert.deepEqual(
   [1, 1, 1, 1, 1],
   'every investment level carries one bounded cargo silhouette'
 );
+assert.deepEqual(
+  (['small', 'medium', 'heavy'] as const).map((tier) =>
+    getCapitalDropParticleCount(tier, false)
+  ),
+  [4, 8, 12],
+  'standard capital drops use three fixed, non-monetary particle tiers'
+);
+assert.deepEqual(
+  (['small', 'medium', 'heavy'] as const).map((tier) =>
+    getCapitalDropParticleCount(tier, true)
+  ),
+  [2, 4, 6],
+  'compact mode halves visual drops while preserving the presentation beat'
+);
 assert.ok(
-  CAPITAL_PRIMARY_DROP_COUNT +
-    CAPITAL_OVERFLOW_PARTICLE_COUNT +
-    CAPITAL_DELUGE_PARTICLE_COUNT <=
+  getCapitalDropParticleCount('heavy', false) <=
     MAX_CAPITAL_DROP_PARTICLE_COUNT,
-  'one capital commit never animates more than sixteen falling pieces'
+  'the heaviest transient shower remains inside the sixteen-node cap'
 );
 assert.equal(
   shouldInertBattleFooter(true, true, 'result'),
@@ -1644,6 +1663,11 @@ const enemyBudgetRatio = (propertyId: string, isTutorial = false) => {
   }) / property.marketPrice;
 };
 assert.ok(Math.abs(enemyBudgetRatio('prop_starter_farm', true) - 0.4031) < 0.001);
+assert.equal(
+  enemyBudgetRatio('prop_starter_bakery'),
+  STARTER_BAKERY_ENEMY_BUDGET_RATIO,
+  'the second Gridania lesson makes the first subsidiary materially useful'
+);
 assert.ok(Math.abs(enemyBudgetRatio('prop_timber_ake') - 0.5526) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_land_transport') - 0.6331) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_casino_grand') - 1.1228) < 0.001);
@@ -2221,6 +2245,33 @@ assert.ok(
 assert.equal(BATTLE_GAUGE_SPEED_FACTOR, 4);
 assert.equal(TRAINING_GAUGE_SPEED_MULTIPLIER, 0.1);
 assert.equal(TRAINING_MIN_OWNERSHIP_PERCENT, 1);
+assert.equal(
+  calculateDirectInvestmentGaugeImpact({
+    investmentAmount: 100,
+    marketPrice: 1_000,
+  }),
+  3.2,
+  'normal direct investment keeps the campaign-wide impact curve'
+);
+assert.ok(
+  Math.abs(
+    calculateDirectInvestmentGaugeImpact({
+      investmentAmount: 750,
+      marketPrice: 7_500,
+      levelOneTraining: true,
+    }) - 40
+  ) < 1e-9,
+  'level-one training keeps a strong default offer at its safe impact cap'
+);
+assert.equal(
+  calculateDirectInvestmentGaugeImpact({
+    investmentAmount: 2_625,
+    marketPrice: 7_500,
+    levelOneTraining: true,
+  }),
+  40,
+  'level-one training amplification remains capped'
+);
 assert.equal(applyTrainingGaugeSpeed(12, false), 12);
 assert.ok(Math.abs(applyTrainingGaugeSpeed(12, true) - 1.2) < 1e-9);
 assert.equal(holdTrainingGaugeAboveDefeat(140, false), 140);

@@ -2232,13 +2232,11 @@
 .buyout-screen--terminal-cinematic .battle-commerce-flow,
 .buyout-screen--terminal-cinematic .battle-wind-magic,
 .buyout-screen--terminal-cinematic .battle-wind-sigil,
-.buyout-screen--terminal-cinematic .battlefield-capital-deluge,
 .buyout-screen--terminal-cinematic .gil-tower__overflow,
 .buyout-screen--terminal-cinematic .battle-flying-texts,
 .buyout-screen--decisive .battle-commerce-flow,
 .buyout-screen--decisive .battle-wind-magic,
 .buyout-screen--decisive .battle-wind-sigil,
-.buyout-screen--decisive .battlefield-capital-deluge,
 .buyout-screen--decisive .gil-tower__overflow,
 .buyout-screen--decisive .battle-flying-texts {
   display: none !important;
