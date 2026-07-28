@@ -1,0 +1,32 @@
+{
+  "name": "タタルの大繁盛店",
+  "short_name": "タタル商店",
+  "description": "タタルと挑む一画面の企業買収バトル",
+  "lang": "ja",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#071a2a",
+  "icons": [
+    {
+      "src": "./ff14-fankit/app-icons/tataru-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./ff14-fankit/app-icons/tataru-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./ff14-fankit/app-icons/tataru-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

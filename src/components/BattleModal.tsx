@@ -70,6 +70,7 @@ import {
   getSkillCinematicTiming,
   getVictoryConfettiParticleCount,
   normalizeBattleStatusMessageText,
+  resolveBattleSkillSelection,
   RESULT_CONFIRM_ARM_DELAY_MS,
   shouldProcessGaugeFrame,
   shouldInertBattleFooter,
@@ -230,7 +231,9 @@ interface CapitalCommitSequence extends CapitalCommitSnapshot {
 }
 type LogCategory = 'system' | 'player' | 'enemy' | 'funds' | 'skill' | 'result';
 type BattleAnnouncement = 'start' | 'limit';
-type CoverKnightPhase = 'absent' | 'active' | 'leaving';
+type CoverKnightPhase = 'absent' | 'active' | 'breaking' | 'leaving';
+const COVER_KNIGHT_MIN_ACTIVE_MS = 1_200;
+const COVER_KNIGHT_BREAK_MS = 420;
 const COVER_KNIGHT_EXIT_MS = 1_000;
 type BattleConditionKind =
   | 'player'
@@ -401,7 +404,7 @@ const getQuickSkillSummary = (
     case 'SYNERGY_PUSH':
       return '押込速度 ×1.80・14秒';
     case 'ERA_WIND':
-      return '所有率 +0.78pt/秒相当・24秒';
+      return '所有率 +0.78pt/秒相当・16秒';
   }
 };
 
@@ -485,7 +488,6 @@ const GilTower: React.FC<{
   );
   const visualStage = getCapitalVisualStageForBundleCount(bundleCount);
   const spriteCount = getCapitalVisualSpriteCount(bundleCount);
-  const committedStage = visualStage;
   const chipAsset = gilChipPlayer;
   const medallionAsset = gilMedallionPlayer;
   const capitalRatio = committedCapital / Math.max(marketPrice, 1);
@@ -568,8 +570,6 @@ const GilTower: React.FC<{
           </span>
         )}
       </div>
-      <strong>{formatCurrency(amount)}</strong>
-      <small>{amount > 0 ? `投入資金・段階${committedStage}` : reserveAmount > 0 ? '未投入資金を待機中' : '資金未投入'}</small>
     </div>
   );
 };
@@ -843,6 +843,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const enemyCoverRemainingRef = useRef(0);
   const playerCoverCapacityRef = useRef(0);
   const enemyCoverCapacityRef = useRef(0);
+  const playerCoverActivatedAtRef = useRef(0);
+  const enemyCoverActivatedAtRef = useRef(0);
   const enemyBossAbilityUsedRef = useRef(false);
   const playerCoverExitTimerRef = useRef<number | null>(null);
   const enemyCoverExitTimerRef = useRef<number | null>(null);
@@ -1158,48 +1160,47 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     : getFankitJobArt(
         `${targetProperty.id}-${targetProperty.community}-${targetProperty.industry}-${targetProperty.ownerName}`
       );
-  const battleSkillPool = useMemo(() => {
-    const usableEquipped = equippedSkills.filter((skill) =>
+  const usableEquippedSkills = useMemo(
+    () => equippedSkills.filter((skill) =>
       isSkillUsableInBattle({
         skill,
         isTraining,
         subsidiaryCount: battleSubs.length,
       })
-    );
-    if (usableEquipped.length > 0) return usableEquipped;
-    return availableSkills.filter((skill) =>
+    ),
+    [battleSubs.length, equippedSkills, isTraining]
+  );
+  const usableAvailableSkills = useMemo(
+    () => availableSkills.filter((skill) =>
       isSkillUsableInBattle({
         skill,
         isTraining,
         subsidiaryCount: battleSubs.length,
       })
-    );
-  }, [
-    availableSkills,
-    battleSubs.length,
-    equippedSkills,
-    isTraining,
-  ]);
-
-  const usingSkillFallback =
-    battleSkillPool.length > 0 &&
-    !equippedSkills.some((skill) => skill.id === battleSkillPool[0].id);
+    ),
+    [availableSkills, battleSubs.length, isTraining]
+  );
+  const skillSelection = resolveBattleSkillSelection(
+    usableEquippedSkills.map((skill) => skill.id),
+    usableAvailableSkills.map((skill) => skill.id),
+    selectedSkillId
+  );
+  const battleSkillPool =
+    usableEquippedSkills.length > 0
+      ? usableEquippedSkills
+      : usableAvailableSkills;
 
   useEffect(() => {
-    if (
-      selectedSkillId &&
-      battleSkillPool.some((skill) => skill.id === selectedSkillId)
-    ) {
-      return;
-    }
-    const fallback = battleSkillPool[0] ?? null;
-    setSelectedSkillId(fallback?.id ?? null);
-  }, [battleSkillPool, selectedSkillId]);
+    if (selectedSkillId === skillSelection.selectedSkillId) return;
+    setSelectedSkillId(skillSelection.selectedSkillId);
+  }, [selectedSkillId, skillSelection.selectedSkillId]);
 
   const primarySkill =
-    battleSkillPool.find((skill) => skill.id === selectedSkillId) ??
-    battleSkillPool[0] ??
+    battleSkillPool.find(
+      (skill) => skill.id === skillSelection.selectedSkillId
+    ) ??
     null;
+  const usingSkillFallback = skillSelection.usingFallback;
   const primarySkillCooldown = primarySkill
     ? skillCooldowns[primarySkill.id] || 0
     : 0;
@@ -2001,14 +2002,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       ? playerCoverExitTimerRef
       : enemyCoverExitTimerRef;
     if (timerRef.current) return;
+    const activatedAtRef = isPlayer
+      ? playerCoverActivatedAtRef
+      : enemyCoverActivatedAtRef;
+    const setKnightPhase = isPlayer
+      ? setPlayerCoverKnightPhase
+      : setEnemyCoverKnightPhase;
     if (isPlayer) {
       playerCoverRemainingRef.current = 0;
       setPlayerCoverRemaining(0);
-      setPlayerCoverKnightPhase('leaving');
     } else {
       enemyCoverRemainingRef.current = 0;
       setEnemyCoverRemaining(0);
-      setEnemyCoverKnightPhase('leaving');
     }
     if (announce) {
       const text = isPlayer
@@ -2017,11 +2022,32 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setStatusText(text);
       addLog(text, 'skill');
     }
-    timerRef.current = window.setTimeout(() => {
-      timerRef.current = null;
-      if (isPlayer) setPlayerCoverKnightPhase('absent');
-      else setEnemyCoverKnightPhase('absent');
-    }, COVER_KNIGHT_EXIT_MS);
+    const beginGuardBreak = () => {
+      setKnightPhase('breaking');
+      timerRef.current = window.setTimeout(() => {
+        setKnightPhase('leaving');
+        timerRef.current = window.setTimeout(() => {
+          timerRef.current = null;
+          setKnightPhase('absent');
+        }, COVER_KNIGHT_EXIT_MS);
+      }, COVER_KNIGHT_BREAK_MS);
+    };
+    const activeElapsed = Math.max(
+      0,
+      performance.now() - activatedAtRef.current
+    );
+    const minimumHoldRemaining = Math.max(
+      0,
+      COVER_KNIGHT_MIN_ACTIVE_MS - activeElapsed
+    );
+    if (minimumHoldRemaining > 0) {
+      timerRef.current = window.setTimeout(
+        beginGuardBreak,
+        minimumHoldRemaining
+      );
+    } else {
+      beginGuardBreak();
+    }
   };
 
   const activatePlayerCover = () => {
@@ -2032,6 +2058,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     playerCoverRemainingRef.current = TACTICAL_SKILL_BALANCE.cover.durationMs;
     playerCoverCapacityRef.current =
       TACTICAL_SKILL_BALANCE.cover.gaugeCapacity;
+    playerCoverActivatedAtRef.current = performance.now();
     setPlayerCoverRemaining(TACTICAL_SKILL_BALANCE.cover.durationMs);
     setPlayerCoverKnightPhase('active');
   };
@@ -2057,6 +2084,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     }
     enemyCoverRemainingRef.current = balance.durationMs;
     enemyCoverCapacityRef.current = balance.gaugeCapacity;
+    enemyCoverActivatedAtRef.current = performance.now();
     setEnemyCoverRemaining(balance.durationMs);
     setEnemyCoverKnightPhase('active');
     const abilityName =
@@ -3451,7 +3479,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         secondsRemaining: BATTLE_WIND_COOLDOWN_SECONDS,
       }));
       setStatusText(
-        `時代の風――${formatCurrency(nextEraWindCost)}を運用し、24秒間 所有率+${(pushPerSecond / 2).toFixed(2)}pt/秒相当`
+        `時代の風――${formatCurrency(nextEraWindCost)}を運用し、16秒間 所有率+${(pushPerSecond / 2).toFixed(2)}pt/秒相当`
       );
       showFloater(
         `時流 +${(pushPerSecond / 2).toFixed(2)}pt/秒`,
@@ -3614,13 +3642,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ownedProperties
   );
   const companyStrengthAfter = calculateCompanyStrengthScore(
-    Math.max(
-      0,
-      totalFunds +
-        resultVictoryReward -
-        brokerageFee -
-        resultSettlementCost
-    ),
+    Math.max(0, totalFunds + resultFundsDelta),
     growthProperties
   );
   const companyStrengthBeforeLevel =
@@ -3632,11 +3654,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (
       battlePhase !== 'result' ||
       winner !== 'player' ||
-      isTraining ||
-      isHighEndRaid
+      isTraining
     ) {
       setDisplayedCompanyStrength(null);
       setCompanyGrowthRevealed(false);
+      return;
+    }
+    if (celebrationDecision) {
+      setDisplayedCompanyStrength(companyStrengthAfter);
+      setCompanyGrowthRevealed(true);
       return;
     }
     const reducedMotion =
@@ -3671,9 +3697,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return () => window.cancelAnimationFrame(frame);
   }, [
     battlePhase,
+    celebrationDecision,
     companyStrengthAfter,
     companyStrengthBefore,
-    isHighEndRaid,
     isTraining,
     winner,
   ]);
@@ -4047,7 +4073,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         )}
         {enemyCapitalVisualStage >= 10 && motion === 'enemy' && (
           <span className="battlefield-capital-deluge battlefield-capital-deluge--enemy" aria-hidden="true">
-            {Array.from({ length: CAPITAL_DELUGE_PARTICLE_COUNT }).map((_, index) => (
+            {Array.from({
+              length: lightweightMode
+                ? Math.min(4, CAPITAL_DELUGE_PARTICLE_COUNT)
+                : CAPITAL_DELUGE_PARTICLE_COUNT,
+            }).map((_, index) => (
               <i
                 key={index}
                 style={{
@@ -4189,21 +4219,24 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 {playerCoverKnightPhase !== 'absent' && (
                   <div
                     className={`cover-knight cover-knight--player cover-knight--${playerCoverKnightPhase}`}
-                    aria-label="かばうを実行中のナイト"
+                    aria-label={
+                      playerCoverKnightPhase === 'breaking'
+                        ? 'かばうを終え、防御を解除するナイト'
+                        : 'かばうを実行中のナイト'
+                    }
                   >
                     <img src={FANKIT_ART.paladin} alt="" aria-hidden="true" />
-                    <span>かばう</span>
+                    <span>
+                      {playerCoverKnightPhase === 'breaking'
+                        ? '防御解除'
+                        : 'かばう'}
+                    </span>
                   </div>
                 )}
                 <div className="ownership-fighter ownership-fighter--player">
                   <img
-                    key={`player-${motionSerial}`}
                     className={`ownership-avatar ownership-avatar--player ${motion === 'player' ? 'avatar-act' : motion === 'enemy' || motion === 'rebel' ? 'avatar-hurt' : ''}`}
-                    src={
-                      capitalPresentationStage === 'afterglow'
-                        ? FANKIT_ART.tataru.dressUp
-                        : FANKIT_ART.tataru.windUp
-                    }
+                    src={FANKIT_ART.tataru.windUp}
                     alt="タタル"
                   />
                   <div className="battle-status-rail battle-status-rail--player" aria-label="自社の継続効果">
@@ -4268,11 +4301,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 {enemyCoverKnightPhase !== 'absent' && (
                   <div
                     className={`cover-knight cover-knight--enemy cover-knight--${enemyCoverKnightPhase} cover-knight--${bossAbilityTier}`}
-                    aria-label={`競合側の${bossAbilityTier === 'invincible' ? 'インビンシブル' : 'かばう'}を実行中のナイト`}
+                    aria-label={
+                      enemyCoverKnightPhase === 'breaking'
+                        ? '競合側の防御を突破されたナイト'
+                        : `競合側の${bossAbilityTier === 'invincible' ? 'インビンシブル' : 'かばう'}を実行中のナイト`
+                    }
                   >
                     <img src={FANKIT_ART.paladin} alt="" aria-hidden="true" />
                     <span>
-                      {bossAbilityTier === 'invincible'
+                      {enemyCoverKnightPhase === 'breaking'
+                        ? 'GUARD BREAK'
+                        : bossAbilityTier === 'invincible'
                         ? '無敵'
                         : bossAbilityTier === 'enhanced_cover'
                           ? '強化かばう'
@@ -4282,7 +4321,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 )}
                 <div className="ownership-fighter ownership-fighter--enemy">
                   <img
-                    key={`enemy-${motionSerial}`}
                     className={`ownership-avatar ownership-avatar--enemy ${motion === 'enemy' ? 'avatar-act' : motion === 'player' ? 'avatar-hurt' : ''}`}
                     src={opponentCharacterArt}
                     alt={isTraining ? '商戦訓練用サボテンダー' : '競合代表'}
@@ -4438,57 +4476,75 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           )}
 
           {primarySkill && (
-            <button
-              type="button"
-              className="battle-action-strip__action battle-action-strip__action--skill-select"
-              onClick={cycleSkillSelection}
-              disabled={battleSkillPool.length <= 1 || actionsLocked}
-              aria-label={
-                battleSkillPool.length > 1
-                  ? `スキル変更ボタン。選択中は${primarySkill.name}。押すたび次のスキルへ変更`
-                  : `スキル選択。選択中は${primarySkill.name}。変更候補なし`
-              }
-              title={
-                battleSkillPool.length > 1
-                  ? `スキルを変更（選択中：${primarySkill.name}）／${getQuickSkillSummary(primarySkill, isTraining)}`
-                  : `選択中：${primarySkill.name}（変更候補なし）`
-              }
+            <div
+              className={`battle-action-strip__skill-capsule ${usingSkillFallback ? 'is-fallback' : ''}`}
+              role="group"
+              aria-label={`アビリティ操作。選択中は${primarySkill.name}${usingSkillFallback ? '。未装備のため今回だけ臨時選択' : ''}`}
             >
-              <RefreshCw />
-              <span>
-                <b>{battleSkillPool.length > 1 ? '① スキル切替' : '① 選択中'}</b>
-                <small><MarqueeText text={`選択中：${primarySkill.name}`} /></small>
-              </span>
-              <span
-                className="battle-action-strip__skill-steps"
-                aria-hidden="true"
-              >
-                {battleSkillPool.map((skill) => (
-                  <i
-                    key={skill.id}
-                    className={skill.id === primarySkill.id ? 'is-selected' : ''}
-                  />
-                ))}
-              </span>
-            </button>
-          )}
-
-          {primarySkill && (
-            <button
-              type="button"
-              className={`battle-action-strip__action battle-action-strip__action--skill-execute ${primarySkill.effectType === 'LIVING_DEAD' ? 'is-living-dead' : ''} ${primarySkillExecutionBlocked ? 'is-unavailable' : 'is-ready'}`}
-              onClick={() => useSkill(primarySkill)}
-              disabled={primarySkillExecutionBlocked || actionsLocked}
-              aria-label={`選択中のスキルを発動するボタン。${primarySkill.name}。${primarySkillStateText}`}
-              title={`選択中の${primarySkill.name}を発動／${getQuickSkillSummary(primarySkill, isTraining)}`}
-            >
-              {primarySkill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
-              <span>
-                <b>② スキル発動</b>
-                <small><MarqueeText text={primarySkill.name} /></small>
-              </span>
-              <em>{primarySkillStateText}</em>
-            </button>
+              <div className="battle-action-strip__skill-current">
+                <span>
+                  <small>
+                    {usingSkillFallback ? '今回だけ臨時選択' : '装備アビリティ'}
+                  </small>
+                  <b><MarqueeText text={primarySkill.name} /></b>
+                </span>
+                <em>{primarySkillStateText}</em>
+              </div>
+              <div className="battle-action-strip__skill-controls">
+                <button
+                  type="button"
+                  className="battle-action-strip__action battle-action-strip__action--skill-select"
+                  onClick={cycleSkillSelection}
+                  disabled={battleSkillPool.length <= 1 || actionsLocked}
+                  aria-label={
+                    battleSkillPool.length > 1
+                      ? `アビリティを変更。選択中は${primarySkill.name}。押すたび次の候補へ変更`
+                      : `選択中は${primarySkill.name}。変更候補なし`
+                  }
+                  title={
+                    battleSkillPool.length > 1
+                      ? `アビリティを変更（選択中：${primarySkill.name}）`
+                      : `選択中：${primarySkill.name}（変更候補なし）`
+                  }
+                >
+                  <RefreshCw />
+                  <span>
+                    <b>① 変更</b>
+                    <small>
+                      {battleSkillPool.length > 1
+                        ? `候補 ${battleSkillPool.length}件`
+                        : '変更なし'}
+                    </small>
+                  </span>
+                  <span
+                    className="battle-action-strip__skill-steps"
+                    aria-hidden="true"
+                  >
+                    {battleSkillPool.map((skill) => (
+                      <i
+                        key={skill.id}
+                        className={skill.id === primarySkill.id ? 'is-selected' : ''}
+                      />
+                    ))}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`battle-action-strip__action battle-action-strip__action--skill-execute ${primarySkill.effectType === 'LIVING_DEAD' ? 'is-living-dead' : ''} ${primarySkillExecutionBlocked ? 'is-unavailable' : 'is-ready'}`}
+                  onClick={() => useSkill(primarySkill)}
+                  disabled={primarySkillExecutionBlocked || actionsLocked}
+                  aria-label={`選択中のアビリティを発動。${primarySkill.name}。${primarySkillStateText}`}
+                  title={`${primarySkill.name}を発動／${getQuickSkillSummary(primarySkill, isTraining)}`}
+                >
+                  {primarySkill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
+                  <span>
+                    <b>② 発動</b>
+                    <small>{usingSkillFallback ? '臨時使用' : '効果を実行'}</small>
+                  </span>
+                  <em>{primarySkillStateText}</em>
+                </button>
+              </div>
+            </div>
           )}
 
           <button
@@ -4730,7 +4786,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 : <p>今回発動するSYNERGYはありません。</p>}
               {usingSkillFallback && primarySkill && (
                 <p className="briefing-skill-fallback">
-                  装備中のアビリティは今回使用できないため、「{primarySkill.name}」を臨時選択しました。商戦中も切替ボタンから変更できます。
+                  {equippedSkills.length === 0
+                    ? `アビリティが未装備のため、修得済みの「${primarySkill.name}」を今回だけ臨時選択しました。`
+                    : `装備中のアビリティは今回使用できないため、「${primarySkill.name}」を今回だけ臨時選択しました。`}
+                  商戦中は「変更」で候補を選び、「発動」で効果を実行します。
                 </p>
               )}
               {battleSkillPool.length === 0 && (
@@ -4829,7 +4888,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <li><b>未投入資金</b><span>通常商戦へ持ち込める自社現金は対象相場と同額まで。超過分は商会に安全資金として残り、戦後も失われません。木人訓練は制限対象外です。</span></li>
               <li><b>商流回復</b><span>自社は開始時の持込資金、競合は開始時の総予算を基準に、双方0.3%/秒で手元資金だけを回復します。現在値は基準100%まで、累積は1戦20%まで。風は回復速度だけを変え、所有率へ直接加算しません。</span></li>
               <li><b>市場の風を読む</b><span>{isTraining ? '木人訓練では風は発生せず、自社・木人双方への補正もありません。' : 'グリダニアは風なし。進行後も開始から最低10秒は静穏です。その後は低頻度の市場気配、3秒の予兆を経て12～15秒だけ風が吹き、終了後は最低18秒の静穏を挟みます。'}</span></li>
-              {!isTraining && <li><b>時代の風</b><span>クガネの交易網を揃えると解放。敵資金を消さず、24秒間、自社向きの強い時流を追加します。1交渉につき1回です。</span></li>}
+              {!isTraining && <li><b>時代の風</b><span>クガネの交易網を揃えると解放。敵資金を消さず、16秒間、自社向きの強い時流を追加します。1交渉につき1回です。</span></li>}
               <li><b>LIMIT BREAK</b><span>攻防の資金衝突で通常比20％速く蓄積し、動員資金も20％増加。自社＋支援元が合計4/8/16枠で1/2/3本まで解放され、LB1/2の集約資金は対象相場の80％/120％が上限です。発動のたび全ゲージを0にし、同じ戦闘でも再蓄積すれば再発動できます。</span></li>
               <li><b>特殊アクション</b><span>商戦フィールド直下のアイコンからLB・選択中のSYNERGY・主要アビリティを1タップで実行できます。未解放の枠は表示せず、全アビリティと資金源はドロワーで開きます。</span></li>
               <li><b>効果通知</b><span>味方への良い効果は青く上昇し、競合への妨害や悪い効果は赤く下降します。詳しい履歴は戦局ログで後から確認できます。</span></li>
@@ -4945,17 +5004,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <img src={FANKIT_ART.tataru.windUp} alt="タタル" />
                <p><b>{isTraining ? 'タタルの訓練分析' : `タタルの${winner === 'player' ? '勝因' : '敗因'}分析`}</b><span>「{resultAnalysis}」</span></p>
             </div>
-            {winner === 'player' && !isTraining && !isHighEndRaid && (
+            {winner === 'player' && !isTraining && (
               <section
                 className="result-company-growth"
-                aria-label="勝利による商会戦力の成長"
+                aria-label="勝利による商会レベルの成長"
               >
                 <header>
                   <span>
-                    <small>COMPANY GROWTH</small>
-                    <b>商会戦力 LV.{companyStrengthAfterLevel.level}</b>
+                    <small>COMPANY LEVEL</small>
+                    <b>商会 LV.{companyStrengthAfterLevel.level}</b>
                   </span>
                   <strong>
+                    <small>成長値</small>
                     {(displayedCompanyStrength ?? companyStrengthAfter) -
                       companyStrengthBefore >=
                     0
@@ -4993,25 +5053,68 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 </small>
               </section>
             )}
-            <div className="result-numbers">
-              <span><small>FINISH</small><b>{isTraining ? winner === 'player' ? 'DUMMY BREAK' : 'TRAINING END' : winner === 'opponent' && defeatReason === 'WALKING_DEAD_FAILED' ? 'WALKING DEAD FAILED' : FINISH_LABELS[finishMethod]}</b></span>
-              <span><small>最終所有率</small><b>{finalOwnership.toFixed(1)}%</b></span>
-              <span><small>OVERKILL</small><b>{winner === 'player' ? `+${overkill.toFixed(1)}%` : '---'}</b></span>
-              <span><small>自社競り値</small><b>{formatCurrency(totalPlayerInvested)}</b></span>
-              <span><small>{isTraining ? '木人耐久資本' : '競合競り値'}</small><b>{formatCurrency(enemyInvested)}</b></span>
-              <span><small>戦中再利用（残高加算なし）</small><b>{formatCurrency(battleCashRecovered)}</b></span>
-              <span><small>{isTraining ? '訓練操作による資金差引' : '確定支出'}</small><b>{isTraining ? '+0' : formatCurrency(brokerageFee + resultSettlementCost)}</b></span>
-              <span><small>{isTraining ? '訓練報酬' : '攻略報酬'}</small><b>+{formatCurrency(resultVictoryReward)}</b></span>
-              {!isTraining && <span><small>商会資金差引</small><b>{resultFundsDelta >= 0 ? '+' : '-'}{formatCurrency(Math.abs(resultFundsDelta))}</b></span>}
-              {celebrationGiftApplied && (
-                <span>
-                  <small>勝利のご祝儀</small>
-                  <b>-{formatCurrency(appliedCelebrationGiftCost)}</b>
-                </span>
+            {!isTraining && (
+              <section
+                className={`result-settlement-summary ${
+                  resultFundsDelta >= 0 ? 'is-positive' : 'is-negative'
+                }`}
+                aria-label="商会資金の精算"
+              >
+                <header>
+                  <span>
+                    <small>SETTLEMENT</small>
+                    <b>今回の商会資金</b>
+                  </span>
+                  <strong>
+                    {resultFundsDelta >= 0 ? '+' : '-'}
+                    {formatCurrency(Math.abs(resultFundsDelta))}
+                  </strong>
+                </header>
+                <dl>
+                  <div>
+                    <dt>{winner === 'player' ? '攻略報酬' : '参加報酬'}</dt>
+                    <dd>+{formatCurrency(resultVictoryReward)}</dd>
+                  </div>
+                  <div>
+                    <dt>手数料・確定支出</dt>
+                    <dd>-{formatCurrency(brokerageFee + resultSettlementCost)}</dd>
+                  </div>
+                  {resultLiquidationCashback > 0 && (
+                    <div>
+                      <dt>離脱資産の清算（{rebelled.length}件）</dt>
+                      <dd>+{formatCurrency(resultLiquidationCashback)}</dd>
+                    </div>
+                  )}
+                  {celebrationDecisionRequired && (
+                    <div>
+                      <dt>勝利のご祝儀</dt>
+                      <dd>
+                        {!celebrationDecision
+                          ? '選択待ち'
+                          : celebrationGiftApplied
+                            ? `-${formatCurrency(appliedCelebrationGiftCost)}`
+                            : '商会に残す'}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </section>
+            )}
+            <details className="result-battle-details">
+              <summary><ScrollText />戦闘記録を見る</summary>
+              <div className="result-numbers">
+                <span><small>FINISH</small><b>{isTraining ? winner === 'player' ? 'DUMMY BREAK' : 'TRAINING END' : winner === 'opponent' && defeatReason === 'WALKING_DEAD_FAILED' ? 'WALKING DEAD FAILED' : FINISH_LABELS[finishMethod]}</b></span>
+                <span><small>最終所有率</small><b>{finalOwnership.toFixed(1)}%</b></span>
+                <span><small>OVERKILL</small><b>{winner === 'player' ? `+${overkill.toFixed(1)}%` : '---'}</b></span>
+                <span><small>自社競り値</small><b>{formatCurrency(totalPlayerInvested)}</b></span>
+                <span><small>{isTraining ? '木人耐久資本' : '競合競り値'}</small><b>{formatCurrency(enemyInvested)}</b></span>
+                <span><small>戦中再利用</small><b>{formatCurrency(battleCashRecovered)}</b></span>
+                <span><small>{isTraining ? '一時離脱' : isHighEndRaid ? '記録戦中の一時離脱' : '資金源離脱'}</small><b>{rebelled.length}件</b></span>
+              </div>
+              {winner === 'player' && (
+                <p className="overkill-rating">{getOverkillRating(overkill)}</p>
               )}
-              <span><small>{isTraining ? '訓練中の一時離脱' : isHighEndRaid ? '記録戦中の一時離脱' : '資金源離脱'}</small><b>{rebelled.length}件</b></span>
-            </div>
-            {winner === 'player' && <p className="overkill-rating">{getOverkillRating(overkill)}</p>}
+            </details>
             {!isTraining && winner === 'player' && nextCommunity && <p className="next-community"><CheckCircle2 />次の都市「{nextCommunity}」への交易路が開きます。</p>}
             {celebrationDecisionRequired && companyGrowthRevealed && (
               <section className="result-celebration-choice">

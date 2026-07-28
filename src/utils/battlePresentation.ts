@@ -3,9 +3,9 @@ import type { BattlePhase } from '../types';
 export const BATTLE_CINEMATIC_TIMING = {
   startAnnouncementMs: 3_800,
   conditionAnnouncementMs: 1_650,
-  limitAnnouncementMs: 1_800,
-  limitResolveMs: 1_850,
-  limitImpactHandoffMs: 650,
+  limitAnnouncementMs: 1_900,
+  limitResolveMs: 2_300,
+  limitImpactHandoffMs: 800,
   finishNoticeMs: 1_450,
 } as const;
 
@@ -61,54 +61,54 @@ const CAPITAL_COMMIT_TIMINGS: Record<
 > = {
   standard: {
     small: {
-      prepareMs: 150,
-      travelMs: 170,
+      prepareMs: 180,
+      travelMs: 210,
       hitStopMs: 55,
-      settleMs: 420,
-      afterglowMs: 320,
-      totalMs: 1_115,
+      settleMs: 520,
+      afterglowMs: 420,
+      totalMs: 1_385,
     },
     medium: {
-      prepareMs: 190,
-      travelMs: 210,
+      prepareMs: 230,
+      travelMs: 260,
       hitStopMs: 64,
-      settleMs: 480,
-      afterglowMs: 360,
-      totalMs: 1_304,
+      settleMs: 610,
+      afterglowMs: 500,
+      totalMs: 1_664,
     },
     heavy: {
-      prepareMs: 300,
-      travelMs: 320,
+      prepareMs: 350,
+      travelMs: 390,
       hitStopMs: 88,
-      settleMs: 610,
-      afterglowMs: 520,
-      totalMs: 1_838,
+      settleMs: 760,
+      afterglowMs: 680,
+      totalMs: 2_268,
     },
   },
   compact: {
     small: {
-      prepareMs: 90,
-      travelMs: 110,
-      hitStopMs: 38,
-      settleMs: 250,
-      afterglowMs: 200,
-      totalMs: 688,
-    },
-    medium: {
       prepareMs: 100,
-      travelMs: 125,
-      hitStopMs: 45,
+      travelMs: 120,
+      hitStopMs: 38,
       settleMs: 280,
       afterglowMs: 220,
-      totalMs: 770,
+      totalMs: 758,
+    },
+    medium: {
+      prepareMs: 110,
+      travelMs: 135,
+      hitStopMs: 45,
+      settleMs: 310,
+      afterglowMs: 245,
+      totalMs: 845,
     },
     heavy: {
-      prepareMs: 120,
-      travelMs: 150,
+      prepareMs: 125,
+      travelMs: 155,
       hitStopMs: 52,
-      settleMs: 320,
-      afterglowMs: 260,
-      totalMs: 902,
+      settleMs: 345,
+      afterglowMs: 270,
+      totalMs: 947,
     },
   },
 };
@@ -144,21 +144,21 @@ export const shouldProcessGaugeFrame = (
  * frame: name card, actor wind-up, impact, then a brief readable result.
  */
 export const SKILL_CINEMATIC_TIMING = {
-  nameMs: 320,
-  castMs: 340,
-  hitStopMs: 80,
-  impactMs: 280,
-  resolveMs: 260,
-  totalMs: 1_280,
+  nameMs: 420,
+  castMs: 460,
+  hitStopMs: 90,
+  impactMs: 360,
+  resolveMs: 420,
+  totalMs: 1_750,
 } as const;
 
 export const LIGHTWEIGHT_SKILL_CINEMATIC_TIMING = {
-  nameMs: 180,
-  castMs: 180,
-  hitStopMs: 40,
-  impactMs: 140,
-  resolveMs: 180,
-  totalMs: 720,
+  nameMs: 210,
+  castMs: 220,
+  hitStopMs: 42,
+  impactMs: 180,
+  resolveMs: 260,
+  totalMs: 912,
 } as const;
 
 export type SkillCinematicStage =
@@ -189,6 +189,30 @@ export const getNextBattleSkillId = (
   return skillIds[
     (currentIndex + offset + skillIds.length) % skillIds.length
   ];
+};
+
+export const resolveBattleSkillSelection = (
+  usableEquippedIds: readonly string[],
+  usableAvailableIds: readonly string[],
+  selectedSkillId: string | null
+) => {
+  const usingFallbackPool = usableEquippedIds.length === 0;
+  const poolIds = usingFallbackPool
+    ? [...usableAvailableIds]
+    : [...usableEquippedIds];
+  const resolvedSelectedId =
+    selectedSkillId && poolIds.includes(selectedSkillId)
+      ? selectedSkillId
+      : poolIds[0] ?? null;
+
+  return {
+    poolIds,
+    selectedSkillId: resolvedSelectedId,
+    usingFallback:
+      !!resolvedSelectedId &&
+      usingFallbackPool &&
+      !usableEquippedIds.includes(resolvedSelectedId),
+  };
 };
 
 /**
