@@ -158,12 +158,22 @@ class SoundEffects {
   // Coin / Investment Chime
   playCoin() {
     if (!this.enabled) return;
+    let osc: OscillatorNode | null = null;
+    let gain: GainNode | null = null;
+    const disconnect = () => {
+      try {
+        osc?.disconnect();
+        gain?.disconnect();
+      } catch {
+        // An interrupted iOS audio context may already be disconnected.
+      }
+    };
     try {
       this.initCtx();
       if (!this.ctx) return;
 
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
+      osc = this.ctx.createOscillator();
+      gain = this.ctx.createGain();
 
       osc.type = 'sine';
       const now = this.ctx.currentTime;
@@ -175,11 +185,12 @@ class SoundEffects {
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
+      osc.onended = disconnect;
 
       osc.start(now);
       osc.stop(now + 0.2);
     } catch {
-      // Audio fallback
+      disconnect();
     }
   }
 
@@ -597,13 +608,14 @@ class SoundEffects {
         master.connect(ctx.destination);
       }
 
-      const impactCount = power >= 0.72 ? 3 : power >= 0.42 ? 2 : 1;
-      const impactGap = 0.15 - ((power - 0.25) / 0.75) * 0.03;
-      const finalImpactAt = now + (impactCount - 1) * impactGap;
-      const tailDuration = 0.5 + power * 0.2;
+      const impactCount =
+        power >= 0.72 ? 4 : power >= 0.48 ? 3 : power >= 0.32 ? 2 : 1;
+      const impactOffsets = [0, 0.14, 0.31, 0.52] as const;
+      const finalImpactAt = now + impactOffsets[impactCount - 1];
+      const tailDuration = 0.54 + power * 0.22;
       const outputEnd = finalImpactAt + tailDuration;
-      master.gain.setValueAtTime(0.36 * power, now);
-      master.gain.setValueAtTime(0.36 * power, finalImpactAt + 0.035);
+      master.gain.setValueAtTime(0.28 * power, now);
+      master.gain.setValueAtTime(0.28 * power, finalImpactAt + 0.035);
       master.gain.exponentialRampToValueAtTime(0.001, outputEnd);
 
       let activeVoices = 0;
@@ -675,16 +687,18 @@ class SoundEffects {
       };
 
       try {
-        const baseFrequency = side === 'player' ? 118 : 104;
+        const metallicFrequencies = side === 'player'
+          ? [1_520, 1_260, 1_690, 1_080]
+          : [1_310, 1_090, 1_460, 940];
         for (let index = 0; index < impactCount; index += 1) {
-          const start = now + index * impactGap;
+          const start = now + impactOffsets[index];
           scheduleImpactVoice(
-            index === impactCount - 1 ? 'sine' : 'triangle',
+            index % 2 === 0 ? 'triangle' : 'sine',
             start,
-            0.14 + index * 0.012,
-            baseFrequency * (1 - index * 0.07),
-            38 + index * 2,
-            0.92 - index * 0.08
+            0.08 + (index % 2) * 0.025,
+            metallicFrequencies[index],
+            520 + index * 35,
+            0.52 - index * 0.045
           );
         }
 
@@ -692,9 +706,9 @@ class SoundEffects {
           'sine',
           finalImpactAt + 0.018,
           tailDuration,
-          side === 'player' ? 68 : 60,
+          side === 'player' ? 76 : 66,
           27,
-          0.3 + power * 0.08
+          0.72 + power * 0.08
         );
       } finally {
         schedulingFinished = true;
