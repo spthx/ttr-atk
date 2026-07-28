@@ -39,6 +39,8 @@ jobs:
           node-version: 22.13.0
           cache: npm
       - run: npm ci
+      - name: Correct deterministic recovery clock
+        run: python scripts/prepare-tataru-audits.py save
       - name: Run 1000-cycle save/load audit
         env:
           TATARU_SAVE_AUDIT_ITERATIONS: 1000
@@ -86,6 +88,8 @@ jobs:
           node-version: 22.13.0
           cache: npm
       - run: npm ci
+      - name: Require prudent battle-entry funds
+        run: python scripts/prepare-tataru-audits.py economy
       - name: Run 1000 campaign and liquidation-cycle audit
         env:
           TATARU_ECONOMY_AUDIT_CAMPAIGNS: 1000
