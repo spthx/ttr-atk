@@ -215,8 +215,9 @@ export default function App() {
   );
   const normalizedInitialSavageClears = normalizeSavageClearedRaidIds(
     initialSave?.savageClearedPropertyIds ?? [],
-    initialSave?.savageProgressVersion === 2,
-    initialSave?.savageEndingSeen === true
+    initialSave?.savageProgressVersion,
+    initialSave?.savageEndingSeen === true ||
+      initialSave?.ultimateCleared === true
   );
   const initialSavageComplete =
     normalizedInitialSavageClears.length === SAVAGE_RAID_DEFINITIONS.length;
@@ -614,7 +615,7 @@ export default function App() {
     } else if (endingNotice === 'savage') {
       setSavageEndingSeen(true);
       setActiveTab('savage');
-      addGameLog('【絶商戦 解放】商戦 零式4層を踏破。別枠の最終高難度交易戦への挑戦資格を得ました！', 'success');
+      addGameLog('【絶商戦 解放】商戦 零式3編・全12章を踏破。別枠の最終高難度交易戦への挑戦資格を得ました！', 'success');
     } else if (endingNotice === 'true') {
       setTrueEndingSeen(true);
       setActiveTab('savage');
@@ -650,7 +651,7 @@ export default function App() {
 
   type SavePayload = Parameters<typeof saveGame>[0];
   const persistGameState = (overrides: Partial<SavePayload> = {}) => {
-    saveGame({
+    return saveGame({
       companyName: companyName.trim() || GAME_WORLD.companyName,
       totalFunds,
       properties,
@@ -659,7 +660,7 @@ export default function App() {
       seenUnlockIds,
       limitBreakCharge,
       savageClearedPropertyIds,
-      savageProgressVersion: 2,
+      savageProgressVersion: 3,
       normalEndingSeen,
       conqueredCommunityIds,
       savageEndingSeen,
@@ -762,6 +763,7 @@ export default function App() {
       return;
     }
     soundFx.playCoin();
+    persistGameState();
     persistPendingBattleSession('normal', property);
     setBattleTimeScale(0);
     setActiveBattleMode('normal');
@@ -771,6 +773,7 @@ export default function App() {
   const handleStartSavageBuyout = (property: Property) => {
     if (!savageUnlocked || !savageUnlockedIds.has(property.id)) return;
     soundFx.playCoin();
+    persistGameState();
     persistPendingBattleSession('savage', property);
     setBattleTimeScale(0);
     setActiveBattleMode('savage');
@@ -780,6 +783,7 @@ export default function App() {
   const handleStartUltimateBuyout = (property: Property) => {
     if (!ultimateUnlocked) return;
     soundFx.playCoin();
+    persistGameState();
     persistPendingBattleSession('ultimate', property);
     setBattleTimeScale(0);
     setActiveBattleMode('ultimate');
@@ -817,14 +821,16 @@ export default function App() {
       !activeBattleProperty ||
       targetProperty.id !== activeBattleProperty.id
     ) {
-      return;
+      return false;
     }
     if (activeBattleMode === 'training') {
       const settledTrainingFunds =
         totalFunds + deferredBattleIncomeRef.current;
+      if (!persistGameState({ totalFunds: settledTrainingFunds })) {
+        return false;
+      }
       deferredBattleIncomeRef.current = 0;
       setTotalFunds(settledTrainingFunds);
-      persistGameState({ totalFunds: settledTrainingFunds });
       clearPendingBattleSession();
       addGameLog(
         winner === 'player'
@@ -836,7 +842,7 @@ export default function App() {
       setActiveBattleMode('normal');
       setBattleTimeScale(1);
       setShowTrainingSelector(true);
-      return;
+      return true;
     }
 
     const isNormalBattle = activeBattleMode === 'normal';
@@ -865,9 +871,6 @@ export default function App() {
         liquidationCashback -
         celebrationGiftCost
     );
-    deferredBattleIncomeRef.current = 0;
-    setTotalFunds(settledTotalFunds);
-
     const currentlyConquersTargetCity =
       isNormalBattle &&
       winner === 'player' &&
@@ -885,10 +888,6 @@ export default function App() {
             communityId === targetProperty.community
         )
       : conqueredCommunityIds;
-    if (newlyConquered) {
-      setConqueredCommunityIds(projectedConqueredCommunityIds);
-    }
-
     const breaksAlliance =
       isNormalBattle &&
       winner === 'player' &&
@@ -902,15 +901,38 @@ export default function App() {
           relationType: 'commercial_alliance',
         }
       : alliance;
-    let projectedSavageClearedPropertyIds = savageClearedPropertyIds;
-    let projectedUltimateCleared = ultimateCleared;
+    const projectedSavageClearedPropertyIds =
+      activeBattleMode === 'savage' && winner === 'player'
+        ? Array.from(new Set([...savageClearedPropertyIds, targetProperty.id]))
+        : savageClearedPropertyIds;
+    const projectedUltimateCleared =
+      ultimateCleared ||
+      (activeBattleMode === 'ultimate' && winner === 'player');
+
+    // Save the complete, deterministic result before mutating React state or
+    // deleting the recovery marker. A denied Storage write leaves the result
+    // button retryable instead of partially applying the settlement.
+    if (!persistGameState({
+      totalFunds: settledTotalFunds,
+      properties: projectedProperties,
+      alliance: projectedAlliance,
+      conqueredCommunityIds: projectedConqueredCommunityIds,
+      savageClearedPropertyIds: projectedSavageClearedPropertyIds,
+      ultimateCleared: projectedUltimateCleared,
+    })) {
+      return false;
+    }
+    clearPendingBattleSession();
+    deferredBattleIncomeRef.current = 0;
+    setTotalFunds(settledTotalFunds);
+    if (newlyConquered) {
+      setConqueredCommunityIds(projectedConqueredCommunityIds);
+    }
 
     if (activeBattleMode === 'savage') {
-      const clearedAfterBattle = new Set(savageClearedPropertyIds);
       const firstClear =
-        winner === 'player' && !clearedAfterBattle.has(targetProperty.id);
-      if (winner === 'player') clearedAfterBattle.add(targetProperty.id);
-      projectedSavageClearedPropertyIds = Array.from(clearedAfterBattle);
+        winner === 'player' &&
+        !savageClearedPropertyIds.includes(targetProperty.id);
 
       if (winner === 'player') {
         setSavageClearedPropertyIds(projectedSavageClearedPropertyIds);
@@ -945,7 +967,6 @@ export default function App() {
       setActiveTab('savage');
     } else if (activeBattleMode === 'ultimate') {
       if (winner === 'player') {
-        projectedUltimateCleared = true;
         setUltimateCleared(true);
         addGameLog(
           `【絶商戦踏破】${targetProperty.name} を攻略しました。最終記録と称号を獲得しました！`,
@@ -1018,18 +1039,6 @@ export default function App() {
       setProperties(projectedProperties);
     }
 
-    // Commit the resolved battle before removing its recovery marker. This
-    // closes the reload window between the result screen and the autosave.
-    persistGameState({
-      totalFunds: settledTotalFunds,
-      properties: projectedProperties,
-      alliance: projectedAlliance,
-      conqueredCommunityIds: projectedConqueredCommunityIds,
-      savageClearedPropertyIds: projectedSavageClearedPropertyIds,
-      ultimateCleared: projectedUltimateCleared,
-    });
-    clearPendingBattleSession();
-
     // 2. Handle Rebellion & Strategic Bankruptcy Liquidation Cashback
     if (isNormalBattle && rebelledProperties.length > 0) {
       rebelledProperties.forEach((rebel) => {
@@ -1055,6 +1064,7 @@ export default function App() {
     setActiveBattleProperty(null);
     setActiveBattleMode('normal');
     setBattleTimeScale(1);
+    return true;
   };
 
   // Reduce Loyalty Risk (Nemawashi) for single property
@@ -1449,10 +1459,12 @@ export default function App() {
       </main>
 
       <footer className="game-legal-notice">
-        <span>本作は非公式ファンサイト／ファンゲームです。</span>
+        <span>本作は非公式ファンサイト／ファンゲームです。 <span lang="en">Unofficial fan site/game.</span></span>
         <a href="https://jp.finalfantasyxiv.com/lodestone/special/fankit/" target="_blank" rel="noreferrer">FFXIV公式ファンキット</a>
         <a href="https://support.jp.square-enix.com/rule.php?id=5381&la=0&tag=authc" target="_blank" rel="noreferrer">著作物利用条件</a>
+        <a href="https://support.na.square-enix.com/rule.php?id=5382&la=1&tag=authc" target="_blank" rel="noreferrer" lang="en">Materials Usage License</a>
         <strong>© SQUARE ENIX</strong>
+        <span lang="en">FINAL FANTASY is a registered trademark of Square Enix Holdings Co., Ltd.</span>
       </footer>
 
       {endingNotice && (

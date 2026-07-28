@@ -19,12 +19,17 @@ import {
   resolvePostVictoryLoyalty,
 } from '../src/utils/battleSettlement';
 import {
+  CAPITAL_DELUGE_PARTICLE_COUNT,
+  CAPITAL_OVERFLOW_PARTICLE_COUNT,
+  CAPITAL_PRIMARY_DROP_COUNT,
   BATTLE_CINEMATIC_TIMING,
   BATTLE_GAUGE_VISUAL_COMMIT_MS,
+  BATTLE_HIT_STOP_TIMING,
   BATTLE_STATUS_MESSAGE_DURATION_MS,
   canConfirmBattleResult,
   enqueueBattleStatusMessage,
   getBattleCapitalVisualBundleCount,
+  getCapitalCommitTiming,
   getNextBattleSkillId,
   getTerminalCinematicPresentation,
   getBattleCinematicLayer,
@@ -33,8 +38,13 @@ import {
   getCapitalVisualSpriteCount,
   getCapitalVisualStage,
   getCapitalVisualStageForBundleCount,
+  getInvestmentStakeVisualPieceCount,
+  getBattleHitStopTiming,
+  getSkillCinematicTiming,
   getVictoryConfettiParticleCount,
   LIGHTWEIGHT_GAUGE_FRAME_MS,
+  LIGHTWEIGHT_SKILL_CINEMATIC_TIMING,
+  MAX_CAPITAL_DROP_PARTICLE_COUNT,
   normalizeBattleStatusMessageText,
   RESULT_CONFIRM_ARM_DELAY_MS,
   selectBattleStatusMessage,
@@ -60,6 +70,7 @@ import {
 } from '../src/components/WindIndicator';
 import {
   calculateOfflineIncome,
+  loadLegacyCompanyName,
   loadGameSave,
   normalizeAllianceState,
   normalizeLimitBreakCharge,
@@ -85,6 +96,7 @@ import {
   SAVAGE_GROUP_MULTIPLIER_BONUS_PER_RANK,
   SAVAGE_PROPERTY_YIELD_BONUS,
   SAVAGE_RAID_DEFINITIONS,
+  SAVAGE_SERIES_DEFINITIONS,
   SAVAGE_YIELD_BONUS_PER_RANK,
   ULTIMATE_RAID_DEFINITION,
 } from '../src/utils/savage';
@@ -144,6 +156,7 @@ import {
   isNormalCityBoss,
   isSkillUnlocked,
   LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER,
+  LIMIT_BREAK_CAPITAL_CAP_RATIOS,
   LIMIT_BREAK_MULTIPLIERS,
   LIMIT_BREAK_OWNERSHIP_CAPS,
   NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS,
@@ -349,10 +362,99 @@ assert.equal(
 assert.equal(
   SKILL_CINEMATIC_TIMING.nameMs +
     SKILL_CINEMATIC_TIMING.castMs +
+    SKILL_CINEMATIC_TIMING.hitStopMs +
     SKILL_CINEMATIC_TIMING.impactMs +
     SKILL_CINEMATIC_TIMING.resolveMs,
   SKILL_CINEMATIC_TIMING.totalMs,
-  'skill name, cast, impact and result beats form one non-overlapping timeline'
+  'skill name, cast, hit-stop, impact and result form one sequential timeline'
+);
+assert.equal(
+  LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.nameMs +
+    LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.castMs +
+    LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.hitStopMs +
+    LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.impactMs +
+    LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.resolveMs,
+  LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.totalMs,
+  'lightweight skill beats remain complete instead of truncating standard CSS'
+);
+assert.equal(
+  getSkillCinematicTiming(false),
+  SKILL_CINEMATIC_TIMING,
+  'standard mode owns the full skill timeline'
+);
+assert.equal(
+  getSkillCinematicTiming(true),
+  LIGHTWEIGHT_SKILL_CINEMATIC_TIMING,
+  'lightweight mode owns a bounded compact skill timeline'
+);
+assert.ok(
+  LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.totalMs <=
+    SKILL_CINEMATIC_TIMING.totalMs,
+  'lightweight skill staging never lasts longer than standard staging'
+);
+assert.deepEqual(
+  getBattleHitStopTiming(false, false),
+  {
+    hitStopMs: BATTLE_HIT_STOP_TIMING.standardMs,
+    releaseMs: BATTLE_HIT_STOP_TIMING.releaseMs,
+  },
+  'standard investments use one bounded hit-stop and release'
+);
+assert.deepEqual(
+  getBattleHitStopTiming(true, true),
+  {
+    hitStopMs: BATTLE_HIT_STOP_TIMING.lightweightHeavyMs,
+    releaseMs: BATTLE_HIT_STOP_TIMING.lightweightReleaseMs,
+  },
+  'lightweight heavy impacts preserve the beat with less animated time'
+);
+assert.ok(
+  BATTLE_HIT_STOP_TIMING.heavyMs <= 80 &&
+    BATTLE_HIT_STOP_TIMING.lightweightHeavyMs <=
+      BATTLE_HIT_STOP_TIMING.heavyMs &&
+    BATTLE_HIT_STOP_TIMING.releaseMs <= 230,
+  'routine impact staging stays below the input-latency and animation budget'
+);
+const smallCapitalCommit = getCapitalCommitTiming(1, false);
+const mediumCapitalCommit = getCapitalCommitTiming(3, false);
+const heavyCapitalCommit = getCapitalCommitTiming(5, false);
+const compactHeavyCapitalCommit = getCapitalCommitTiming(5, true);
+[
+  smallCapitalCommit,
+  mediumCapitalCommit,
+  heavyCapitalCommit,
+  compactHeavyCapitalCommit,
+].forEach((timing) => {
+  assert.equal(
+    timing.prepareMs +
+      timing.travelMs +
+      timing.hitStopMs +
+      timing.settleMs +
+      timing.afterglowMs,
+    timing.totalMs,
+    `${timing.tier} capital preparation, delivery, landing and afterglow form one timeline`
+  );
+  assert.ok(
+    timing.prepareMs > 0 &&
+      timing.travelMs > 0 &&
+      timing.hitStopMs > 0 &&
+      timing.settleMs > 0 &&
+      timing.afterglowMs > 0,
+    'every capital commit preserves all five readable beats'
+  );
+});
+assert.ok(
+  smallCapitalCommit.totalMs <
+    mediumCapitalCommit.totalMs &&
+    mediumCapitalCommit.totalMs <
+      heavyCapitalCommit.totalMs,
+  'larger investments receive progressively heavier staging'
+);
+assert.ok(
+  compactHeavyCapitalCommit.totalMs <
+    heavyCapitalCommit.totalMs &&
+    compactHeavyCapitalCommit.totalMs <= 950,
+  'lightweight staging keeps the full sequence inside its compact budget'
 );
 assert.equal(
   getNextBattleSkillId(
@@ -425,6 +527,11 @@ assert.equal(
   'tablet-sized victory effects avoid a second canvas animation'
 );
 assert.equal(getVictoryConfettiParticleCount(1440, false), 110);
+assert.equal(
+  getVictoryConfettiParticleCount(1440, false, true),
+  0,
+  'lightweight mode never starts the extra canvas confetti layer'
+);
 assert.equal(getVictoryConfettiParticleCount(402, true), 0);
 
 const pendingBattleNow = 1_800_000_000_000;
@@ -591,14 +698,27 @@ assert.ok(
 );
 assert.equal(getCapitalVisualStageForBundleCount(0), 0);
 assert.equal(getCapitalVisualStageForBundleCount(4), 4);
-assert.equal(getCapitalVisualStageForBundleCount(13), 13);
-assert.equal(getCapitalVisualStageForBundleCount(99), 13);
+assert.equal(getCapitalVisualStageForBundleCount(11), 11);
+assert.equal(getCapitalVisualStageForBundleCount(13), 11);
+assert.equal(getCapitalVisualStageForBundleCount(99), 11);
 assert.equal(getCapitalVisualSpriteCount(0), 0);
 assert.equal(getCapitalVisualSpriteCount(3), 3);
 assert.equal(
   getCapitalVisualSpriteCount(13),
   5,
   'field-filling hoards keep a bounded foreground sprite count'
+);
+assert.deepEqual(
+  [1, 2, 3, 4, 5].map(getInvestmentStakeVisualPieceCount),
+  [1, 1, 1, 1, 1],
+  'every investment level carries one bounded cargo silhouette'
+);
+assert.ok(
+  CAPITAL_PRIMARY_DROP_COUNT +
+    CAPITAL_OVERFLOW_PARTICLE_COUNT +
+    CAPITAL_DELUGE_PARTICLE_COUNT <=
+    MAX_CAPITAL_DROP_PARTICLE_COUNT,
+  'one capital commit never animates more than sixteen falling pieces'
 );
 assert.equal(
   shouldInertBattleFooter(true, true, 'result'),
@@ -707,11 +827,19 @@ assert.equal(
   getTerminalCinematicPresentation(
     TERMINAL_CINEMATIC_TIMING.anticipationMs
   ).stage,
+  'hitstop'
+);
+assert.equal(
+  getTerminalCinematicPresentation(
+    TERMINAL_CINEMATIC_TIMING.anticipationMs +
+      TERMINAL_CINEMATIC_TIMING.hitStopMs
+  ).stage,
   'impact'
 );
 assert.equal(
   getTerminalCinematicPresentation(
     TERMINAL_CINEMATIC_TIMING.anticipationMs +
+      TERMINAL_CINEMATIC_TIMING.hitStopMs +
       TERMINAL_CINEMATIC_TIMING.impactMs
   ).stage,
   'resolution'
@@ -722,10 +850,39 @@ assert.equal(
 );
 assert.equal(
   TERMINAL_CINEMATIC_TIMING.anticipationMs +
+    TERMINAL_CINEMATIC_TIMING.hitStopMs +
     TERMINAL_CINEMATIC_TIMING.impactMs +
     TERMINAL_CINEMATIC_TIMING.resolutionMs,
   TERMINAL_CINEMATIC_TIMING.totalMs,
-  'the final offer, knockdown and WIN reveal form one sequential timeline'
+  'the final offer, hit-stop, knockdown and WIN reveal form one sequential timeline'
+);
+assert.equal(
+  TERMINAL_CINEMATIC_TIMING.reducedMotionAnticipationMs +
+    TERMINAL_CINEMATIC_TIMING.reducedMotionHitStopMs +
+    TERMINAL_CINEMATIC_TIMING.reducedMotionImpactMs +
+    TERMINAL_CINEMATIC_TIMING.reducedMotionResolutionMs,
+  TERMINAL_CINEMATIC_TIMING.reducedMotionTotalMs,
+  'compact terminal staging keeps every semantic beat'
+);
+for (const elapsed of [
+  0,
+  TERMINAL_CINEMATIC_TIMING.anticipationMs,
+  TERMINAL_CINEMATIC_TIMING.anticipationMs +
+    TERMINAL_CINEMATIC_TIMING.hitStopMs,
+  TERMINAL_CINEMATIC_TIMING.anticipationMs +
+    TERMINAL_CINEMATIC_TIMING.hitStopMs +
+    TERMINAL_CINEMATIC_TIMING.impactMs,
+]) {
+  assert.equal(
+    getTerminalCinematicPresentation(elapsed).timeScale,
+    0,
+    'terminal staging never advances simulation behind the cinematic'
+  );
+}
+assert.ok(
+  TERMINAL_CINEMATIC_TIMING.totalMs <= 2_500 &&
+    TERMINAL_CINEMATIC_TIMING.reducedMotionTotalMs <= 850,
+  'terminal staging stays inside the standard and compact UX budgets'
 );
 assert.equal(
   normalizeBattleStatusMessageText(
@@ -1017,14 +1174,30 @@ for (let index = 4; index <= 8; index += 1) {
 
 const savageTargetIds = getSavageTargetIds(INITIAL_PROPERTIES);
 const savageProperties = buildSavageProperties(INITIAL_PROPERTIES, new Set(), '検証商会');
-assert.equal(savageTargetIds.length, 4);
+assert.equal(savageTargetIds.length, 12);
 assert.equal(savageProperties.length, savageTargetIds.length);
 assert.equal(new Set(savageTargetIds).size, savageTargetIds.length);
-assert.deepEqual(SAVAGE_RAID_DEFINITIONS.map((raid) => raid.layer), [1, 2, 3, 4]);
+assert.deepEqual(
+  SAVAGE_SERIES_DEFINITIONS.map((series) => series.series),
+  [1, 2, 3]
+);
+assert.deepEqual(
+  SAVAGE_RAID_DEFINITIONS.map((raid) => raid.layer),
+  [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4]
+);
+SAVAGE_SERIES_DEFINITIONS.forEach((series) => {
+  assert.deepEqual(
+    SAVAGE_RAID_DEFINITIONS
+      .filter((raid) => raid.series === series.series)
+      .map((raid) => raid.layer),
+    [1, 2, 3, 4],
+    `Savage series ${series.series} owns exactly layers 1 through 4`
+  );
+});
 assert.deepEqual(
   SAVAGE_RAID_DEFINITIONS.map((raid) => raid.marketPrice),
   [...SAVAGE_RAID_DEFINITIONS].map((raid) => raid.marketPrice).sort((a, b) => a - b),
-  'Savage prices rise from layer 1 through layer 4'
+  'Savage prices rise through all twelve chapters'
 );
 savageProperties.forEach((property) => {
   assert.match(property.name, /商戦 零式：第[1-4]層$/);
@@ -1039,6 +1212,24 @@ assert.deepEqual(
   Array.from(getUnlockedSavageRaidIds(new Set([SAVAGE_RAID_DEFINITIONS[0].id]))),
   [SAVAGE_RAID_DEFINITIONS[0].id, SAVAGE_RAID_DEFINITIONS[1].id]
 );
+assert.deepEqual(
+  Array.from(
+    getUnlockedSavageRaidIds(
+      new Set(SAVAGE_RAID_DEFINITIONS.slice(0, 4).map((raid) => raid.id))
+    )
+  ),
+  SAVAGE_RAID_DEFINITIONS.slice(0, 5).map((raid) => raid.id),
+  'clearing series 1 unlocks only series 2 layer 1'
+);
+assert.deepEqual(
+  Array.from(
+    getUnlockedSavageRaidIds(
+      new Set(SAVAGE_RAID_DEFINITIONS.slice(0, 11).map((raid) => raid.id))
+    )
+  ),
+  savageTargetIds,
+  'the final chapter unlocks only after the preceding eleven chapters'
+);
 
 const normalCampaignIds = COMMUNITY_CAMPAIGN_ORDER.flatMap((community) =>
   getCampaignProperties(INITIAL_PROPERTIES, community).map((property) => property.id)
@@ -1050,11 +1241,6 @@ assert.deepEqual([...raidMemberIds].sort(), [...normalCampaignIds].sort());
 
 const synergyIds = new Set(INITIAL_GROUP_SYNERGIES.map((synergy) => synergy.id));
 SAVAGE_RAID_DEFINITIONS.forEach((raid) => {
-  assert.equal(
-    raid.id,
-    raid.battlePropertyId,
-    `four-layer save key reuses its representative normal encounter: ${raid.id}`
-  );
   assert.ok(
     INITIAL_PROPERTIES.some((property) => property.id === raid.battlePropertyId),
     `Savage battle property exists: ${raid.battlePropertyId}`
@@ -1075,30 +1261,84 @@ assert.deepEqual(
   'all existing synergies have a Savage upgrade route'
 );
 assert.deepEqual(
+  SAVAGE_RAID_DEFINITIONS.slice(0, 4).map((raid) => raid.id),
+  ['prop_starter_farm', 'prop_blacksmith', 'prop_wheat_farm', 'prop_abyss_heavy'],
+  'the former four direct save IDs remain the first series migration targets'
+);
+const legacyFirstLayerMemberIds = [
+  'prop_starter_farm',
+  'prop_starter_bakery',
+  'prop_timber_ake',
+  'prop_land_transport',
+  'prop_brewery_beer',
+  'prop_iron_mine',
+  'prop_pub_central',
+  'prop_casino_grand',
+];
+assert.deepEqual(
   normalizeSavageClearedRaidIds(
-    SAVAGE_RAID_DEFINITIONS[0].memberPropertyIds,
-    false
+    legacyFirstLayerMemberIds,
+    undefined
   ),
-  [SAVAGE_RAID_DEFINITIONS[0].id],
-  'a legacy regional layer migrates only after all of its former encounters were cleared'
+  savageTargetIds.slice(0, 4),
+  'a legacy regional layer expands to every new chapter carrying its rewards'
 );
 assert.deepEqual(
   normalizeSavageClearedRaidIds(
-    SAVAGE_RAID_DEFINITIONS[0].memberPropertyIds.slice(0, -1),
-    false
+    legacyFirstLayerMemberIds.slice(0, -1),
+    undefined
   ),
   [],
   'partial legacy regional progress does not skip the new coalition encounter'
 );
 assert.deepEqual(
-  normalizeSavageClearedRaidIds(savageTargetIds.slice(0, 2), true),
+  normalizeSavageClearedRaidIds(savageTargetIds.slice(0, 2), 3),
   savageTargetIds.slice(0, 2),
-  'current four-layer progress remains direct'
+  'current twelve-chapter progress remains direct'
 );
 assert.deepEqual(
-  normalizeSavageClearedRaidIds([], false, true),
+  normalizeSavageClearedRaidIds(savageTargetIds.slice(0, 2), 2),
+  savageTargetIds.slice(0, 8),
+  'the first two former layers expand to the first two four-chapter reward groups'
+);
+assert.deepEqual(
+  normalizeSavageClearedRaidIds([savageTargetIds[2]], 2),
+  savageTargetIds.slice(8, 10),
+  'the former third layer expands to its two replacement chapters'
+);
+assert.deepEqual(
+  normalizeSavageClearedRaidIds(savageTargetIds.slice(0, 4), 2),
   savageTargetIds,
-  'legacy completed tier unlocks all four coalition layers'
+  'a former four-layer clear preserves the already unlocked Ultimate duty'
+);
+assert.deepEqual(
+  normalizeSavageClearedRaidIds(normalCampaignIds, undefined),
+  savageTargetIds,
+  'a complete pre-versioned twenty-encounter clear also remains complete'
+);
+assert.deepEqual(
+  normalizeSavageClearedRaidIds([], 2, true),
+  savageTargetIds,
+  'an acknowledged legacy completion preserves every unlock including Ultimate'
+);
+const migratedLegacyLayerOne = new Set(
+  normalizeSavageClearedRaidIds(legacyFirstLayerMemberIds, undefined)
+);
+legacyFirstLayerMemberIds.forEach((propertyId) => {
+  assert.equal(
+    getSavagePropertyYieldMultiplier(propertyId, migratedLegacyLayerOne),
+    1 + SAVAGE_PROPERTY_YIELD_BONUS,
+    `legacy first-layer property reward remains intact: ${propertyId}`
+  );
+});
+assert.deepEqual(
+  Array.from(getSavageSynergyRanks(migratedLegacyLayerOne).entries()).sort(),
+  [
+    ['EORZEA_FOOD_ROUTE', 1],
+    ['GRIDANIA_FOREST_ECONOMY', 1],
+    ['ULDAH_LUXURY_MARKET', 1],
+  ],
+  'legacy first-layer synergy ranks are neither lost nor over-granted'
 );
 
 const fullyClearedSavage = buildSavageProperties(
@@ -1421,19 +1661,46 @@ assert.deepEqual(
       isSavage: true,
     })
   ),
-  ['cover', 'enhanced_cover', 'enhanced_cover', 'invincible'],
-  'every Savage layer is a boss and gains a visible defensive pattern'
+  [
+    'cover', 'enhanced_cover', 'enhanced_cover', 'invincible',
+    'cover', 'enhanced_cover', 'enhanced_cover', 'invincible',
+    'cover', 'enhanced_cover', 'enhanced_cover', 'invincible',
+  ],
+  'all three Savage series repeat the complete visible defensive pattern'
 );
 assert.deepEqual(
   savageLayerBudgets.map((ratio) => Number(ratio.toFixed(3))),
-  SAVAGE_LAYER_BUDGET_MULTIPLIERS.map((layerMultiplier) =>
-    Number((SAVAGE_ENEMY_BUDGET_MULTIPLIER * layerMultiplier).toFixed(3))
+  SAVAGE_RAID_DEFINITIONS.map((raid) =>
+    Number(
+      (
+        SAVAGE_ENEMY_BUDGET_MULTIPLIER *
+        SAVAGE_LAYER_BUDGET_MULTIPLIERS[raid.layer - 1]
+      ).toFixed(3)
+    )
   ),
-  'Savage budgets rise clearly from layer 1 through layer 4'
+  'each Savage series repeats the layer 1 through layer 4 budget rhythm'
 );
-assert.equal(getEnemyDifficultyLevel(savageProperties[1], false, true), 5);
-assert.equal(getEnemyDifficultyLevel(savageProperties[2], false, true), 6);
-assert.equal(getEnemyDifficultyLevel(savageProperties[3], false, true), 6);
+SAVAGE_RAID_DEFINITIONS.forEach((raid, index) => {
+  assert.equal(
+    getEnemyDifficultyLevel(savageProperties[index], false, true),
+    raid.layer >= 3 ? 6 : 5
+  );
+});
+const absoluteSavageBudgets = savageProperties.map((targetProperty) =>
+  calculateEnemyBudget({
+    targetProperty,
+    industryInfluence: noInfluence,
+    regionalInfluence: noInfluence,
+    isTutorial: false,
+    isSavage: true,
+  })
+);
+for (let index = 1; index < absoluteSavageBudgets.length; index += 1) {
+  assert.ok(
+    absoluteSavageBudgets[index] > absoluteSavageBudgets[index - 1],
+    `Savage absolute budget rises at chapter ${index + 1}`
+  );
+}
 const ultimateBudget = calculateEnemyBudget({
   targetProperty: ultimateProperty,
   industryInfluence: noInfluence,
@@ -1460,7 +1727,7 @@ assert.equal(
       ULTIMATE_ENEMY_BUDGET_MULTIPLIER
   )
 );
-assert.ok(ultimateBudget > savageBudget);
+assert.ok(ultimateBudget > absoluteSavageBudgets.at(-1)!);
 assert.equal(getEnemyDifficultyLevel(ultimateProperty, false, false, true), 6);
 
 const baseAiContext: EnemyDecisionContext = {
@@ -1563,7 +1830,9 @@ assert.equal(coverSkill.effectType, 'COVER');
 assert.equal(coverSkill.oncePerBattle, true);
 assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 10_000);
 assert.equal(TACTICAL_SKILL_BALANCE.cover.absorbRatio, 0.6);
-assert.equal(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity, 16);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity, 24);
+assert.equal(BOSS_COVER_BALANCE.cover.gaugeCapacity, 24);
+assert.equal(BOSS_COVER_BALANCE.enhancedCover.gaugeCapacity, 36);
 assert.match(coverSkill.description, /10秒間/);
 assert.deepEqual(
   applyCoverToGaugeDelta({
@@ -1629,7 +1898,7 @@ assert.equal(TACTICAL_SKILL_BALANCE.livingDead.recoveryOwnership, 30);
 assert.equal(calculateEraWindCost(1_000_000, 0), 100_000);
 assert.equal(calculateEraWindCost(100_000_000, 0), 2_000_000);
 assert.equal(calculateEraWindCost(100_000_000, 1), 2_000_000);
-assert.equal(TACTICAL_SKILL_BALANCE.eraWind.durationMs, 36_000);
+assert.equal(TACTICAL_SKILL_BALANCE.eraWind.durationMs, 24_000);
 assert.equal(TACTICAL_SKILL_BALANCE.eraWind.maxUsesPerBattle, 1);
 assert.equal(getEraWindGaugePushPerSecond(0), 1.55);
 assert.equal(getEraWindGaugePushPerSecond(2), 1.55);
@@ -1641,11 +1910,11 @@ assert.equal(
       2
     ).toFixed(1)
   ),
-  27.9,
-  'one full Era Wind pushes displayed ownership by about 27.9 points'
+  18.6,
+  'one full Era Wind pushes displayed ownership by about 18.6 points'
 );
 assert.equal(eraWindSkill.oncePerBattle, true);
-assert.match(eraWindSkill.description, /36秒間/);
+assert.match(eraWindSkill.description, /24秒間/);
 assert.match(eraWindSkill.description, /1交渉につき1回/);
 assert.match(livingDeadSkill.description, /1交渉につき1回/);
 assert.equal(calculateOwnershipFromGauge(98), 1);
@@ -1882,7 +2151,25 @@ const lbSubs = [
 ];
 const lbTier = getLimitBreakTier(lbSubs.length + 1);
 assert.equal(lbTier, 1);
-assert.equal(calculateLimitBreakAmount(1_000, lbSubs, lbTier), 3_058);
+assert.equal(
+  calculateLimitBreakAmount(1_000, lbSubs, lbTier),
+  800,
+  'LB1 cannot turn legacy high-price subsidiaries into more than 0.8 target prices'
+);
+const lbTier2Subs = Array.from({ length: 7 }, (_, index) => ({
+  ...INITIAL_PROPERTIES[index % INITIAL_PROPERTIES.length],
+  id: `lb-tier-2-${index}`,
+  marketPrice: 5_000,
+}));
+assert.equal(
+  calculateLimitBreakAmount(1_000, lbTier2Subs, 2),
+  1_200,
+  'LB2 keeps its larger payoff but stops at 1.2 target prices'
+);
+assert.ok(
+  calculateLimitBreakAmount(1_000, lbTier2Subs, 3) > 1_200,
+  'LB3 keeps the uncapped late-game aggregation payoff'
+);
 assert.equal(BATTLE_GAUGE_SPEED_FACTOR, 4);
 assert.equal(TRAINING_GAUGE_SPEED_MULTIPLIER, 0.1);
 assert.equal(TRAINING_MIN_OWNERSHIP_PERCENT, 1);
@@ -1913,8 +2200,13 @@ assert.ok(
   'training dummy allows at least thirty command cycles before its protected floor'
 );
 assert.equal(LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER, 1.2);
+assert.deepEqual(LIMIT_BREAK_CAPITAL_CAP_RATIOS, {
+  1: 0.8,
+  2: 1.2,
+  3: null,
+});
 assert.deepEqual(LIMIT_BREAK_MULTIPLIERS, { 1: 1.56, 2: 1.98, 3: 2.46 });
-assert.deepEqual(LIMIT_BREAK_OWNERSHIP_CAPS, { 1: 10, 2: 20, 3: 30 });
+assert.deepEqual(LIMIT_BREAK_OWNERSHIP_CAPS, { 1: 7, 2: 14, 3: 30 });
 assert.deepEqual(NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS, {
   tutorial: 0.72,
   gridania: 0.82,
@@ -2133,10 +2425,20 @@ assert.equal(
   false,
   'enemy reserve recovery has no ownership side effect before the AI invests it'
 );
-assert.equal(calculateLimitBreakOwnershipPush(2_822, 1_000, 1, 1), 10);
-assert.equal(calculateLimitBreakOwnershipPush(20_000, 1_000, 2, 1.15), 20);
+assert.equal(calculateLimitBreakOwnershipPush(2_822, 1_000, 1, 1), 7);
+assert.equal(calculateLimitBreakOwnershipPush(20_000, 1_000, 2, 1.15), 14);
 assert.equal(calculateLimitBreakOwnershipPush(50_000, 1_000, 3, 1.15), 30);
 assert.equal(calculateLimitBreakOwnershipPush(50_000, 1_000, 0, 1.15), 0);
+assert.equal(
+  calculateLimitBreakOwnershipAfterDefense(50, 14, 10),
+  59,
+  'LB2 from 50% stays below the 60% boss Cover threshold after emergency defense'
+);
+assert.equal(
+  calculateLimitBreakOwnershipAfterDefense(51, 14, 10),
+  60,
+  'LB2 from 51% reaches the 60% boss Cover threshold'
+);
 assert.equal(calculateLimitBreakOwnershipAfterDefense(92, 10, 6), 99);
 assert.equal(calculateLimitBreakOwnershipAfterDefense(94, 10, 6), 101);
 assert.equal(getLimitBreakChargeCapacity(1), 100);
@@ -2269,13 +2571,27 @@ assert.equal(
 
 const originalWindow = globalThis.window;
 let savedPayload = '';
+let legacyCompanyName = '';
+let failPrimaryWrite = false;
+let failLegacyWrite = false;
+let failLegacyRead = false;
 Object.defineProperty(globalThis, 'window', {
   configurable: true,
   value: {
     localStorage: {
-      getItem: (key: string) => key === SAVE_STORAGE_KEY ? savedPayload : null,
+      getItem: (key: string) => {
+        if (key === SAVE_STORAGE_KEY) return savedPayload;
+        if (failLegacyRead) throw new DOMException('denied', 'SecurityError');
+        return legacyCompanyName || null;
+      },
       setItem: (key: string, value: string) => {
-        if (key === SAVE_STORAGE_KEY) savedPayload = value;
+        if (key === SAVE_STORAGE_KEY) {
+          if (failPrimaryWrite) throw new DOMException('denied', 'SecurityError');
+          savedPayload = value;
+          return;
+        }
+        if (failLegacyWrite) throw new DOMException('denied', 'SecurityError');
+        legacyCompanyName = value;
       },
       removeItem: () => undefined,
     },
@@ -2319,7 +2635,7 @@ assert.deepEqual(restoredCampaignHistory?.conqueredCommunityIds, [
   firstCampaignCommunity,
   secondCampaignCommunity,
 ]);
-saveGame({
+const durableTestSave = {
   companyName: '勝利確定テスト商会',
   totalFunds: 98_765,
   properties: conqueredFirstCityProperties,
@@ -2332,7 +2648,8 @@ saveGame({
     relationType: 'commercial_alliance',
   },
   conqueredCommunityIds: [firstCampaignCommunity],
-});
+} satisfies Parameters<typeof saveGame>[0];
+assert.equal(saveGame(durableTestSave), true);
 const immediatelyCommittedVictory = loadGameSave();
 assert.equal(immediatelyCommittedVictory?.totalFunds, 98_765);
 assert.deepEqual(immediatelyCommittedVictory?.conqueredCommunityIds, [
@@ -2345,6 +2662,29 @@ assert.equal(
   'player',
   'victory ownership and permanent route progress are durable in the same save'
 );
+failLegacyWrite = true;
+assert.equal(
+  saveGame({ ...durableTestSave, totalFunds: 98_766 }),
+  true,
+  'a failed legacy-name mirror does not invalidate the authoritative save'
+);
+failLegacyWrite = false;
+const saveBeforeDeniedPrimary = savedPayload;
+failPrimaryWrite = true;
+assert.equal(
+  saveGame({ ...durableTestSave, totalFunds: 1 }),
+  false,
+  'a denied primary write reports failure to the result-confirmation flow'
+);
+assert.equal(savedPayload, saveBeforeDeniedPrimary);
+failPrimaryWrite = false;
+failLegacyRead = true;
+assert.equal(
+  loadLegacyCompanyName(),
+  null,
+  'legacy-name access denial cannot crash application initialization'
+);
+failLegacyRead = false;
 savedPayload = JSON.stringify({
   ...legacySchemaThreePayload,
   passiveIncomePaused: true,
@@ -2385,7 +2725,7 @@ assert.equal(restoredOldTrueEndingSave?.trueEndingSeen, false);
 savedPayload = JSON.stringify({
   ...legacySchemaThreePayload,
   savageClearedPropertyIds: savageTargetIds,
-  savageProgressVersion: 2,
+  savageProgressVersion: 3,
   normalEndingSeen: true,
   savageEndingSeen: true,
   ultimateCleared: true,
@@ -2393,6 +2733,7 @@ savedPayload = JSON.stringify({
   selectedBattleSynergyId: 'KUGANE_TRADE_GATEWAY',
 });
 const restoredUltimateSave = loadGameSave();
+assert.equal(restoredUltimateSave?.savageProgressVersion, 3);
 assert.equal(restoredUltimateSave?.ultimateCleared, true);
 assert.equal(restoredUltimateSave?.trueEndingSeen, true);
 assert.equal(restoredUltimateSave?.selectedBattleSynergyId, 'KUGANE_TRADE_GATEWAY');

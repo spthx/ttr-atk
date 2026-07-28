@@ -11,6 +11,7 @@ class SoundEffects {
   private cinematicAudioGeneration = 0;
   private cinematicSource: AudioBufferSourceNode | null = null;
   private cinematicGain: GainNode | null = null;
+  private limitImpactTimer: number | null = null;
   public enabled: boolean = true;
 
   private stopCinematicAudio(fadeMs = 0) {
@@ -39,6 +40,10 @@ class SoundEffects {
   }
 
   stopBattleCinematicAudio(fadeMs = 160) {
+    if (this.limitImpactTimer !== null && typeof window !== 'undefined') {
+      window.clearTimeout(this.limitImpactTimer);
+      this.limitImpactTimer = null;
+    }
     this.stopCinematicAudio(fadeMs);
   }
 
@@ -560,7 +565,13 @@ class SoundEffects {
         blade.start(start);
         blade.stop(start + 0.12);
       });
-      window.setTimeout(() => this.playCapitalImpact('player', 1), 470);
+      if (this.limitImpactTimer !== null) {
+        window.clearTimeout(this.limitImpactTimer);
+      }
+      this.limitImpactTimer = window.setTimeout(() => {
+        this.limitImpactTimer = null;
+        this.playCapitalImpact('player', 1);
+      }, 470);
     } catch {
       this.playCapitalImpact('player', 1);
     }
@@ -579,7 +590,7 @@ class SoundEffects {
 
       const master = ctx.createGain();
       master.gain.setValueAtTime(0.42 * power, now);
-      master.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+      master.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
       const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
       if (panner) {
         panner.pan.setValueAtTime(panValue, now);
@@ -592,26 +603,39 @@ class SoundEffects {
       const thud = ctx.createOscillator();
       const thudGain = ctx.createGain();
       thud.type = 'sine';
-      thud.frequency.setValueAtTime(side === 'player' ? 128 : 112, now);
-      thud.frequency.exponentialRampToValueAtTime(42, now + 0.22);
-      thudGain.gain.setValueAtTime(0.8, now);
-      thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+      thud.frequency.setValueAtTime(side === 'player' ? 136 : 116, now);
+      thud.frequency.exponentialRampToValueAtTime(38, now + 0.27);
+      thudGain.gain.setValueAtTime(0.86, now);
+      thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
       thud.connect(thudGain);
       thudGain.connect(master);
       thud.start(now);
-      thud.stop(now + 0.25);
+      thud.stop(now + 0.31);
 
-      [620, 910, 1370].forEach((frequency, index) => {
+      const settleGap = 0.034 + power * 0.022;
+      [560, 860, 1320].forEach((frequency, index) => {
         const coin = ctx.createOscillator();
         const coinGain = ctx.createGain();
-        coin.type = index === 1 ? 'square' : 'triangle';
-        coin.frequency.setValueAtTime(frequency * (side === 'player' ? 1.05 : 0.92), now + index * 0.018);
-        coinGain.gain.setValueAtTime(0.18 / (index + 1), now + index * 0.018);
-        coinGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12 + index * 0.025);
+        const start = now + 0.04 + index * settleGap;
+        const ringEnd = start + 0.15 + index * 0.035;
+        coin.type = index === 1 ? 'square' : index === 2 ? 'sine' : 'triangle';
+        coin.frequency.setValueAtTime(
+          frequency * (side === 'player' ? 1.05 : 0.92),
+          start
+        );
+        coin.frequency.exponentialRampToValueAtTime(
+          frequency * 0.84,
+          ringEnd
+        );
+        coinGain.gain.setValueAtTime(
+          (0.22 / (index + 1)) * (0.78 + power * 0.22),
+          start
+        );
+        coinGain.gain.exponentialRampToValueAtTime(0.001, ringEnd);
         coin.connect(coinGain);
         coinGain.connect(master);
-        coin.start(now + index * 0.018);
-        coin.stop(now + 0.16 + index * 0.025);
+        coin.start(start);
+        coin.stop(ringEnd + 0.015);
       });
     } catch {
       // Audio fallback
@@ -644,8 +668,14 @@ class SoundEffects {
   // Official fan-kit sound first; the synth remains a resilient autoplay/file fallback.
   playDutyStart() {
     if (!this.enabled) return;
-    this.stopCinematicAudio(40);
-    this.playDutyStartSynth();
+    if (!this.playFankitAudio(
+      FANKIT_AUDIO.dutyStart,
+      0.54,
+      () => this.playDutyStartSynth(),
+      'cinematic'
+    )) {
+      this.playDutyStartSynth();
+    }
   }
 
   playFeatureUnlocked() {
@@ -657,8 +687,14 @@ class SoundEffects {
 
   playLimitBreak() {
     if (!this.enabled) return;
-    this.stopCinematicAudio(40);
-    this.playFinalPush();
+    if (!this.playFankitAudio(
+      FANKIT_AUDIO.limitBreak,
+      0.62,
+      () => this.playFinalPush(),
+      'cinematic'
+    )) {
+      this.playFinalPush();
+    }
   }
 
   private playDutyStartSynth() {
@@ -775,8 +811,14 @@ class SoundEffects {
   }
   playVictory() {
     if (!this.enabled) return;
-    this.stopCinematicAudio(40);
-    this.playVictorySynth();
+    if (!this.playFankitAudio(
+      FANKIT_AUDIO.victory,
+      0.62,
+      () => this.playVictorySynth(),
+      'cinematic'
+    )) {
+      this.playVictorySynth();
+    }
   }
 
   // Original high-fantasy fallback fanfare (not based on an existing game melody).
@@ -827,8 +869,14 @@ class SoundEffects {
 
   playDefeat() {
     if (!this.enabled) return;
-    this.stopCinematicAudio(40);
-    this.playDefeatSynth();
+    if (!this.playFankitAudio(
+      FANKIT_AUDIO.defeat,
+      0.58,
+      () => this.playDefeatSynth(),
+      'cinematic'
+    )) {
+      this.playDefeatSynth();
+    }
   }
 
   // Defeat / loss fallback synth.

@@ -178,7 +178,7 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
                 <span key={index} className={`h-1 rounded-full transition-all ${index === step ? 'w-10 bg-amber-300' : 'w-5 bg-slate-700'}`} />
               ))}
             </div>
-            <p className="launch-intro__copyright text-[10px] text-slate-400"><a className="inline-flex min-h-11 items-center px-1" href="https://jp.finalfantasyxiv.com/lodestone/special/fankit/" target="_blank" rel="noreferrer">FFXIVファンキット</a>使用の非公式ファンサイト<br /><span>© SQUARE ENIX</span></p>
+            <p className="launch-intro__copyright text-[10px] text-slate-400"><a className="inline-flex min-h-11 items-center px-1" href="https://jp.finalfantasyxiv.com/lodestone/special/fankit/" target="_blank" rel="noreferrer">FFXIVファンキット</a>使用の非公式ファンサイト／ファンゲーム<br /><span lang="en">Unofficial fan site/game.</span><br /><span>© SQUARE ENIX</span></p>
           </div>
           <button
             type="button"
