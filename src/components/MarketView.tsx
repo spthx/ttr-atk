@@ -3,7 +3,7 @@ import { Property, IndustryType, CommunityType } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER, TRADE_COMMUNITIES } from '../data/worldData';
 import { formatCurrency, formatNumber } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
-import { ArrowRight, ShieldAlert, CheckCircle2, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole, Dumbbell, Gauge, WalletCards } from 'lucide-react';
+import { ArrowRight, ShieldAlert, CheckCircle2, Crown, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole, Dumbbell, Gauge, WalletCards } from 'lucide-react';
 import { BeginnerGuide } from './BeginnerGuide';
 import { HelpTip } from './HelpTip';
 import { StrengthComparison } from './StrengthComparison';
@@ -13,6 +13,7 @@ import type { BattleReadinessResult } from '../utils/battleReadiness';
 import {
   countsTowardCityConquest,
   getCampaignProperties,
+  isNormalCityBoss,
 } from '../utils/gameBalance';
 import '../market-strength.css';
 
@@ -20,6 +21,7 @@ interface MarketViewProps {
   properties: Property[];
   totalFunds: number;
   unlockedCommunityIds: Set<CommunityType>;
+  conqueredCommunityIds: ReadonlySet<CommunityType>;
   navigationRequest?: { id: number; mode: 'map' | 'targets'; community: CommunityType | 'ALL' } | null;
   campaignMode?: 'normal' | 'savage';
   getStrengthComparison: (property: Property) => BattleReadinessResult;
@@ -70,6 +72,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
   properties,
   totalFunds,
   unlockedCommunityIds,
+  conqueredCommunityIds,
   navigationRequest,
   campaignMode = 'normal',
   getStrengthComparison,
@@ -111,10 +114,15 @@ export const MarketView: React.FC<MarketViewProps> = ({
           ...community,
           owned,
           total: targets.length,
-          conquered: targets.length > 0 && owned === targets.length,
+          currentlyControlled:
+            targets.length > 0 && owned === targets.length,
+          conquered:
+            campaignMode === 'savage'
+              ? targets.length > 0 && owned === targets.length
+              : conqueredCommunityIds.has(community.id),
         };
       }),
-    [properties]
+    [campaignMode, conqueredCommunityIds, properties]
   );
 
   const filteredProperties = useMemo(() => {
@@ -222,7 +230,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
           <div className="relative z-10 flex min-h-0 max-w-2xl flex-1 flex-col justify-center px-5 pb-2 pt-5 sm:min-h-36 sm:py-5">
             <p className={`text-[10px] font-black tracking-[0.28em] ${campaignMode === 'savage' ? 'text-rose-300' : 'text-amber-300'}`}>{campaignMode === 'savage' ? 'SAVAGE TRADE RAID' : 'GRAND TRADE CAMPAIGN'}</p>
             <h2 className="mt-1 text-2xl font-black text-white drop-shadow-lg">{campaignMode === 'savage' ? '挑戦する零式商戦を選ぶ' : '次に攻める都市を選ぶ'}</h2>
-            <p className="mt-1 text-xs text-slate-200">{campaignMode === 'savage' ? '各都市の通常商戦を再構成した1～4層の高難度交易レイドです。' : '都市を選ぶと、交渉できる事業・契約だけを表示します。'}</p>
+            <p className="mt-1 text-xs text-slate-200">{campaignMode === 'savage' ? '各都市の通常商戦を再構成した3編×1～4層、全12章の高難度交易レイドです。' : '都市を選ぶと、交渉できる事業・契約だけを表示します。'}</p>
           </div>
           <div className="relative z-20 flex items-center justify-end gap-2 px-5 pb-4 sm:absolute sm:bottom-3 sm:right-3 sm:p-0">
             {campaignMode === 'normal' && onOpenTraining && (
@@ -289,9 +297,17 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 <span className="relative z-10 flex items-center gap-1 text-xs font-black text-slate-100">{!unlocked && <LockKeyhole className="h-3 w-3 text-slate-500" />}{community.id}</span>
                 <span className="relative z-10 mt-1 block text-[11px] text-cyan-300">{community.marketCharacter}</span>
                 <span className={`relative z-10 mt-2 inline-block rounded px-1.5 py-0.5 text-[11px] font-black ${community.conquered ? 'bg-emerald-400/20 text-emerald-200' : 'bg-slate-800 text-slate-300'}`}>
-                  {community.conquered ? (campaignMode === 'savage' ? '零式踏破済み' : '制覇済み') : unlocked ? `${community.owned}/${community.total} ${campaignMode === 'savage' ? '層踏破' : '取得'}` : `${prerequisite}制覇で解放`}
+                  {community.conquered
+                    ? campaignMode === 'savage'
+                      ? '零式踏破済み'
+                      : community.currentlyControlled
+                        ? '制覇済み'
+                        : `制覇済み・現在 ${community.owned}/${community.total}`
+                    : unlocked
+                      ? `${community.owned}/${community.total} ${campaignMode === 'savage' ? '層踏破' : '取得'}`
+                      : `${prerequisite}制覇で解放`}
                 </span>
-                {!community.conquered && easiestTarget && (
+                {!community.currentlyControlled && easiestTarget && (
                   <span className="campaign-city-card__readiness">
                     <small>次の相手</small>
                     <b>{READINESS_PRESENTATION[easiestTarget.result.grade].label}</b>
@@ -428,6 +444,9 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 marketPrice: activePrice,
               });
           const propertyPresentation = getPropertyPresentation(prop.description);
+          const isBoss =
+            campaignMode === 'savage' ||
+            isNormalCityBoss(properties, prop);
 
           // Owner badge styles
           let ownerBadgeColor = 'bg-slate-800 text-slate-300 border-slate-700';
@@ -467,6 +486,16 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
                 <h3 className="trade-target-card__title">
                   <span>{prop.name}</span>
+                  {isBoss && (
+                    <span
+                      className="trade-target-card__badge trade-target-card__badge--boss"
+                      aria-label={campaignMode === 'savage' ? '零式ボス' : '都市ボス'}
+                      title={campaignMode === 'savage' ? '零式ボス' : '都市ボス'}
+                    >
+                      <Crown aria-hidden="true" />
+                      BOSS
+                    </span>
+                  )}
                   {prop.id.startsWith('prop_starter_') && !isPlayerOwned && (
                     <span className="trade-target-card__badge trade-target-card__badge--starter">
                       初心者向け

@@ -16,7 +16,7 @@ export const TRAINING_DUMMY_DEFINITIONS = [
     id: 'training_dummy_level_1',
     level: 1,
     name: '入門',
-    marketPrice: 15_000,
+    marketPrice: 7_500,
     requiredConqueredCommunityCount: 0,
     description: '小口出資と所有率の動きを確かめる、最初の商戦木人です。',
   },
@@ -34,7 +34,7 @@ export const TRAINING_DUMMY_DEFINITIONS = [
     name: '上級',
     marketPrice: 800_000,
     requiredConqueredCommunityCount: 3,
-    description: '支援元、有効なスキル、LIMIT BREAKを組み合わせる練習向けです。',
+    description: '支援元、有効なアビリティ、LIMIT BREAKを組み合わせる練習向けです。',
   },
   {
     id: 'training_dummy_level_4',

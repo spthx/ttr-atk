@@ -78,6 +78,55 @@
   font: 900 .76rem/1 ui-monospace, monospace;
 }
 
+.savage-series-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.savage-series {
+  display: grid;
+  gap: .7rem;
+  padding: .8rem;
+  border: 1px solid rgba(148, 163, 184, .18);
+  border-radius: 1rem;
+  background: rgba(2, 6, 23, .34);
+}
+
+.savage-series__header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .7rem;
+}
+
+.savage-series__header > span {
+  padding: .35rem .5rem;
+  border: 1px solid rgba(251, 113, 133, .45);
+  border-radius: .45rem;
+  color: #fecdd3;
+  background: rgba(76, 5, 25, .62);
+  font-size: .72rem;
+  font-weight: 1000;
+}
+
+.savage-series__header h2 {
+  color: #fff1f2;
+  font-size: 1rem;
+  font-weight: 1000;
+}
+
+.savage-series__header p {
+  margin-top: .1rem;
+  color: #94a3b8;
+  font-size: .7rem;
+  font-weight: 700;
+}
+
+.savage-series__header strong {
+  color: #fda4af;
+  font: 900 .7rem/1 ui-monospace, monospace;
+}
+
 .savage-layer-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -115,10 +164,41 @@
   justify-content: space-between;
 }
 
+.savage-layer-card__boss-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: .22rem;
+  margin-left: auto;
+  margin-right: .45rem;
+  padding: .16rem .38rem;
+  border: 1px solid rgba(251, 191, 36, .72);
+  border-radius: .38rem;
+  color: #fde68a;
+  background: rgba(69, 26, 3, .7);
+  box-shadow: 0 0 .65rem rgba(251, 191, 36, .18);
+  font-size: .58rem;
+  font-style: normal;
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+
+.savage-layer-card__boss-mark svg {
+  width: .78rem;
+  height: .78rem;
+}
+
 .savage-layer-card > header span {
   color: #fda4af;
   font-size: .78rem;
   font-weight: 1000;
+}
+
+.savage-layer-card > header span small {
+  display: block;
+  margin-top: .18rem;
+  color: #64748b;
+  font: 800 .56rem/1 ui-monospace, monospace;
+  letter-spacing: .06em;
 }
 
 .savage-layer-card > header svg {
@@ -299,6 +379,26 @@
   color: #fde68a;
 }
 
+.ultimate-raid-card__boss-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: .22rem;
+  margin-right: .55rem;
+  padding: .18rem .42rem;
+  border: 1px solid rgba(216, 180, 254, .88);
+  border-radius: .38rem;
+  color: #f3e8ff;
+  background: rgba(88, 28, 135, .72);
+  box-shadow: 0 0 .75rem rgba(168, 85, 247, .34);
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+
+.ultimate-raid-card__boss-mark svg {
+  width: .82rem;
+  height: .82rem;
+}
+
 .ultimate-raid-card__copy h2 {
   margin-top: .35rem;
   color: #fff7cc;
@@ -355,6 +455,18 @@
 }
 
 @media (max-width: 720px) {
+  .savage-series {
+    padding: .65rem;
+  }
+
+  .savage-series__header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .savage-series__header > strong {
+    grid-column: 2;
+  }
+
   .savage-layer-grid {
     grid-template-columns: 1fr;
   }

@@ -4,7 +4,10 @@ import { soundFx } from '../utils/audio';
 import { Zap, Check, Lock, Sparkles, Layers, Swords } from 'lucide-react';
 import { HelpTip } from './HelpTip';
 import { HELP_TEXT } from '../data/helpText';
-import { isSkillUnlocked } from '../utils/gameBalance';
+import {
+  BATTLE_SUPPORT_BALANCE,
+  isSkillUnlocked,
+} from '../utils/gameBalance';
 import { INITIAL_PROPERTIES } from '../data/initialData';
 
 interface SkillsSynergyViewProps {
@@ -55,8 +58,8 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
           <div>
             <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
               <Zap className="w-5 h-5 text-amber-400" />
-              スキル装備
-              <HelpTip term="スキル" description="買収交渉中に使える特殊コマンドです。修得済みのスキルを最大8個まで装備できます。" />
+              アビリティ装備
+              <HelpTip term="アビリティ" description="買収交渉中に使える特殊コマンドです。修得済みのアビリティを最大8個まで装備できます。" />
             </h2>
             <p className="mt-1 text-xs text-slate-400">事業・契約や業界の条件を満たすと修得できます。使用後は再使用時間が必要です。</p>
             <p className="mt-1 text-xs text-cyan-300/80">主な名称はFFXIVのアクションをモチーフにし、交易戦での効果は本作独自にアレンジしています。</p>
@@ -270,7 +273,10 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                   </div>
                   <div className="bg-slate-950 p-2 rounded border border-slate-800">
                     <span className="text-xs text-slate-400 block">戦闘連携の調達倍率</span>
-                    <strong className="text-amber-300 font-bold">×{(synergy.battleGroupMultiplier ?? 1.28).toFixed(2)}</strong>
+                    <strong className="text-amber-300 font-bold">×{(
+                      synergy.battleGroupMultiplier ??
+                      BATTLE_SUPPORT_BALANCE.synergyDefaultMultiplier
+                    ).toFixed(2)}</strong>
                   </div>
                 </div>
 

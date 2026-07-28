@@ -29,9 +29,10 @@ jobs:
         env:
           VITE_PUBLIC_BASE: /ttr-atk/
         run: pnpm run build:pages
-      - name: Copy fan-kit and title assets
+      - name: Copy fan-kit, manifest, and title assets
         run: |
           cp -R public/ff14-fankit dist/ff14-fankit
+          cp public/manifest.webmanifest dist/manifest.webmanifest
           cp public/title-hero-v1.png dist/title-hero-v1.png
           touch dist/.nojekyll
       - name: Publish gh-pages branch

@@ -27,12 +27,12 @@ const getAdvice = ({
 }: TatarAdvisorProps) => {
   if (activeTab === 'savage') {
     if (ultimateCleared) {
-      return '商戦 零式4層と絶商戦、すべて踏破でっす！ 記録戦には何度でも再挑戦できるので、自分らしい商いの回し方を磨くでっす。';
+      return '商戦 零式3編・全12章と絶商戦、すべて踏破でっす！ 記録戦には何度でも再挑戦できるので、自分らしい商いの回し方を磨くでっす。';
     }
     if (ultimateUnlocked) {
-      return '商戦 零式4層を踏破したでっす！ 次は別枠の単独最終戦「絶商戦」で、積み上げた全システムを使い切るでっす。';
+      return '商戦 零式3編・全12章を踏破したでっす！ 次は別枠の単独最終戦「絶商戦」で、積み上げた全システムを使い切るでっす。';
     }
-    return `商戦 零式は4つの地域連合へ順に挑む記録戦でっす。現在${savageClearedCount}/${savageTargetCount}層、競合アクションの予兆を覚えて次へ進むでっす！`;
+    return `商戦 零式は3編×4層を順に挑む全12章の記録戦でっす。現在${savageClearedCount}/${savageTargetCount}章、競合アクションの予兆を覚えて次へ進むでっす！`;
   }
 
   if (conqueredCommunityCount === totalCommunityCount && totalCommunityCount > 0) {
@@ -50,7 +50,7 @@ const getAdvice = ({
     return '支援元の独立危険度を点検するでっす。支援を求めすぎた相手にはネマワシが必要でっす。';
   }
   if (activeTab === 'skills') {
-    return '事業・契約の組み合わせで使えるスキルが増えるでっす。次の交渉に合う一手を選ぶでっす。';
+    return '事業・契約の組み合わせで使えるアビリティが増えるでっす。次の交渉に合う一手を選ぶでっす。';
   }
   return '本部へ挑む前に参加カンパニーを切り崩して、外部協力や公的後援と資金余力を整えるでっす。';
 };

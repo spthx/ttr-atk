@@ -2,12 +2,16 @@ import type { BattleMode, CommunityType, Property, TacticalSkill } from '../type
 import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
 
 export const PASSIVE_REVENUE_MULTIPLIER = 2;
+export const INITIAL_PLAYER_FUNDS = 20_000;
+export const PLAYER_BATTLE_CASH_CAP_RATIO = 1;
 export const BATTLE_GAUGE_SPEED_FACTOR = 4;
 export const TRAINING_GAUGE_SPEED_MULTIPLIER = 0.1;
 export const TRAINING_MIN_OWNERSHIP_PERCENT = 1;
 export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
-export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.45;
-export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 1.72;
+export const STARTER_BAKERY_ENEMY_BUDGET_RATIO = 0.8;
+export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.58;
+export const SAVAGE_LAYER_BUDGET_MULTIPLIERS = [1, 1.08, 1.16, 1.25] as const;
+export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 2.2;
 export const LIMIT_BREAK_CHARGE_PER_BAR = 100;
 export const LIMIT_BREAK_MAX_BARS = 3;
 
@@ -15,38 +19,214 @@ export const applyTrainingGaugeSpeed = (
   velocity: number,
   isTraining: boolean
 ) => velocity * (isTraining ? TRAINING_GAUGE_SPEED_MULTIPLIER : 1);
+
+export const calculatePlayerBattleCashLimit = (marketPrice: number) =>
+  Math.max(10, Math.round(Math.max(0, marketPrice) * PLAYER_BATTLE_CASH_CAP_RATIO));
 export const holdTrainingGaugeAboveDefeat = (
   gauge: number,
   isTraining: boolean
 ) => isTraining
   ? Math.min(gauge, 100 - TRAINING_MIN_OWNERSHIP_PERCENT * 2)
   : gauge;
+
+export const DIRECT_INVESTMENT_BALANCE = {
+  baseGaugeImpact: 1.2,
+  gaugeImpactPerMarketRatio: 20,
+  standardImpactCap: 14,
+  levelOneTrainingMultiplier: 12.5,
+  levelOneTrainingImpactCap: 40,
+} as const;
+
+/**
+ * Direct investment normally uses one campaign-wide curve. The first
+ * training dummy alone amplifies that same input so a new player can see a
+ * complete capital cycle in a few commands instead of grinding for minutes.
+ */
+export const calculateDirectInvestmentGaugeImpact = ({
+  investmentAmount,
+  marketPrice,
+  windMultiplier = 1,
+  levelOneTraining = false,
+}: {
+  investmentAmount: number;
+  marketPrice: number;
+  windMultiplier?: number;
+  levelOneTraining?: boolean;
+}) => {
+  const baseImpact =
+    (
+      DIRECT_INVESTMENT_BALANCE.baseGaugeImpact +
+      (
+        Math.max(0, investmentAmount) /
+        Math.max(1, marketPrice)
+      ) *
+        DIRECT_INVESTMENT_BALANCE.gaugeImpactPerMarketRatio
+    ) *
+    Math.max(0, windMultiplier);
+
+  return levelOneTraining
+    ? Math.min(
+        DIRECT_INVESTMENT_BALANCE.levelOneTrainingImpactCap,
+        baseImpact *
+          DIRECT_INVESTMENT_BALANCE.levelOneTrainingMultiplier
+      )
+    : Math.min(
+        DIRECT_INVESTMENT_BALANCE.standardImpactCap,
+        baseImpact
+      );
+};
+
+export type BattleTerminalWinner = 'player' | 'opponent' | null;
+
+/**
+ * Ownership alone decides a completed battle. Hand cash and enemy reserve are
+ * deliberately absent so a temporary liquidity shortage can never settle it.
+ */
+export const getBattleTerminalWinner = (
+  gauge: number
+): BattleTerminalWinner => {
+  if (gauge <= -100) return 'player';
+  if (gauge >= 100) return 'opponent';
+  return null;
+};
 export const LIMIT_BREAK_MAX_CHARGE =
   LIMIT_BREAK_CHARGE_PER_BAR * LIMIT_BREAK_MAX_BARS;
 export const LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER = 1.2;
-export const SHORT_MANUAL_FINISH_GAUGE = -99;
+export const BATTLE_CASH_RECOVERY_RATE_PER_SECOND = 0.003;
+export const BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO = 0.2;
+
+export type BattleCashRecoveryWindType =
+  | 'TAILWIND_PLAYER'
+  | 'HEADWIND_PLAYER'
+  | 'TAILWIND_ENEMY'
+  | 'CROSSWIND'
+  | 'CALM';
+
+export const BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS: Record<
+  BattleCashRecoveryWindType,
+  Readonly<{ player: number; enemy: number }>
+> = {
+  TAILWIND_PLAYER: { player: 1.25, enemy: 1 },
+  HEADWIND_PLAYER: { player: 0.75, enemy: 1 },
+  TAILWIND_ENEMY: { player: 1, enemy: 1.25 },
+  CROSSWIND: { player: 1.2, enemy: 1.2 },
+  CALM: { player: 1, enemy: 1 },
+};
+
+export interface BattleCashRecoveryState {
+  availableFunds: number;
+  cumulativeRecovered: number;
+}
+
+export interface BattleCashRecoveryStepInput
+  extends BattleCashRecoveryState {
+  baselineFunds: number;
+  elapsedSeconds: number;
+  timeScale: number;
+  windMultiplier: number;
+  terminal: boolean;
+}
+
+export interface BattleCashRecoveryStepResult
+  extends BattleCashRecoveryState {
+  recoveredThisStep: number;
+  cumulativeRecoveryRatio: number;
+}
+
+const finiteNonNegative = (value: number) =>
+  Number.isFinite(value) ? Math.max(0, value) : 0;
+
+/**
+ * Advances one side's battle-local cash tank without touching ownership,
+ * invested capital, or any persistent economy value.
+ */
+export const advanceBattleCashRecovery = ({
+  baselineFunds,
+  availableFunds,
+  cumulativeRecovered,
+  elapsedSeconds,
+  timeScale,
+  windMultiplier,
+  terminal,
+}: BattleCashRecoveryStepInput): BattleCashRecoveryStepResult => {
+  const baseline = finiteNonNegative(baselineFunds);
+  const currentFunds = Math.min(
+    baseline,
+    finiteNonNegative(availableFunds)
+  );
+  const cumulativeCap =
+    baseline * BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO;
+  const recoveredSoFar = Math.min(
+    cumulativeCap,
+    finiteNonNegative(cumulativeRecovered)
+  );
+  const unchanged = {
+    availableFunds: currentFunds,
+    cumulativeRecovered: recoveredSoFar,
+    recoveredThisStep: 0,
+    cumulativeRecoveryRatio:
+      baseline > 0 ? recoveredSoFar / baseline : 0,
+  };
+
+  if (
+    terminal ||
+    baseline <= 0 ||
+    elapsedSeconds <= 0 ||
+    timeScale <= 0 ||
+    windMultiplier <= 0
+  ) {
+    return unchanged;
+  }
+
+  const requestedRecovery =
+    baseline *
+    BATTLE_CASH_RECOVERY_RATE_PER_SECOND *
+    finiteNonNegative(elapsedSeconds) *
+    finiteNonNegative(timeScale) *
+    finiteNonNegative(windMultiplier);
+  const recoveredThisStep = Math.min(
+    requestedRecovery,
+    baseline - currentFunds,
+    cumulativeCap - recoveredSoFar
+  );
+  const nextCumulativeRecovered =
+    recoveredSoFar + recoveredThisStep;
+
+  return {
+    availableFunds: currentFunds + recoveredThisStep,
+    cumulativeRecovered: nextCumulativeRecovered,
+    recoveredThisStep,
+    cumulativeRecoveryRatio:
+      baseline > 0 ? nextCumulativeRecovered / baseline : 0,
+  };
+};
+
+export const getBattleCashRecoveryWindMultipliers = (
+  windType: BattleCashRecoveryWindType
+) => BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS[windType];
 
 export const TACTICAL_SKILL_BALANCE = {
   fastAction: {
-    durationMs: 10_000,
+    durationMs: 15_000,
     cooldownMs: 18_000,
     baseCommandProgressPerTick: 2.8,
-    boostedCommandProgressPerTick: 5,
+    boostedCommandProgressPerTick: 5.2,
   },
   moraleSupport: {
     loyaltyRiskDivisor: 2,
   },
   disruption: {
-    durationMs: 9_000,
-    interruptChance: 0.7,
-    collapseMarketRatio: 0.12,
+    durationMs: 15_000,
+    interruptChance: 0.75,
+    collapseMarketRatio: 0.14,
   },
-  demoralize: {
-    durationMs: 9_000,
-    enemyWaitMultiplier: 1.6,
+  cover: {
+    durationMs: 10_000,
+    absorbRatio: 0.6,
+    gaugeCapacity: 24,
   },
   capitalBoost: {
-    marketRatio: 0.3,
+    marketRatio: 0.4,
   },
   livingDead: {
     waitingDurationMs: 10_000,
@@ -56,18 +236,18 @@ export const TACTICAL_SKILL_BALANCE = {
     requiredAssetValue: 1_000_000,
   },
   battleLitany: {
-    durationMs: 7_000,
-    pushMultiplier: 1.5,
+    durationMs: 14_000,
+    pushMultiplier: 1.8,
   },
   eraWind: {
-    durationMs: 12_000,
-    cooldownMs: 18_000,
+    durationMs: 16_000,
+    cooldownMs: 0,
     minimumCost: 100_000,
     marketCostRatio: 0.02,
-    useCostMultipliers: [1, 1.5, 2],
-    baseGaugePushPerSecond: 0.9,
-    pushStepPerUse: 0.2,
-    maxUsesPerBattle: 3,
+    useCostMultipliers: [1],
+    baseGaugePushPerSecond: 1.55,
+    pushStepPerUse: 0,
+    maxUsesPerBattle: 1,
   },
 } as const;
 
@@ -152,9 +332,9 @@ export const resolveLivingDeadOutcome = (
 };
 
 export const LIMIT_BREAK_MULTIPLIERS = {
-  1: 1.44,
-  2: 1.8,
-  3: 2.22,
+  1: 1.56,
+  2: 1.98,
+  3: 2.46,
 } as const;
 
 export type LimitBreakTier = 0 | 1 | 2 | 3;
@@ -163,9 +343,23 @@ export const LIMIT_BREAK_OWNERSHIP_CAPS: Record<
   Exclude<LimitBreakTier, 0>,
   number
 > = {
-  1: 10,
-  2: 20,
+  1: 7,
+  2: 14,
   3: 30,
+};
+
+/**
+ * Early LIMIT BREAKs still aggregate every participating company, but may not
+ * turn a cheap target after a price-band transition into several targets'
+ * worth of permanent capital. LB3 remains the uncapped late-game payoff.
+ */
+export const LIMIT_BREAK_CAPITAL_CAP_RATIOS: Record<
+  Exclude<LimitBreakTier, 0>,
+  number | null
+> = {
+  1: 0.8,
+  2: 1.2,
+  3: null,
 };
 
 export const ENEMY_BALANCE_FACTOR = {
@@ -177,6 +371,177 @@ export const ENEMY_BALANCE_FACTOR = {
   advanced: 1.55,
   cartelHQ: 1.75,
 } as const;
+
+export const BATTLE_SUPPORT_BALANCE = {
+  subsidiaryMarketRatio: 0.52,
+  subsidiaryImpactBase: 1.2,
+  subsidiaryImpactPerMarketRatio: 9,
+  subsidiaryImpactCap: 7.5,
+  synergyMemberMarketRatio: 0.46,
+  synergyDefaultMultiplier: 1.45,
+  synergyImpactBase: 3,
+  synergyImpactPerMarketRatio: 9,
+  synergyImpactCap: 16,
+} as const;
+
+export const BATTLE_LOYALTY_BALANCE = {
+  individualRiskIncrease: 12,
+  limitBreakRiskIncrease: 8,
+  synergyRiskIncrease: 10,
+  celebrationRiskReduction: 20,
+  celebrationRewardRatio: 0.1,
+  reacquisitionSupportBonusPerLevel: 0.1,
+  reacquisitionRiskReductionPerLevel: 2,
+  maxReacquisitionLevel: 2,
+} as const;
+
+export const getReacquisitionLevel = (property: Property) =>
+  Math.max(
+    0,
+    Math.min(
+      BATTLE_LOYALTY_BALANCE.maxReacquisitionLevel,
+      Math.floor(property.reacquisitionLevel ?? 0)
+    )
+  );
+
+export const getSubsidiarySupportMultiplier = (property: Property) =>
+  1 +
+  getReacquisitionLevel(property) *
+    BATTLE_LOYALTY_BALANCE.reacquisitionSupportBonusPerLevel;
+
+export const calculateSubsidiarySupportAmount = (property: Property) =>
+  Math.round(
+    property.marketPrice *
+      BATTLE_SUPPORT_BALANCE.subsidiaryMarketRatio *
+      getSubsidiarySupportMultiplier(property)
+  );
+
+export const sortSubsidiariesBySupport = (properties: Property[]) =>
+  [...properties].sort((left, right) => {
+    const supportDifference =
+      calculateSubsidiarySupportAmount(right) -
+      calculateSubsidiarySupportAmount(left);
+    if (supportDifference !== 0) return supportDifference;
+    return left.name.localeCompare(right.name, 'ja');
+  });
+
+export const getSubsidiaryRiskIncrease = (
+  property: Property,
+  baseIncrease: number
+) =>
+  Math.max(
+    1,
+    baseIncrease -
+      getReacquisitionLevel(property) *
+        BATTLE_LOYALTY_BALANCE.reacquisitionRiskReductionPerLevel
+  );
+
+export const calculateCelebrationGiftCost = (
+  subsidiaries: Property[],
+  victoryReward: number
+) => {
+  if (subsidiaries.length === 0 || victoryReward <= 0) return 0;
+  return Math.max(
+    1,
+    Math.round(
+      victoryReward * BATTLE_LOYALTY_BALANCE.celebrationRewardRatio
+    )
+  );
+};
+
+/**
+ * A target-independent company strength score used by the map comparison and
+ * victory growth presentation. Cash is immediately deployable; subsidiaries
+ * contribute their repeatable support value and stable revenue.
+ */
+export const calculateCompanyStrengthScore = (
+  totalFunds: number,
+  subsidiaries: Property[]
+) =>
+  Math.max(
+    0,
+    Math.round(
+      Math.max(0, totalFunds) +
+        subsidiaries.reduce(
+          (total, property) =>
+            total +
+            property.marketPrice *
+              BATTLE_SUPPORT_BALANCE.subsidiaryMarketRatio *
+              getSubsidiarySupportMultiplier(property) +
+            property.annualRevenue * PASSIVE_REVENUE_MULTIPLIER * 12,
+          0
+        )
+    )
+  );
+
+export interface CompanyStrengthLevel {
+  level: number;
+  progressPercent: number;
+  currentThreshold: number;
+  nextThreshold: number;
+}
+
+export const getCompanyStrengthLevel = (
+  strengthScore: number
+): CompanyStrengthLevel => {
+  const score = Math.max(0, strengthScore);
+  const level = Math.max(
+    1,
+    Math.min(99, Math.floor(Math.log2(score / 5_000 + 1) * 4) + 1)
+  );
+  const currentThreshold =
+    5_000 * (2 ** ((level - 1) / 4) - 1);
+  const nextThreshold =
+    5_000 * (2 ** (level / 4) - 1);
+  const progressPercent =
+    nextThreshold <= currentThreshold
+      ? 100
+      : Math.max(
+          0,
+          Math.min(
+            100,
+            ((score - currentThreshold) /
+              (nextThreshold - currentThreshold)) *
+              100
+          )
+        );
+  return {
+    level,
+    progressPercent,
+    currentThreshold: Math.round(currentThreshold),
+    nextThreshold: Math.round(nextThreshold),
+  };
+};
+
+export const getEnemyMinimumCommitment = (marketPrice: number) =>
+  Math.max(10, Math.round(Math.max(0, marketPrice) * 0.02));
+
+/** Normal-mode only. Savage and Ultimate keep their full encounter budgets. */
+export const NORMAL_ENEMY_BUDGET_MULTIPLIER = 0.96;
+
+export const NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS = {
+  tutorial: 0.72,
+  gridania: 0.82,
+  limsa: 0.86,
+  midgameAndLater: 1,
+} as const;
+
+export const getNormalEnemyCampaignMultiplier = (
+  targetProperty: Property,
+  isTutorial: boolean
+) => {
+  if (isTutorial) return NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS.tutorial;
+  const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
+    targetProperty.community
+  );
+  if (campaignIndex === 0) {
+    return NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS.gridania;
+  }
+  if (campaignIndex === 1) {
+    return NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS.limsa;
+  }
+  return NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS.midgameAndLater;
+};
 
 interface InfluenceBudgetModifier {
   enemyBudgetDiscount: number;
@@ -210,6 +575,119 @@ export const getCampaignProperties = (
       property.community === community && countsTowardCityConquest(property)
   );
 
+export type BossAbilityTier =
+  | 'none'
+  | 'boss'
+  | 'cover'
+  | 'enhanced_cover'
+  | 'invincible';
+
+export const isNormalCityBoss = (
+  properties: Property[],
+  targetProperty: Property
+) => {
+  const cityTargets = getCampaignProperties(
+    properties,
+    targetProperty.community
+  );
+  return cityTargets.at(-1)?.id === targetProperty.id;
+};
+
+export const getBossAbilityTier = ({
+  targetProperty,
+  isCityBoss,
+  isSavage = false,
+  isUltimate = false,
+}: {
+  targetProperty: Property;
+  isCityBoss: boolean;
+  isSavage?: boolean;
+  isUltimate?: boolean;
+}): BossAbilityTier => {
+  if (isUltimate) return 'invincible';
+  if (isSavage) {
+    const layer = getSavageLayer(targetProperty);
+    if (layer >= 4) return 'invincible';
+    if (layer >= 2) return 'enhanced_cover';
+    return 'cover';
+  }
+  if (!isCityBoss) return 'none';
+  const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
+    targetProperty.community
+  );
+  if (campaignIndex >= 9) return 'invincible';
+  if (campaignIndex >= 7) return 'enhanced_cover';
+  if (campaignIndex >= 3) return 'cover';
+  return 'boss';
+};
+
+export const BOSS_COVER_BALANCE = {
+  triggerPlayerOwnership: 60,
+  cover: {
+    durationMs: 10_000,
+    absorbRatio: 0.65,
+    gaugeCapacity: 24,
+  },
+  enhancedCover: {
+    durationMs: 12_000,
+    absorbRatio: 0.8,
+    gaugeCapacity: 36,
+  },
+  invincible: {
+    durationMs: 8_000,
+    absorbRatio: 1,
+    gaugeCapacity: Number.POSITIVE_INFINITY,
+  },
+} as const;
+
+export const applyCoverToGaugeDelta = ({
+  currentGauge,
+  nextGauge,
+  protects,
+  absorbRatio,
+  remainingGaugeCapacity,
+}: {
+  currentGauge: number;
+  nextGauge: number;
+  protects: 'player' | 'opponent';
+  absorbRatio: number;
+  remainingGaugeCapacity: number;
+}) => {
+  const delta = nextGauge - currentGauge;
+  const incoming =
+    protects === 'player' ? Math.max(0, delta) : Math.max(0, -delta);
+  if (incoming <= 0 || absorbRatio <= 0 || remainingGaugeCapacity <= 0) {
+    return {
+      nextGauge,
+      absorbedGauge: 0,
+      remainingGaugeCapacity: Math.max(0, remainingGaugeCapacity),
+    };
+  }
+  const absorbedGauge = Math.min(
+    incoming * Math.min(1, Math.max(0, absorbRatio)),
+    remainingGaugeCapacity
+  );
+  return {
+    nextGauge:
+      protects === 'player'
+        ? nextGauge - absorbedGauge
+        : nextGauge + absorbedGauge,
+    absorbedGauge,
+    remainingGaugeCapacity: Math.max(
+      0,
+      remainingGaugeCapacity - absorbedGauge
+    ),
+  };
+};
+
+export const getSavageLayer = (targetProperty: Property) => {
+  const match = targetProperty.name.match(/商戦 零式：第([1-4])層/);
+  return match ? Math.max(1, Math.min(4, Number(match[1]))) : 1;
+};
+
+export const getSavageLayerBudgetMultiplier = (targetProperty: Property) =>
+  SAVAGE_LAYER_BUDGET_MULTIPLIERS[getSavageLayer(targetProperty) - 1];
+
 export const getEnemyDifficultyLevel = (
   targetProperty: Property,
   isTutorial: boolean,
@@ -218,7 +696,7 @@ export const getEnemyDifficultyLevel = (
 ) => {
   if (isTutorial) return 0;
   if (isUltimate) return 6;
-  if (isSavage) return 5;
+  if (isSavage) return getSavageLayer(targetProperty) >= 3 ? 6 : 5;
   if (targetProperty.id === 'prop_casino_grand') return 4;
   const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
   if (campaignIndex === 0) return 1;
@@ -267,14 +745,30 @@ export const calculateEnemyBudget = ({
               ? ENEMY_BALANCE_FACTOR.uldah
               : ENEMY_BALANCE_FACTOR.advanced;
 
-  return Math.round(
+  const calculatedBudget = Math.round(
     baseBudget * balanceFactor *
     (isUltimate
       ? ULTIMATE_ENEMY_BUDGET_MULTIPLIER
       : isSavage
-        ? SAVAGE_ENEMY_BUDGET_MULTIPLIER
-        : 1)
+        ? SAVAGE_ENEMY_BUDGET_MULTIPLIER *
+          getSavageLayerBudgetMultiplier(targetProperty)
+        : NORMAL_ENEMY_BUDGET_MULTIPLIER *
+          getNormalEnemyCampaignMultiplier(targetProperty, isTutorial))
   );
+
+  if (
+    !isTutorial &&
+    !isSavage &&
+    !isUltimate &&
+    targetProperty.id === 'prop_starter_bakery'
+  ) {
+    return Math.max(
+      calculatedBudget,
+      Math.round(price * STARTER_BAKERY_ENEMY_BUDGET_RATIO)
+    );
+  }
+
+  return calculatedBudget;
 };
 
 export const getLimitBreakTier = (
@@ -302,18 +796,6 @@ export const getChargedLimitBreakTier = (
 /** Every LIMIT BREAK spends the entire stored gauge, even when only one bar fires. */
 export const consumeLimitBreakCharge = (_charge: number) => 0;
 
-/**
- * Once the rival is SHORT, passive capital pressure may reach 99.5% ownership,
- * but the player must provide the finishing input.
- */
-export const holdGaugeForManualShortFinish = (
-  nextGauge: number,
-  enemyReserve: number
-) =>
-  enemyReserve <= 0 && nextGauge <= -100
-    ? SHORT_MANUAL_FINISH_GAUGE
-    : nextGauge;
-
 export const calculateLimitBreakChargeGain = (
   effectiveCapitalMovement: number,
   targetMarketPrice: number
@@ -336,12 +818,25 @@ export const calculateLimitBreakAmount = (
   if (tier === 0) return 0;
   const selfSlot = Math.round(targetMarketPrice * 0.28);
   const subsidiarySlots = participatingSubsidiaries.reduce(
-    (total, property) => total + Math.round(property.marketPrice * 0.28),
+    (total, property) =>
+      total +
+      Math.round(
+        property.marketPrice *
+          0.28 *
+          getSubsidiarySupportMultiplier(property)
+      ),
     0
   );
-  return Math.round(
+  const aggregatedAmount = Math.round(
     (selfSlot + subsidiarySlots) * LIMIT_BREAK_MULTIPLIERS[tier]
   );
+  const capRatio = LIMIT_BREAK_CAPITAL_CAP_RATIOS[tier];
+  return capRatio === null
+    ? aggregatedAmount
+    : Math.min(
+        aggregatedAmount,
+        Math.round(Math.max(0, targetMarketPrice) * capRatio)
+      );
 };
 
 export const calculateLimitBreakOwnershipPush = (

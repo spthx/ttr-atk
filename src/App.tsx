@@ -46,10 +46,13 @@ import {
   saveGame,
 } from './utils/saveData';
 import {
+  BATTLE_LOYALTY_BALANCE,
   calculateEnemyBudget,
   calculateTotalAssetValue,
   getCampaignProperties,
   getEnemyDifficultyLevel,
+  INITIAL_PLAYER_FUNDS,
+  isNormalCityBoss,
   isSkillUnlocked,
   PASSIVE_REVENUE_MULTIPLIER,
   TACTICAL_SKILL_BALANCE,
@@ -74,6 +77,10 @@ import {
   persistPendingBattleSession,
 } from './utils/battleSession';
 import {
+  getUnlockedCommunityIds,
+  normalizeConqueredCommunityIds,
+} from './utils/campaignProgress';
+import {
   applySavageSynergyUpgrades,
   buildUltimateProperty,
   buildSavageProperties,
@@ -86,6 +93,8 @@ import {
 } from './utils/savage';
 
 export { PASSIVE_REVENUE_MULTIPLIER };
+
+const LIGHTWEIGHT_MODE_STORAGE_KEY = 'ttr-lightweight-mode';
 
 type FeatureUnlockId =
   | 'market_wind'
@@ -173,11 +182,23 @@ export default function App() {
   const pendingBattleSession = pendingBattleSessionRef.current;
 
   // --- Game Core State ---
-  const [totalFunds, setTotalFunds] = useState<number>(initialSave?.totalFunds ?? 50_000);
+  const [totalFunds, setTotalFunds] = useState<number>(
+    initialSave?.totalFunds ?? INITIAL_PLAYER_FUNDS
+  );
   const [limitBreakCharge, setLimitBreakCharge] = useState<number>(
     initialSave?.limitBreakCharge ?? 0
   );
   const [properties, setProperties] = useState<Property[]>(() => restoreProperties(initialSave));
+  const [conqueredCommunityIds, setConqueredCommunityIds] = useState<
+    CommunityType[]
+  >(() =>
+    normalizeConqueredCommunityIds({
+      properties: restoreProperties(initialSave),
+      savedCommunityIds: initialSave?.conqueredCommunityIds,
+      seenUnlockIds: initialSave?.seenUnlockIds,
+      normalEndingSeen: initialSave?.normalEndingSeen,
+    })
+  );
   const [skills, setSkills] = useState<TacticalSkill[]>(INITIAL_SKILLS);
   const [equippedSkillIds, setEquippedSkillIds] = useState<string[]>(
     initialSave?.equippedSkillIds ?? []
@@ -194,8 +215,9 @@ export default function App() {
   );
   const normalizedInitialSavageClears = normalizeSavageClearedRaidIds(
     initialSave?.savageClearedPropertyIds ?? [],
-    initialSave?.savageProgressVersion === 2,
-    initialSave?.savageEndingSeen === true
+    initialSave?.savageProgressVersion,
+    initialSave?.savageEndingSeen === true ||
+      initialSave?.ultimateCleared === true
   );
   const initialSavageComplete =
     normalizedInitialSavageClears.length === SAVAGE_RAID_DEFINITIONS.length;
@@ -238,6 +260,13 @@ export default function App() {
     pendingBattleSession ? 0 : 1
   );
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [lightweightMode, setLightweightMode] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(LIGHTWEIGHT_MODE_STORAGE_KEY) !== 'off';
+    } catch {
+      return true;
+    }
+  });
   const [logs, setLogs] = useState<GameLog[]>([]);
   const [companyName, setCompanyName] = useState<string>(
     initialSave?.companyName || loadLegacyCompanyName() || GAME_WORLD.companyName
@@ -258,6 +287,20 @@ export default function App() {
     mode: 'map' | 'targets';
     community: CommunityType | 'ALL';
   } | null>(null);
+  const deferredBattleIncomeRef = useRef(0);
+
+  useEffect(() => {
+    const unlockAudio = () => soundFx.unlock();
+    window.addEventListener('pointerdown', unlockAudio, { capture: true });
+    window.addEventListener('keydown', unlockAudio, { capture: true });
+    window.addEventListener('pageshow', unlockAudio);
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio, { capture: true });
+      window.removeEventListener('keydown', unlockAudio, { capture: true });
+      window.removeEventListener('pageshow', unlockAudio);
+    };
+  }, []);
+
   const completeLaunchIntro = () => {
     const normalizedName = companyName.trim() || GAME_WORLD.companyName;
     setCompanyName(normalizedName);
@@ -292,21 +335,24 @@ export default function App() {
   }, [ownedProperties]);
 
   const communityProgress = useMemo(() => {
+    const conqueredIds = new Set(conqueredCommunityIds);
     return TRADE_COMMUNITIES.map((community) => {
       const communityProperties = getCampaignProperties(properties, community.id);
       const owned = communityProperties.filter(
         (property) => property.owner === 'player'
       ).length;
+      const currentlyControlled =
+        communityProperties.length > 0 && owned === communityProperties.length;
 
       return {
         ...community,
         owned,
         total: communityProperties.length,
-        conquered:
-          communityProperties.length > 0 && owned === communityProperties.length,
+        conquered: conqueredIds.has(community.id),
+        currentlyControlled,
       };
     });
-  }, [properties]);
+  }, [conqueredCommunityIds, properties]);
 
   const conqueredCommunityCount = communityProgress.filter(
     (community) => community.conquered
@@ -316,16 +362,14 @@ export default function App() {
     ownedProperties.length
   );
 
-  const unlockedCommunityIds = useMemo(() => {
-    const unlocked = new Set<CommunityType>();
-    COMMUNITY_CAMPAIGN_ORDER.forEach((communityId, index) => {
-      const priorCitiesConquered = COMMUNITY_CAMPAIGN_ORDER
-        .slice(0, index)
-        .every((priorId) => communityProgress.find((city) => city.id === priorId)?.conquered);
-      if (index === 0 || priorCitiesConquered) unlocked.add(communityId);
-    });
-    return unlocked;
-  }, [communityProgress]);
+  const conqueredCommunityIdSet = useMemo(
+    () => new Set(conqueredCommunityIds),
+    [conqueredCommunityIds]
+  );
+  const unlockedCommunityIds = useMemo(
+    () => getUnlockedCommunityIds(conqueredCommunityIdSet),
+    [conqueredCommunityIdSet]
+  );
 
   const tradeAllianceUnlocked = !!communityProgress.find(
     (community) => community.id === 'ウルダハ'
@@ -412,7 +456,7 @@ export default function App() {
         entry.playerBonus = 0.08;
         entry.enemyBudgetDiscount = 0.05;
       }
-      if (community.conquered) {
+      if (community.currentlyControlled) {
         entry.label = '地域制覇';
         entry.playerBonus = 0.12;
         entry.enemyBudgetDiscount = 0.08;
@@ -571,7 +615,7 @@ export default function App() {
     } else if (endingNotice === 'savage') {
       setSavageEndingSeen(true);
       setActiveTab('savage');
-      addGameLog('【絶商戦 解放】商戦 零式4層を踏破。別枠の最終高難度交易戦への挑戦資格を得ました！', 'success');
+      addGameLog('【絶商戦 解放】商戦 零式3編・全12章を踏破。別枠の最終高難度交易戦への挑戦資格を得ました！', 'success');
     } else if (endingNotice === 'true') {
       setTrueEndingSeen(true);
       setActiveTab('savage');
@@ -605,8 +649,9 @@ export default function App() {
     return Math.round(base * bonusMultiplier * PASSIVE_REVENUE_MULTIPLIER);
   }, [bonusMultiplier, ownedProperties, savageClearedSet]);
 
-  const persistGameState = () => {
-    saveGame({
+  type SavePayload = Parameters<typeof saveGame>[0];
+  const persistGameState = (overrides: Partial<SavePayload> = {}) => {
+    return saveGame({
       companyName: companyName.trim() || GAME_WORLD.companyName,
       totalFunds,
       properties,
@@ -615,13 +660,15 @@ export default function App() {
       seenUnlockIds,
       limitBreakCharge,
       savageClearedPropertyIds,
-      savageProgressVersion: 2,
+      savageProgressVersion: 3,
       normalEndingSeen,
+      conqueredCommunityIds,
       savageEndingSeen,
       ultimateCleared,
       trueEndingSeen,
       selectedBattleSynergyId,
       passiveIncomePaused: false,
+      ...overrides,
     });
   };
 
@@ -645,26 +692,42 @@ export default function App() {
   useEffect(() => {
     const timer = setInterval(() => {
       if (passiveRevenue > 0) {
-        setTotalFunds((prev) => prev + passiveRevenue);
+        if (activeBattleProperty) {
+          // Do not rerender and synchronously rewrite the full save every
+          // second behind an iPad battle. Income still accrues and is applied
+          // as one state update when the modal closes.
+          deferredBattleIncomeRef.current += passiveRevenue;
+        } else {
+          setTotalFunds((prev) => prev + passiveRevenue);
+        }
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [passiveRevenue]);
+  }, [activeBattleProperty, passiveRevenue]);
 
   useEffect(() => {
-    if (showLaunchIntro) return;
+    if (activeBattleProperty || deferredBattleIncomeRef.current <= 0) return;
+    const deferredIncome = deferredBattleIncomeRef.current;
+    deferredBattleIncomeRef.current = 0;
+    setTotalFunds((current) => current + deferredIncome);
+  }, [activeBattleProperty]);
+
+  useEffect(() => {
+    if (showLaunchIntro || activeBattleProperty) return;
     const timer = window.setTimeout(() => {
       persistGameState();
     }, 400);
     return () => window.clearTimeout(timer);
   }, [
     alliance,
+    activeBattleProperty,
     activeBattleMode,
     companyName,
     equippedSkillIds,
     limitBreakCharge,
     normalEndingSeen,
+    conqueredCommunityIds,
     properties,
     savageClearedPropertyIds,
     savageEndingSeen,
@@ -700,6 +763,7 @@ export default function App() {
       return;
     }
     soundFx.playCoin();
+    persistGameState();
     persistPendingBattleSession('normal', property);
     setBattleTimeScale(0);
     setActiveBattleMode('normal');
@@ -709,6 +773,7 @@ export default function App() {
   const handleStartSavageBuyout = (property: Property) => {
     if (!savageUnlocked || !savageUnlockedIds.has(property.id)) return;
     soundFx.playCoin();
+    persistGameState();
     persistPendingBattleSession('savage', property);
     setBattleTimeScale(0);
     setActiveBattleMode('savage');
@@ -718,6 +783,7 @@ export default function App() {
   const handleStartUltimateBuyout = (property: Property) => {
     if (!ultimateUnlocked) return;
     soundFx.playCoin();
+    persistGameState();
     persistPendingBattleSession('ultimate', property);
     setBattleTimeScale(0);
     setActiveBattleMode('ultimate');
@@ -747,6 +813,7 @@ export default function App() {
     settlementCost,
     battleCashDelta,
     victoryReward,
+    celebrationGiftCost,
     rebelledProperties,
     survivingRiskUpdates,
   }: BattleResult) => {
@@ -754,11 +821,17 @@ export default function App() {
       !activeBattleProperty ||
       targetProperty.id !== activeBattleProperty.id
     ) {
-      return;
+      return false;
     }
-    clearPendingBattleSession();
     if (activeBattleMode === 'training') {
-      persistGameState();
+      const settledTrainingFunds =
+        totalFunds + deferredBattleIncomeRef.current;
+      if (!persistGameState({ totalFunds: settledTrainingFunds })) {
+        return false;
+      }
+      deferredBattleIncomeRef.current = 0;
+      setTotalFunds(settledTrainingFunds);
+      clearPendingBattleSession();
       addGameLog(
         winner === 'player'
           ? `【木人討滅成功】${targetProperty.name}を討滅しました。訓練用の出資・LB増減・勝敗は保存されません。`
@@ -769,7 +842,7 @@ export default function App() {
       setActiveBattleMode('normal');
       setBattleTimeScale(1);
       setShowTrainingSelector(true);
-      return;
+      return true;
     }
 
     const isNormalBattle = activeBattleMode === 'normal';
@@ -787,26 +860,82 @@ export default function App() {
       ? calculateLiquidationCashback(rebelledProperties)
       : 0;
     // 仲介手数料に加え、直接出資の一部が買収費用・撤退損として確定する。
-    setTotalFunds((prev) =>
-      Math.max(
-        0,
-        prev -
-          brokerageFee -
-          settlementCost +
-          battleCashDelta +
-          (winner === 'player' ? victoryReward : 0) +
-          liquidationCashback
-      )
+    const settledTotalFunds = Math.max(
+      0,
+      totalFunds +
+        deferredBattleIncomeRef.current -
+        brokerageFee -
+        settlementCost +
+        battleCashDelta +
+        (winner === 'player' ? victoryReward : 0) +
+        liquidationCashback -
+        celebrationGiftCost
     );
+    const currentlyConquersTargetCity =
+      isNormalBattle &&
+      winner === 'player' &&
+      getCampaignProperties(
+        projectedProperties,
+        targetProperty.community
+      ).every((property) => property.owner === 'player');
+    const newlyConquered =
+      currentlyConquersTargetCity &&
+      !conqueredCommunityIdSet.has(targetProperty.community);
+    const projectedConqueredCommunityIds = newlyConquered
+      ? COMMUNITY_CAMPAIGN_ORDER.filter(
+          (communityId) =>
+            conqueredCommunityIdSet.has(communityId) ||
+            communityId === targetProperty.community
+        )
+      : conqueredCommunityIds;
+    const breaksAlliance =
+      isNormalBattle &&
+      winner === 'player' &&
+      shouldBreakAllianceForTarget(alliance, targetProperty);
+    const projectedAlliance: AllianceState = breaksAlliance
+      ? {
+          allyId: '',
+          allyName: '',
+          active: false,
+          allyKind: 'company',
+          relationType: 'commercial_alliance',
+        }
+      : alliance;
+    const projectedSavageClearedPropertyIds =
+      activeBattleMode === 'savage' && winner === 'player'
+        ? Array.from(new Set([...savageClearedPropertyIds, targetProperty.id]))
+        : savageClearedPropertyIds;
+    const projectedUltimateCleared =
+      ultimateCleared ||
+      (activeBattleMode === 'ultimate' && winner === 'player');
+
+    // Save the complete, deterministic result before mutating React state or
+    // deleting the recovery marker. A denied Storage write leaves the result
+    // button retryable instead of partially applying the settlement.
+    if (!persistGameState({
+      totalFunds: settledTotalFunds,
+      properties: projectedProperties,
+      alliance: projectedAlliance,
+      conqueredCommunityIds: projectedConqueredCommunityIds,
+      savageClearedPropertyIds: projectedSavageClearedPropertyIds,
+      ultimateCleared: projectedUltimateCleared,
+    })) {
+      return false;
+    }
+    clearPendingBattleSession();
+    deferredBattleIncomeRef.current = 0;
+    setTotalFunds(settledTotalFunds);
+    if (newlyConquered) {
+      setConqueredCommunityIds(projectedConqueredCommunityIds);
+    }
 
     if (activeBattleMode === 'savage') {
-      const clearedAfterBattle = new Set(savageClearedPropertyIds);
       const firstClear =
-        winner === 'player' && !clearedAfterBattle.has(targetProperty.id);
-      if (winner === 'player') clearedAfterBattle.add(targetProperty.id);
+        winner === 'player' &&
+        !savageClearedPropertyIds.includes(targetProperty.id);
 
       if (winner === 'player') {
-        setSavageClearedPropertyIds(Array.from(clearedAfterBattle));
+        setSavageClearedPropertyIds(projectedSavageClearedPropertyIds);
         const raid = getSavageRaidDefinition(targetProperty.id);
         const rewardNames = raid?.rewardSynergyIds
           .map((id) => INITIAL_GROUP_SYNERGIES.find((synergy) => synergy.id === id)?.name)
@@ -854,15 +983,6 @@ export default function App() {
       }
       setActiveTab('savage');
     } else if (winner === 'player') {
-      const wasConquered = getCampaignProperties(
-        properties,
-        targetProperty.community
-      ).every((property) => property.owner === 'player');
-      const conquersCity = getCampaignProperties(
-        projectedProperties,
-        targetProperty.community
-      ).every((property) => property.owner === 'player');
-      const newlyConquered = !wasConquered && conquersCity;
       const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
       const nextCommunity = COMMUNITY_CAMPAIGN_ORDER[campaignIndex + 1];
       if (newlyConquered && nextCommunity) {
@@ -891,14 +1011,8 @@ export default function App() {
       );
 
       // Commercial partners own properties; public Grand Company patrons never do.
-      if (shouldBreakAllianceForTarget(alliance, targetProperty)) {
-        setAlliance({
-          allyId: '',
-          allyName: '',
-          active: false,
-          allyKind: 'company',
-          relationType: 'commercial_alliance',
-        });
+      if (breaksAlliance) {
+        setAlliance(projectedAlliance);
         addGameLog(
           `【協力協定 自動解除】協定企業の傘下事業へ交渉を仕掛けたため、${alliance.allyName} との協定を解除しました。`,
           'danger'
@@ -936,10 +1050,21 @@ export default function App() {
         );
       });
     }
+    if (isNormalBattle && celebrationGiftCost > 0) {
+      addGameLog(
+        `【勝利のご祝儀】${formatCurrency(
+          celebrationGiftCost
+        )}を支援元へ配り、残った全支援元の独立危険度を -${
+          BATTLE_LOYALTY_BALANCE.celebrationRiskReduction
+        } 抑えました。`,
+        'success'
+      );
+    }
 
     setActiveBattleProperty(null);
     setActiveBattleMode('normal');
     setBattleTimeScale(1);
+    return true;
   };
 
   // Reduce Loyalty Risk (Nemawashi) for single property
@@ -966,13 +1091,16 @@ export default function App() {
 
   // Global Nemawashi
   const handleGlobalNemawashi = () => {
-    const totalAssetVal = ownedProperties.reduce(
+    const nemawashiTargets = ownedProperties.filter(
+      (property) => property.loyaltyRisk > 0
+    );
+    const totalAssetVal = nemawashiTargets.reduce(
       (sum, p) => sum + p.marketPrice,
       0
     );
     const cost = Math.round(totalAssetVal * 0.02);
 
-    if (totalFunds < cost) return;
+    if (nemawashiTargets.length === 0 || totalFunds < cost) return;
 
     setTotalFunds((prev) => prev - cost);
     setProperties((prev) =>
@@ -984,7 +1112,7 @@ export default function App() {
     );
 
     addGameLog(
-      `【全支援元一括ネマワシ】全保有事業・契約の独立危険度を -30 一括減算しました（費用 ${formatCurrency(
+      `【全支援元一括ネマワシ】危険度が残る${nemawashiTargets.length}件の独立危険度を -30 一括減算しました（費用 ${formatCurrency(
         cost
       )}）`,
       'info'
@@ -1046,7 +1174,7 @@ export default function App() {
 
   const handleNewGame = () => {
     const accepted = window.confirm(
-      '保存済みの所持金・保有事業／契約・装備スキル・外部協力／公的後援を削除して、ニューゲームを始めますか？'
+      '保存済みの所持金・保有事業／契約・装備アビリティ・外部協力／公的後援を削除して、ニューゲームを始めますか？'
     );
     if (!accepted) return;
     clearGameSave();
@@ -1055,8 +1183,18 @@ export default function App() {
 
   // Equipped skills object array
   const equippedSkills = useMemo(() => {
-    return skills.filter((s) => equippedSkillIds.includes(s.id) && unlockedSkillIds.has(s.id));
+    const skillById = new Map(skills.map((skill) => [skill.id, skill]));
+    return equippedSkillIds
+      .map((skillId) => skillById.get(skillId))
+      .filter(
+        (skill): skill is TacticalSkill =>
+          !!skill && unlockedSkillIds.has(skill.id)
+      );
   }, [skills, equippedSkillIds, unlockedSkillIds]);
+  const availableSkills = useMemo(
+    () => skills.filter((skill) => unlockedSkillIds.has(skill.id)),
+    [skills, unlockedSkillIds]
+  );
 
   const getBattleReadinessForTarget = (
     targetProperty: Property,
@@ -1147,6 +1285,14 @@ export default function App() {
         totalCommunityCount={TRADE_COMMUNITIES.length}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        onOpenMap={() => {
+          setActiveTab('market');
+          setMarketNavigationRequest((previous) => ({
+            id: (previous?.id || 0) + 1,
+            mode: 'map',
+            community: 'ALL',
+          }));
+        }}
         activeAllianceName={alliance.active ? alliance.allyName : null}
         activeSynergiesCount={activeSynergiesCount}
         tradeAllianceUnlocked={tradeAllianceUnlocked}
@@ -1182,6 +1328,7 @@ export default function App() {
             properties={properties}
             totalFunds={totalFunds}
             unlockedCommunityIds={unlockedCommunityIds}
+            conqueredCommunityIds={conqueredCommunityIdSet}
             navigationRequest={marketNavigationRequest}
             getStrengthComparison={(property) =>
               getBattleReadinessForTarget(property, 'normal')
@@ -1251,6 +1398,46 @@ export default function App() {
           />
         )}
 
+        <button
+          type="button"
+          className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left shadow-lg transition-colors ${
+            lightweightMode
+              ? 'border-cyan-400/35 bg-cyan-950/35 text-cyan-50'
+              : 'border-slate-700 bg-slate-900/80 text-slate-300'
+          }`}
+          aria-pressed={lightweightMode}
+          onClick={() => {
+            setLightweightMode((current) => {
+              const next = !current;
+              try {
+                window.localStorage.setItem(
+                  LIGHTWEIGHT_MODE_STORAGE_KEY,
+                  next ? 'on' : 'off'
+                );
+              } catch {
+                // The preference remains valid for this session.
+              }
+              return next;
+            });
+          }}
+        >
+          <span className="min-w-0">
+            <span className="block text-xs font-black tracking-[.08em]">軽量モード</span>
+            <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">
+              演出・選択中は進行を停止／商戦ゲージは30fps
+            </span>
+          </span>
+          <span
+            className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${
+              lightweightMode
+                ? 'bg-cyan-300 text-slate-950'
+                : 'bg-slate-700 text-slate-300'
+            }`}
+          >
+            {lightweightMode ? 'ON' : 'OFF'}
+          </span>
+        </button>
+
         {/* Global activity stays closed until the player asks for it. */}
         {logs.length > 0 && (
           <details className="group rounded-xl border border-slate-800 bg-slate-900/80 shadow-lg">
@@ -1278,10 +1465,12 @@ export default function App() {
       </main>
 
       <footer className="game-legal-notice">
-        <span>本作は非公式ファンサイト／ファンゲームです。</span>
+        <span>本作は非公式ファンサイト／ファンゲームです。 <span lang="en">Unofficial fan site/game.</span></span>
         <a href="https://jp.finalfantasyxiv.com/lodestone/special/fankit/" target="_blank" rel="noreferrer">FFXIV公式ファンキット</a>
         <a href="https://support.jp.square-enix.com/rule.php?id=5381&la=0&tag=authc" target="_blank" rel="noreferrer">著作物利用条件</a>
+        <a href="https://support.na.square-enix.com/rule.php?id=5382&la=1&tag=authc" target="_blank" rel="noreferrer" lang="en">Materials Usage License</a>
         <strong>© SQUARE ENIX</strong>
+        <span lang="en">FINAL FANTASY is a registered trademark of Square Enix Holdings Co., Ltd.</span>
       </footer>
 
       {endingNotice && (
@@ -1356,6 +1545,7 @@ export default function App() {
           totalFunds={totalFunds}
           ownedProperties={ownedProperties}
           equippedSkills={equippedSkills}
+          availableSkills={availableSkills}
           alliance={alliance}
           activeSynergies={activeGroupSynergies}
           selectedBattleSynergy={selectedBattleSynergy}
@@ -1384,6 +1574,7 @@ export default function App() {
           limitBreakCharge={activeBattleMode === 'training' ? trainingLimitBreakCharge : limitBreakCharge}
           onLimitBreakChargeChange={activeBattleMode === 'training' ? setTrainingLimitBreakCharge : setLimitBreakCharge}
           onTimeScaleChange={setBattleTimeScale}
+          lightweightMode={lightweightMode}
           nextCommunity={(() => {
             if (activeBattleMode !== 'normal') return null;
             const wouldConquer = getCampaignProperties(properties, activeBattleProperty.community)
@@ -1401,6 +1592,10 @@ export default function App() {
           isSavage={activeBattleMode === 'savage'}
           isUltimate={activeBattleMode === 'ultimate'}
           isTraining={activeBattleMode === 'training'}
+          isCityBoss={
+            activeBattleMode === 'normal' &&
+            isNormalCityBoss(properties, activeBattleProperty)
+          }
           onAddFunds={handleAddFunds}
           onResetFunds={handleResetFunds}
           onBattleEnd={handleBattleEnd}

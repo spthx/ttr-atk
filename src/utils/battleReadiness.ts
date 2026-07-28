@@ -1,11 +1,16 @@
 import type { GroupSynergy, Property } from '../types';
 import { calculateRebellionProbability } from './formatter';
 import {
+  BATTLE_LOYALTY_BALANCE,
+  BATTLE_SUPPORT_BALANCE,
   LIMIT_BREAK_MULTIPLIERS,
   getChargedLimitBreakTier,
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
+  PLAYER_BATTLE_CASH_CAP_RATIO,
   TACTICAL_SKILL_BALANCE,
+  getSubsidiaryRiskIncrease,
+  getSubsidiarySupportMultiplier,
 } from './gameBalance';
 
 export type BattleReadinessGrade =
@@ -38,6 +43,7 @@ export interface BattleReadinessInput {
   enemyDifficultyLevel: number;
   enemyBaseReactionSeconds: number;
   playerPushBonus: number;
+  cashCapRatio?: number | null;
 }
 
 export interface BattleReadinessResult {
@@ -68,6 +74,7 @@ export interface BattleReadinessResult {
   enemyDifficultyLevel: number;
   enemyBaseReactionSeconds: number;
   playerPushBonus: number;
+  battleCashLimit: number;
 }
 
 interface SupportRoute {
@@ -88,11 +95,18 @@ const expectedSupport = (
   properties.reduce(
     (summary, property) => {
       const failureProbability = calculateRebellionProbability(
-        Math.min(100, property.loyaltyRisk + riskIncrease)
+        Math.min(
+          100,
+          property.loyaltyRisk +
+            getSubsidiaryRiskIncrease(property, riskIncrease)
+        )
       );
       const expectedAmount =
-        Math.round(property.marketPrice * marketRatio) *
-        (1 - failureProbability);
+        Math.round(
+          property.marketPrice *
+            marketRatio *
+            getSubsidiarySupportMultiplier(property)
+        );
       return {
         amount: summary.amount + expectedAmount,
         maxFailureProbability: Math.max(
@@ -125,7 +139,11 @@ const getBestSupportRoute = ({
   const routes: SupportRoute[] = [];
 
   if (subsidiaries.length > 0) {
-    const onePass = expectedSupport(subsidiaries, 18, 0.45);
+    const onePass = expectedSupport(
+      subsidiaries,
+      BATTLE_LOYALTY_BALANCE.individualRiskIncrease,
+      BATTLE_SUPPORT_BALANCE.subsidiaryMarketRatio
+    );
     routes.push({
       name: '支援元一巡',
       amount: Math.round(onePass.amount),
@@ -146,12 +164,17 @@ const getBestSupportRoute = ({
       members.length === selectedBattleSynergy.requiredPropertyIds.length &&
       members.length > 0
     ) {
-      const synergySupport = expectedSupport(members, 14, 0.34);
+      const synergySupport = expectedSupport(
+        members,
+        BATTLE_LOYALTY_BALANCE.synergyRiskIncrease,
+        BATTLE_SUPPORT_BALANCE.synergyMemberMarketRatio
+      );
       routes.push({
         name: '戦闘連携',
         amount: Math.round(
           synergySupport.amount *
-            (selectedBattleSynergy.battleGroupMultiplier ?? 1.28)
+            (selectedBattleSynergy.battleGroupMultiplier ??
+              BATTLE_SUPPORT_BALANCE.synergyDefaultMultiplier)
         ),
         actionCount: 1,
         maxFailureProbability: synergySupport.maxFailureProbability,
@@ -172,7 +195,11 @@ const getBestSupportRoute = ({
     unlockedLimitTier
   );
   if (chargedLimitTier > 0) {
-    const limitSupport = expectedSupport(subsidiaries, 12, 0.28);
+    const limitSupport = expectedSupport(
+      subsidiaries,
+      BATTLE_LOYALTY_BALANCE.limitBreakRiskIncrease,
+      0.28
+    );
     routes.push({
       name: 'LIMIT BREAK',
       amount: Math.round(
@@ -247,17 +274,31 @@ export const calculateBattleReadiness = ({
   enemyDifficultyLevel,
   enemyBaseReactionSeconds,
   playerPushBonus,
+  cashCapRatio = PLAYER_BATTLE_CASH_CAP_RATIO,
 }: BattleReadinessInput): BattleReadinessResult => {
   const minimumInvestment = Math.max(
     10,
     Math.round(Math.max(0, targetMarketPrice) * 0.02)
   );
   const directInvestmentAvailable = availableCash >= minimumInvestment;
-  const deployableCash =
+  const unrestrictedDeployableCash =
     !directInvestmentAvailable
       ? 0
       : Math.floor(Math.max(0, availableCash) / minimumInvestment) *
         minimumInvestment;
+  const battleCashLimit =
+    cashCapRatio === null
+      ? Math.max(0, availableCash)
+      : Math.max(
+          minimumInvestment,
+          Math.round(
+            Math.max(0, targetMarketPrice) * Math.max(0, cashCapRatio)
+          )
+        );
+  const deployableCash = Math.min(
+    unrestrictedDeployableCash,
+    battleCashLimit
+  );
   const supportRoute = getBestSupportRoute({
     targetMarketPrice,
     subsidiaries,
@@ -309,7 +350,10 @@ export const calculateBattleReadiness = ({
   const capitalComponents: BattleReadinessCapitalComponent[] = [
     {
       key: 'cash',
-      label: '自社現金（複数回投入）',
+      label:
+        unrestrictedDeployableCash > battleCashLimit
+          ? '自社現金（商戦持込上限）'
+          : '自社現金（複数回投入）',
       amount: deployableCash,
     },
   ];
@@ -366,5 +410,6 @@ export const calculateBattleReadiness = ({
     enemyDifficultyLevel,
     enemyBaseReactionSeconds,
     playerPushBonus,
+    battleCashLimit,
   };
 };

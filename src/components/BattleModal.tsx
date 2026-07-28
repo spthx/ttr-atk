@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import confetti from 'canvas-confetti';
 import {
   Building2,
   CheckCircle2,
   CircleHelp,
+  Crown,
   HandCoins,
+  MapPinned,
+  RefreshCw,
   ScrollText,
   ShieldAlert,
   Sparkles,
   Swords,
-  TimerReset,
   Trophy,
   Users,
   X,
@@ -27,7 +28,6 @@ import {
 } from '../types';
 import {
   calculateGaugeVelocity,
-  calculateRebellionProbability,
   formatCurrency,
 } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
@@ -51,18 +51,37 @@ import {
   PlayerBattleAction,
 } from '../utils/enemyAi';
 import { calculateBattleReadiness } from '../utils/battleReadiness';
+import { resolvePostVictoryLoyalty } from '../utils/battleSettlement';
 import {
   BATTLE_CINEMATIC_TIMING,
+  BATTLE_GAUGE_VISUAL_COMMIT_MS,
+  BATTLE_STATE_UPDATE_INTERVAL_MS,
+  BATTLE_STATUS_MESSAGE_DURATION_MS,
   canConfirmBattleResult,
-  canShowShortNotice,
+  enqueueBattleStatusMessage,
+  getBattleHitStopTiming,
   getBattleCinematicLayer,
-  getCapitalVisualBundleCountForAmount,
-  getCapitalVisualStage,
+  getBattleCapitalVisualBundleCount,
+  getCapitalVisualSpriteCount,
+  getCapitalVisualStageForBundleCount,
+  getCapitalCommitTiming,
+  getCapitalDropParticleCount,
+  getNextBattleSkillId,
+  getSkillCinematicTiming,
   getVictoryConfettiParticleCount,
+  normalizeBattleStatusMessageText,
+  resolveBattleSkillSelection,
   RESULT_CONFIRM_ARM_DELAY_MS,
+  shouldProcessGaugeFrame,
   shouldInertBattleFooter,
+  TERMINAL_CINEMATIC_TIMING,
+  type BattleStatusMessageTone,
+  type CapitalCommitStage,
+  type SkillCinematicStage,
+  type TerminalCinematicStage,
 } from '../utils/battlePresentation';
 import { getTrainingDummyDefinition } from '../utils/trainingDummy';
+import { getSavageRaidDefinition } from '../utils/savage';
 import {
   advanceBattleWind,
   BATTLE_WIND_COOLDOWN_SECONDS,
@@ -72,11 +91,21 @@ import {
 import { StrengthComparison } from './StrengthComparison';
 import {
   applyTrainingGaugeSpeed,
+  advanceBattleCashRecovery,
+  applyCoverToGaugeDelta,
+  BOSS_COVER_BALANCE,
+  BATTLE_LOYALTY_BALANCE,
+  BATTLE_SUPPORT_BALANCE,
   BATTLE_GAUGE_SPEED_FACTOR,
+  calculateCelebrationGiftCost,
   calculateBattleVictoryReward,
+  calculateCompanyStrengthScore,
+  calculateDirectInvestmentGaugeImpact,
+  calculateSubsidiarySupportAmount,
   calculateEraWindCost,
   calculateEnemyBudget,
   calculateOwnershipFromGauge,
+  calculatePlayerBattleCashLimit,
   calculateLimitBreakAmount,
   calculateLimitBreakChargeGain,
   calculateLimitBreakOwnershipAfterDefense,
@@ -85,32 +114,58 @@ import {
   ENEMY_BALANCE_FACTOR,
   ENEMY_INITIAL_COMMITMENT_RATIO,
   getChargedLimitBreakTier,
+  getCompanyStrengthLevel,
+  getBossAbilityTier,
   getEnemyDifficultyLevel,
+  getEnemyMinimumCommitment,
+  getBattleCashRecoveryWindMultipliers,
+  getBattleTerminalWinner,
   getEraWindGaugePushPerSecond,
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
+  getReacquisitionLevel,
+  getSubsidiaryRiskIncrease,
+  getSubsidiarySupportMultiplier,
   LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER,
   LIMIT_BREAK_CHARGE_PER_BAR,
   LIMIT_BREAK_MULTIPLIERS,
   LIMIT_BREAK_OWNERSHIP_CAPS,
-  holdGaugeForManualShortFinish,
   holdTrainingGaugeAboveDefeat,
   resolveLivingDeadOutcome,
+  sortSubsidiariesBySupport,
   TACTICAL_SKILL_BALANCE,
+  type BossAbilityTier,
   type LimitBreakTier,
   type LivingDeadPhase,
 } from '../utils/gameBalance';
 export { ENEMY_BALANCE_FACTOR, LIMIT_BREAK_MULTIPLIERS };
 import gilChipPlayer from '../assets/battle/gil-chip-player.png';
-import defenseChipEnemy from '../assets/battle/defense-chip-enemy.png';
 import gilMedallionPlayer from '../assets/battle/gil-medallion-player.png';
-import defenseMedallionEnemy from '../assets/battle/defense-medallion-enemy.png';
+import capitalCargoPlayer from '../assets/battle/capital-cargo-player.webp';
 import '../battle-buyout.css';
 import '../battle-balance.css';
 import '../battle-clarity.css';
 import '../battle-enemy-budget.css';
 import '../battle-command-refine.css';
 import '../battle-final-wind.css';
+
+type VictoryConfetti = typeof import('canvas-confetti');
+let confettiModulePromise: Promise<VictoryConfetti> | null = null;
+
+const loadVictoryConfetti = () => {
+  confettiModulePromise ??= import('canvas-confetti')
+    .then((module) => {
+      const interoperableModule = module as unknown as {
+        default?: VictoryConfetti;
+      };
+      return (interoperableModule.default ?? module) as VictoryConfetti;
+    })
+    .catch((error) => {
+      confettiModulePromise = null;
+      throw error;
+    });
+  return confettiModulePromise;
+};
 import '../battle-update-v2.css';
 import '../battle-update-v3.css';
 import '../battle-chip-stack-v3.css';
@@ -126,6 +181,7 @@ interface BattleModalProps {
   totalFunds: number;
   ownedProperties: Property[];
   equippedSkills: TacticalSkill[];
+  availableSkills: TacticalSkill[];
   alliance: AllianceState;
   activeSynergies: GroupSynergy[];
   selectedBattleSynergy: GroupSynergy | null;
@@ -142,25 +198,102 @@ interface BattleModalProps {
   isSavage?: boolean;
   isUltimate?: boolean;
   isTraining?: boolean;
+  isCityBoss?: boolean;
   onAddFunds?: (amount: number) => void;
   onResetFunds?: () => void;
   onTimeScaleChange?: (scale: number) => void;
-  onBattleEnd: (result: BattleResult) => void;
+  lightweightMode: boolean;
+  onBattleEnd: (result: BattleResult) => boolean;
   onClose: () => void;
 }
 
-type Panel = 'capital' | 'funds' | 'skills';
+type Panel = 'capital' | 'funds';
+type ResultStep = 'summary' | 'departures';
+type CelebrationDecision = 'keep' | 'share' | null;
 type BattleMotion = 'idle' | 'player' | 'enemy' | 'rebel';
+type ImpactStopSide = 'player' | 'opponent';
+type ImpactStopPhase = 'hitstop' | 'release';
+interface ImpactStop {
+  side: ImpactStopSide;
+  phase: ImpactStopPhase;
+  heavy: boolean;
+  serial: number;
+}
+interface CapitalCommitSnapshot {
+  amount: number;
+  level: number;
+  previousCapital: number;
+  previousOwnership: number;
+  compact: boolean;
+}
+interface CapitalCommitSequence extends CapitalCommitSnapshot {
+  stage: CapitalCommitStage;
+  serial: number;
+}
 type LogCategory = 'system' | 'player' | 'enemy' | 'funds' | 'skill' | 'result';
-type BattleAnnouncement = 'start' | 'limit' | 'final';
-type BattleConditionKind = 'player' | 'enemy' | 'cross' | 'calm' | 'synergy' | 'burst';
+type BattleAnnouncement = 'start' | 'limit';
+type CoverKnightPhase = 'absent' | 'active' | 'breaking' | 'leaving';
+const COVER_KNIGHT_MIN_ACTIVE_MS = 1_200;
+const COVER_KNIGHT_BREAK_MS = 420;
+const COVER_KNIGHT_EXIT_MS = 1_000;
+type BattleConditionKind =
+  | 'player'
+  | 'enemy'
+  | 'cross'
+  | 'calm'
+  | 'synergy'
+  | 'burst'
+  | 'era_wind';
 type DefeatReason = 'CAPITAL_COLLAPSE' | 'WALKING_DEAD_FAILED';
+type TerminalCause =
+  | 'company'
+  | 'subsidiary'
+  | 'synergy'
+  | 'alliance'
+  | 'limit_break'
+  | 'skill'
+  | 'era_wind'
+  | 'pressure'
+  | 'enemy'
+  | 'withdrawal'
+  | 'living_dead';
+
+interface TerminalResolution {
+  winner: 'player' | 'opponent';
+  method: FinishMethod;
+  rawOwnership: number;
+  defeatReason: DefeatReason;
+  cause: TerminalCause;
+}
+
+const TERMINAL_CAUSE_LABELS: Record<TerminalCause, string> = {
+  company: '自社資金',
+  subsidiary: '支援元資金',
+  synergy: '事業連携',
+  alliance: '協力支援',
+  limit_break: 'LIMIT BREAK',
+  skill: 'アビリティ支援',
+  era_wind: '時代の風',
+  pressure: '継続圧力',
+  enemy: '競合防衛',
+  withdrawal: '撤退',
+  living_dead: '蘇生猶予',
+};
 
 interface BattleConditionAnnouncement {
   kind: BattleConditionKind;
-  kicker: string;
-  title: string;
-  detail: string;
+  tone: BattleStatusMessageTone;
+  text: string;
+  priority: number;
+  sound?: 'warning' | 'skill' | 'cash';
+}
+
+interface SkillCinematic {
+  skillId: string;
+  skillName: string;
+  effectType: TacticalSkill['effectType'];
+  stage: SkillCinematicStage;
+  targetsRival: boolean;
 }
 
 const MarqueeText: React.FC<{
@@ -227,8 +360,29 @@ interface DecisiveBlow {
 }
 
 const isRivalOnlySkill = (skill: TacticalSkill) =>
-  skill.effectType === 'INDEPENDENCE_SABOTAGE' ||
-  skill.effectType === 'DEMORALIZE';
+  skill.effectType === 'INDEPENDENCE_SABOTAGE';
+
+const isSkillUsableInBattle = ({
+  skill,
+  isTraining,
+  subsidiaryCount,
+}: {
+  skill: TacticalSkill;
+  isTraining: boolean;
+  subsidiaryCount: number;
+}) => {
+  if (isTraining && isRivalOnlySkill(skill)) return false;
+  if (skill.effectType === 'NEMAWASHI' && subsidiaryCount <= 0) return false;
+  return true;
+};
+
+const isDirectTerminalCause = (cause: TerminalCause | undefined) =>
+  cause === 'company' ||
+  cause === 'subsidiary' ||
+  cause === 'synergy' ||
+  cause === 'alliance' ||
+  cause === 'limit_break' ||
+  cause === 'skill';
 
 const getQuickSkillSummary = (
   skill: TacticalSkill,
@@ -237,21 +391,21 @@ const getQuickSkillSummary = (
   if (isTraining && isRivalOnlySkill(skill)) return '木人では対象なし';
   switch (skill.effectType) {
     case 'COOLDOWN_REDUCTION':
-      return '命令回復 約1.8倍・10秒';
+      return '命令回復 約1.9倍・15秒';
     case 'NEMAWASHI':
       return '全支援元の独立危険度を半減';
     case 'INDEPENDENCE_SABOTAGE':
-      return '防衛中断70%・9秒';
-    case 'DEMORALIZE':
-      return '競合待機 ×1.6・9秒';
+      return '防衛中断75%・15秒';
+    case 'COVER':
+      return '押し込み60%軽減・最大12pt・10秒・1回';
     case 'CAPITAL_BOOST':
-      return '相場30%を即時支援';
+      return '相場40%を即時支援';
     case 'LIVING_DEAD':
       return '致死回避 → 30%復帰';
     case 'SYNERGY_PUSH':
-      return '押込速度 ×1.5・7秒';
+      return '押込速度 ×1.80・14秒';
     case 'ERA_WIND':
-      return '自社向きの時流・12秒';
+      return '所有率 +0.78pt/秒相当・16秒';
   }
 };
 
@@ -272,7 +426,7 @@ const FINISH_LABELS: Record<FinishMethod, string> = {
   LIMIT_BREAK_1: 'LIMIT BREAK I',
   LIMIT_BREAK_2: 'LIMIT BREAK II',
   LIMIT_BREAK_3: 'LIMIT BREAK III',
-  FINAL_PUSH: 'FINAL PUSH',
+  FINAL_PUSH: 'DEAL CLOSED',
   CAPITAL_PRESSURE: 'CAPITAL PRESSURE',
   NORMAL: 'NORMAL BUYOUT',
 };
@@ -304,27 +458,53 @@ const riskPresentation = (risk: number) => {
   return { label: '独立寸前', className: 'risk-red' };
 };
 
+const getCapitalFormation = (stage: number) => {
+  if (stage <= 1) return 'scatter';
+  if (stage <= 3) return 'stacks';
+  if (stage <= 5) return 'terrace';
+  if (stage <= 7) return 'wall';
+  if (stage <= 9) return 'vault';
+  return 'flood';
+};
+
 const GilTower: React.FC<{
   amount: number;
   reserveAmount?: number;
   marketPrice: number;
   side: 'player' | 'enemy';
   motion: BattleMotion;
-}> = ({ amount, reserveAmount = 0, marketPrice, side, motion }) => {
+  lightweightMode: boolean;
+}> = ({
+  amount,
+  reserveAmount = 0,
+  marketPrice,
+  side,
+  motion,
+  lightweightMode,
+}) => {
   const committedCapital = Math.max(0, amount);
-  const visualStage = getCapitalVisualStage(committedCapital);
-  const committedStage = visualStage;
-  const bundleCount = getCapitalVisualBundleCountForAmount(committedCapital);
-  const committedBundleCount = bundleCount;
-  const chipAsset = side === 'player' ? gilChipPlayer : defenseChipEnemy;
-  const medallionAsset = side === 'player' ? gilMedallionPlayer : defenseMedallionEnemy;
+  const bundleCount = getBattleCapitalVisualBundleCount(
+    committedCapital,
+    marketPrice
+  );
+  const visualStage = getCapitalVisualStageForBundleCount(bundleCount);
+  const spriteCount = getCapitalVisualSpriteCount(bundleCount);
+  const chipAsset = gilChipPlayer;
+  const medallionAsset = gilMedallionPlayer;
   const capitalRatio = committedCapital / Math.max(marketPrice, 1);
+  const formation = getCapitalFormation(visualStage);
 
   return (
     <div
       className={`gil-tower gil-tower--${side} gil-tower--stage-${visualStage} ${motion === side ? 'gil-tower--impact' : ''}`}
       data-capital-stage={visualStage}
+      data-capital-bundles={bundleCount}
       data-capital-ratio={Math.max(0, Math.round(capitalRatio * 100))}
+      data-capital-formation={formation}
+      style={{
+        '--capital-stack-image': `url("${chipAsset}")`,
+        '--capital-stage': visualStage,
+      } as React.CSSProperties}
     >
       <div
         className="gil-tower__chips"
@@ -337,13 +517,35 @@ const GilTower: React.FC<{
         {bundleCount === 0 && (
           <span className="gil-tower__empty" aria-hidden="true"><i /></span>
         )}
-        {Array.from({ length: bundleCount }).map((_, index) => (
+        {visualStage >= 4 && (
+          <span className="gil-tower__hoard" aria-hidden="true">
+            <i className="gil-tower__hoard-band gil-tower__hoard-band--far" />
+            <i className="gil-tower__hoard-band gil-tower__hoard-band--mid" />
+            <i className="gil-tower__hoard-band gil-tower__hoard-band--near" />
+          </span>
+        )}
+        {visualStage >= 4 && (
+          <span
+            className={`gil-tower__formation gil-tower__formation--${formation}`}
+            aria-hidden="true"
+          >
+            {Array.from({ length: lightweightMode ? 4 : 6 }, (_, index) => (
+              <img
+                key={index}
+                src={chipAsset}
+                alt=""
+                aria-hidden="true"
+              />
+            ))}
+          </span>
+        )}
+        {Array.from({ length: spriteCount }).map((_, index) => (
           <img
             key={`${side}-${index}`}
             src={index === 0 ? medallionAsset : chipAsset}
             alt=""
             aria-hidden="true"
-            className={`${index === 0 ? 'gil-chip-image gil-chip-image--medallion' : 'gil-chip-image gil-chip-image--stack'}${motion === side && index === Math.max(0, committedBundleCount - 1) ? ' gil-chip-image--falling' : ''}`}
+            className={`${index === 0 ? 'gil-chip-image gil-chip-image--medallion' : 'gil-chip-image gil-chip-image--stack'}${motion === side && index === Math.max(0, spriteCount - 1) ? ' gil-chip-image--falling' : ''}`}
             style={{
               '--chip-index': index,
               '--chip-count': bundleCount,
@@ -351,22 +553,34 @@ const GilTower: React.FC<{
             } as React.CSSProperties}
           />
         ))}
-        {visualStage >= 7 && (
-          <span className="gil-tower__overflow" aria-hidden="true">
-            {Array.from({ length: 12 }).map((_, index) => (
-              <i
-                key={index}
-                style={{
-                  '--overflow-x': `${8 + ((index * 19) % 84)}%`,
-                  animationDelay: `${-(index * 0.23)}s`,
-                } as React.CSSProperties}
-              />
-            ))}
-          </span>
-        )}
       </div>
-      <strong>{formatCurrency(amount)}</strong>
-      <small>{amount > 0 ? `投入資金・段階${committedStage}` : reserveAmount > 0 ? '未投入資金を待機中' : '資金未投入'}</small>
+    </div>
+  );
+};
+
+const InvestmentStakePreview: React.FC<{
+  level: number;
+  stage: CapitalCommitStage | null;
+  motionSerial: number;
+  lightweightMode: boolean;
+}> = ({ level, stage, motionSerial, lightweightMode }) => {
+  const cargo =
+    level <= 1
+      ? { kind: 'coin', src: gilMedallionPlayer }
+      : level === 2
+        ? { kind: 'bundle', src: gilChipPlayer }
+        : { kind: 'bag', src: capitalCargoPlayer };
+
+  return (
+    <div
+      key={`${level}-${motionSerial}`}
+      className={`investment-stake-preview investment-stake-preview--level-${level} investment-stake-preview--cargo-${cargo.kind} ${stage ? `is-committing investment-stake-preview--stage-${stage}` : ''}`}
+      data-investment-level={level}
+      data-cargo-kind={cargo.kind}
+      data-lightweight={lightweightMode ? 'true' : 'false'}
+      aria-hidden="true"
+    >
+      <img src={cargo.src} alt="" />
     </div>
   );
 };
@@ -377,6 +591,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   totalFunds,
   ownedProperties,
   equippedSkills,
+  availableSkills,
   alliance,
   activeSynergies,
   selectedBattleSynergy,
@@ -393,7 +608,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   isSavage = false,
   isUltimate = false,
   isTraining = false,
+  isCityBoss = false,
   onTimeScaleChange,
+  lightweightMode,
   onBattleEnd,
   onClose,
 }) => {
@@ -403,6 +620,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const influenceBonus = industryInfluence.playerBonus + regionalInfluence.playerBonus + tradeNetworkBonus;
   const isHighEndRaid = isSavage || isUltimate;
   const isProtectedBattle = isHighEndRaid || isTraining;
+  const bossAbilityTier: BossAbilityTier = getBossAbilityTier({
+    targetProperty,
+    isCityBoss,
+    isSavage,
+    isUltimate,
+  });
+  const isBossBattle = bossAbilityTier !== 'none';
   const enemyDifficultyLevel = getEnemyDifficultyLevel(
     targetProperty,
     isTutorial,
@@ -445,10 +669,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [gauge, setGauge] = useState(0);
   const gaugeRef = useRef(0);
   const updateGauge = useCallback(
-    (next: number | ((current: number) => number)) => {
+    (
+      next: number | ((current: number) => number),
+      commitVisual = true
+    ) => {
       const resolved = typeof next === 'function' ? next(gaugeRef.current) : next;
       gaugeRef.current = resolved;
-      setGauge(resolved);
+      if (commitVisual) {
+        setGauge(resolved);
+      }
       return resolved;
     },
     []
@@ -459,16 +688,32 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [enemyInvested, setEnemyInvested] = useState(initialEnemyCommitment);
   const [enemyReserve, setEnemyReserve] = useState(enemyBudget - initialEnemyCommitment);
   const enemyReserveRef = useRef(enemyBudget - initialEnemyCommitment);
-  const initialBattleCashRef = useRef(Math.max(0, totalFunds - brokerageFee));
+  const availableBattleCash = Math.max(0, totalFunds - brokerageFee);
+  const initialBattleCashRef = useRef(
+    isTraining
+      ? availableBattleCash
+      : Math.min(
+          availableBattleCash,
+          calculatePlayerBattleCashLimit(targetProperty.marketPrice)
+        )
+  );
   const [cash, setCash] = useState(initialBattleCashRef.current);
-  const battleCashRecoveryPerSecond = Math.max(1, Math.round(targetProperty.marketPrice * 0.003));
-  const battleCashRecoveryCap = Math.round(targetProperty.marketPrice * 0.15);
+  const cashRef = useRef(initialBattleCashRef.current);
+  const updateCash = useCallback(
+    (next: number | ((current: number) => number)) => {
+      const resolved = typeof next === 'function' ? next(cashRef.current) : next;
+      cashRef.current = Math.max(0, Math.min(initialBattleCashRef.current, resolved));
+      setCash(cashRef.current);
+      return cashRef.current;
+    },
+    []
+  );
   const [battleCashRecovered, setBattleCashRecovered] = useState(0);
   const battleCashRecoveredRef = useRef(0);
-  const recoveryCarryRef = useRef(0);
+  const [enemyCashRecovered, setEnemyCashRecovered] = useState(0);
+  const enemyCashRecoveredRef = useRef(0);
   const [limitImpactActive, setLimitImpactActive] = useState(false);
   const [battleSubs, setBattleSubs] = useState<Property[]>(ownedProperties);
-  const [subContributions, setSubContributions] = useState<Record<string, number>>({});
   const [subRequestCounts, setSubRequestCounts] = useState<Record<string, number>>({});
   const [rebelled, setRebelled] = useState<Property[]>([]);
   const [allianceUsed, setAllianceUsed] = useState(false);
@@ -477,7 +722,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [selectedLevel, setSelectedLevel] = useState(3);
   const [commandProgress, setCommandProgress] = useState(100);
   const [fastHorseRemaining, setFastHorseRemaining] = useState(0);
-  const [enemySlowedRemaining, setEnemySlowedRemaining] = useState(0);
+  const [playerCoverRemaining, setPlayerCoverRemaining] = useState(0);
+  const [enemyCoverRemaining, setEnemyCoverRemaining] = useState(0);
+  const [playerCoverKnightPhase, setPlayerCoverKnightPhase] =
+    useState<CoverKnightPhase>('absent');
+  const [enemyCoverKnightPhase, setEnemyCoverKnightPhase] =
+    useState<CoverKnightPhase>('absent');
   const [enemyDisruptionRemaining, setEnemyDisruptionRemaining] = useState(0);
   const [pushMultiplierRemaining, setPushMultiplierRemaining] = useState(0);
   const [eraWindRemaining, setEraWindRemaining] = useState(0);
@@ -487,10 +737,20 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   );
   const [skillCooldowns, setSkillCooldowns] = useState<Record<string, number>>({});
   const [usedSkillIds, setUsedSkillIds] = useState<Set<string>>(() => new Set());
+  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(
+    () => equippedSkills[0]?.id ?? null
+  );
+  const [skillCinematic, setSkillCinematic] =
+    useState<SkillCinematic | null>(null);
   const [livingDeadPhase, setLivingDeadPhase] = useState<LivingDeadPhase>('inactive');
   const [livingDeadRemaining, setLivingDeadRemaining] = useState(0);
   const [motion, setMotion] = useState<BattleMotion>('idle');
   const [motionSerial, setMotionSerial] = useState(0);
+  const [capitalCommit, setCapitalCommit] =
+    useState<CapitalCommitSequence | null>(null);
+  const [terminalCapitalSnapshot, setTerminalCapitalSnapshot] =
+    useState<CapitalCommitSnapshot | null>(null);
+  const [impactStop, setImpactStop] = useState<ImpactStop | null>(null);
   const [statusText, setStatusText] = useState(
     isTraining
       ? '条件を確認して商戦木人訓練を開始してください'
@@ -508,13 +768,24 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [defeatReason, setDefeatReason] = useState<DefeatReason>('CAPITAL_COLLAPSE');
   const [battleAnnouncement, setBattleAnnouncement] = useState<BattleAnnouncement | null>(null);
   const [conditionAnnouncement, setConditionAnnouncement] = useState<BattleConditionAnnouncement | null>(null);
+  const [conditionAnnouncementQueue, setConditionAnnouncementQueue] = useState<
+    BattleConditionAnnouncement[]
+  >([]);
   const [openingSlowActive, setOpeningSlowActive] = useState(false);
   const [decisiveBlow, setDecisiveBlow] = useState<DecisiveBlow | null>(null);
-  const [finalPushActive, setFinalPushActive] = useState(false);
+  const [terminalCinematicStage, setTerminalCinematicStage] =
+    useState<TerminalCinematicStage | null>(null);
   const [lastPlayerAction, setLastPlayerAction] = useState<PlayerBattleAction | null>(null);
   const [aiCycle, setAiCycle] = useState(0);
   const [finishTelegraphVisible, setFinishTelegraphVisible] = useState(false);
   const [resultConfirmArmed, setResultConfirmArmed] = useState(false);
+  const [resultStep, setResultStep] = useState<ResultStep>('summary');
+  const [celebrationGiftApplied, setCelebrationGiftApplied] = useState(false);
+  const [celebrationDecision, setCelebrationDecision] =
+    useState<CelebrationDecision>(null);
+  const [displayedCompanyStrength, setDisplayedCompanyStrength] =
+    useState<number | null>(null);
+  const [companyGrowthRevealed, setCompanyGrowthRevealed] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [floaters, setFloaters] = useState<FloatingGil[]>([]);
@@ -530,24 +801,42 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const endedRef = useRef(false);
   const animationRef = useRef<number | null>(null);
   const lastTickRef = useRef(performance.now());
-  const shortShownRef = useRef(false);
+  const lastGaugeVisualCommitRef = useRef(0);
   const announcementTimerRef = useRef<number | null>(null);
   const limitBreakTimerRef = useRef<number | null>(null);
-  const shortTimerRef = useRef<number | null>(null);
-  const shortDelayTimerRef = useRef<number | null>(null);
-  const terminalActionTimerRef = useRef<number | null>(null);
   const finishTimerRef = useRef<number | null>(null);
   const resultConfirmTimerRef = useRef<number | null>(null);
   const limitImpactTimerRef = useRef<number | null>(null);
+  const limitTerminalHandoffTimerRef = useRef<number | null>(null);
   const conditionTimerRef = useRef<number | null>(null);
+  const skillCinematicTimersRef = useRef<number[]>([]);
   const openingSlowTimerRef = useRef<number | null>(null);
   const decisiveImpactTimerRef = useRef<number | null>(null);
-  const decisiveClearTimerRef = useRef<number | null>(null);
+  const decisiveReleaseTimerRef = useRef<number | null>(null);
   const decisiveResolveTimerRef = useRef<number | null>(null);
   const livingDeadNoticeTimerRef = useRef<number | null>(null);
   const motionTimerRef = useRef<number | null>(null);
+  const capitalCommitTimersRef = useRef<number[]>([]);
+  const capitalCommitSerialRef = useRef(0);
+  const capitalCommitActiveRef = useRef(false);
+  const impactStopTimerRef = useRef<number | null>(null);
+  const impactReleaseTimerRef = useRef<number | null>(null);
+  const impactStopSerialRef = useRef(0);
   const commandReadySoundArmedRef = useRef(false);
+  const playerCoverRemainingRef = useRef(0);
+  const enemyCoverRemainingRef = useRef(0);
+  const playerCoverCapacityRef = useRef(0);
+  const enemyCoverCapacityRef = useRef(0);
+  const playerCoverActivatedAtRef = useRef(0);
+  const enemyCoverActivatedAtRef = useRef(0);
+  const enemyBossAbilityUsedRef = useRef(false);
+  const playerCoverExitTimerRef = useRef<number | null>(null);
+  const enemyCoverExitTimerRef = useRef<number | null>(null);
+  const floaterTimersRef = useRef<Set<number>>(new Set());
   const decisiveRef = useRef(false);
+  const terminalRef = useRef<TerminalResolution | null>(null);
+  const lastPressureCauseRef = useRef<TerminalCause>('pressure');
+  const liquidityWarningShownRef = useRef(false);
   const resultConfirmArmedRef = useRef(false);
   const resultConfirmedRef = useRef(false);
   const lastAnnouncedWindRef = useRef<WindCondition['type']>('CALM');
@@ -555,13 +844,40 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const livingDeadPhaseRef = useRef<LivingDeadPhase>('inactive');
   const livingDeadRemainingRef = useRef(0);
   const fundsDrawerRef = useRef<HTMLElement | null>(null);
-  const skillsDrawerRef = useRef<HTMLElement | null>(null);
   const helpDialogRef = useRef<HTMLElement | null>(null);
   const logDialogRef = useRef<HTMLElement | null>(null);
   const phaseDialogRef = useRef<HTMLElement | null>(null);
   const rootDialogRef = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(onClose);
   const initialFocusRef = useRef<HTMLElement | null>(null);
+
+  const clearSkillCinematicTimers = useCallback(() => {
+    skillCinematicTimersRef.current.forEach((timer) =>
+      window.clearTimeout(timer)
+    );
+    skillCinematicTimersRef.current = [];
+  }, []);
+
+  const clearCapitalCommitTimers = useCallback(() => {
+    capitalCommitSerialRef.current += 1;
+    capitalCommitTimersRef.current.forEach((timer) =>
+      window.clearTimeout(timer)
+    );
+    capitalCommitTimersRef.current = [];
+  }, []);
+
+  const clearImpactStop = useCallback(() => {
+    impactStopSerialRef.current += 1;
+    if (impactStopTimerRef.current) {
+      window.clearTimeout(impactStopTimerRef.current);
+      impactStopTimerRef.current = null;
+    }
+    if (impactReleaseTimerRef.current) {
+      window.clearTimeout(impactReleaseTimerRef.current);
+      impactReleaseTimerRef.current = null;
+    }
+    setImpactStop(null);
+  }, []);
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -612,9 +928,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ? logDialogRef.current
         : panel === 'funds'
           ? fundsDrawerRef.current
-          : panel === 'skills'
-            ? skillsDrawerRef.current
-            : battlePhase === 'briefing' || battlePhase === 'result'
+          : battlePhase === 'briefing' || battlePhase === 'result'
               ? phaseDialogRef.current
               : rootDialogRef.current;
     if (!activeSurface) return;
@@ -671,7 +985,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       window.clearTimeout(focusTimer);
       document.removeEventListener('keydown', trapFocus);
     };
-  }, [battlePhase, panel, requestClose, showHelp, showLog]);
+  }, [battlePhase, panel, requestClose, resultStep, showHelp, showLog]);
 
   const updateLivingDeadState = (phase: LivingDeadPhase, remainingMs = 0) => {
     livingDeadPhaseRef.current = phase;
@@ -706,7 +1020,85 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           normalizedOwnership
         )
       : normalizedOwnership;
+  const terminalCapitalStage: CapitalCommitStage | null =
+    terminalCapitalSnapshot && terminalCinematicStage
+      ? terminalCinematicStage === 'anticipation'
+        ? 'prepare'
+        : terminalCinematicStage === 'hitstop'
+          ? 'impact'
+          : terminalCinematicStage === 'impact'
+            ? 'afterglow'
+            : null
+      : null;
+  const activeCapitalSnapshot =
+    capitalCommit ?? terminalCapitalSnapshot;
+  const capitalPresentationStage =
+    capitalCommit?.stage ?? terminalCapitalStage;
+  const capitalRevealPending =
+    capitalCommit?.stage === 'prepare' ||
+    capitalCommit?.stage === 'travel' ||
+    (
+      !!terminalCapitalSnapshot &&
+      terminalCinematicStage === 'anticipation'
+    );
+  const displayedPlayerInvested =
+    capitalRevealPending && activeCapitalSnapshot
+      ? activeCapitalSnapshot.previousCapital
+      : totalPlayerInvested;
+  const displayedOwnership =
+    capitalRevealPending && activeCapitalSnapshot
+      ? activeCapitalSnapshot.previousOwnership
+      : ownership;
+  const activeCapitalTiming = activeCapitalSnapshot
+    ? getCapitalCommitTiming(
+        activeCapitalSnapshot.level,
+        activeCapitalSnapshot.compact
+      )
+    : null;
+  const regularCapitalDropVisible =
+    capitalCommit?.stage === 'impact' ||
+    capitalCommit?.stage === 'afterglow';
+  const terminalCapitalDropVisible =
+    !!terminalCapitalSnapshot &&
+    (
+      terminalCinematicStage === 'hitstop' ||
+      terminalCinematicStage === 'impact' ||
+      terminalCinematicStage === 'resolution'
+    );
+  const capitalDropParticleCount =
+    (regularCapitalDropVisible || terminalCapitalDropVisible) &&
+    activeCapitalTiming &&
+    activeCapitalSnapshot
+      ? getCapitalDropParticleCount(
+          activeCapitalTiming.tier,
+          activeCapitalSnapshot.compact
+        )
+      : 0;
+  const playerCapitalMotion: BattleMotion =
+    capitalPresentationStage === 'impact' ||
+    capitalPresentationStage === 'afterglow'
+      ? 'player'
+      : activeCapitalSnapshot
+        ? 'idle'
+        : motion;
+  const capitalCommitCueText =
+    capitalCommit?.stage === 'prepare'
+      ? '投資資金を準備'
+      : capitalCommit?.stage === 'travel'
+        ? 'タタルが資金を運搬'
+        : capitalCommit?.stage === 'impact'
+          ? `ドスン！ 着金 +${formatCurrency(capitalCommit.amount)}`
+          : capitalCommit?.stage === 'afterglow'
+            ? '積み上げ完了――堂々たる資本'
+            : '';
+  const ownershipTrackImpactActive = activeCapitalSnapshot
+    ? capitalPresentationStage === 'impact'
+    : motion !== 'idle';
   const commandReady = commandProgress >= 100;
+  const sortedBattleSubs = useMemo(
+    () => sortSubsidiariesBySupport(battleSubs),
+    [battleSubs]
+  );
   const selectedCost = getInvestmentCost(targetProperty.marketPrice, selectedLevel);
   const eraWindActive = eraWindRemaining > 0;
   const currentWind = eraWindActive
@@ -735,22 +1127,25 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const effectivePlayerShare = effectiveCapitalTotal > 0
     ? effectivePlayerInvested / effectiveCapitalTotal * 100
     : 50;
-  const capitalPressurePosition = Math.max(4, Math.min(96, effectivePlayerShare));
-  const playerCapitalProgress =
-    totalPlayerInvested / Math.max(1, targetProperty.marketPrice) * 100;
+  const displayedPlayerCapitalProgress =
+    displayedPlayerInvested / Math.max(1, targetProperty.marketPrice) * 100;
   const enemyCapitalProgress =
     enemyInvested / Math.max(1, targetProperty.marketPrice) * 100;
-  const playerCapitalVisualStage = getCapitalVisualStage(totalPlayerInvested);
-  const enemyCapitalVisualStage = getCapitalVisualStage(enemyInvested);
   const capitalPressureLabel = effectivePlayerShare >= 58
     ? '自社優勢'
     : effectivePlayerShare <= 42
       ? isTraining ? '木人優勢' : '競合優勢'
       : isTraining ? '訓練資本拮抗' : '資本拮抗';
+  const savageRaidDefinition = isSavage
+    ? getSavageRaidDefinition(targetProperty.id)
+    : null;
   const savageLayerMatch = isSavage
     ? targetProperty.name.match(/第([1-4])層/)
     : null;
-  const savageLayer = isSavage ? Number(savageLayerMatch?.[1] ?? 1) : 0;
+  const savageLayer = isSavage
+    ? savageRaidDefinition?.layer ?? Number(savageLayerMatch?.[1] ?? 1)
+    : 0;
+  const savageSeries = isSavage ? savageRaidDefinition?.series ?? 1 : 0;
   const trainingDummyDefinition = isTraining
     ? getTrainingDummyDefinition(targetProperty.id)
     : null;
@@ -759,12 +1154,47 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     : getFankitJobArt(
         `${targetProperty.id}-${targetProperty.community}-${targetProperty.industry}-${targetProperty.ownerName}`
       );
-  const primarySkill = (
-    isTraining
-      ? equippedSkills.find((skill) => !isRivalOnlySkill(skill))
-      : equippedSkills[0]
-  ) ?? equippedSkills[0] ?? null;
-  const additionalSkillCount = Math.max(0, equippedSkills.length - 1);
+  const usableEquippedSkills = useMemo(
+    () => equippedSkills.filter((skill) =>
+      isSkillUsableInBattle({
+        skill,
+        isTraining,
+        subsidiaryCount: battleSubs.length,
+      })
+    ),
+    [battleSubs.length, equippedSkills, isTraining]
+  );
+  const usableAvailableSkills = useMemo(
+    () => availableSkills.filter((skill) =>
+      isSkillUsableInBattle({
+        skill,
+        isTraining,
+        subsidiaryCount: battleSubs.length,
+      })
+    ),
+    [availableSkills, battleSubs.length, isTraining]
+  );
+  const skillSelection = resolveBattleSkillSelection(
+    usableEquippedSkills.map((skill) => skill.id),
+    usableAvailableSkills.map((skill) => skill.id),
+    selectedSkillId
+  );
+  const battleSkillPool =
+    usableEquippedSkills.length > 0
+      ? usableEquippedSkills
+      : usableAvailableSkills;
+
+  useEffect(() => {
+    if (selectedSkillId === skillSelection.selectedSkillId) return;
+    setSelectedSkillId(skillSelection.selectedSkillId);
+  }, [selectedSkillId, skillSelection.selectedSkillId]);
+
+  const primarySkill =
+    battleSkillPool.find(
+      (skill) => skill.id === skillSelection.selectedSkillId
+    ) ??
+    null;
+  const usingSkillFallback = skillSelection.usingFallback;
   const primarySkillCooldown = primarySkill
     ? skillCooldowns[primarySkill.id] || 0
     : 0;
@@ -781,16 +1211,51 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const primaryEraWindUnavailable =
     primarySkill?.effectType === 'ERA_WIND' &&
     (eraWindUseLimitReached || cash < nextEraWindCost);
+  const primarySkillExecutionBlocked =
+    !primarySkill ||
+    primarySkillUnavailable ||
+    primaryEraWindUnavailable ||
+    !commandReady ||
+    primarySkillCooldown > 0 ||
+    primarySkillUsed;
+  const primarySkillStateText = !primarySkill
+    ? '未選択'
+    : primarySkillUnavailable
+      ? '対象なし'
+      : primarySkill.effectType === 'ERA_WIND' && eraWindUseLimitReached
+        ? '使用済み'
+        : primarySkill.effectType === 'ERA_WIND' && cash < nextEraWindCost
+          ? `${formatCurrency(nextEraWindCost)}必要`
+          : primarySkillUsed
+            ? '使用済み'
+            : primarySkillCooldown > 0
+              ? `${(primarySkillCooldown / 1000).toFixed(1)}秒`
+              : commandReady
+                ? '発動可'
+                : '準備中';
   const ownershipRate = Math.abs(gaugeSpeed) / 2;
   const battleDirection = gaugeSpeed < -0.08 ? 'player' : gaugeSpeed > 0.08 ? 'enemy' : 'even';
-  const enemyReserveCapacity = Math.max(1, enemyBudget - initialEnemyCommitment);
-  const enemyReservePercent = enemyReserve <= 0 ? 0 : Math.min(99.9, (enemyReserve / enemyReserveCapacity) * 100);
+  const enemyReserveCapacity = Math.max(1, enemyBudget);
+  const enemyMinimumCommitment = getEnemyMinimumCommitment(
+    targetProperty.marketPrice
+  );
+  const enemyCanCommit =
+    isTraining || enemyReserve >= enemyMinimumCommitment;
+  const enemyReservePercent = enemyReserve <= 0
+    ? 0
+    : Math.min(100, (enemyReserve / enemyReserveCapacity) * 100);
   const enemyReserveState = isTraining
     ? 'healthy'
     : enemyReservePercent <= 0 ? 'short' : enemyReservePercent <= 10 ? 'critical'
       : enemyReservePercent <= 25 ? 'danger' : enemyReservePercent <= 50 ? 'warning' : 'healthy';
   const playerReserveCapacity = Math.max(1, initialBattleCashRef.current);
   const playerReservePercent = Math.max(0, Math.min(100, (cash / playerReserveCapacity) * 100));
+  const playerRecoveryPercent = initialBattleCashRef.current > 0
+    ? Math.min(20, battleCashRecovered / initialBattleCashRef.current * 100)
+    : 0;
+  const enemyRecoveryPercent = enemyBudget > 0
+    ? Math.min(20, enemyCashRecovered / enemyBudget * 100)
+    : 0;
   const playerReserveState = playerReservePercent <= 0 ? 'short' : playerReservePercent <= 10 ? 'critical'
     : playerReservePercent <= 25 ? 'danger' : playerReservePercent <= 50 ? 'warning' : 'healthy';
   const windEnabled = !isTraining && windProgressionStage > 0;
@@ -841,6 +1306,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const eraWindPushPerSecond = getEraWindGaugePushPerSecond(
     Math.max(0, eraWindUses - 1)
   );
+  const eraWindOwnershipPushPerSecond = eraWindPushPerSecond / 2;
   const windTitle = eraWindActive
     ? '時代の風'
     : windTelegraphVisible
@@ -855,24 +1321,25 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               ? '乱旋風'
               : '静穏';
   const windHudTitle = windTitle;
+  const recoveryWindMultipliers = getBattleCashRecoveryWindMultipliers(
+    eraWindActive ? 'CALM' : currentWind.type
+  );
   const windDetail = eraWindActive
-    ? `風が……来る！ 時流 +${eraWindPushPerSecond.toFixed(1)}pt/秒`
+    ? `風が……来る！ 所有率 +${eraWindOwnershipPushPerSecond.toFixed(2)}pt/秒相当 / 商流回復 ×1.00`
     : windTelegraphVisible
       ? `3秒後に${presentedWind.title}`
       : isBurstTime
-        ? `風 × SYNERGY / 自社効果 ×${currentWind.playerMultiplier.toFixed(2)}`
+        ? `風 × SYNERGY / 自社効果 ×${currentWind.playerMultiplier.toFixed(2)} / 商流回復 ×${recoveryWindMultipliers.player.toFixed(2)}`
         : currentWind.type === 'HEADWIND_PLAYER'
-          ? `自社効果 ×${currentWind.playerMultiplier.toFixed(2)}`
+          ? `自社効果 ×${currentWind.playerMultiplier.toFixed(2)} / 商流回復 ×${recoveryWindMultipliers.player.toFixed(2)}`
           : windSide === 'player'
-            ? `自社効果 ×${currentWind.playerMultiplier.toFixed(2)}`
+            ? `自社効果 ×${currentWind.playerMultiplier.toFixed(2)} / 商流回復 ×${recoveryWindMultipliers.player.toFixed(2)}`
             : windSide === 'enemy'
-              ? `敵防衛 ×${currentWind.enemyMultiplier.toFixed(2)}`
+              ? `敵防衛 ×${currentWind.enemyMultiplier.toFixed(2)} / 敵回復 ×${recoveryWindMultipliers.enemy.toFixed(2)}`
               : currentWind.type === 'CROSSWIND'
-                ? `双方 ×${currentWind.playerMultiplier.toFixed(2)} / 速度 ×${currentWind.speedMultiplier.toFixed(2)}`
+                ? `双方 ×${currentWind.playerMultiplier.toFixed(2)} / 商流回復 ×${recoveryWindMultipliers.player.toFixed(2)}`
                 : '双方の資金効果 ×1.00';
-  const windHudDetail = windDetail;
   const fastHorse = fastHorseRemaining > 0;
-  const enemySlowed = enemySlowedRemaining > 0;
   const enemyDisruption = enemyDisruptionRemaining > 0
     ? TACTICAL_SKILL_BALANCE.disruption.interruptChance
     : 0;
@@ -907,7 +1374,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     selectedBattleSynergy,
     limitBreakCharge,
     allianceSupport,
-    hasCapitalBoost: equippedSkills.some(
+    hasCapitalBoost: battleSkillPool.some(
       (skill) => skill.effectType === 'CAPITAL_BOOST'
     ),
     enemyBudget,
@@ -919,20 +1386,23 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         !!targetProperty.isCartelHQ
       ) / 1000,
     playerPushBonus: influenceBonus,
+    cashCapRatio: isTraining ? null : undefined,
   });
   const commandProgressPerTick = fastHorse
     ? TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick
     : TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick;
-  const isFinalPushWindow = !isTraining && enemyReserve <= 0;
   const presentationLocked =
     !!battleAnnouncement ||
-    !!conditionAnnouncement;
-  const decisiveLocked = !!decisiveBlow;
+    !!conditionAnnouncement ||
+    !!skillCinematic ||
+    !!capitalCommit;
+  const decisiveLocked = !!terminalRef.current || !!decisiveBlow;
   const actionsLocked =
     !!winner ||
     battlePhase !== 'active' ||
     presentationLocked ||
     decisiveLocked ||
+    !!impactStop ||
     showHelp ||
     showLog;
   const backgroundInert =
@@ -941,29 +1411,46 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     showLog ||
     battlePhase !== 'active' ||
     presentationLocked ||
-    decisiveLocked;
+    decisiveLocked ||
+    !!impactStop;
   const footerInert = shouldInertBattleFooter(
     backgroundInert,
     !!winner,
     battlePhase
   );
-  const isPaused = battlePhase !== 'active' || showHelp || showLog || presentationLocked;
-  const tutorialAssistActive =
-    !!isTutorial &&
-    battlePhase === 'active' &&
-    totalPlayerInvested < targetProperty.marketPrice * 0.45 &&
-    !winner;
-  const timeScale = decisiveBlow
-    ? 0.16
-    : isPaused
+  const lightweightPauseActive =
+    lightweightMode &&
+    (
+      battlePhase !== 'active' ||
+      !!terminalCinematicStage ||
+      !!skillCinematic ||
+      !!capitalCommit ||
+      presentationLocked ||
+      decisiveLocked ||
+      showHelp ||
+      showLog ||
+      openingSlowActive ||
+      panel !== 'capital'
+    );
+  const timeScale = lightweightPauseActive
+    ? 0
+    : capitalCommit
       ? 0
-      : tutorialAssistActive
-        ? 0.2
-        : openingSlowActive
+    : impactStop?.phase === 'hitstop'
+      ? 0
+    : terminalCinematicStage
+      ? 0
+      : skillCinematic
+        ? 0
+      : battlePhase !== 'active'
+        ? 0
+        : showHelp || showLog || presentationLocked
           ? 0.1
-          : panel === 'capital'
-            ? 1
-            : 0.1;
+          : openingSlowActive
+            ? 0.1
+            : panel === 'capital'
+              ? 1
+              : 0.1;
   const enemyOwnershipForAi = Math.round((100 - ownership) / 5) * 5;
   const enemyDecision = useMemo(() => decideEnemyAction({
     enemyOwnership: enemyOwnershipForAi,
@@ -975,11 +1462,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     marketPrice: targetProperty.marketPrice,
     isCartelHQ: !!targetProperty.isCartelHQ,
     isTutorial,
-    slowed: enemySlowed,
+    slowed: false,
     cycle: aiCycle,
     difficultyLevel: enemyDifficultyLevel,
   }), [
-    aiCycle, currentWind.type, effectiveCapitalGap, enemyOwnershipForAi, enemyReservePercent, enemySlowed,
+    aiCycle, currentWind.type, effectiveCapitalGap, enemyOwnershipForAi, enemyReservePercent,
     enemyDifficultyLevel, isTutorial, lastPlayerAction, targetProperty.isCartelHQ,
     targetProperty.marketPrice, windCountdown,
   ]);
@@ -992,10 +1479,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ? Math.max(0, Math.min(100, livingDeadRemaining / livingDeadDuration * 100))
     : livingDeadPhase === 'survived' ? 100 : 0;
   useEffect(() => {
-    if (selectedCost <= cash || !maxAffordableConfig) return;
+    if (
+      terminalRef.current ||
+      winner ||
+      battlePhase !== 'active' ||
+      selectedCost <= cash ||
+      !maxAffordableConfig
+    ) return;
     setSelectedLevel(maxAffordableConfig.level);
     setStatusText(`残高に合わせて投資額を「${maxAffordableConfig.label}」へ自動調整`);
-  }, [cash, maxAffordableConfig, selectedCost]);
+  }, [battlePhase, cash, maxAffordableConfig, selectedCost, winner]);
 
   useEffect(() => {
     onTimeScaleChange?.(timeScale);
@@ -1007,7 +1500,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       !shouldAdvanceBattleWind({
         battleActive: battlePhase === 'active',
         settled: !!winner || decisiveLocked,
-        presentationLocked,
+        presentationLocked: false,
         eraWindActive,
       }) ||
       timeScale <= 0
@@ -1015,6 +1508,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return;
     }
     const timer = window.setInterval(() => {
+      if (terminalRef.current) return;
       setBattleWindState((current) =>
         advanceBattleWind(
           current,
@@ -1028,7 +1522,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     battlePhase,
     decisiveLocked,
     eraWindActive,
-    presentationLocked,
     timeScale,
     windEnabled,
     windProgressionStage,
@@ -1099,26 +1592,52 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     onTimeScaleChange?.(1);
     if (announcementTimerRef.current) window.clearTimeout(announcementTimerRef.current);
     if (limitBreakTimerRef.current) window.clearTimeout(limitBreakTimerRef.current);
-    if (shortTimerRef.current) window.clearTimeout(shortTimerRef.current);
-    if (shortDelayTimerRef.current) window.clearTimeout(shortDelayTimerRef.current);
-    if (terminalActionTimerRef.current) window.clearTimeout(terminalActionTimerRef.current);
     if (finishTimerRef.current) window.clearTimeout(finishTimerRef.current);
     if (resultConfirmTimerRef.current) window.clearTimeout(resultConfirmTimerRef.current);
     if (limitImpactTimerRef.current) window.clearTimeout(limitImpactTimerRef.current);
+    if (limitTerminalHandoffTimerRef.current) {
+      window.clearTimeout(limitTerminalHandoffTimerRef.current);
+    }
     if (conditionTimerRef.current) window.clearTimeout(conditionTimerRef.current);
     if (openingSlowTimerRef.current) window.clearTimeout(openingSlowTimerRef.current);
     if (decisiveImpactTimerRef.current) window.clearTimeout(decisiveImpactTimerRef.current);
-    if (decisiveClearTimerRef.current) window.clearTimeout(decisiveClearTimerRef.current);
+    if (decisiveReleaseTimerRef.current) window.clearTimeout(decisiveReleaseTimerRef.current);
     if (decisiveResolveTimerRef.current) window.clearTimeout(decisiveResolveTimerRef.current);
     if (livingDeadNoticeTimerRef.current) window.clearTimeout(livingDeadNoticeTimerRef.current);
     if (motionTimerRef.current) window.clearTimeout(motionTimerRef.current);
-    confetti.reset();
+    if (impactStopTimerRef.current) window.clearTimeout(impactStopTimerRef.current);
+    if (impactReleaseTimerRef.current) window.clearTimeout(impactReleaseTimerRef.current);
+    if (playerCoverExitTimerRef.current) window.clearTimeout(playerCoverExitTimerRef.current);
+    if (enemyCoverExitTimerRef.current) window.clearTimeout(enemyCoverExitTimerRef.current);
+    floaterTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    floaterTimersRef.current.clear();
+    clearCapitalCommitTimers();
+    capitalCommitActiveRef.current = false;
+    clearSkillCinematicTimers();
+    void confettiModulePromise
+      ?.then((victoryConfetti) => victoryConfetti.reset())
+      .catch(() => undefined);
     soundFx.stopBattleCinematicAudio(80);
-  }, [onTimeScaleChange]);
+  }, [
+    clearCapitalCommitTimers,
+    clearSkillCinematicTimers,
+    onTimeScaleChange,
+  ]);
 
   useEffect(() => {
+    if (
+      terminalRef.current ||
+      winner ||
+      battlePhase === 'finisher_notice' ||
+      battlePhase === 'result'
+    ) return;
     setAiText(`${ENEMY_INTENT_LABELS[enemyDecision.intent]} / ${enemyDecision.reason}`);
-  }, [enemyDecision.intent, enemyDecision.reason]);
+  }, [
+    battlePhase,
+    enemyDecision.intent,
+    enemyDecision.reason,
+    winner,
+  ]);
 
   const addLog = (text: string, category: LogCategory = 'system') => {
     const entry = { id: `${Date.now()}-${Math.random()}`, category, text };
@@ -1135,10 +1654,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       ...current.slice(-2),
       { id, text, side, tone },
     ]);
-    window.setTimeout(
-      () => setFloaters((current) => current.filter((item) => item.id !== id)),
-      1450
-    );
+    const timer = window.setTimeout(() => {
+      floaterTimersRef.current.delete(timer);
+      setFloaters((current) => current.filter((item) => item.id !== id));
+    }, 1450);
+    floaterTimersRef.current.add(timer);
   };
 
   const playMotion = (next: BattleMotion) => {
@@ -1150,6 +1670,40 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setMotion('idle');
     }, 620);
   };
+
+  const triggerImpactStop = useCallback((
+    side: ImpactStopSide,
+    heavy = false
+  ) => {
+    if (endedRef.current || terminalRef.current) return;
+    clearImpactStop();
+    impactStopSerialRef.current += 1;
+    const serial = impactStopSerialRef.current;
+    const timing = getBattleHitStopTiming(heavy, lightweightMode);
+    setImpactStop({ side, phase: 'hitstop', heavy, serial });
+    impactStopTimerRef.current = window.setTimeout(() => {
+      if (impactStopSerialRef.current !== serial) return;
+      impactStopTimerRef.current = null;
+      if (endedRef.current || terminalRef.current) return;
+      setImpactStop((current) =>
+        current?.serial === serial
+          ? { ...current, phase: 'release' }
+          : current
+      );
+    }, timing.hitStopMs);
+    impactReleaseTimerRef.current = window.setTimeout(() => {
+      if (impactStopSerialRef.current !== serial) return;
+      impactReleaseTimerRef.current = null;
+      setImpactStop((current) =>
+        current?.serial === serial ? null : current
+      );
+      if (motionTimerRef.current) {
+        window.clearTimeout(motionTimerRef.current);
+        motionTimerRef.current = null;
+      }
+      setMotion('idle');
+    }, timing.hitStopMs + timing.releaseMs);
+  }, [clearImpactStop, lightweightMode]);
 
   const chargeLimitBreak = (effectiveCapitalMovement: number) => {
     if (limitBreakChargeCapacity <= 0 || effectiveCapitalMovement <= 0) return 0;
@@ -1169,19 +1723,62 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     announcementTimerRef.current = window.setTimeout(() => setBattleAnnouncement(null), duration);
   };
 
-  const announceCondition = (
-    announcement: BattleConditionAnnouncement,
-    duration = BATTLE_CINEMATIC_TIMING.conditionAnnouncementMs
-  ) => {
-    if (conditionTimerRef.current) window.clearTimeout(conditionTimerRef.current);
-    setConditionAnnouncement(announcement);
-    conditionTimerRef.current = window.setTimeout(() => setConditionAnnouncement(null), duration);
+  const announceCondition = (announcement: BattleConditionAnnouncement) => {
+    if (terminalRef.current || endedRef.current) return;
+    setConditionAnnouncementQueue((current) =>
+      enqueueBattleStatusMessage(
+        current,
+        announcement,
+        conditionAnnouncement?.text ?? null
+      )
+    );
   };
+
+  useEffect(() => {
+    if (
+      conditionAnnouncement ||
+      battleAnnouncement ||
+      limitImpactActive ||
+      impactStop ||
+      skillCinematic ||
+      capitalCommit ||
+      terminalRef.current ||
+      endedRef.current ||
+      conditionAnnouncementQueue.length === 0
+    ) {
+      return;
+    }
+    const [next, ...rest] = conditionAnnouncementQueue;
+    setConditionAnnouncement(next);
+    setConditionAnnouncementQueue(rest);
+    if (next.sound === 'warning') soundFx.playWarning();
+    else if (next.sound === 'cash') soundFx.playBigCash();
+    else if (next.sound === 'skill') soundFx.playSkillSpark();
+    conditionTimerRef.current = window.setTimeout(() => {
+      conditionTimerRef.current = null;
+      setConditionAnnouncement(null);
+    }, BATTLE_STATUS_MESSAGE_DURATION_MS);
+  }, [
+    battleAnnouncement,
+    conditionAnnouncement,
+    conditionAnnouncementQueue,
+    capitalCommit,
+    impactStop,
+    limitImpactActive,
+    skillCinematic,
+  ]);
 
   const announceCurrentWind = () => {
     if (!windEnabled) return false;
     if (currentWind.type === 'CALM') {
       const text = '静穏――風補正が終了し、双方の資金効果が基準値へ戻りました';
+      announceCondition({
+        kind: 'calm',
+        tone: 'neutral',
+        text: '風が静まった。',
+        priority: 0,
+        sound: 'skill',
+      });
       const entry = {
         id: `wind-${Date.now()}`,
         category: 'system' as LogCategory,
@@ -1199,41 +1796,46 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (isBurstTime) {
       announcement = {
         kind: 'burst',
-        kicker: 'TAILWIND × SYNERGY',
-        title: 'BURST TIME',
-        detail: `味方追い風と連携が共鳴 / 自社の出資効果 ×${currentWind.playerMultiplier.toFixed(2)}`,
+        tone: 'ally',
+        text: '好機（BURST TIME）！\n追い風と事業連携が共鳴！',
+        priority: 1,
+        sound: 'cash',
       };
     } else if (currentWind.type === 'TAILWIND_PLAYER') {
       announcement = {
         kind: 'player',
-        kicker: 'MARKET WIND / ALLY',
-        title: '味方追い風',
-        detail: `自社の出資・支援効果 ×${currentWind.playerMultiplier.toFixed(2)}`,
+        tone: 'ally',
+        text: '風向きが変わった！\n自社への追い風！',
+        priority: 1,
+        sound: 'skill',
       };
     } else if (currentWind.type === 'HEADWIND_PLAYER') {
       announcement = {
         kind: 'enemy',
-        kicker: 'WARNING / HEADWIND',
-        title: '自社向かい風',
-        detail: `自社の出資・支援効果 ×${currentWind.playerMultiplier.toFixed(2)}`,
+        tone: 'enemy',
+        text: '自社に向かい風！\n競合有利の市場気配！',
+        priority: 2,
+        sound: 'warning',
       };
     } else if (currentWind.type === 'TAILWIND_ENEMY') {
       announcement = {
         kind: 'enemy',
-        kicker: 'WARNING / RIVAL WIND',
-        title: '敵方追い風',
-        detail: `競合の防衛出資効果 ×${currentWind.enemyMultiplier.toFixed(2)}`,
+        tone: 'enemy',
+        text: '風向きが変わった！\n競合への追い風！',
+        priority: 2,
+        sound: 'warning',
       };
     } else if (currentWind.type === 'CROSSWIND') {
       announcement = {
         kind: 'cross',
-        kicker: 'MARKET TURBULENCE',
-        title: '乱旋風',
-        detail: `双方の資金効果 ×${currentWind.playerMultiplier.toFixed(2)} / 所有率速度 ×${currentWind.speedMultiplier.toFixed(2)}`,
+        tone: 'chaos',
+        text: '乱風が吹き荒れる！',
+        priority: 2,
+        sound: 'warning',
       };
     } else return false;
     announceCondition(announcement);
-    const text = `${announcement.title}――${announcement.detail}`;
+    const text = normalizeBattleStatusMessageText(announcement.text).replace(/\n/g, '――');
     const entry = {
       id: `wind-${Date.now()}`,
       category: 'system' as LogCategory,
@@ -1244,14 +1846,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       entry,
       ...current,
     ].slice(0, 100));
-    if (announcement.kind === 'enemy') soundFx.playWarning();
-    else soundFx.playSkillSpark();
     return true;
   };
 
   const announceSynergy = (name: string, detail: string) => {
     const title = isBurstTime ? 'BURST TIME' : 'SYNERGY発動';
     showFloater(`${title} / ${name}`, 'player', 'positive');
+    announceCondition({
+      kind: isBurstTime ? 'burst' : 'synergy',
+      tone: 'ally',
+      text: `${title}！\n${name}`,
+      priority: 1,
+      sound: 'cash',
+    });
     setStatusText(
       isBurstTime
         ? `${name}と味方追い風が共鳴――${detail}`
@@ -1272,7 +1879,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setOpeningSlowActive(true);
     setStatusText(
       isTraining
-        ? '木人訓練開始――投入・支援元・スキルを自由に試してください'
+        ? '木人訓練開始――投入・支援元・アビリティを自由に試してください'
         : '投資レベルを選び、投資実行でギルを積んでください'
     );
     setLogs((current) => [
@@ -1324,6 +1931,29 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     lastTelegraphedWindRef.current = battleWindState.pendingWindType;
     const nextWind = WIND_CONDITIONS[battleWindState.pendingWindType];
     const text = `市場気配――風が……来る！ 3秒後に${nextWind.title}`;
+    announceCondition({
+      kind: 'calm',
+      tone:
+        nextWind.type === 'TAILWIND_ENEMY' ||
+        nextWind.type === 'HEADWIND_PLAYER'
+          ? 'enemy'
+          : 'neutral',
+      text:
+        nextWind.type === 'TAILWIND_ENEMY' ||
+        nextWind.type === 'HEADWIND_PLAYER'
+          ? '風の兆し……\n自社不利の気配！'
+          : '風の兆し……',
+      priority:
+        nextWind.type === 'TAILWIND_ENEMY' ||
+        nextWind.type === 'HEADWIND_PLAYER'
+          ? 2
+          : 0,
+      sound:
+        nextWind.type === 'TAILWIND_ENEMY' ||
+        nextWind.type === 'HEADWIND_PLAYER'
+          ? 'warning'
+          : 'skill',
+    });
     setStatusText(text);
     setLogs((current) => [
       {
@@ -1333,14 +1963,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       },
       ...current,
     ].slice(0, 100));
-    if (
-      nextWind.type === 'TAILWIND_ENEMY' ||
-      nextWind.type === 'HEADWIND_PLAYER'
-    ) {
-      soundFx.playWarning();
-    } else {
-      soundFx.playSkillSpark();
-    }
   }, [
     battlePhase,
     battleWindState.pendingWindType,
@@ -1352,6 +1974,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const consumeCommand = () => {
     if (
       !commandReady ||
+      capitalCommitActiveRef.current ||
       endedRef.current ||
       decisiveRef.current ||
       battlePhase !== 'active' ||
@@ -1364,6 +1987,134 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return true;
   };
 
+  const releaseCoverKnight = (
+    side: 'player' | 'enemy',
+    announce = true
+  ) => {
+    const isPlayer = side === 'player';
+    const timerRef = isPlayer
+      ? playerCoverExitTimerRef
+      : enemyCoverExitTimerRef;
+    if (timerRef.current) return;
+    const activatedAtRef = isPlayer
+      ? playerCoverActivatedAtRef
+      : enemyCoverActivatedAtRef;
+    const setKnightPhase = isPlayer
+      ? setPlayerCoverKnightPhase
+      : setEnemyCoverKnightPhase;
+    if (isPlayer) {
+      playerCoverRemainingRef.current = 0;
+      setPlayerCoverRemaining(0);
+    } else {
+      enemyCoverRemainingRef.current = 0;
+      setEnemyCoverRemaining(0);
+    }
+    if (announce) {
+      const text = isPlayer
+        ? 'ナイトは援護を終え、戦線を離脱した'
+        : '競合側のナイトは防衛任務を終えた';
+      setStatusText(text);
+      addLog(text, 'skill');
+    }
+    const beginGuardBreak = () => {
+      setKnightPhase('breaking');
+      timerRef.current = window.setTimeout(() => {
+        setKnightPhase('leaving');
+        timerRef.current = window.setTimeout(() => {
+          timerRef.current = null;
+          setKnightPhase('absent');
+        }, COVER_KNIGHT_EXIT_MS);
+      }, COVER_KNIGHT_BREAK_MS);
+    };
+    const activeElapsed = Math.max(
+      0,
+      performance.now() - activatedAtRef.current
+    );
+    const minimumHoldRemaining = Math.max(
+      0,
+      COVER_KNIGHT_MIN_ACTIVE_MS - activeElapsed
+    );
+    if (minimumHoldRemaining > 0) {
+      timerRef.current = window.setTimeout(
+        beginGuardBreak,
+        minimumHoldRemaining
+      );
+    } else {
+      beginGuardBreak();
+    }
+  };
+
+  const activatePlayerCover = () => {
+    if (playerCoverExitTimerRef.current) {
+      window.clearTimeout(playerCoverExitTimerRef.current);
+      playerCoverExitTimerRef.current = null;
+    }
+    playerCoverRemainingRef.current = TACTICAL_SKILL_BALANCE.cover.durationMs;
+    playerCoverCapacityRef.current =
+      TACTICAL_SKILL_BALANCE.cover.gaugeCapacity;
+    playerCoverActivatedAtRef.current = performance.now();
+    setPlayerCoverRemaining(TACTICAL_SKILL_BALANCE.cover.durationMs);
+    setPlayerCoverKnightPhase('active');
+  };
+
+  const activateEnemyBossAbility = () => {
+    if (
+      enemyBossAbilityUsedRef.current ||
+      bossAbilityTier === 'none' ||
+      bossAbilityTier === 'boss'
+    ) {
+      return false;
+    }
+    enemyBossAbilityUsedRef.current = true;
+    const balance =
+      bossAbilityTier === 'invincible'
+        ? BOSS_COVER_BALANCE.invincible
+        : bossAbilityTier === 'enhanced_cover'
+          ? BOSS_COVER_BALANCE.enhancedCover
+          : BOSS_COVER_BALANCE.cover;
+    if (enemyCoverExitTimerRef.current) {
+      window.clearTimeout(enemyCoverExitTimerRef.current);
+      enemyCoverExitTimerRef.current = null;
+    }
+    enemyCoverRemainingRef.current = balance.durationMs;
+    enemyCoverCapacityRef.current = balance.gaugeCapacity;
+    enemyCoverActivatedAtRef.current = performance.now();
+    setEnemyCoverRemaining(balance.durationMs);
+    setEnemyCoverKnightPhase('active');
+    const abilityName =
+      bossAbilityTier === 'invincible'
+        ? 'インビンシブル'
+        : bossAbilityTier === 'enhanced_cover'
+          ? '強化かばう'
+          : 'かばう';
+    announceCondition({
+      kind: 'enemy',
+      tone: 'enemy',
+      text:
+        bossAbilityTier === 'invincible'
+          ? `競合代表は\n${abilityName}を構えた！`
+          : `ナイトが現れた！\n競合を${abilityName}`,
+      priority: 4,
+      sound: 'warning',
+    });
+    setStatusText(
+      `${abilityName}――競合側のナイトが${Math.round(
+        balance.durationMs / 1000
+      )}秒間、防衛線へ入る`
+    );
+    showFloater(
+      `${abilityName} ${Math.round(balance.durationMs / 1000)}秒`,
+      'enemy',
+      'negative'
+    );
+    addLog(
+      `都市ボスが${abilityName}を発動。ナイトが防衛線へ参加。`,
+      'enemy'
+    );
+    soundFx.playSkillCast('COVER');
+    return true;
+  };
+
   const finalizeBattle = (
     result: 'player' | 'opponent',
     method: FinishMethod = 'NORMAL',
@@ -1373,11 +2124,24 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (endedRef.current) return;
     endedRef.current = true;
     decisiveRef.current = false;
-    setDecisiveBlow(null);
+    const keepTerminalResolution =
+      terminalRef.current?.cause !== 'withdrawal';
+    if (!keepTerminalResolution) {
+      setTerminalCinematicStage(null);
+      setDecisiveBlow(null);
+    }
     setBattleAnnouncement(null);
     setConditionAnnouncement(null);
+    setConditionAnnouncementQueue([]);
+    clearCapitalCommitTimers();
+    capitalCommitActiveRef.current = false;
+    setCapitalCommit(null);
+    if (!keepTerminalResolution) {
+      setTerminalCapitalSnapshot(null);
+    }
+    clearSkillCinematicTimers();
+    setSkillCinematic(null);
     setLimitImpactActive(false);
-    setFinalPushActive(false);
     setFloaters([]);
     const resolvedOwnership = Math.max(0, rawOwnership);
     const resolvedOverkill = result === 'player' ? Math.max(0, resolvedOwnership - 100) : 0;
@@ -1390,11 +2154,24 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setGaugeSpeed(0);
     changeBattlePhase('finisher_notice');
     setFinishTelegraphVisible(true);
+    const reducedMotion = window.matchMedia?.(
+      '(prefers-reduced-motion: reduce)'
+    ).matches ?? false;
+    const compactCinematic = lightweightMode || reducedMotion;
+    const finishNoticeDuration =
+      terminalRef.current?.cause !== 'withdrawal'
+        ? compactCinematic
+          ? TERMINAL_CINEMATIC_TIMING.reducedMotionResolutionMs
+          : TERMINAL_CINEMATIC_TIMING.resolutionMs
+        : BATTLE_CINEMATIC_TIMING.finishNoticeMs;
     if (finishTimerRef.current) window.clearTimeout(finishTimerRef.current);
-    finishTimerRef.current = window.setTimeout(
-      () => setFinishTelegraphVisible(false),
-      BATTLE_CINEMATIC_TIMING.finishNoticeMs
-    );
+    finishTimerRef.current = window.setTimeout(() => {
+      finishTimerRef.current = null;
+      setFinishTelegraphVisible(false);
+      setTerminalCinematicStage(null);
+      setDecisiveBlow(null);
+      setTerminalCapitalSnapshot(null);
+    }, finishNoticeDuration);
     setStatusText(
       isTraining
         ? result === 'player'
@@ -1420,24 +2197,30 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     );
     if (result === 'player') {
       soundFx.playVictory();
-      confetti.reset();
-      const reducedMotion = window.matchMedia?.(
-        '(prefers-reduced-motion: reduce)'
-      ).matches ?? false;
       const particleCount = getVictoryConfettiParticleCount(
         window.innerWidth,
-        reducedMotion
+        reducedMotion,
+        lightweightMode
       );
       if (particleCount > 0) {
-        confetti({
-          particleCount,
-          spread: window.innerWidth <= 640 ? 72 : 96,
-          startVelocity: window.innerWidth <= 640 ? 26 : 34,
-          ticks: window.innerWidth <= 640 ? 80 : 120,
-          scalar: window.innerWidth <= 640 ? 0.78 : 0.92,
-          origin: { y: 0.48 },
-          disableForReducedMotion: true,
-        });
+        const compactEffects = window.innerWidth <= 1024;
+        void loadVictoryConfetti()
+          .then((confetti) => {
+            confetti.reset();
+            confetti({
+              particleCount,
+              spread: compactEffects ? 72 : 96,
+              startVelocity: compactEffects ? 26 : 34,
+              ticks: compactEffects ? 80 : 120,
+              scalar: compactEffects ? 0.78 : 0.92,
+              origin: { y: 0.48 },
+              disableForReducedMotion: true,
+            });
+          })
+          .catch(() => {
+            // Celebration audio and result flow remain intact if the optional
+            // visual chunk cannot be loaded.
+          });
       }
     } else {
       soundFx.playDefeat();
@@ -1449,9 +2232,30 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     method: FinishMethod = 'NORMAL',
     rawOwnership = ownership,
     cinematic = true,
-    resolvedDefeatReason: DefeatReason = 'CAPITAL_COLLAPSE'
+    resolvedDefeatReason: DefeatReason = 'CAPITAL_COLLAPSE',
+    cause: TerminalCause = result === 'player' ? lastPressureCauseRef.current : 'enemy'
   ) => {
-    if (endedRef.current || decisiveRef.current) return;
+    if (endedRef.current || terminalRef.current) return false;
+    terminalRef.current = {
+      winner: result,
+      method,
+      rawOwnership,
+      defeatReason: resolvedDefeatReason,
+      cause,
+    };
+    soundFx.stopBattleCinematicAudio(80);
+    clearCapitalCommitTimers();
+    capitalCommitActiveRef.current = false;
+    setCapitalCommit(null);
+    clearSkillCinematicTimers();
+    setSkillCinematic(null);
+    clearImpactStop();
+    decisiveRef.current = true;
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+    resolvingAiActionRef.current = false;
     setPanel('capital');
     setShowHelp(false);
     setShowLog(false);
@@ -1463,68 +2267,88 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       window.clearTimeout(conditionTimerRef.current);
       conditionTimerRef.current = null;
     }
-    if (shortTimerRef.current) {
-      window.clearTimeout(shortTimerRef.current);
-      shortTimerRef.current = null;
-    }
-    if (shortDelayTimerRef.current) {
-      window.clearTimeout(shortDelayTimerRef.current);
-      shortDelayTimerRef.current = null;
-    }
-    if (terminalActionTimerRef.current) {
-      window.clearTimeout(terminalActionTimerRef.current);
-      terminalActionTimerRef.current = null;
-    }
     if (limitImpactTimerRef.current) {
       window.clearTimeout(limitImpactTimerRef.current);
       limitImpactTimerRef.current = null;
     }
+    if (limitTerminalHandoffTimerRef.current) {
+      window.clearTimeout(limitTerminalHandoffTimerRef.current);
+      limitTerminalHandoffTimerRef.current = null;
+    }
     setBattleAnnouncement(null);
     setConditionAnnouncement(null);
+    setConditionAnnouncementQueue([]);
     setLimitImpactActive(false);
-    setFinalPushActive(false);
     setFloaters([]);
+    playerCoverRemainingRef.current = 0;
+    enemyCoverRemainingRef.current = 0;
+    setPlayerCoverRemaining(0);
+    setEnemyCoverRemaining(0);
+    if (playerCoverKnightPhase !== 'absent') {
+      releaseCoverKnight('player', false);
+    }
+    if (enemyCoverKnightPhase !== 'absent') {
+      releaseCoverKnight('enemy', false);
+    }
+    setAiProgress(0);
+    setGaugeSpeed(0);
     if (!cinematic) {
       finalizeBattle(result, method, rawOwnership, resolvedDefeatReason);
-      return;
+      return true;
     }
 
-    decisiveRef.current = true;
     changeBattlePhase('decisive');
-    setGaugeSpeed(0);
-    updateGauge(result === 'player' ? -99.2 : 99.2);
+    setTerminalCinematicStage('anticipation');
+    updateGauge(result === 'player' ? -99 : 99);
     setDecisiveBlow({ winner: result, impacted: false });
+    const directFinisher = isDirectTerminalCause(cause);
     setStatusText(
       isTraining
         ? result === 'player'
-          ? '訓練決着――最後の資金が木人の耐久を削り切る！'
-          : '訓練終了――木人の耐久資本に押し戻される！'
+          ? directFinisher
+            ? '最終提示――最後の資金が木人耐久へ届く！'
+            : '耐久崩壊――積み上がった圧力で木人が倒れる！'
+          : '訓練終了――木人の耐久資本に押し戻される'
         : result === 'player'
-          ? '決着の一撃――最後の資金が防衛線へ届く！'
+          ? directFinisher
+            ? `FINAL OFFER――${TERMINAL_CAUSE_LABELS[cause]}が防衛線を押し切る！`
+            : `資本崩壊――${TERMINAL_CAUSE_LABELS[cause]}に耐えきれず競合が自壊する！`
           : resolvedDefeatReason === 'WALKING_DEAD_FAILED'
-            ? '蘇生猶予終了――最後の防衛線が崩壊する！'
-            : '決着の一撃――競合の大口防衛出資が直撃！'
+            ? '蘇生猶予終了――自社の防衛線が崩壊する'
+            : `FINAL OFFER――${TERMINAL_CAUSE_LABELS[cause]}が押し切る！`
     );
-    playMotion(result === 'player' ? 'player' : 'enemy');
-    soundFx.playDecisiveBlow(result);
+    const reducedMotion = window.matchMedia?.(
+      '(prefers-reduced-motion: reduce)'
+    ).matches ?? false;
+    const compactCinematic = lightweightMode || reducedMotion;
+    const anticipationMs = compactCinematic
+      ? TERMINAL_CINEMATIC_TIMING.reducedMotionAnticipationMs
+      : TERMINAL_CINEMATIC_TIMING.anticipationMs;
+    const hitStopMs = compactCinematic
+      ? TERMINAL_CINEMATIC_TIMING.reducedMotionHitStopMs
+      : TERMINAL_CINEMATIC_TIMING.hitStopMs;
+    const impactMs = compactCinematic
+      ? TERMINAL_CINEMATIC_TIMING.reducedMotionImpactMs
+      : TERMINAL_CINEMATIC_TIMING.impactMs;
 
     decisiveImpactTimerRef.current = window.setTimeout(() => {
+      decisiveImpactTimerRef.current = null;
+      setTerminalCinematicStage('hitstop');
       updateGauge(result === 'player' ? -100 : 100);
       setDecisiveBlow({ winner: result, impacted: true });
-      soundFx.playCapitalImpact(result === 'player' ? 'player' : 'opponent', 1);
-    }, BATTLE_CINEMATIC_TIMING.decisiveImpactMs);
-    decisiveClearTimerRef.current = window.setTimeout(() => {
-      setDecisiveBlow(null);
-      setStatusText(
-        result === 'player'
-          ? '決着――競合の防衛線が崩れる'
-          : '決着――自社の防衛線が崩れる'
-      );
-    }, BATTLE_CINEMATIC_TIMING.decisiveClearMs);
+      soundFx.playCapitalImpact(result, 1);
+    }, anticipationMs);
+    decisiveReleaseTimerRef.current = window.setTimeout(() => {
+      decisiveReleaseTimerRef.current = null;
+      if (endedRef.current || !terminalRef.current) return;
+      setTerminalCinematicStage('impact');
+    }, anticipationMs + hitStopMs);
     decisiveResolveTimerRef.current = window.setTimeout(() => {
-      decisiveRef.current = false;
+      decisiveResolveTimerRef.current = null;
+      setTerminalCinematicStage('resolution');
       finalizeBattle(result, method, rawOwnership, resolvedDefeatReason);
-    }, BATTLE_CINEMATIC_TIMING.decisiveResolveMs);
+    }, anticipationMs + hitStopMs + impactMs);
+    return true;
   };
 
   const triggerWalkingDead = () => {
@@ -1548,48 +2372,168 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return true;
   };
 
-  const showShortNotice = () => {
+  const applyCoverToGaugeCandidate = (
+    nextGauge: number,
+    cause: TerminalCause
+  ) => {
+    const currentGauge = gaugeRef.current;
+    let absorbedGauge = 0;
+    if (
+      cause === 'enemy' &&
+      playerCoverRemainingRef.current > 0 &&
+      nextGauge > currentGauge
+    ) {
+      const covered = applyCoverToGaugeDelta({
+        currentGauge,
+        nextGauge,
+        protects: 'player',
+        absorbRatio: TACTICAL_SKILL_BALANCE.cover.absorbRatio,
+        remainingGaugeCapacity: playerCoverCapacityRef.current,
+      });
+      nextGauge = covered.nextGauge;
+      absorbedGauge = covered.absorbedGauge;
+      playerCoverCapacityRef.current = covered.remainingGaugeCapacity;
+      if (covered.absorbedGauge >= 1) {
+        showFloater(
+          `かばう -${(covered.absorbedGauge / 2).toFixed(1)}pt`,
+          'player',
+          'notice'
+        );
+      }
+      if (covered.remainingGaugeCapacity <= 0) {
+        releaseCoverKnight('player');
+      }
+    } else if (cause !== 'enemy' && nextGauge < currentGauge) {
+      const predictedPlayerOwnership = calculateOwnershipFromGauge(nextGauge);
+      if (
+        enemyCoverRemainingRef.current <= 0 &&
+        predictedPlayerOwnership >=
+          BOSS_COVER_BALANCE.triggerPlayerOwnership
+      ) {
+        activateEnemyBossAbility();
+      }
+      if (enemyCoverRemainingRef.current > 0) {
+        const balance =
+          bossAbilityTier === 'invincible'
+            ? BOSS_COVER_BALANCE.invincible
+            : bossAbilityTier === 'enhanced_cover'
+              ? BOSS_COVER_BALANCE.enhancedCover
+              : BOSS_COVER_BALANCE.cover;
+        const covered = applyCoverToGaugeDelta({
+          currentGauge,
+          nextGauge,
+          protects: 'opponent',
+          absorbRatio: balance.absorbRatio,
+          remainingGaugeCapacity: enemyCoverCapacityRef.current,
+        });
+        nextGauge = covered.nextGauge;
+        absorbedGauge = covered.absorbedGauge;
+        enemyCoverCapacityRef.current = covered.remainingGaugeCapacity;
+        if (covered.absorbedGauge >= 1) {
+          showFloater(
+            `${bossAbilityTier === 'invincible' ? '無効' : 'かばう'} -${(
+              covered.absorbedGauge / 2
+            ).toFixed(1)}pt`,
+            'enemy',
+            'negative'
+          );
+        }
+        if (covered.remainingGaugeCapacity <= 0) {
+          releaseCoverKnight('enemy');
+        }
+      }
+    }
+    return { nextGauge, absorbedGauge };
+  };
+
+  const applyGaugeCandidate = (
+    nextGauge: number,
+    cause: TerminalCause,
+    method: FinishMethod = 'NORMAL',
+    commitVisual = true,
+    coverAlreadyResolved = false
+  ) => {
+    if (endedRef.current || terminalRef.current) return false;
+    if (cause !== 'enemy') {
+      lastPressureCauseRef.current = cause;
+    }
+    if (!coverAlreadyResolved) {
+      nextGauge = applyCoverToGaugeCandidate(nextGauge, cause).nextGauge;
+    }
+    const trainingGauge = holdTrainingGaugeAboveDefeat(nextGauge, isTraining);
+    if (trainingGauge !== nextGauge) {
+      setGaugeSpeed(0);
+      updateGauge(trainingGauge, true);
+      return false;
+    }
+    const terminalWinner = getBattleTerminalWinner(nextGauge);
+    if (terminalWinner === 'player') {
+      return finishBattle(
+        'player',
+        method,
+        (100 - nextGauge) / 2,
+        true,
+        'CAPITAL_COLLAPSE',
+        cause
+      );
+    }
+    if (terminalWinner === 'opponent') {
+      if (triggerWalkingDead()) {
+        updateGauge(livingDeadGaugeFloor);
+        return false;
+      }
+      if (livingDeadPhaseRef.current === 'recovery') {
+        updateGauge(nextGauge, true);
+        return false;
+      }
+      return finishBattle(
+        'opponent',
+        'NORMAL',
+        0,
+        true,
+        'CAPITAL_COLLAPSE',
+        cause
+      );
+    }
+    updateGauge(nextGauge, commitVisual);
+    return false;
+  };
+
+  const showLiquidityWarning = () => {
     if (
       isTraining ||
-      shortShownRef.current ||
-      !canShowShortNotice({
-        battlePhase: battlePhaseRef.current,
-        ended: endedRef.current,
-        decisive: decisiveRef.current,
-      })
-    ) {
-      return;
-    }
-    shortShownRef.current = true;
-    setMotion('idle');
-    setGaugeSpeed(0);
-    setStatusText('SHORT――敵の防衛資金が枯渇。最後の一手で決着をつけてください');
-    changeBattlePhase('short_notice');
-    addLog('SHORT！ 競合の追加防衛資金が枯渇。', 'result');
-    soundFx.playWarning();
-    if (shortTimerRef.current) window.clearTimeout(shortTimerRef.current);
-    shortTimerRef.current = window.setTimeout(() => {
-      shortTimerRef.current = null;
-      if (endedRef.current || decisiveRef.current) return;
-      changeBattlePhase('active');
-      setStatusText('敵は追加防衛不能。自社資金のFINAL PUSHかLIMIT BREAKで決着してください');
-    }, BATTLE_CINEMATIC_TIMING.shortNoticeMs);
+      liquidityWarningShownRef.current ||
+      battlePhaseRef.current !== 'active' ||
+      terminalRef.current
+    ) return;
+    liquidityWarningShownRef.current = true;
+    setAiText('LIQUIDITY LOW / 資金繰り逼迫');
+    setStatusText('競合は資金繰りに苦しんでいる');
+    announceCondition({
+      kind: 'enemy',
+      tone: 'ally',
+      text: '競合は資金繰りに\n苦しんでいる',
+      priority: 1,
+      sound: 'warning',
+    });
+    addLog('LIQUIDITY LOW――競合の手元資金が一時的に底をついた。', 'enemy');
   };
 
   const commitEnemyFunds = (
     requested: number,
     reason: string,
     applyGaugeShock = true,
-    scheduleShort = true,
-    chargeLimit = true
+    scheduleLiquidityWarning = true,
+    chargeLimit = true,
+    playImpact = true
   ) => {
     if (isTraining) {
       return { actual: 0, counterShock: 0 };
     }
     const actual = Math.max(0, Math.min(Math.round(requested), enemyReserveRef.current));
     if (actual <= 0) {
-      setAiText('SHORT / 追加防衛不能');
-      if (!isTraining && scheduleShort) showShortNotice();
+      setAiText('LIQUIDITY LOW / 回復待ち');
+      if (!isTraining && scheduleLiquidityWarning) showLiquidityWarning();
       return { actual: 0, counterShock: 0 };
     }
     if (enemyDisruption > 0 && Math.random() < enemyDisruption) {
@@ -1615,40 +2559,58 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       chargeLimitBreak(actual * currentWind.enemyMultiplier);
     }
     const counterShock = Math.min(10, (1.5 + (actual / Math.max(targetProperty.marketPrice, 1)) * 18) * currentWind.enemyMultiplier);
+    let terminalFromShock = false;
     if (applyGaugeShock) {
-      updateGauge((value) =>
-        livingDeadPhaseRef.current === 'recovery'
-          ? value + counterShock
-          : Math.min(99, value + counterShock)
+      terminalFromShock = applyGaugeCandidate(
+        gaugeRef.current + counterShock,
+        'enemy',
+        'CAPITAL_PRESSURE'
       );
     }
+    if (terminalFromShock) {
+      return { actual, counterShock };
+    }
     setStatusText(`敵大規模防衛出資――${formatCurrency(actual)}を対抗投入`);
-    setAiText(nextReserve > 0 ? '次の敵大規模防衛出資を詠唱中' : 'SHORT / 追加防衛不能');
+    setAiText(nextReserve > 0 ? '次の敵大規模防衛出資を詠唱中' : 'LIQUIDITY LOW / 回復待ち');
     showFloater(`防衛 +${formatCurrency(actual)}`, 'enemy', 'negative');
     playMotion('enemy');
-    soundFx.playCapitalImpact('opponent', actual / Math.max(targetProperty.marketPrice, 1));
+    if (playImpact) {
+      soundFx.playCapitalImpact(
+        'opponent',
+        actual / Math.max(targetProperty.marketPrice, 1)
+      );
+      triggerImpactStop(
+        'opponent',
+        actual / Math.max(targetProperty.marketPrice, 1) >= 0.14
+      );
+    }
     addLog(`${reason}として${formatCurrency(actual)}を投入。残予算${formatCurrency(nextReserve)}。`, 'enemy');
-    if (!isTraining && nextReserve <= 0 && scheduleShort) {
-      if (shortDelayTimerRef.current) {
-        window.clearTimeout(shortDelayTimerRef.current);
-      }
-      shortDelayTimerRef.current = window.setTimeout(() => {
-        shortDelayTimerRef.current = null;
-        showShortNotice();
-      }, BATTLE_CINEMATIC_TIMING.shortDelayMs);
+    if (!isTraining && nextReserve <= 0 && scheduleLiquidityWarning) {
+      showLiquidityWarning();
     }
     return { actual, counterShock };
   };
 
   useEffect(() => {
-    if (timeScale <= 0 || winner) return;
+    if (
+      timeScale <= 0 ||
+      winner ||
+      battlePhase !== 'active' ||
+      terminalRef.current
+    ) return;
     const interval = window.setInterval(() => {
-      const elapsed = 50 * timeScale;
+      if (terminalRef.current) return;
+      const elapsed = BATTLE_STATE_UPDATE_INTERVAL_MS * timeScale;
+      const tickScale = BATTLE_STATE_UPDATE_INTERVAL_MS / 50;
       const commandProgressPerTick = fastHorse
         ? TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick
         : TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick;
-      const commandScale = tutorialAssistActive ? 1 : timeScale;
-      setCommandProgress((value) => Math.min(100, value + commandProgressPerTick * commandScale));
+      setCommandProgress((value) =>
+        Math.min(
+          100,
+          value + commandProgressPerTick * timeScale * tickScale
+        )
+      );
       setSkillCooldowns((current) => {
         let changed = false;
         const next = { ...current };
@@ -1661,7 +2623,24 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         return changed ? next : current;
       });
       setFastHorseRemaining((value) => Math.max(0, value - elapsed));
-      setEnemySlowedRemaining((value) => Math.max(0, value - elapsed));
+      if (playerCoverRemainingRef.current > 0) {
+        const nextPlayerCover = Math.max(
+          0,
+          playerCoverRemainingRef.current - elapsed
+        );
+        playerCoverRemainingRef.current = nextPlayerCover;
+        setPlayerCoverRemaining(nextPlayerCover);
+        if (nextPlayerCover <= 0) releaseCoverKnight('player');
+      }
+      if (enemyCoverRemainingRef.current > 0) {
+        const nextEnemyCover = Math.max(
+          0,
+          enemyCoverRemainingRef.current - elapsed
+        );
+        enemyCoverRemainingRef.current = nextEnemyCover;
+        setEnemyCoverRemaining(nextEnemyCover);
+        if (nextEnemyCover <= 0) releaseCoverKnight('enemy');
+      }
       setEnemyDisruptionRemaining((value) => Math.max(0, value - elapsed));
       setPushMultiplierRemaining((value) => Math.max(0, value - elapsed));
       setEraWindRemaining((value) => Math.max(0, value - elapsed));
@@ -1670,12 +2649,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         livingDeadRemainingRef.current = nextRemaining;
         setLivingDeadRemaining(nextRemaining);
       }
-    }, 50);
+    }, BATTLE_STATE_UPDATE_INTERVAL_MS);
     return () => window.clearInterval(interval);
-  }, [fastHorse, timeScale, tutorialAssistActive, winner]);
+  }, [
+    battlePhase,
+    fastHorse,
+    timeScale,
+    winner,
+  ]);
 
   useEffect(() => {
-    if (winner) return;
+    if (winner || terminalRef.current) return;
     const outcome = resolveLivingDeadOutcome(
       livingDeadPhase,
       normalizedOwnership,
@@ -1705,25 +2689,72 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setStatusText('WALKING DEAD FAILED――蘇生猶予が尽きました');
       showFloater('RESURRECTION FAILED', 'player', 'negative');
       addLog('蘇生猶予終了。所有率30％へ届かず、リビングデッド失敗。', 'result');
-      finishBattle('opponent', 'NORMAL', ownership, true, 'WALKING_DEAD_FAILED');
+      finishBattle(
+        'opponent',
+        'NORMAL',
+        0,
+        true,
+        'WALKING_DEAD_FAILED',
+        'living_dead'
+      );
     }
   }, [livingDeadPhase, livingDeadRemaining, normalizedOwnership, winner]);
 
   useEffect(() => {
-    if (timeScale <= 0 || winner || battlePhase !== 'active') return;
+    if (
+      timeScale <= 0 ||
+      winner ||
+      battlePhase !== 'active' ||
+      terminalRef.current
+    ) return;
     const interval = window.setInterval(() => {
-      if (battleCashRecoveredRef.current >= battleCashRecoveryCap) return;
-      const scaledGain = battleCashRecoveryPerSecond * 0.1 * timeScale + recoveryCarryRef.current;
-      const wholeGil = Math.floor(scaledGain);
-      recoveryCarryRef.current = scaledGain - wholeGil;
-      if (wholeGil <= 0) return;
-      const actual = Math.min(wholeGil, battleCashRecoveryCap - battleCashRecoveredRef.current);
-      battleCashRecoveredRef.current += actual;
-      setBattleCashRecovered(battleCashRecoveredRef.current);
-      setCash((value) => value + actual);
+      if (terminalRef.current) return;
+      const playerRecovery = advanceBattleCashRecovery({
+        baselineFunds: initialBattleCashRef.current,
+        availableFunds: cashRef.current,
+        cumulativeRecovered: battleCashRecoveredRef.current,
+        elapsedSeconds: 0.1,
+        timeScale,
+        windMultiplier: recoveryWindMultipliers.player,
+        terminal: false,
+      });
+      if (playerRecovery.recoveredThisStep > 0) {
+        battleCashRecoveredRef.current =
+          playerRecovery.cumulativeRecovered;
+        setBattleCashRecovered(playerRecovery.cumulativeRecovered);
+        updateCash(playerRecovery.availableFunds);
+      }
+
+      const enemyRecovery = advanceBattleCashRecovery({
+        baselineFunds: enemyBudget,
+        availableFunds: enemyReserveRef.current,
+        cumulativeRecovered: enemyCashRecoveredRef.current,
+        elapsedSeconds: 0.1,
+        timeScale,
+        windMultiplier: recoveryWindMultipliers.enemy,
+        terminal: false,
+      });
+      if (enemyRecovery.recoveredThisStep > 0) {
+        enemyCashRecoveredRef.current =
+          enemyRecovery.cumulativeRecovered;
+        enemyReserveRef.current = enemyRecovery.availableFunds;
+        setEnemyCashRecovered(enemyRecovery.cumulativeRecovered);
+        setEnemyReserve(enemyRecovery.availableFunds);
+        if (enemyRecovery.availableFunds > 0) {
+          liquidityWarningShownRef.current = false;
+        }
+      }
     }, 100);
     return () => window.clearInterval(interval);
-  }, [battleCashRecoveryCap, battleCashRecoveryPerSecond, battlePhase, timeScale, winner]);
+  }, [
+    battlePhase,
+    enemyBudget,
+    recoveryWindMultipliers.enemy,
+    recoveryWindMultipliers.player,
+    timeScale,
+    updateCash,
+    winner,
+  ]);
 
   useEffect(() => {
     if (
@@ -1731,17 +2762,25 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       timeScale <= 0 ||
       winner ||
       battlePhase !== 'active' ||
-      decisiveRef.current ||
-      enemyReserveRef.current <= 0
+      terminalRef.current ||
+      !enemyCanCommit
     ) {
       return;
     }
     const step = (100 / (enemyDecision.waitMs / 100)) * timeScale;
     const interval = window.setInterval(() => {
+      if (terminalRef.current) return;
       setAiProgress((value) => Math.min(100, value + step));
     }, 100);
     return () => window.clearInterval(interval);
-  }, [battlePhase, enemyDecision.waitMs, isTraining, timeScale, winner]);
+  }, [
+    battlePhase,
+    enemyDecision.waitMs,
+    enemyCanCommit,
+    isTraining,
+    timeScale,
+    winner,
+  ]);
 
   useEffect(() => {
     if (isTraining) {
@@ -1756,7 +2795,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       timeScale <= 0 ||
       winner ||
       battlePhase !== 'active' ||
-      decisiveRef.current
+      terminalRef.current
     ) {
       return;
     }
@@ -1764,6 +2803,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     resolvingAiActionRef.current = true;
 
     if (!isTraining && enemyReserveRef.current <= 0) {
+      resolvingAiActionRef.current = false;
+      setAiProgress(0);
+      return;
+    }
+    if (
+      !isTraining &&
+      enemyReserveRef.current < enemyMinimumCommitment
+    ) {
+      resolvingAiActionRef.current = false;
+      setAiText(
+        `商流回復待ち／次回防衛 ${formatCurrency(enemyMinimumCommitment)}`
+      );
       setAiProgress(0);
       return;
     }
@@ -1777,6 +2828,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ? '競合は最終予備資金を守り、こちらの出方を見ています'
         : '競合は不利な風を避け、投入を保留しています');
     }
+    if (terminalRef.current) {
+      resolvingAiActionRef.current = false;
+      return;
+    }
     setAiCycle((cycle) => cycle + 1);
     setLastPlayerAction(null);
     setAiProgress(0);
@@ -1785,6 +2840,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     battlePhase,
     enemyDecision,
     isTraining,
+    enemyMinimumCommitment,
     targetProperty.marketPrice,
     timeScale,
     winner,
@@ -1792,18 +2848,22 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   useEffect(() => {
     lastTickRef.current = performance.now();
-    if (timeScale <= 0 || winner) {
+    if (timeScale <= 0 || winner || terminalRef.current) {
       setGaugeSpeed(0);
       return;
     }
     const tick = (now: number) => {
-      if (decisiveRef.current) {
+      if (terminalRef.current) {
         setGaugeSpeed(0);
         lastTickRef.current = now;
+        return;
+      }
+      const elapsedMs = now - lastTickRef.current;
+      if (!shouldProcessGaugeFrame(elapsedMs, lightweightMode)) {
         animationRef.current = requestAnimationFrame(tick);
         return;
       }
-      const dt = Math.min(0.1, (now - lastTickRef.current) / 1000) * timeScale;
+      const dt = Math.min(0.1, elapsedMs / 1000) * timeScale;
       lastTickRef.current = now;
       const baseVelocity = calculateGaugeVelocity(
         totalPlayerInvested * currentWind.playerMultiplier,
@@ -1823,38 +2883,132 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           (eraWindActive ? eraWindPushPerSecond : 0),
         isTraining
       );
-      setGaugeSpeed(velocity);
-      const next = gaugeRef.current + velocity * dt;
-      const heldNext = isTraining
-        ? next
-        : holdGaugeForManualShortFinish(
-            next,
-            enemyReserveRef.current
-          );
-      const practiceHeldNext = holdTrainingGaugeAboveDefeat(heldNext, isTraining);
-      if (practiceHeldNext !== next) {
-        setGaugeSpeed(0);
-        updateGauge(practiceHeldNext);
-      } else if (next <= -100) {
-        finishBattle('player', 'NORMAL', (100 - next) / 2);
-      } else if (next >= 100) {
-        if (triggerWalkingDead()) {
-          updateGauge(livingDeadGaugeFloor);
-        } else if (livingDeadPhaseRef.current === 'recovery') {
-          updateGauge(next);
-        } else {
-          finishBattle('opponent', 'NORMAL', 0);
-        }
-      } else {
-        updateGauge(next);
+      const commitVisual =
+        now - lastGaugeVisualCommitRef.current >=
+        BATTLE_GAUGE_VISUAL_COMMIT_MS;
+      if (commitVisual) {
+        lastGaugeVisualCommitRef.current = now;
+        setGaugeSpeed(velocity);
       }
+      const next = gaugeRef.current + velocity * dt;
+      const terminalReached = applyGaugeCandidate(
+        next,
+        velocity > 0
+          ? 'enemy'
+          : eraWindActive
+            ? 'era_wind'
+            : lastPressureCauseRef.current,
+        velocity < 0 ? 'CAPITAL_PRESSURE' : 'NORMAL',
+        commitVisual
+      );
+      if (terminalReached || terminalRef.current) return;
       animationRef.current = requestAnimationFrame(tick);
     };
     animationRef.current = requestAnimationFrame(tick);
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [currentWind.enemyMultiplier, currentWind.playerMultiplier, currentWind.speedMultiplier, effectiveCapitalGap, enemyInvested, eraWindActive, eraWindPushPerSecond, influenceBonus, isTraining, pushMultiplier, targetProperty.marketPrice, timeScale, totalPlayerInvested, updateGauge, winner]);
+  }, [currentWind.enemyMultiplier, currentWind.playerMultiplier, currentWind.speedMultiplier, effectiveCapitalGap, enemyInvested, eraWindActive, eraWindPushPerSecond, influenceBonus, isTraining, lightweightMode, pushMultiplier, targetProperty.marketPrice, timeScale, totalPlayerInvested, updateGauge, winner]);
+
+  const startCompanyCapitalPresentation = (
+    snapshot: CapitalCommitSnapshot,
+    ownershipGain: number
+  ) => {
+    clearCapitalCommitTimers();
+    const serial = capitalCommitSerialRef.current;
+    const timing = getCapitalCommitTiming(snapshot.level, snapshot.compact);
+    capitalCommitActiveRef.current = true;
+    setCapitalCommit({
+      ...snapshot,
+      serial,
+      stage: 'prepare',
+    });
+    setStatusText(
+      `${formatCurrency(snapshot.amount)}の投資資金を整えています……`
+    );
+    soundFx.playCoin();
+
+    const travelTimer = window.setTimeout(() => {
+      if (
+        capitalCommitSerialRef.current !== serial ||
+        endedRef.current ||
+        terminalRef.current
+      ) {
+        return;
+      }
+      if (motionTimerRef.current) {
+        window.clearTimeout(motionTimerRef.current);
+        motionTimerRef.current = null;
+      }
+      setCapitalCommit((current) =>
+        current?.serial === serial
+          ? { ...current, stage: 'travel' }
+          : current
+      );
+      setMotion('player');
+      setMotionSerial((current) => current + 1);
+      setStatusText('タタルが資金を運びます……');
+    }, timing.prepareMs);
+
+    const impactAt = timing.prepareMs + timing.travelMs;
+    const impactTimer = window.setTimeout(() => {
+      if (
+        capitalCommitSerialRef.current !== serial ||
+        endedRef.current ||
+        terminalRef.current
+      ) {
+        return;
+      }
+      setCapitalCommit((current) =>
+        current?.serial === serial
+          ? { ...current, stage: 'impact' }
+          : current
+      );
+      setStatusText(
+        `${formatCurrency(snapshot.amount)}着金！ 所有率 +${ownershipGain.toFixed(1)}pt`
+      );
+      showFloater(`着金 +${formatCurrency(snapshot.amount)}`, 'player');
+      soundFx.playCapitalImpact('player', snapshot.level / 5);
+    }, impactAt);
+
+    const afterglowAt =
+      impactAt + timing.hitStopMs + timing.settleMs;
+    const afterglowTimer = window.setTimeout(() => {
+      if (
+        capitalCommitSerialRef.current !== serial ||
+        endedRef.current ||
+        terminalRef.current
+      ) {
+        return;
+      }
+      setCapitalCommit((current) =>
+        current?.serial === serial
+          ? { ...current, stage: 'afterglow' }
+          : current
+      );
+      setMotion('idle');
+      setStatusText(
+        `資本が積み上がった――所有率 +${ownershipGain.toFixed(1)}pt`
+      );
+    }, afterglowAt);
+
+    const completeTimer = window.setTimeout(() => {
+      if (capitalCommitSerialRef.current !== serial) return;
+      capitalCommitTimersRef.current = [];
+      capitalCommitActiveRef.current = false;
+      setCapitalCommit((current) =>
+        current?.serial === serial ? null : current
+      );
+      setMotion('idle');
+    }, timing.totalMs);
+
+    capitalCommitTimersRef.current = [
+      travelTimer,
+      impactTimer,
+      afterglowTimer,
+      completeTimer,
+    ];
+  };
 
   const investCompanyFunds = () => {
     if (cash < selectedCost) {
@@ -1863,17 +3017,31 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return;
     }
     if (!consumeCommand()) return;
+    capitalCommitActiveRef.current = true;
     setPanel('capital');
-    const impact = Math.min(14, (1.2 + (selectedCost / Math.max(targetProperty.marketPrice, 1)) * 20) * currentWind.playerMultiplier);
+    const previousCapital = totalPlayerInvested;
+    const previousOwnership = ownership;
+    const reducedMotion =
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ??
+      false;
+    const presentationSnapshot: CapitalCommitSnapshot = {
+      amount: selectedCost,
+      level: selectedLevel,
+      previousCapital,
+      previousOwnership,
+      compact: lightweightMode || reducedMotion,
+    };
+    setTerminalCapitalSnapshot(presentationSnapshot);
+    const impact = calculateDirectInvestmentGaugeImpact({
+      investmentAmount: selectedCost,
+      marketPrice: targetProperty.marketPrice,
+      windMultiplier: currentWind.playerMultiplier,
+      levelOneTraining: trainingDummyDefinition?.level === 1,
+    });
     const rawGaugeAfter = gaugeRef.current - impact;
-    setCash((value) => value - selectedCost);
+    updateCash((value) => value - selectedCost);
     setCompanyInvested((value) => value + selectedCost);
     chargeLimitBreak(selectedCost * currentWind.playerMultiplier);
-    updateGauge(Math.max(-99, rawGaugeAfter));
-    setStatusText(`自社資金から${formatCurrency(selectedCost)}を積み増し`);
-    showFloater(`+${formatCurrency(selectedCost)}`, 'player');
-    playMotion('player');
-    soundFx.playCapitalImpact('player', selectedLevel / 5);
     addLog(`${companyName}が自社資金${formatCurrency(selectedCost)}を直接投入。`, 'player');
     const action: PlayerBattleAction =
       selectedLevel === 1 ? 'SMALL' :
@@ -1886,32 +3054,21 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         Math.max(value, selectedLevel === 5 ? 82 : 70)
       );
     }
-
-    if (!isTraining && enemyReserveRef.current <= 0) {
-      setFinalPushActive(true);
-      changeBattlePhase('limit_charge');
-      announceBattle('final', BATTLE_CINEMATIC_TIMING.finalAnnouncementMs);
-      setGaugeSpeed(0);
-      setStatusText(`FINAL PUSH――${formatCurrency(selectedCost)}で最後の防衛線を突破！`);
-      showFloater(`FINAL +${formatCurrency(selectedCost)}`, 'player');
-      soundFx.playFinalPush();
-      const rawFinishOwnership = Math.max(
-        (100 - rawGaugeAfter) / 2,
-        100 + (selectedCost / Math.max(targetProperty.marketPrice, 1)) * 50
-      );
-      if (terminalActionTimerRef.current) {
-        window.clearTimeout(terminalActionTimerRef.current);
-      }
-      terminalActionTimerRef.current = window.setTimeout(() => {
-        terminalActionTimerRef.current = null;
-        finishBattle('player', 'FINAL_PUSH', rawFinishOwnership);
-      }, BATTLE_CINEMATIC_TIMING.finalDecisiveStartMs);
-      return;
-    }
-
-    if (rawGaugeAfter <= -100) {
-      finishBattle('player', 'NORMAL', (100 - rawGaugeAfter) / 2);
-    }
+    const terminalInvestment = applyGaugeCandidate(
+      rawGaugeAfter,
+      'company',
+      'NORMAL'
+    );
+    if (terminalInvestment || terminalRef.current) return;
+    setTerminalCapitalSnapshot(null);
+    const ownershipGain = Math.max(
+      0,
+      calculateOwnershipFromGauge(gaugeRef.current) - previousOwnership
+    );
+    startCompanyCapitalPresentation(
+      presentationSnapshot,
+      ownershipGain
+    );
   };
 
   const canConfirmInvestment =
@@ -1950,36 +3107,47 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (!consumeCommand()) return;
     setPanel('capital');
     setLastPlayerAction('FUNDS');
-    const nextRisk = Math.min(100, property.loyaltyRisk + 18);
-    const amount = Math.round(property.marketPrice * 0.45);
-    const rejects = Math.random() < calculateRebellionProbability(nextRisk);
+    const riskIncrease = getSubsidiaryRiskIncrease(
+      property,
+      BATTLE_LOYALTY_BALANCE.individualRiskIncrease
+    );
+    const nextRisk = Math.min(100, property.loyaltyRisk + riskIncrease);
+    const amount = calculateSubsidiarySupportAmount(property);
     setSubRequestCounts((current) => ({ ...current, [property.id]: (current[property.id] || 0) + 1 }));
 
-    if (rejects) {
-      const lost = subContributions[property.id] || 0;
-      setBattleSubs((current) => current.filter((item) => item.id !== property.id));
-      setDemandInvested((value) => Math.max(0, value - lost));
-      chargeLimitBreak(lost * currentWind.enemyMultiplier);
-      setRebelled((current) => [...current, { ...property, loyaltyRisk: 100 }]);
-      setStatusText(`${property.name}が出資を拒否し独立！ ${formatCurrency(lost)}が崩落`);
-      showFloater(`独立 -${formatCurrency(lost)}`, 'player', 'negative');
-      playMotion('rebel');
-      soundFx.playWarning();
-      addLog(`${property.name}が資金要求を拒否して独立。過去の支援${formatCurrency(lost)}も失われた。`, 'funds');
-      return;
-    }
-
     setBattleSubs((current) => current.map((item) => item.id === property.id ? { ...item, loyaltyRisk: nextRisk } : item));
-    setSubContributions((current) => ({ ...current, [property.id]: (current[property.id] || 0) + amount }));
     setDemandInvested((value) => value + amount);
     chargeLimitBreak(amount * currentWind.playerMultiplier);
-    const impact = Math.min(6.5, (1 + (amount / Math.max(targetProperty.marketPrice, 1)) * 8) * currentWind.playerMultiplier);
-    updateGauge((value) => Math.max(-99, value - impact));
-    setStatusText(`${property.name}から${formatCurrency(amount)}を調達。独立危険度${nextRisk}%`);
-    showFloater(`+${formatCurrency(amount)}`, 'player');
+    const impact = Math.min(
+      BATTLE_SUPPORT_BALANCE.subsidiaryImpactCap,
+      (
+        BATTLE_SUPPORT_BALANCE.subsidiaryImpactBase +
+        (amount / Math.max(targetProperty.marketPrice, 1)) *
+          BATTLE_SUPPORT_BALANCE.subsidiaryImpactPerMarketRatio
+      ) * currentWind.playerMultiplier
+    );
+    const terminalSupport = applyGaugeCandidate(
+      gaugeRef.current - impact,
+      'subsidiary',
+      'CAPITAL_PRESSURE'
+    );
+    if (terminalSupport) return;
+    setStatusText(
+      `${property.name}から${formatCurrency(amount)}を調達――所有率+${(
+        impact / 2
+      ).toFixed(1)}pt・独立危険度${nextRisk}%`
+    );
+    showFloater(
+      `支援 +${formatCurrency(amount)} / +${(impact / 2).toFixed(1)}pt`,
+      'player'
+    );
     playMotion('player');
     soundFx.playBigCash();
-    addLog(`${property.name}へ第${(subRequestCounts[property.id] || 0) + 1}次資金要求。${formatCurrency(amount)}を調達、独立危険度${nextRisk}%。`, 'funds');
+    triggerImpactStop(
+      'player',
+      impact >= BATTLE_SUPPORT_BALANCE.subsidiaryImpactCap * 0.7
+    );
+    addLog(`${property.name}へ第${(subRequestCounts[property.id] || 0) + 1}次資金要求。${formatCurrency(amount)}を調達、独立危険度${nextRisk}%。離脱判定は勝利後に1回だけ行います。`, 'funds');
   };
 
   const demandFromAllies = () => {
@@ -1993,18 +3161,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     announceBattle('limit', BATTLE_CINEMATIC_TIMING.limitAnnouncementMs);
     soundFx.playLimitBreak();
 
-    const leaving: Property[] = [];
-    const survivors: Property[] = [];
-    let lost = 0;
-    battleSubs.forEach((member) => {
-      const nextRisk = Math.min(100, member.loyaltyRisk + 12);
-      if (Math.random() < calculateRebellionProbability(nextRisk)) {
-        leaving.push({ ...member, loyaltyRisk: 100 });
-        lost += subContributions[member.id] || 0;
-      } else {
-        survivors.push({ ...member, loyaltyRisk: nextRisk });
-      }
-    });
+    const survivors = battleSubs.map((member) => ({
+      ...member,
+      loyaltyRisk: Math.min(
+        100,
+        member.loyaltyRisk +
+          getSubsidiaryRiskIncrease(
+            member,
+            BATTLE_LOYALTY_BALANCE.limitBreakRiskIncrease
+          )
+      ),
+    }));
 
     const amount = calculateLimitBreakAmount(
       targetProperty.marketPrice,
@@ -2021,9 +3188,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       // so a cached cue or a late first decode cannot spill into the decisive
       // slow-motion and WIN presentation.
       soundFx.stopBattleCinematicAudio(160);
-      setBattleSubs((current) => current
-        .filter((item) => !leaving.some((leaver) => leaver.id === item.id))
-        .map((item) => survivors.find((survivor) => survivor.id === item.id) || item));
+      setBattleSubs((current) => current.map(
+        (item) =>
+          survivors.find((survivor) => survivor.id === item.id) || item
+      ));
       setSubRequestCounts((current) => {
         const next = { ...current };
         battleSubs.forEach((member) => {
@@ -2031,23 +3199,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         });
         return next;
       });
-      setSubContributions((current) => {
-        const next = { ...current };
-        survivors.forEach((member) => {
-          const support = Math.round(member.marketPrice * 0.28 * limitBreakMultiplier);
-          next[member.id] = (next[member.id] || 0) + support;
-        });
-        leaving.forEach((member) => delete next[member.id]);
-        return next;
-      });
-      if (leaving.length) setRebelled((current) => [...current, ...leaving]);
-      setDemandInvested((value) => Math.max(0, value - lost) + amount);
+      setDemandInvested((value) => value + amount);
       setLimitImpactActive(true);
       if (limitImpactTimerRef.current) window.clearTimeout(limitImpactTimerRef.current);
       limitImpactTimerRef.current = window.setTimeout(() => setLimitImpactActive(false), 1450);
 
-      soundFx.playCapitalImpact('player', 1);
-      soundFx.playBigCash();
       const emergencyDefense = isTraining
         ? 0
         : Math.min(
@@ -2060,9 +3216,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             'LIMIT BREAKへの緊急防衛',
             false,
             false,
+            false,
             false
           )
         : { actual: 0, counterShock: 0 };
+      if (terminalRef.current) return;
       const ownershipPush = calculateLimitBreakOwnershipPush(
         amount,
         targetProperty.marketPrice,
@@ -2077,18 +3235,69 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ownershipPush,
         defenseResult.counterShock
       );
-      const terminalLimitBreak = rawOwnershipAfter >= 100;
       const rawGaugeAfter = 100 - rawOwnershipAfter * 2;
-      updateGauge(
-        livingDeadPhaseRef.current === 'recovery'
-          ? Math.max(-100, rawGaugeAfter)
-          : Math.max(-100, Math.min(100, rawGaugeAfter))
+      // Resolve boss Cover/Invincible against the full LB movement before the
+      // terminal preview clamps the visible gauge to 99%. Otherwise only the
+      // tiny gap from that preview position would be intercepted.
+      const coveredLimitBreak = applyCoverToGaugeCandidate(
+        rawGaugeAfter,
+        'limit_break'
       );
+      const resolvedGaugeAfter = coveredLimitBreak.nextGauge;
+      const coverOwnershipPushback = coveredLimitBreak.absorbedGauge / 2;
       const limitBreakResultText =
         `LIMIT BREAK ${limitBreakTier}！ 所有率+${ownershipPush.toFixed(1)}pt` +
         (defenseResult.actual > 0
           ? ` / 緊急防衛-${defenseOwnershipPushback.toFixed(1)}pt`
+          : '') +
+        (coverOwnershipPushback > 0
+          ? ` / かばう-${coverOwnershipPushback.toFixed(1)}pt`
           : '');
+      addLog(limitBreakResultText, 'skill');
+      soundFx.playLimitBreakImpact();
+      const pendingLimitWinner = getBattleTerminalWinner(resolvedGaugeAfter);
+      if (pendingLimitWinner) {
+        updateGauge(pendingLimitWinner === 'player' ? -99 : 99);
+        setGaugeSpeed(0);
+        setStatusText(limitBreakResultText);
+        showFloater(`LB 所有率 +${ownershipPush.toFixed(1)}pt`, 'player');
+        if (defenseResult.actual > 0) {
+          showFloater(
+            `緊急防衛 -${defenseOwnershipPushback.toFixed(1)}pt`,
+            'enemy',
+            'negative'
+          );
+        }
+        playMotion('player');
+        limitTerminalHandoffTimerRef.current = window.setTimeout(() => {
+          limitTerminalHandoffTimerRef.current = null;
+          if (endedRef.current || terminalRef.current) return;
+          const terminalStarted = applyGaugeCandidate(
+            resolvedGaugeAfter,
+            'limit_break',
+            `LIMIT_BREAK_${limitBreakTier}` as FinishMethod,
+            true,
+            true
+          );
+          if (!terminalStarted && !terminalRef.current) {
+            setLimitImpactActive(false);
+            changeBattlePhase('active');
+            setBattleAnnouncement(null);
+            setLastPlayerAction(null);
+            setAiProgress(0);
+            setAiCycle((cycle) => cycle + 1);
+          }
+        }, BATTLE_CINEMATIC_TIMING.limitImpactHandoffMs);
+        return;
+      }
+      const terminalLimitBreak = applyGaugeCandidate(
+        resolvedGaugeAfter,
+        'limit_break',
+        `LIMIT_BREAK_${limitBreakTier}` as FinishMethod,
+        true,
+        true
+      );
+      if (terminalLimitBreak) return;
       showFloater(`LB 所有率 +${ownershipPush.toFixed(1)}pt`, 'player');
       if (defenseResult.actual > 0) {
         showFloater(
@@ -2097,51 +3306,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           'negative'
         );
       }
-      addLog(limitBreakResultText, 'skill');
-      playMotion(leaving.length ? 'rebel' : 'player');
+      playMotion('player');
+      setStatusText(limitBreakResultText);
 
-      if (leaving.length) {
-        setStatusText(`DEFECT！ ${leaving.map((member) => member.name).join('・')}が支援を撤回。残存投入${formatCurrency(amount)}`);
-        addLog(`DEFECT！ ${leaving.map((member) => member.name).join('・')}が離反し、過去支援${formatCurrency(lost)}が崩落。`, 'funds');
-      } else {
-        setStatusText(limitBreakResultText);
-      }
-
-      if (terminalLimitBreak) {
-        if (terminalActionTimerRef.current) {
-          window.clearTimeout(terminalActionTimerRef.current);
-        }
-        terminalActionTimerRef.current = window.setTimeout(() => {
-          terminalActionTimerRef.current = null;
-          finishBattle(
-            'player',
-            `LIMIT_BREAK_${limitBreakTier}` as FinishMethod,
-            rawOwnershipAfter
-          );
-        }, BATTLE_CINEMATIC_TIMING.limitTerminalImpactMs);
-        return;
-      }
-      const reducedMotion = window.matchMedia?.(
-        '(prefers-reduced-motion: reduce)'
-      ).matches ?? false;
-      if (!reducedMotion) {
-        confetti({
-          particleCount: window.innerWidth <= 640 ? 30 : 72,
-          spread: 78,
-          startVelocity: window.innerWidth <= 640 ? 26 : 34,
-          ticks: window.innerWidth <= 640 ? 72 : 100,
-          scalar: window.innerWidth <= 640 ? 0.74 : 0.88,
-          origin: { y: 0.62 },
-          colors: ['#fef08a', '#f59e0b', '#34d399', '#ffffff'],
-          disableForReducedMotion: true,
-        });
-      }
       changeBattlePhase('active');
       setBattleAnnouncement(null);
       setLastPlayerAction(null);
       setAiProgress(0);
       setAiCycle((cycle) => cycle + 1);
-      if (!isTraining && enemyReserveRef.current <= 0) showShortNotice();
+      if (!isTraining && enemyReserveRef.current <= 0) {
+        showLiquidityWarning();
+      }
     }, BATTLE_CINEMATIC_TIMING.limitResolveMs);
   };
 
@@ -2154,51 +3329,57 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setPanel('capital');
     setLastPlayerAction('SYNERGY');
     let amount = 0;
-    let lost = 0;
-    const leaving: Property[] = [];
     const survivors: Property[] = [];
 
     members.forEach((member) => {
-      const nextRisk = Math.min(100, member.loyaltyRisk + 14);
-      if (Math.random() < calculateRebellionProbability(nextRisk)) {
-        leaving.push({ ...member, loyaltyRisk: 100 });
-        lost += subContributions[member.id] || 0;
-      } else {
-        survivors.push({ ...member, loyaltyRisk: nextRisk });
-        amount += Math.round(member.marketPrice * 0.34);
-      }
+      const nextRisk = Math.min(
+        100,
+        member.loyaltyRisk +
+          getSubsidiaryRiskIncrease(
+            member,
+            BATTLE_LOYALTY_BALANCE.synergyRiskIncrease
+          )
+      );
+      survivors.push({ ...member, loyaltyRisk: nextRisk });
+      amount += Math.round(
+        member.marketPrice *
+          BATTLE_SUPPORT_BALANCE.synergyMemberMarketRatio *
+          getSubsidiarySupportMultiplier(member)
+      );
     });
     amount = Math.round(amount * groupMultiplier);
 
     setBattleSubs((current) => current
-      .filter((item) => !leaving.some((leaver) => leaver.id === item.id))
       .map((item) => survivors.find((survivor) => survivor.id === item.id) || item));
-    if (leaving.length) setRebelled((current) => [...current, ...leaving]);
-    setDemandInvested((value) => Math.max(0, value - lost) + amount);
+    setDemandInvested((value) => value + amount);
     chargeLimitBreak(amount * currentWind.playerMultiplier);
-    chargeLimitBreak(lost * currentWind.enemyMultiplier);
-    setSubContributions((current) => {
-      const next = { ...current };
-      survivors.forEach((member) => {
-        next[member.id] =
-          (next[member.id] || 0) +
-          Math.round(member.marketPrice * 0.34 * groupMultiplier);
-      });
-      leaving.forEach((member) => delete next[member.id]);
-      return next;
-    });
-    const groupImpact = Math.min(12, (2 + (amount / Math.max(targetProperty.marketPrice, 1)) * 7) * currentWind.playerMultiplier);
-    updateGauge((value) => Math.max(-99, value - groupImpact));
-    playMotion(leaving.length ? 'rebel' : 'player');
-    soundFx.playBigCash();
-    announceSynergy(name, `${members.length}件連携 / +${formatCurrency(amount)}`);
-    if (leaving.length) {
-      setStatusText(`${name}が発動。しかし${leaving.length}件が独立し${formatCurrency(lost)}崩落`);
-      addLog(`${name}から${formatCurrency(amount)}を調達したが、${leaving.map((item) => item.name).join('・')}が独立。`, 'funds');
-    } else {
-      setStatusText(`${name}発動！ ${formatCurrency(amount)}を一斉調達`);
-      addLog(`${name}の支援元${members.length}件から${formatCurrency(amount)}を一斉調達。`, 'funds');
-    }
+    const groupImpact = Math.min(
+      BATTLE_SUPPORT_BALANCE.synergyImpactCap,
+      (
+        BATTLE_SUPPORT_BALANCE.synergyImpactBase +
+        (amount / Math.max(targetProperty.marketPrice, 1)) *
+          BATTLE_SUPPORT_BALANCE.synergyImpactPerMarketRatio
+      ) * currentWind.playerMultiplier
+    );
+    const terminalSynergy = applyGaugeCandidate(
+      gaugeRef.current - groupImpact,
+      'synergy',
+      'CAPITAL_PRESSURE'
+    );
+    if (terminalSynergy) return;
+    playMotion('player');
+    announceSynergy(
+      name,
+      `${members.length}件連携 / +${formatCurrency(amount)} / 所有率+${(
+        groupImpact / 2
+      ).toFixed(1)}pt`
+    );
+    setStatusText(
+      `${name}発動！ ${formatCurrency(amount)}を一斉調達――所有率+${(
+        groupImpact / 2
+      ).toFixed(1)}pt`
+    );
+    addLog(`${name}の支援元${members.length}件から${formatCurrency(amount)}を一斉調達。離脱判定は勝利後に1回だけ行います。`, 'funds');
   };
 
   const requestAlliance = () => {
@@ -2206,6 +3387,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setPanel('capital');
     setLastPlayerAction('ALLIANCE');
     const amount = calculateAllianceSupport(targetProperty.marketPrice);
+    lastPressureCauseRef.current = 'alliance';
     setDemandInvested((value) => value + amount);
     chargeLimitBreak(amount * currentWind.playerMultiplier);
     setAllianceUsed(true);
@@ -2222,46 +3404,32 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       : `${alliance.allyName}へ協力支援を要請。${formatCurrency(amount)}を調達。`, 'funds');
   };
 
-  const useSkill = (skill: TacticalSkill) => {
-    if (skill.effectType === 'ERA_WIND') {
-      if (eraWindUseLimitReached) {
-        soundFx.playWarning();
-        setStatusText('時代の風は1交渉につき最大3回までです');
-        return;
-      }
-      if (cash < nextEraWindCost) {
-        soundFx.playWarning();
-        setStatusText(
-          `時代の風に必要な運用資金は${formatCurrency(nextEraWindCost)}です`
-        );
-        return;
-      }
-    }
-    if (
-      (isTraining && isRivalOnlySkill(skill)) ||
-      (skillCooldowns[skill.id] || 0) > 0 ||
-      (skill.oncePerBattle && usedSkillIds.has(skill.id)) ||
-      !consumeCommand()
-    ) return;
+  const selectSkill = (skill: TacticalSkill) => {
+    if (actionsLocked || skillCinematic) return;
+    setSelectedSkillId(skill.id);
     setPanel('capital');
-    setSkillCooldowns((current) => ({ ...current, [skill.id]: skill.cooldownMs }));
-    if (skill.oncePerBattle) {
-      setUsedSkillIds((current) => new Set(current).add(skill.id));
-    }
-    const targetsRival =
-      skill.effectType === 'INDEPENDENCE_SABOTAGE' ||
-      skill.effectType === 'DEMORALIZE';
-    showFloater(
-      skill.name,
-      targetsRival ? 'enemy' : 'player',
-      targetsRival ? 'negative' : 'positive'
+    soundFx.playGaugeTick(0.96);
+    setStatusText(
+      `${skill.name}を選択――「アビリティ発動」で実行`
     );
-    playMotion('player');
-    soundFx.playSkillSpark();
+  };
 
+  const cycleSkillSelection = () => {
+    if (actionsLocked || skillCinematic || battleSkillPool.length === 0) return;
+    const nextId = getNextBattleSkillId(
+      battleSkillPool.map((skill) => skill.id),
+      primarySkill?.id ?? null
+    );
+    const nextSkill = battleSkillPool.find((skill) => skill.id === nextId);
+    if (nextSkill) selectSkill(nextSkill);
+  };
+
+  const resolveSkillEffect = (skill: TacticalSkill) => {
+    const targetsRival = isRivalOnlySkill(skill);
     if (skill.effectType === 'COOLDOWN_REDUCTION') {
       setFastHorseRemaining(TACTICAL_SKILL_BALANCE.fastAction.durationMs);
-      setStatusText('疾風怒濤の計――10秒間、行動準備ゲージの進行速度が約1.8倍');
+      setStatusText('疾風怒濤の計――15秒間、行動準備ゲージの進行速度が約1.9倍');
+      showFloater('命令回復 ×1.9 / 15秒', 'player');
     } else if (skill.effectType === 'NEMAWASHI') {
       setBattleSubs((current) => current.map((item) => ({
         ...item,
@@ -2270,16 +3438,20 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ),
       })));
       setStatusText('守りのサンバ――全支援元の独立危険度が半減');
+      showFloater('独立危険度 半減', 'player');
     } else if (skill.effectType === 'INDEPENDENCE_SABOTAGE') {
       setEnemyDisruptionRemaining(TACTICAL_SKILL_BALANCE.disruption.durationMs);
-      setStatusText('連環計――9秒間、競合の追加防衛を70%で中断');
-    } else if (skill.effectType === 'DEMORALIZE') {
-      setEnemySlowedRemaining(TACTICAL_SKILL_BALANCE.demoralize.durationMs);
-      setStatusText('消沈――競合の指揮系統を乱し、命令待ち時間を延長');
+      setStatusText('連環計――15秒間、競合の追加防衛を75%で中断');
+      showFloater('防衛中断 75% / 15秒', 'enemy', 'negative');
+    } else if (skill.effectType === 'COVER') {
+      activatePlayerCover();
+      setStatusText('かばう――ナイトが10秒間、自社の防衛線へ入る');
+      showFloater('かばう / 10秒', 'player', 'notice');
     } else if (skill.effectType === 'CAPITAL_BOOST') {
       const amount = Math.round(
         targetProperty.marketPrice * TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio
       );
+      lastPressureCauseRef.current = 'skill';
       setDemandInvested((value) => value + amount);
       chargeLimitBreak(amount * currentWind.playerMultiplier);
       setStatusText(`意気衝天――無料支援資金${formatCurrency(amount)}を即時投入`);
@@ -2293,11 +3465,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       showFloater('LIVING DEAD / ARMED', 'player', 'notice');
     } else if (skill.effectType === 'SYNERGY_PUSH') {
       setPushMultiplierRemaining(TACTICAL_SKILL_BALANCE.battleLitany.durationMs);
-      setStatusText('バトルリタニー――7秒間、所有率の押し込み速度が1.5倍');
+      setStatusText('バトルリタニー――14秒間、所有率の押し込み速度が1.80倍');
+      showFloater('押込速度 ×1.80 / 14秒', 'player');
     } else if (skill.effectType === 'ERA_WIND') {
       const nextUse = eraWindUses + 1;
       const pushPerSecond = getEraWindGaugePushPerSecond(eraWindUses);
-      setCash((value) => Math.max(0, value - nextEraWindCost));
+      lastPressureCauseRef.current = 'era_wind';
+      updateCash((value) => Math.max(0, value - nextEraWindCost));
       setEraWindUses(nextUse);
       setEraWindRemaining(TACTICAL_SKILL_BALANCE.eraWind.durationMs);
       setBattleWindState((current) => ({
@@ -2311,21 +3485,109 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         secondsRemaining: BATTLE_WIND_COOLDOWN_SECONDS,
       }));
       setStatusText(
-        `時代の風――${formatCurrency(nextEraWindCost)}を運用し、12秒間 時流+${pushPerSecond.toFixed(1)}pt/秒`
+        `時代の風――${formatCurrency(nextEraWindCost)}を運用し、16秒間 所有率+${(pushPerSecond / 2).toFixed(2)}pt/秒相当`
       );
       showFloater(
-        `風が……来る！ 時流+${pushPerSecond.toFixed(1)}`,
+        `時流 +${(pushPerSecond / 2).toFixed(2)}pt/秒`,
         'player',
         'positive'
       );
-      announceCondition({
-        kind: 'player',
-        kicker: `ERA WIND / PHASE ${nextUse}`,
-        title: '時代の風',
-        detail: `敵資金を残したまま、自社側へ時流+${pushPerSecond.toFixed(1)}pt/秒`,
-      }, BATTLE_CINEMATIC_TIMING.conditionAnnouncementMs);
     }
+    soundFx.playSkillImpact(
+      skill.effectType,
+      targetsRival ? 'opponent' : 'player'
+    );
     addLog(`${skill.name}を使用。${skill.description}`, 'skill');
+  };
+
+  const useSkill = (skill: TacticalSkill) => {
+    if (skill.effectType === 'ERA_WIND') {
+      if (eraWindUseLimitReached) {
+        soundFx.playWarning();
+        setStatusText('時代の風は1交渉につき1回だけ使用できます');
+        return;
+      }
+      if (cash < nextEraWindCost) {
+        soundFx.playWarning();
+        setStatusText(
+          `時代の風に必要な運用資金は${formatCurrency(nextEraWindCost)}です`
+        );
+        return;
+      }
+    }
+    if (
+      skillCinematic ||
+      (isTraining && isRivalOnlySkill(skill)) ||
+      (skillCooldowns[skill.id] || 0) > 0 ||
+      (skill.oncePerBattle && usedSkillIds.has(skill.id)) ||
+      !consumeCommand()
+    ) return;
+
+    setPanel('capital');
+    setSkillCooldowns((current) => ({ ...current, [skill.id]: skill.cooldownMs }));
+    if (skill.oncePerBattle) {
+      setUsedSkillIds((current) => new Set(current).add(skill.id));
+    }
+
+    clearSkillCinematicTimers();
+    const targetsRival = isRivalOnlySkill(skill);
+    const baseCinematic: Omit<SkillCinematic, 'stage'> = {
+      skillId: skill.id,
+      skillName: skill.name,
+      effectType: skill.effectType,
+      targetsRival,
+    };
+    setSkillCinematic({ ...baseCinematic, stage: 'name' });
+    setStatusText(`${skill.name}――発動`);
+    soundFx.playSkillCast(skill.effectType);
+    const reducedMotion = window.matchMedia?.(
+      '(prefers-reduced-motion: reduce)'
+    ).matches ?? false;
+    const skillTiming = getSkillCinematicTiming(
+      lightweightMode || reducedMotion
+    );
+
+    const castTimer = window.setTimeout(() => {
+      if (endedRef.current || terminalRef.current) return;
+      setSkillCinematic({ ...baseCinematic, stage: 'cast' });
+      playMotion('player');
+      soundFx.playSkillWhoosh(skill.effectType);
+    }, skillTiming.nameMs);
+
+    const hitStopTimer = window.setTimeout(() => {
+      if (endedRef.current || terminalRef.current) return;
+      setSkillCinematic({ ...baseCinematic, stage: 'hitstop' });
+      resolveSkillEffect(skill);
+    }, skillTiming.nameMs + skillTiming.castMs);
+
+    const impactTimer = window.setTimeout(() => {
+      if (endedRef.current || terminalRef.current) return;
+      setSkillCinematic({ ...baseCinematic, stage: 'impact' });
+    }, skillTiming.nameMs +
+      skillTiming.castMs +
+      skillTiming.hitStopMs);
+
+    const resolveTimer = window.setTimeout(() => {
+      if (endedRef.current || terminalRef.current) return;
+      setSkillCinematic({ ...baseCinematic, stage: 'resolve' });
+    }, skillTiming.nameMs +
+      skillTiming.castMs +
+      skillTiming.hitStopMs +
+      skillTiming.impactMs);
+
+    const completeTimer = window.setTimeout(() => {
+      skillCinematicTimersRef.current = [];
+      if (endedRef.current || terminalRef.current) return;
+      setSkillCinematic(null);
+    }, skillTiming.totalMs);
+
+    skillCinematicTimersRef.current = [
+      castTimer,
+      hitStopTimer,
+      impactTimer,
+      resolveTimer,
+      completeTimer,
+    ];
   };
 
   const resultSettlementCost = isTraining
@@ -2341,6 +3603,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         isUltimate ? 'ultimate' : isSavage ? 'savage' : 'normal',
         targetProperty.owner === 'player'
       );
+  const celebrationGiftCost =
+    !isTraining && !isHighEndRaid && winner === 'player'
+      ? calculateCelebrationGiftCost(ownedProperties, resultVictoryReward)
+      : 0;
+  const celebrationDecisionRequired =
+    celebrationGiftCost > 0 &&
+    winner === 'player' &&
+    !isTraining &&
+    !isHighEndRaid;
+  const appliedCelebrationGiftCost = celebrationGiftApplied
+    ? celebrationGiftCost
+    : 0;
   const resultLiquidationCashback = isProtectedBattle
     ? 0
     : Array.from(
@@ -2351,7 +3625,115 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     : resultVictoryReward +
       resultLiquidationCashback -
       brokerageFee -
-      resultSettlementCost;
+      resultSettlementCost -
+      appliedCelebrationGiftCost;
+
+  const growthProperties =
+    winner === 'player' &&
+    !isTraining &&
+    !isHighEndRaid &&
+    !ownedProperties.some((property) => property.id === targetProperty.id)
+      ? [
+          ...ownedProperties,
+          {
+            ...targetProperty,
+            owner: 'player' as const,
+            ownerName: companyName,
+            loyaltyRisk: 0,
+          },
+        ]
+      : ownedProperties;
+  const companyStrengthBefore = calculateCompanyStrengthScore(
+    totalFunds,
+    ownedProperties
+  );
+  const companyStrengthAfter = calculateCompanyStrengthScore(
+    Math.max(0, totalFunds + resultFundsDelta),
+    growthProperties
+  );
+  const companyStrengthBeforeLevel =
+    getCompanyStrengthLevel(companyStrengthBefore);
+  const companyStrengthAfterLevel =
+    getCompanyStrengthLevel(companyStrengthAfter);
+
+  useEffect(() => {
+    if (
+      battlePhase !== 'result' ||
+      winner !== 'player' ||
+      isTraining
+    ) {
+      setDisplayedCompanyStrength(null);
+      setCompanyGrowthRevealed(false);
+      return;
+    }
+    if (celebrationDecision) {
+      setDisplayedCompanyStrength(companyStrengthAfter);
+      setCompanyGrowthRevealed(true);
+      return;
+    }
+    const reducedMotion =
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ??
+      false;
+    if (reducedMotion || companyStrengthAfter === companyStrengthBefore) {
+      setDisplayedCompanyStrength(companyStrengthAfter);
+      setCompanyGrowthRevealed(true);
+      return;
+    }
+    let frame = 0;
+    const startedAt = performance.now();
+    const durationMs = 900;
+    setDisplayedCompanyStrength(companyStrengthBefore);
+    setCompanyGrowthRevealed(false);
+    const animate = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / durationMs);
+      const eased = 1 - (1 - progress) ** 3;
+      setDisplayedCompanyStrength(
+        Math.round(
+          companyStrengthBefore +
+            (companyStrengthAfter - companyStrengthBefore) * eased
+        )
+      );
+      if (progress < 1) {
+        frame = window.requestAnimationFrame(animate);
+      } else {
+        setCompanyGrowthRevealed(true);
+      }
+    };
+    frame = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    battlePhase,
+    celebrationDecision,
+    companyStrengthAfter,
+    companyStrengthBefore,
+    isTraining,
+    winner,
+  ]);
+
+  const resolveVictorySettlement = (
+    decision: Exclude<CelebrationDecision, null>
+  ) => {
+    if (
+      celebrationDecision ||
+      winner !== 'player'
+    ) {
+      return;
+    }
+    const sharesGift = decision === 'share';
+    const { leaving, survivors } = resolvePostVictoryLoyalty(
+      battleSubs,
+      sharesGift
+    );
+    setCelebrationDecision(decision);
+    setCelebrationGiftApplied(sharesGift);
+    setRebelled(leaving);
+    setBattleSubs(survivors);
+    if (sharesGift) {
+      soundFx.playCoin();
+    } else {
+      soundFx.playGaugeTick(0.9);
+    }
+  };
 
   const openResultAnalysis = () => {
     if (
@@ -2362,6 +3744,45 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return;
     }
     changeBattlePhase('result');
+  };
+
+  const completeBattleResult = () => {
+    if (!winner) return;
+    if (resultConfirmedRef.current) return;
+    resultConfirmedRef.current = true;
+    resultConfirmArmedRef.current = false;
+    setResultConfirmArmed(false);
+    const committed = onBattleEnd({
+      winner,
+      targetProperty,
+      companyFundsInvested: companyInvested,
+      demandFundsInvested: demandInvested,
+      brokerageFee,
+      settlementCost: resultSettlementCost,
+      battleCashDelta: 0,
+      victoryReward: resultVictoryReward,
+      celebrationGiftCost: appliedCelebrationGiftCost,
+      rebelledProperties: isTraining ? [] : rebelled,
+      survivingRiskUpdates: isTraining
+        ? []
+        : battleSubs.map(({ id, loyaltyRisk }) => ({
+            id,
+            loyaltyRisk,
+          })),
+      finishMethod,
+      finalOwnership,
+      overkill,
+    });
+    if (!committed) {
+      resultConfirmedRef.current = false;
+      resultConfirmArmedRef.current = true;
+      setResultConfirmArmed(true);
+      soundFx.playWarning();
+      const text =
+        'セーブ領域へ書き込めませんでした。空き容量・ブラウザ設定を確認して、もう一度結果を確定してください。';
+      setStatusText(text);
+      addLog(text, 'system');
+    }
   };
 
   const confirmResult = () => {
@@ -2376,36 +3797,34 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ) {
       return;
     }
-    resultConfirmedRef.current = true;
-    resultConfirmArmedRef.current = false;
-    setResultConfirmArmed(false);
-    onBattleEnd({
-      winner,
-      targetProperty,
-      companyFundsInvested: companyInvested,
-      demandFundsInvested: demandInvested,
-      brokerageFee,
-      settlementCost: resultSettlementCost,
-      battleCashDelta: 0,
-      victoryReward: resultVictoryReward,
-      rebelledProperties: isTraining ? [] : rebelled,
-      survivingRiskUpdates: isTraining
-        ? []
-        : battleSubs.map(({ id, loyaltyRisk }) => ({
-            id,
-            loyaltyRisk,
-          })),
-      finishMethod,
-      finalOwnership,
-      overkill,
-    });
+    if (celebrationDecisionRequired && !celebrationDecision) {
+      soundFx.playWarning();
+      return;
+    }
+    if (rebelled.length > 0) {
+      soundFx.playWarning();
+      setResultStep('departures');
+      return;
+    }
+    completeBattleResult();
+  };
+
+  const confirmDepartureReport = () => {
+    if (
+      battlePhaseRef.current !== 'result' ||
+      resultStep !== 'departures' ||
+      !winner
+    ) {
+      return;
+    }
+    completeBattleResult();
   };
 
   const resultAnalysis = isTraining
     ? winner === 'player'
       ? demandInvested > companyInvested
         ? `支援元・協力先の支援を組み合わせ、木人耐久資本を削り切ったでっす。訓練中の出資と離反は通常の事業・契約へ残らないでっす。`
-        : `自社資金の投入順が安定していたでっす。同じLEVELへ何度でも挑み、有効なスキルやLIMIT BREAKも試せるでっす。`
+        : `自社資金の投入順が安定していたでっす。同じLEVELへ何度でも挑み、有効なアビリティやLIMIT BREAKも試せるでっす。`
       : rebelled.length > 0
         ? `${rebelled.length}件が訓練中に一時離脱したでっす。通常の事業・契約は保護されるので、支援の順番を変えて再挑戦するでっす。`
         : '木人の初期耐久資本を削り切れなかったでっす。費用も進行変化もないので、投入順を変えて再挑戦するでっす。'
@@ -2414,15 +3833,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ? '勝因はカンパニー網の総動員でっす。LIMIT BREAKの全支援元一斉出資で、所有率を一気に押し切ったでっす。'
         : demandInvested > companyInvested
           ? `勝因は支援元・協力先からの支援でっす。合計${formatCurrency(demandInvested)}の支援が競り値を押し上げたでっす。`
-          : finishMethod === 'FINAL_PUSH'
-            ? `勝因は自社資金の決断でっす。SHORT後までギルを残し、${FINISH_LABELS[finishMethod]}で決着したでっす。`
-            : `勝因は資金差の維持でっす。競合の防衛中も出資優位を保ち、${FINISH_LABELS[finishMethod]}で所有率を押し切ったでっす。`
+          : `勝因は資金差の維持でっす。競合の防衛中も出資優位を保ち、${FINISH_LABELS[finishMethod]}で所有率を押し切ったでっす。`
       : defeatReason === 'WALKING_DEAD_FAILED'
         ? 'リビングデッドは発動したでっすが、10秒以内に所有率30％へ戻せなかったでっす。蘇生猶予では意気衝天や大口出資を温存しておくでっす。'
         : rebelled.length > 0
           ? isHighEndRaid
             ? `${rebelled.length}件が記録戦中に一時離脱し、支援の山が崩れたでっす。通常の事業・契約は保護されるので、資金要求の順番を組み直すでっす。`
-            : `${rebelled.length}件の独立で資金の山が崩れたでっす。次は独立危険度の高い支援元へ要求する前に、危険度を抑えるスキルを使うでっす。`
+            : `${rebelled.length}件の独立で資金の山が崩れたでっす。次は独立危険度の高い支援元へ要求する前に、危険度を抑えるアビリティを使うでっす。`
           : '風と支援を反映した競り値で劣勢となり、所有率を押し戻されたでっす。';
 
   const briefingSynergies = [
@@ -2452,16 +3869,30 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const cinematicLayer = getBattleCinematicLayer({
     battlePhase,
     hasBattleAnnouncement: !!battleAnnouncement,
-    hasConditionAnnouncement: !!conditionAnnouncement,
     hasDecisiveBlow: !!decisiveBlow,
     hasWinner: !!winner,
     finishTelegraphVisible,
   });
+  const terminalUsesDirectFinisher =
+    isDirectTerminalCause(terminalRef.current?.cause);
+  const terminalUsesSelfCollapse =
+    decisiveBlow?.winner === 'player' && !terminalUsesDirectFinisher;
+  const announcementEncounterName = isSavage
+    ? targetProperty.name.replace(
+        /\s*商戦 零式：第([1-4])層$/,
+        '：第$1層'
+      )
+    : targetProperty.name;
+  const announcementDutySuffix = isTraining
+    ? '訓練開始'
+    : isSavage
+      ? '討滅戦・零式'
+      : '討滅戦';
 
   return (
     <div
       ref={rootDialogRef}
-      className={`buyout-screen buyout-screen--phase-${battlePhase} buyout-screen--living-${livingDeadPhase} ${isTraining ? 'buyout-screen--training' : ''} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''} ${isBurstTime ? 'buyout-screen--burst' : ''} ${decisiveBlow ? `buyout-screen--decisive buyout-screen--decisive-${decisiveBlow.winner}` : ''}`}
+      className={`buyout-screen buyout-screen--phase-${battlePhase} buyout-screen--living-${livingDeadPhase} ${lightweightMode ? 'buyout-screen--lightweight' : ''} ${lightweightPauseActive ? 'buyout-screen--ambient-paused' : ''} ${isTraining ? 'buyout-screen--training' : ''} ${isBossBattle ? `buyout-screen--boss buyout-screen--boss-${bossAbilityTier}` : ''} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''} ${impactStop ? `buyout-screen--impact-${impactStop.phase} buyout-screen--impact-${impactStop.side} ${impactStop.heavy ? 'buyout-screen--impact-heavy' : ''}` : ''} ${capitalPresentationStage && activeCapitalTiming ? `buyout-screen--capital-commit buyout-screen--capital-${capitalPresentationStage} buyout-screen--capital-${activeCapitalTiming.tier}` : ''} ${skillCinematic ? `buyout-screen--skill-cinematic buyout-screen--skill-stage-${skillCinematic.stage} buyout-screen--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${isBurstTime ? 'buyout-screen--burst' : ''} ${decisiveBlow ? `buyout-screen--decisive buyout-screen--decisive-${decisiveBlow.winner}` : ''} ${terminalCinematicStage ? `buyout-screen--terminal-cinematic buyout-screen--terminal-${terminalCinematicStage}` : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label={
@@ -2472,26 +3903,34 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       tabIndex={-1}
       style={{ '--battle-time-scale': timeScale } as React.CSSProperties}
     >
-      <img className="buyout-backdrop" src={FANKIT_ART.battleBackdrop} alt="" aria-hidden="true" />
-      {limitImpactActive && <div className="limit-impact-field" aria-hidden="true"><i /><i /><i /><i /><i /></div>}
+      {!lightweightMode && (
+        <img className="buyout-backdrop" src={FANKIT_ART.battleBackdrop} alt="" aria-hidden="true" />
+      )}
+      {limitImpactActive && (
+        <div className="limit-impact-field" aria-hidden="true">
+          <span /><span /><span />
+        </div>
+      )}
 
       {cinematicLayer === 'battle_announcement' && battleAnnouncement && (
         <div className={`battle-announcement battle-announcement--${battleAnnouncement}`} aria-live="assertive">
           <div>
-            <small>{battleAnnouncement === 'start' ? isTraining ? 'TRAINING COMMENCED' : 'CONTENT COMMENCED' : battleAnnouncement === 'limit' ? `LIMIT BREAK ${activeLimitBreakTier || limitBreakTier}` : 'FINAL PUSH'}</small>
-            <strong>{battleAnnouncement === 'start' ? isTraining ? `${targetProperty.name} 訓練開始` : `${targetProperty.name} 討滅戦` : battleAnnouncement === 'limit' ? '全支援元・資金総動員' : '最終買収攻勢'}</strong>
-            <span>{battleAnnouncement === 'start' ? `START! / ${companyName}` : battleAnnouncement === 'limit' ? `${battleSubs.length + 1}件の支援を解放` : '最後の一手で買収成立へ'}</span>
-          </div>
-        </div>
-      )}
-
-      {cinematicLayer === 'condition_announcement' && conditionAnnouncement && (
-        <div className={`battle-condition-announcement battle-condition-announcement--${conditionAnnouncement.kind}`} aria-live="assertive">
-          <div className="battle-condition-announcement__wind" aria-hidden="true"><i /><i /><i /><i /><i /></div>
-          <div>
-            <small>{conditionAnnouncement.kicker}</small>
-            <strong>{conditionAnnouncement.title}</strong>
-            <span>{conditionAnnouncement.detail}</span>
+            <small>{battleAnnouncement === 'start' ? isTraining ? 'TRAINING COMMENCED' : 'CONTENT COMMENCED' : `LIMIT BREAK ${activeLimitBreakTier || limitBreakTier}`}</small>
+            <strong>
+              {battleAnnouncement === 'start' ? (
+                <>
+                  <span className="battle-announcement__encounter">
+                    {announcementEncounterName}
+                  </span>
+                  <span className="battle-announcement__duty">
+                    {announcementDutySuffix}
+                  </span>
+                </>
+              ) : (
+                '全支援元・資金総動員'
+              )}
+            </strong>
+            <span>{battleAnnouncement === 'start' ? `START! / ${companyName}` : `${battleSubs.length + 1}件の支援を解放`}</span>
           </div>
         </div>
       )}
@@ -2536,14 +3975,27 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
       <main className="buyout-main">
         <section
-          className={`battle-stage integrated-battlefield integrated-battlefield--push-${battleDirection} integrated-battlefield--motion-${motion} ${windVisible && eraWindActive ? `integrated-battlefield--era-wind integrated-battlefield--era-wind-${Math.min(3, eraWindUses)}` : ''} ${windVisible && windTelegraphVisible ? 'integrated-battlefield--wind-telegraph' : ''} ${decisiveBlow?.winner === 'player' ? 'integrated-battlefield--finisher-player' : decisiveBlow?.winner === 'opponent' ? 'integrated-battlefield--finisher-enemy' : ''} ${decisiveBlow?.impacted ? 'integrated-battlefield--finisher-impact' : ''} ${winner ? 'integrated-battlefield--settled' : ''} ownership-board--wind-${windSide} ${isSavage ? 'integrated-battlefield--savage' : ''} ${isUltimate ? 'integrated-battlefield--ultimate' : ''}`}
+          className={`battle-stage integrated-battlefield integrated-battlefield--push-${battleDirection} integrated-battlefield--motion-${motion} ${impactStop ? `integrated-battlefield--impact-${impactStop.phase} integrated-battlefield--impact-${impactStop.side} ${impactStop.heavy ? 'integrated-battlefield--impact-heavy' : ''}` : ''} ${capitalPresentationStage && activeCapitalTiming ? `integrated-battlefield--capital-commit integrated-battlefield--capital-${capitalPresentationStage} integrated-battlefield--capital-${activeCapitalTiming.tier}` : ''} ${skillCinematic ? `integrated-battlefield--skill-cinematic integrated-battlefield--skill-stage-${skillCinematic.stage} integrated-battlefield--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${windVisible && eraWindActive ? `integrated-battlefield--era-wind integrated-battlefield--era-wind-${Math.min(3, eraWindUses)}` : ''} ${windVisible && windTelegraphVisible ? 'integrated-battlefield--wind-telegraph' : ''} ${decisiveBlow?.winner === 'player' && terminalUsesDirectFinisher ? 'integrated-battlefield--finisher-player integrated-battlefield--finisher-direct' : decisiveBlow?.winner === 'player' ? 'integrated-battlefield--finisher-collapse' : decisiveBlow?.winner === 'opponent' ? 'integrated-battlefield--finisher-enemy' : ''} ${decisiveBlow?.impacted ? 'integrated-battlefield--finisher-impact' : ''} ${terminalCinematicStage ? `integrated-battlefield--terminal-${terminalCinematicStage} integrated-battlefield--terminal-winner-${terminalRef.current?.winner ?? 'player'} ${terminalUsesSelfCollapse ? 'integrated-battlefield--terminal-self-collapse' : 'integrated-battlefield--terminal-direct'}` : ''} ${winner ? 'integrated-battlefield--settled' : ''} ownership-board--wind-${windSide} ${isSavage ? 'integrated-battlefield--savage' : ''} ${isUltimate ? 'integrated-battlefield--ultimate' : ''}`}
           aria-label="所有率、両陣営、投入資金、行動予兆の統合商戦フィールド"
-          inert={backgroundInert}
+          inert={backgroundInert && !conditionAnnouncement}
           data-company-invested={companyInvested}
+          data-flow-direction={battleDirection}
+          data-flow-intensity={ownershipRate > 1.7 ? 'surge' : ownershipRate > 0.65 ? 'fast' : 'calm'}
           style={{
-            '--battle-frontline': `${ownership}%`,
-            '--capital-pressure': `${capitalPressurePosition}%`,
+            '--battle-frontline': `${displayedOwnership}%`,
             '--field-flow-duration': `${Math.max(.46, 1.9 - Math.min(1, ownershipRate / 4))}s`,
+            '--capital-prepare-duration': activeCapitalTiming
+              ? `${activeCapitalTiming.prepareMs}ms`
+              : undefined,
+            '--capital-travel-duration': activeCapitalTiming
+              ? `${activeCapitalTiming.travelMs}ms`
+              : undefined,
+            '--capital-impact-duration': activeCapitalTiming
+              ? `${activeCapitalTiming.hitStopMs + activeCapitalTiming.settleMs}ms`
+              : undefined,
+            '--capital-afterglow-duration': activeCapitalTiming
+              ? `${activeCapitalTiming.afterglowMs}ms`
+              : undefined,
           } as React.CSSProperties}
         >
         <div className="battlefield-pressure-lane" aria-hidden="true">
@@ -2551,45 +4003,86 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           <i className="battlefield-pressure-lane__enemy" />
           <span className="battlefield-pressure-lane__front"><i /><i /><i /></span>
         </div>
-        {playerCapitalVisualStage >= 7 && (
+        <span className="battle-commerce-flow" aria-hidden="true">
+          {Array.from({ length: 8 }, (_, index) => <i key={index} />)}
+        </span>
+        {skillCinematic && (
+          <>
+            <span
+              className={`battle-skill-field battle-skill-field--${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')} battle-skill-field--stage-${skillCinematic.stage}`}
+              aria-hidden="true"
+            >
+              {Array.from(
+                { length: lightweightMode ? 4 : 8 },
+                (_, index) => <i key={index} />
+              )}
+            </span>
+            <div
+              className={`battle-skill-nameplate battle-skill-nameplate--${skillCinematic.targetsRival ? 'enemy' : 'ally'} battle-skill-nameplate--stage-${skillCinematic.stage}`}
+              role="status"
+              aria-live="assertive"
+            >
+              <small>TACTICAL ACTION</small>
+              <strong>{skillCinematic.skillName}</strong>
+              <em>{skillCinematic.stage === 'name'
+                ? '発動'
+                : skillCinematic.stage === 'cast'
+                  ? '構え'
+                  : skillCinematic.stage === 'hitstop'
+                    ? 'HIT STOP'
+                    : skillCinematic.stage === 'impact'
+                    ? '効果発生'
+                    : '効果確定'}</em>
+            </div>
+          </>
+        )}
+        {capitalCommit && activeCapitalTiming && (
+          <div
+            key={`${capitalCommit.serial}-${capitalCommit.stage}`}
+            className={`capital-commit-cue capital-commit-cue--${capitalCommit.stage} capital-commit-cue--${activeCapitalTiming.tier}`}
+            role="status"
+            aria-live="polite"
+          >
+            <small>CAPITAL COMMIT</small>
+            <strong>{capitalCommitCueText}</strong>
+          </div>
+        )}
+        {conditionAnnouncement && !battleAnnouncement && !terminalCinematicStage && (
+          <div
+            className={`battle-status-message battle-status-message--${conditionAnnouncement.tone} battle-status-message--kind-${conditionAnnouncement.kind}`}
+            data-tone={conditionAnnouncement.tone}
+            data-kind={conditionAnnouncement.kind}
+            role="status"
+            aria-live={conditionAnnouncement.tone === 'enemy' ? 'assertive' : 'polite'}
+          >
+            <span>{normalizeBattleStatusMessageText(conditionAnnouncement.text)}</span>
+          </div>
+        )}
+        {capitalDropParticleCount > 0 && (
           <span className="battlefield-capital-deluge battlefield-capital-deluge--player" aria-hidden="true">
-            {Array.from({ length: 18 }).map((_, index) => (
+            {Array.from({ length: capitalDropParticleCount }).map((_, index) => (
               <i
                 key={index}
                 style={{
-                  '--deluge-x': `${3 + ((index * 17) % 45)}%`,
-                  '--deluge-size': `${0.18 + (index % 4) * 0.055}rem`,
-                  animationDelay: `${-(index * 0.19)}s`,
-                  animationDuration: `${1.35 + (index % 5) * 0.14}s`,
+                  '--deluge-x': `${8 + (index % 6) * 7.2}%`,
+                  '--deluge-drift': `${((index % 3) - 1) * 0.24}rem`,
+                  '--deluge-size': `${0.18 + (index % 4) * 0.045}rem`,
+                  animationDelay: activeCapitalSnapshot?.compact
+                    ? `${(index % 6) * 0.01}s`
+                    : `${Math.floor(index / 6) * 0.16 + (index % 6) * 0.025}s`,
+                  animationDuration: `${0.76 + (index % 3) * 0.08}s`,
                 } as React.CSSProperties}
               />
             ))}
           </span>
         )}
-        {enemyCapitalVisualStage >= 7 && (
-          <span className="battlefield-capital-deluge battlefield-capital-deluge--enemy" aria-hidden="true">
-            {Array.from({ length: 18 }).map((_, index) => (
-              <i
-                key={index}
-                style={{
-                  '--deluge-x': `${52 + ((index * 17) % 45)}%`,
-                  '--deluge-size': `${0.18 + (index % 4) * 0.055}rem`,
-                  animationDelay: `${-(index * 0.21)}s`,
-                  animationDuration: `${1.4 + (index % 5) * 0.13}s`,
-                } as React.CSSProperties}
-              />
-            ))}
-          </span>
-        )}
-        {(isTraining || isSavage || isUltimate) && (
+        {(isSavage || isUltimate) && (
           <div className={`battlefield-raid-marker ${isUltimate ? 'battlefield-raid-marker--ultimate' : ''}`}>
-            {isTraining ? (
-              <><b>商戦木人</b><span>追加防衛なし・セーブ無影響</span></>
-            ) : isUltimate ? (
+            {isUltimate ? (
               <><b>絶商戦</b><span>最終高難度</span></>
             ) : (
               <>
-                <b>零式 {savageLayer}/4層</b>
+                <b>零式 {savageSeries}編 {savageLayer}/4層</b>
                 <span aria-label={`第${savageLayer}層`}>
                   {Array.from({ length: 4 }).map((_, index) => (
                     <i key={index} className={index + 1 === savageLayer ? 'active' : index + 1 < savageLayer ? 'cleared' : ''} />
@@ -2604,7 +4097,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <b
               className="company-name-compact"
               title={companyName}
-              aria-label={`${companyName} 所有率 ${ownership.toFixed(1)}%`}
+              aria-label={`${companyName} 所有率 ${displayedOwnership.toFixed(1)}%`}
             >
               <MarqueeText text={companyName} delayMs={450} />
             </b>
@@ -2624,44 +4117,110 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <b
               className="company-name-compact"
               title={targetProperty.name}
-              aria-label={`${targetProperty.name} 所有率 ${(100 - ownership).toFixed(1)}%`}
+              aria-label={`${targetProperty.name} 所有率 ${(100 - displayedOwnership).toFixed(1)}%`}
             >
+              {isBossBattle && (
+                <span
+                  className={`battle-boss-mark battle-boss-mark--${bossAbilityTier}`}
+                  aria-label="ボス"
+                  title="ボス"
+                >
+                  <Crown aria-hidden="true" />
+                </span>
+              )}
               <MarqueeText text={targetProperty.name} delayMs={900} />
             </b>
           </div>
           <div className="ownership-duel">
             <div
-              className={`ownership-track ownership-track--${battleDirection} wind-field--${windSide} ${finalPushActive ? 'ownership-track--final' : ''} ${motion !== 'idle' ? 'ownership-track--impact' : ''}`}
-              aria-label={`${companyName}の所有率${ownership.toFixed(1)}%`}
+              className={`ownership-track ownership-track--${battleDirection} wind-field--${windSide} ${ownershipTrackImpactActive ? 'ownership-track--impact' : ''}`}
+              aria-label={`${companyName}の所有率${displayedOwnership.toFixed(1)}%`}
               style={{ '--flow-duration': `${Math.max(.32, 1.4 - Math.min(1, ownershipRate / 4))}s` } as React.CSSProperties}
             >
-              <div className="ownership-track__player" style={{ width: `${ownership}%` }} />
+              <div className="ownership-track__player" style={{ width: `${displayedOwnership}%` }} />
               {windVisible && (
                 <>
                   <div className={`battle-wind-magic ${eraWindActive ? 'battle-wind-magic--era' : ''} ${windTelegraphVisible ? 'battle-wind-magic--telegraph' : ''}`} aria-hidden="true"><i /><i /><i /><i /></div>
-                  <div key={`${battleWindState.phase}-${presentedWind.type}-${eraWindUses}`} className={`battle-wind-sigil battle-wind-sigil--${windSide} ${eraWindActive ? 'battle-wind-sigil--era' : ''} ${windTelegraphVisible ? 'battle-wind-sigil--telegraph' : ''}`}>
-                    <Sparkles /><b>{windHudTitle}</b><span>{windHudDetail}</span>
+                  {!conditionAnnouncement && <div key={`${battleWindState.phase}-${presentedWind.type}-${eraWindUses}`} className={`battle-wind-sigil battle-wind-sigil--${windSide} ${eraWindActive ? 'battle-wind-sigil--era' : ''} ${windTelegraphVisible ? 'battle-wind-sigil--telegraph' : ''}`}>
+                    <Sparkles /><b>{windHudTitle}</b>
                     <small>{windTelegraphVisible ? '到来まで' : eraWindActive ? '時流終了まで' : '静穏まで'} {windCountdown}秒</small>
-                  </div>
+                  </div>}
                 </>
               )}
-              <div className="ownership-track__enemy-flow" style={{ left: `${ownership}%` }} />
-              <div className="ownership-track__tension" style={{ left: `${ownership}%` }} />
+              <div className="ownership-track__enemy-flow" style={{ left: `${displayedOwnership}%` }} />
+              <div className="ownership-track__tension" style={{ left: `${displayedOwnership}%` }} />
               <div className="ownership-track__ticks">{Array.from({ length: 9 }).map((_, index) => <i key={index} />)}</div>
-              <div className="ownership-track__marker" style={{ left: `${ownership}%` }}><i /><i /><i /></div>
+              <div className="ownership-track__marker" style={{ left: `${displayedOwnership}%` }}><i /><i /><i /></div>
+            </div>
+            <div
+              className="ownership-capital-readout"
+              aria-label={`投入総額。自社${formatCurrency(displayedPlayerInvested)}、競合${formatCurrency(enemyInvested)}`}
+            >
+              <strong
+                className={
+                  capitalPresentationStage === 'impact' ||
+                  (
+                    !activeCapitalSnapshot &&
+                    motion === 'player'
+                  )
+                    ? 'is-acting'
+                    : ''
+                }
+                data-empty={displayedPlayerInvested <= 0}
+              >
+                <small>自社投入</small>
+                {formatCurrency(displayedPlayerInvested)}
+              </strong>
+              <span>CAPITAL</span>
+              <strong
+                className={motion === 'enemy' ? 'is-acting' : ''}
+                data-empty={enemyInvested <= 0}
+              >
+                <small>競合投入</small>
+                {formatCurrency(enemyInvested)}
+              </strong>
             </div>
           </div>
-          <p className={motion === 'rebel' ? 'status-rebel' : ''}>{statusText}</p>
+          <p className="battle-status-summary" aria-live="polite">{statusText}</p>
         </section>
 
         <section className="capital-arena battlefield-capital">
           <div className={`capital-arena__side ${motion === 'player' ? 'is-acting' : motion === 'enemy' || motion === 'rebel' ? 'is-hit' : ''}`}>
             <div className="player-capital-stack">
               <div className="capital-visual-row">
-                <GilTower amount={totalPlayerInvested} reserveAmount={cash} marketPrice={targetProperty.marketPrice} side="player" motion={motion} />
+                <GilTower
+                  amount={displayedPlayerInvested}
+                  reserveAmount={cash}
+                  marketPrice={targetProperty.marketPrice}
+                  side="player"
+                  motion={playerCapitalMotion}
+                  lightweightMode={lightweightMode}
+                />
+                <InvestmentStakePreview
+                  level={selectedLevel}
+                  stage={capitalPresentationStage}
+                  motionSerial={motionSerial}
+                  lightweightMode={lightweightMode}
+                />
+                {playerCoverKnightPhase !== 'absent' && (
+                  <div
+                    className={`cover-knight cover-knight--player cover-knight--${playerCoverKnightPhase}`}
+                    aria-label={
+                      playerCoverKnightPhase === 'breaking'
+                        ? 'かばうを終え、防御を解除するナイト'
+                        : 'かばうを実行中のナイト'
+                    }
+                  >
+                    <img src={FANKIT_ART.paladin} alt="" aria-hidden="true" />
+                    <span>
+                      {playerCoverKnightPhase === 'breaking'
+                        ? '防御解除'
+                        : 'かばう'}
+                    </span>
+                  </div>
+                )}
                 <div className="ownership-fighter ownership-fighter--player">
                   <img
-                    key={`player-${motionSerial}`}
                     className={`ownership-avatar ownership-avatar--player ${motion === 'player' ? 'avatar-act' : motion === 'enemy' || motion === 'rebel' ? 'avatar-hurt' : ''}`}
                     src={FANKIT_ART.tataru.windUp}
                     alt="タタル"
@@ -2670,6 +4229,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     {fastHorseRemaining > 0 && (
                       <span role="img" aria-label={`疾風怒濤の計 残り${Math.ceil(fastHorseRemaining / 1000)}秒`} title={`疾風怒濤の計 残り${Math.ceil(fastHorseRemaining / 1000)}秒`}>
                         <Zap /><b>{Math.ceil(fastHorseRemaining / 1000)}</b>
+                      </span>
+                    )}
+                    {playerCoverRemaining > 0 && (
+                      <span
+                        role="img"
+                        aria-label={`かばう 残り${Math.ceil(playerCoverRemaining / 1000)}秒`}
+                        title={`かばう 残り${Math.ceil(playerCoverRemaining / 1000)}秒`}
+                      >
+                        <ShieldAlert />
+                        <b>{Math.ceil(playerCoverRemaining / 1000)}</b>
                       </span>
                     )}
                     {pushMultiplierRemaining > 0 && (
@@ -2688,11 +4257,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <div className={`player-budget-overlay player-budget-overlay--${playerReserveState}`}>
                 <small>{isTraining ? '訓練用未投入資金' : '未投入資金'}</small>
                 <strong>{formatCurrency(cash)}</strong>
-                <span>残量 {playerReservePercent.toFixed(1)}%・{playerReservePercent <= 0 ? '回復待ち' : playerReservePercent <= 10 ? '枯渇寸前' : '投入可能'}</span>
+                <span className="battle-budget-meta">
+                  <b>残量 {playerReservePercent.toFixed(1)}%・{playerReservePercent <= 0 ? '回復待ち' : playerReservePercent <= 10 ? '枯渇寸前' : '投入可能'}</b>
+                  <em>商流回復 {playerRecoveryPercent.toFixed(1)}% / 20%</em>
+                </span>
               </div>
             </div>
             <small className="capital-effective-detail">
-              <span>積上げ {playerCapitalProgress.toFixed(0)}%　自社 {formatCurrency(companyInvested)} / 支援 {formatCurrency(demandInvested)}</span>
+              <span>積上げ {displayedPlayerCapitalProgress.toFixed(0)}%　自社 {formatCurrency(capitalRevealPending ? Math.max(0, companyInvested - (activeCapitalSnapshot?.amount ?? 0)) : companyInvested)} / 支援 {formatCurrency(demandInvested)}</span>
               {windVisible && <b>風反映後 {formatCurrency(effectivePlayerInvested)}相当（×{currentWind.playerMultiplier.toFixed(2)}）</b>}
             </small>
             <div className="capital-source-bar"><i style={{ width: `${totalPlayerInvested > 0 ? companyInvested / totalPlayerInvested * 100 : 0}%` }} /><span /></div>
@@ -2701,24 +4273,52 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <div className={`capital-clash capital-clash--${battleDirection}`}><i /><i /><i /></div>
             <b className="capital-vs">VS</b>
             <strong>{capitalPressureLabel}</strong>
-            <small>投入比 {Math.round(effectivePlayerShare)}:{Math.round(100 - effectivePlayerShare)}</small>
-            {!isTraining && enemyReserve <= 0 && <em>SHORT</em>}
           </div>
           <div className={`capital-arena__side ${motion === 'enemy' ? 'is-acting' : motion === 'player' ? 'is-hit' : ''}`}>
             <div className="enemy-capital-stack">
               <div className="capital-visual-row">
-                <GilTower amount={enemyInvested} marketPrice={targetProperty.marketPrice} side="enemy" motion={motion} />
+                <GilTower
+                  amount={enemyInvested}
+                  marketPrice={targetProperty.marketPrice}
+                  side="enemy"
+                  motion={motion}
+                  lightweightMode={lightweightMode}
+                />
+                {enemyCoverKnightPhase !== 'absent' && (
+                  <div
+                    className={`cover-knight cover-knight--enemy cover-knight--${enemyCoverKnightPhase} cover-knight--${bossAbilityTier}`}
+                    aria-label={
+                      enemyCoverKnightPhase === 'breaking'
+                        ? '競合側の防御を突破されたナイト'
+                        : `競合側の${bossAbilityTier === 'invincible' ? 'インビンシブル' : 'かばう'}を実行中のナイト`
+                    }
+                  >
+                    <img src={FANKIT_ART.paladin} alt="" aria-hidden="true" />
+                    <span>
+                      {enemyCoverKnightPhase === 'breaking'
+                        ? 'GUARD BREAK'
+                        : bossAbilityTier === 'invincible'
+                        ? '無敵'
+                        : bossAbilityTier === 'enhanced_cover'
+                          ? '強化かばう'
+                          : 'かばう'}
+                    </span>
+                  </div>
+                )}
                 <div className="ownership-fighter ownership-fighter--enemy">
                   <img
-                    key={`enemy-${motionSerial}`}
                     className={`ownership-avatar ownership-avatar--enemy ${motion === 'enemy' ? 'avatar-act' : motion === 'player' ? 'avatar-hurt' : ''}`}
                     src={opponentCharacterArt}
                     alt={isTraining ? '商戦訓練用サボテンダー' : '競合代表'}
                   />
                   <div className="battle-status-rail battle-status-rail--enemy" aria-label={isTraining ? '商戦木人への継続効果' : '競合の継続効果'}>
-                    {enemySlowedRemaining > 0 && (
-                      <span role="img" aria-label={`消沈 残り${Math.ceil(enemySlowedRemaining / 1000)}秒`} title={`消沈 残り${Math.ceil(enemySlowedRemaining / 1000)}秒`}>
-                        <TimerReset /><b>{Math.ceil(enemySlowedRemaining / 1000)}</b>
+                    {enemyCoverRemaining > 0 && (
+                      <span
+                        role="img"
+                        aria-label={`${bossAbilityTier === 'invincible' ? 'インビンシブル' : 'かばう'} 残り${Math.ceil(enemyCoverRemaining / 1000)}秒`}
+                        title={`${bossAbilityTier === 'invincible' ? 'インビンシブル' : 'かばう'} 残り${Math.ceil(enemyCoverRemaining / 1000)}秒`}
+                      >
+                        <ShieldAlert /><b>{Math.ceil(enemyCoverRemaining / 1000)}</b>
                       </span>
                     )}
                     {enemyDisruptionRemaining > 0 && (
@@ -2730,9 +4330,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 </div>
               </div>
               <div className={`enemy-budget-overlay enemy-budget-overlay--${enemyReserveState}`}>
-                <small>{isTraining ? '木人追加防衛' : '追加防衛枠'}</small>
-                <strong>{isTraining ? 'なし' : formatCurrency(enemyReserve)}</strong>
-                <span>{isTraining ? '初期耐久資本を全配置済み' : `残量 ${enemyReservePercent.toFixed(1)}%・${enemyReserve <= 0 ? 'SHORT' : enemyReservePercent <= 10 ? '枯渇寸前' : '追加投入余力'}`}</span>
+                <small>{isTraining ? '木人保留資金' : '追加防衛枠'}</small>
+                <strong>{formatCurrency(enemyReserve)}</strong>
+                <span className="battle-budget-meta">
+                  <b>{isTraining ? 'AI出資なし' : `残量 ${enemyReservePercent.toFixed(1)}%・${!enemyCanCommit ? '回復待ち' : enemyReservePercent <= 10 ? '枯渇寸前' : '追加投入余力'}`}</b>
+                  <em>商流回復 {enemyRecoveryPercent.toFixed(1)}% / 20%</em>
+                </span>
               </div>
             </div>
             <small className="capital-effective-detail">
@@ -2768,22 +4371,22 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           </div>
           {!isTraining && (
             <div
-              className={`recast-meter recast-meter--enemy ${aiProgress >= 72 ? 'is-danger' : ''} ${enemyReserve <= 0 ? 'is-short' : ''}`}
+              className={`recast-meter recast-meter--enemy ${aiProgress >= 72 ? 'is-danger' : ''} ${!enemyCanCommit ? 'is-short' : ''}`}
               role="progressbar"
               aria-label="競合の次回行動予兆"
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuenow={enemyReserve <= 0 ? 0 : Math.round(aiProgress)}
-              aria-valuetext={enemyReserve <= 0 ? 'SHORT・追加防衛不能' : `${aiText}・準備 ${Math.round(aiProgress)}%`}
-              title={enemyReserve <= 0 ? 'SHORT・追加防衛不能' : aiText}
+              aria-valuenow={!enemyCanCommit ? 0 : Math.round(aiProgress)}
+              aria-valuetext={!enemyCanCommit ? `商流回復待ち・次回防衛${formatCurrency(enemyMinimumCommitment)}` : `${aiText}・準備 ${Math.round(aiProgress)}%`}
+              title={!enemyCanCommit ? `商流回復待ち・${formatCurrency(enemyMinimumCommitment)}以上で防衛再開` : aiText}
             >
-              <i><u style={{ width: `${enemyReserve <= 0 ? 0 : aiProgress}%` }} /></i>
+              <i><u style={{ width: `${!enemyCanCommit ? 0 : aiProgress}%` }} /></i>
             </div>
           )}
         </section>
         </section>
 
-        <section className="battle-action-strip" aria-label="LIMIT BREAK、SYNERGY、スキル、資金源" inert={backgroundInert}>
+        <section className="battle-action-strip" aria-label="LIMIT BREAK、SYNERGY、アビリティ、資金源" inert={backgroundInert}>
           {limitBreakCapacityTier > 0 && (
             <button
               type="button"
@@ -2833,7 +4436,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               onClick={() => demandFromGroup(
                 selectedBattleSynergy.name,
                 selectedBattleSynergyMembers,
-                selectedBattleSynergy.battleGroupMultiplier ?? 1.28
+                selectedBattleSynergy.battleGroupMultiplier ??
+                  BATTLE_SUPPORT_BALANCE.synergyDefaultMultiplier
               )}
               disabled={!commandReady || !battleSynergyReady || actionsLocked}
               aria-label={`${selectedBattleSynergy.name}（SYNERGY）。${battleSynergyReady ? '選択中の事業連携を発動' : '必要な事業・契約が不足'}`}
@@ -2860,40 +4464,58 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           {primarySkill && (
             <button
               type="button"
-              className={`battle-action-strip__action battle-action-strip__action--skill ${primarySkill.effectType === 'LIVING_DEAD' ? 'is-living-dead' : ''} ${primarySkillUnavailable ? 'is-unavailable' : ''}`}
-              onClick={() => useSkill(primarySkill)}
-              disabled={primarySkillUnavailable || primaryEraWindUnavailable || !commandReady || primarySkillCooldown > 0 || primarySkillUsed || actionsLocked}
-              title={`${primarySkill.name}：${getQuickSkillSummary(primarySkill, isTraining)}`}
+              className="battle-action-strip__action battle-action-strip__action--skill-select"
+              onClick={cycleSkillSelection}
+              disabled={battleSkillPool.length <= 1 || actionsLocked}
+              aria-label={
+                battleSkillPool.length > 1
+                  ? `スキル変更ボタン。選択中は${primarySkill.name}。押すたび次のスキルへ変更${usingSkillFallback ? '。未装備のため今回だけ臨時選択' : ''}`
+                  : `スキル選択。選択中は${primarySkill.name}。変更候補なし${usingSkillFallback ? '。未装備のため今回だけ臨時選択' : ''}`
+              }
+              title={
+                battleSkillPool.length > 1
+                  ? `スキルを変更（選択中：${primarySkill.name}）／${getQuickSkillSummary(primarySkill, isTraining)}`
+                  : `選択中：${primarySkill.name}（変更候補なし）`
+              }
             >
-              {primarySkill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
+              <RefreshCw />
               <span>
-                <b><MarqueeText text={primarySkill.name} /></b>
-                <small>{getQuickSkillSummary(primarySkill, isTraining)}</small>
+                <b>{battleSkillPool.length > 1 ? '① スキル切替' : '① 選択中'}</b>
+                <small>
+                  <MarqueeText
+                    text={`${usingSkillFallback ? '今回だけ：' : '選択中：'}${primarySkill.name}`}
+                  />
+                </small>
               </span>
-              <em>{primarySkillUnavailable
-                ? '対象なし'
-                : primarySkill.effectType === 'ERA_WIND' && eraWindUseLimitReached
-                  ? '3/3使用済み'
-                  : primarySkill.effectType === 'ERA_WIND' && cash < nextEraWindCost
-                    ? `${formatCurrency(nextEraWindCost)}必要`
-                : primarySkillUsed
-                ? '使用済み'
-                : primarySkillCooldown > 0
-                  ? '再使用待ち'
-                  : commandReady
-                    ? '発動可'
-                    : '準備中'}</em>
+              <span
+                className="battle-action-strip__skill-steps"
+                aria-hidden="true"
+              >
+                {battleSkillPool.map((skill) => (
+                  <i
+                    key={skill.id}
+                    className={skill.id === primarySkill.id ? 'is-selected' : ''}
+                  />
+                ))}
+              </span>
             </button>
           )}
 
-          {equippedSkills.length > 0 && (
+          {primarySkill && (
             <button
               type="button"
-              className={`battle-action-strip__action battle-action-strip__action--drawer ${panel === 'skills' ? 'active' : ''}`}
-              onClick={() => setPanel('skills')}
+              className={`battle-action-strip__action battle-action-strip__action--skill-execute ${primarySkill.effectType === 'LIVING_DEAD' ? 'is-living-dead' : ''} ${primarySkillExecutionBlocked ? 'is-unavailable' : 'is-ready'}`}
+              onClick={() => useSkill(primarySkill)}
+              disabled={primarySkillExecutionBlocked || actionsLocked}
+              aria-label={`選択中のスキルを発動するボタン。${primarySkill.name}。${primarySkillStateText}${usingSkillFallback ? '。今回だけ臨時使用' : ''}`}
+              title={`選択中の${primarySkill.name}を発動／${getQuickSkillSummary(primarySkill, isTraining)}`}
             >
-              <Swords />
-              <span><b>スキル</b><small>{additionalSkillCount > 0 ? `ほか${additionalSkillCount}件` : '詳細'}</small></span>
+              {primarySkill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
+              <span>
+                <b>② スキル発動</b>
+                <small><MarqueeText text={primarySkill.name} /></small>
+              </span>
+              <em>{primarySkillStateText}</em>
             </button>
           )}
 
@@ -2901,9 +4523,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             type="button"
             className={`battle-action-strip__action battle-action-strip__action--drawer ${panel === 'funds' ? 'active' : ''}`}
             onClick={() => setPanel('funds')}
+            disabled={!commandReady || actionsLocked}
+            aria-label={`資金源。${commandReady ? '支援要請可能' : '自社コマンドの準備中'}`}
           >
             <Building2 />
-            <span><b>資金源</b><small>支援元{battleSubs.length}件＋協力</small></span>
+            <span>
+              <b>資金源</b>
+              <small>{commandReady ? `支援元${battleSubs.length}件＋協力` : '準備中'}</small>
+            </span>
           </button>
         </section>
 
@@ -2940,10 +4567,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
               <button
                 type="button"
-                className={`investment-execute-button ${canConfirmInvestment ? 'is-ready' : 'is-recharging'} ${isFinalPushWindow ? 'is-finisher' : ''}`}
+                className={`investment-execute-button ${canConfirmInvestment ? 'is-ready' : 'is-recharging'}`}
                 onClick={investCompanyFunds}
                 disabled={!canConfirmInvestment}
-                aria-label={`${isFinalPushWindow ? 'とどめ' : '投資実行'}。${selectedInvestmentConfig.label} ${formatCurrency(selectedCost)}を1回投入`}
+                aria-label={`投資実行。${selectedInvestmentConfig.label} ${formatCurrency(selectedCost)}を1回投入`}
                 data-investment-level={selectedLevel}
                 data-investment-cost={selectedCost}
                 data-command-ready={commandReady}
@@ -2955,7 +4582,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 />
                 <HandCoins />
                 <span>
-                  <b>{isFinalPushWindow ? 'とどめ' : '投資実行'}</b>
+                  <b>投資実行</b>
                   <small>{!maxAffordableConfig
                     ? '資金不足'
                     : commandReady
@@ -2977,13 +4604,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <button type="button" className="battle-drawer-backdrop" onClick={() => setPanel('capital')} aria-label="資金源を閉じる" />
             <section ref={fundsDrawerRef} className="battle-drawer" role="dialog" aria-modal="true" aria-label="資金源" tabIndex={-1}>
               <header>
-                <span><Building2 /><b>資金源</b><small>戦術選択中 ×0.1</small></span>
+                <span><Building2 /><b>資金源</b><small>{lightweightMode ? '戦術選択中 停止' : '戦術選択中 ×0.1'}</small></span>
                 <button type="button" data-modal-close onClick={() => setPanel('capital')} aria-label="資金源を閉じる"><X /></button>
               </header>
               {windVisible && (
                 <div className={`command-wind-context command-wind-context--${windSide}`}>
                   <span><Sparkles /><b>{windTitle}</b><em>{windDetail}</em></span>
-                  <small>戦術選択中も風は×0.1で進行。静穏まで{windCountdown}秒。</small>
+                  <small>{lightweightMode ? '戦術選択中は風も停止' : '戦術選択中も風は×0.1で進行'}。静穏まで{windCountdown}秒。</small>
                 </div>
               )}
               <div className="command-panel command-panel--funds">
@@ -3009,13 +4636,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               )}
 
               <div className="property-funds">
-                {battleSubs.map((property) => {
+                {sortedBattleSubs.map((property) => {
                   const risk = riskPresentation(property.loyaltyRisk);
                   return (
                     <button type="button" key={property.id} onClick={() => demandFromProperty(property)} disabled={!commandReady || actionsLocked}>
                       <span><b>{property.name}</b><small>要求 {subRequestCounts[property.id] || 0}回</small></span>
-                      <em className={risk.className}>{risk.label} {property.loyaltyRisk}%</em>
-                      <strong>+{formatCurrency(property.marketPrice * 0.45)}</strong>
+                      <em className={risk.className}>
+                        {getReacquisitionLevel(property) > 0 &&
+                          `復帰強化${getReacquisitionLevel(property)}・`}
+                        {risk.label} {property.loyaltyRisk}%
+                      </em>
+                      <strong>
+                        +{formatCurrency(calculateSubsidiarySupportAmount(property))}
+                      </strong>
                     </button>
                   );
                 })}
@@ -3026,56 +4659,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           </div>
         )}
 
-        {panel === 'skills' && (
-          <div className="battle-drawer-shell" role="presentation">
-            <button type="button" className="battle-drawer-backdrop" onClick={() => setPanel('capital')} aria-label="スキル一覧を閉じる" />
-            <section ref={skillsDrawerRef} className="battle-drawer battle-drawer--skills" role="dialog" aria-modal="true" aria-label="装備スキル" tabIndex={-1}>
-              <header>
-                <span><Swords /><b>装備スキル</b><small>選択中 ×0.1</small></span>
-                <button type="button" data-modal-close onClick={() => setPanel('capital')} aria-label="スキル一覧を閉じる"><X /></button>
-              </header>
-              <div className="battle-drawer__skill-list">
-                {equippedSkills.map((skill) => {
-                  const cooldown = skillCooldowns[skill.id] || 0;
-                  const used = !!skill.oncePerBattle && usedSkillIds.has(skill.id);
-                  const unavailable =
-                    isTraining && isRivalOnlySkill(skill);
-                  const eraBlocked =
-                    skill.effectType === 'ERA_WIND' &&
-                    (eraWindUseLimitReached || cash < nextEraWindCost);
-                  return (
-                    <button
-                      type="button"
-                      key={`drawer-${skill.id}`}
-                      className={`${skill.effectType === 'LIVING_DEAD' ? 'is-living-dead' : ''} ${unavailable ? 'is-unavailable' : ''}`}
-                      onClick={() => useSkill(skill)}
-                      disabled={unavailable || eraBlocked || !commandReady || cooldown > 0 || used || actionsLocked}
-                    >
-                      {skill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
-                      <span>
-                        <b>{skill.name}</b>
-                        <small>{unavailable ? '競合行動を対象とするため、追加行動のない木人では無効' : skill.description}</small>
-                      </span>
-                      <em>{unavailable
-                        ? '対象なし'
-                        : skill.effectType === 'ERA_WIND' && eraWindUseLimitReached
-                          ? '3/3使用済み'
-                          : skill.effectType === 'ERA_WIND' && cash < nextEraWindCost
-                            ? `${formatCurrency(nextEraWindCost)}必要`
-                        : used
-                        ? '使用済み'
-                        : cooldown > 0
-                          ? '再使用待ち'
-                          : commandReady
-                            ? '発動可'
-                            : '準備中'}</em>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          </div>
-        )}
       </main>
 
       <footer className={`buyout-footer ${winner ? 'buyout-footer--settled' : ''}`} inert={footerInert}>
@@ -3096,7 +4679,21 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           <>
             <button type="button" onClick={() => setShowLog(true)}><ScrollText />戦局ログ</button>
             <span title={logs[0]?.text}>{logs[0]?.text}</span>
-            <button type="button" onClick={() => finishBattle('opponent', 'NORMAL', ownership, false)}>{isTraining ? '訓練を終了' : '撤退'}</button>
+            <button
+              type="button"
+              onClick={() =>
+                finishBattle(
+                  'opponent',
+                  'NORMAL',
+                  ownership,
+                  false,
+                  'CAPITAL_COLLAPSE',
+                  'withdrawal'
+                )
+              }
+            >
+              {isTraining ? '訓練を終了' : '撤退'}
+            </button>
           </>
         )}
       </footer>
@@ -3121,8 +4718,29 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <span>VS</span>
               <b className="company-name-full" title={targetProperty.name}>{targetProperty.name}</b>
             </div>
-            <StrengthComparison result={battleReadiness} isTraining={isTraining} />
-            <dl className="briefing-facts">
+            <dl className="briefing-facts briefing-facts--summary">
+              <div>
+                <dt>{isTraining ? '木人耐久資本' : '現在相場'}</dt>
+                <dd>{formatCurrency(targetProperty.marketPrice)}</dd>
+              </div>
+              <div>
+                <dt>{isTraining ? '参加費' : '仲介手数料'}</dt>
+                <dd>{formatCurrency(brokerageFee)}</dd>
+              </div>
+              <div>
+                <dt>{isTraining ? '訓練用持込資金' : '自社持込資金'}</dt>
+                <dd>{formatCurrency(initialBattleCashRef.current)}</dd>
+              </div>
+            </dl>
+            <details className="briefing-advanced-details">
+              <summary>
+                <ScrollText />
+                <span>戦力差・競合詳細を見る</span>
+                <b>{battleReadiness.symbol}{battleReadiness.label}</b>
+              </summary>
+              <div className="briefing-advanced-details__body">
+                <StrengthComparison result={battleReadiness} isTraining={isTraining} />
+                <dl className="briefing-facts">
               <div>
                 <dt>{isTraining ? '訓練区分' : isHighEndRaid ? '競合連合・対象地域' : '対象都市・業界'}</dt>
                 <dd>
@@ -3133,6 +4751,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <div><dt>{isTraining ? '木人耐久資本' : '現在相場'}</dt><dd>{formatCurrency(targetProperty.marketPrice)}</dd></div>
               <div><dt>{isTraining ? '参加費' : '仲介手数料'}</dt><dd>{formatCurrency(brokerageFee)}</dd></div>
               <div>
+                <dt>{isTraining ? '訓練用持込資金' : '自社現金持込枠'}</dt>
+                <dd>
+                  {formatCurrency(initialBattleCashRef.current)}
+                  <small>
+                    {isTraining
+                      ? '現在資金を訓練内だけで使用'
+                      : `上限は対象相場と同額・余剰${formatCurrency(Math.max(0, availableBattleCash - initialBattleCashRef.current))}は商会に留保`}
+                  </small>
+                </dd>
+              </div>
+              <div>
                 <dt>{isTraining ? '初期防衛資本' : '競合想定予算'}</dt>
                 <dd>
                   {formatCurrency(enemyBudget)}
@@ -3142,35 +4771,50 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <div><dt>{isTraining ? '木人行動' : '競合戦術'}</dt><dd>{isTraining ? '追加防衛・敵AI行動なし' : `${isUltimate ? '絶商戦' : isSavage ? '零式レイド' : 'AI'} LEVEL ${enemyDifficultyLevel}`}</dd></div>
               <div><dt>{isTraining ? '訓練用出資の精算' : '自社直接出資の確定損'}</dt><dd>{isTraining ? 'なし（セーブ資金差引 0）' : '勝利35%／敗北・撤退75%'}</dd></div>
               <div><dt>LBゲージ</dt><dd>{limitBreakCapacityTier === 0 ? '未解放（自社＋支援元が合計4枠で解放）' : isTraining ? `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}（訓練専用・終了時に破棄）` : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}（最大${limitBreakCapacityTier}本・次戦へ継承）`}</dd></div>
-            </dl>
-            <section className="briefing-section">
+                </dl>
+                <section className="briefing-section">
               <h3><Sparkles />今回の事業連携・戦闘連携</h3>
               {briefingSynergies.length > 0
                 ? <ul>{briefingSynergies.map((effect) => <li key={effect}>{effect}</li>)}</ul>
                 : <p>今回発動するSYNERGYはありません。</p>}
-            </section>
-            <section className="briefing-section">
+              {usingSkillFallback && primarySkill && (
+                <p className="briefing-skill-fallback">
+                  {equippedSkills.length === 0
+                    ? `アビリティが未装備のため、修得済みの「${primarySkill.name}」を今回だけ臨時選択しました。`
+                    : `装備中のアビリティは今回使用できないため、「${primarySkill.name}」を今回だけ臨時選択しました。`}
+                  商戦中は「変更」で候補を選び、「発動」で効果を実行します。
+                </p>
+              )}
+              {battleSkillPool.length === 0 && (
+                <p className="briefing-skill-fallback">
+                  今回使用できるアビリティはありません。資金投入と支援元で商戦を進めます。
+                </p>
+              )}
+                </section>
+                <section className="briefing-section">
               <h3><Users />外部協力・公的後援</h3>
               <p>{alliance.active
                 ? alliancePublicPatronage
                   ? `公的後援：${alliance.allyName}／通商支援1回 +${formatCurrency(allianceSupport)}相当（所有・LB参加件数には不算入）`
                   : `協力協定：${alliance.allyName}／協力支援1回 +${formatCurrency(allianceSupport)}`
                 : '今回利用できる外部協力・公的後援はありません。'}</p>
-            </section>
-            {isProtectedBattle && (
-              <section className="briefing-section briefing-savage">
+                </section>
+                {isProtectedBattle && (
+                  <section className="briefing-section briefing-savage">
                 <h3><Swords />{isTraining ? '商戦木人ルール' : isUltimate ? '絶商戦ルール' : '零式ルール'}</h3>
                 <p>{isTraining ? '参加費・報酬・精算・清算はすべて0。通常事業・契約の保有状態、独立危険度、零式・絶の進行は変化せず、同じLEVELへ何度でも再挑戦できます。' : '通常編の地域・業界・交易網補正は無効。通常事業・契約の保有状態・収益・独立危険度は変化せず、失敗後も同じ戦いへ再挑戦できます。'}</p>
-              </section>
-            )}
-            <section className="briefing-section">
+                  </section>
+                )}
+                <section className="briefing-section">
               <h3><ShieldAlert />勝敗条件</h3>
               <p>{isTraining ? '木人は全耐久資本を開幕に配置します。所有率100％まで押し切ると訓練成功です。木人側に押されても自社1％で踏みとどまり、任意に訓練を終了できます。' : '未投入資金や追加防衛枠が残っていても、所有率0％になった側は敗北します。'}</p>
-              {!isTraining && <p>競合がSHORTすると所有率99.5％で停止します。自社出資かLIMIT BREAKで決着してください。</p>}
-              {equippedSkills.some((skill) => skill.effectType === 'LIVING_DEAD') && (
+              {!isTraining && <p>勝敗は所有率100％への到達だけで決まります。追加防衛枠が0でも停止せず、商流回復と継続圧力を含めて攻防が続きます。</p>}
+              {battleSkillPool.some((skill) => skill.effectType === 'LIVING_DEAD') && (
                 <p className="briefing-living-dead">例外：リビングデッド待機中は1％で踏みとどまり、10秒以内に正規化所有率30％へ戻せば続行できます。</p>
               )}
-            </section>
+                </section>
+              </div>
+            </details>
             <button type="button" className="dialog-close briefing-start" onClick={startBattle}>
               {isTraining
                 ? '木人訓練を開始'
@@ -3187,38 +4831,44 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </div>
       )}
 
-      {!isTraining && cinematicLayer === 'short' && (
-        <div className="battle-short-telegraph" aria-live="assertive">
-          <i />
-          <small>DEFENSE CAPITAL</small>
-          <strong>SHORT</strong>
-          <span>敵追加防衛資金 0%</span>
-          <i />
-        </div>
-      )}
-
-      {cinematicLayer === 'decisive' && decisiveBlow && (
-        <div className={`battle-decisive-blow battle-decisive-blow--${decisiveBlow.winner} ${decisiveBlow.impacted ? 'battle-decisive-blow--impact' : ''}`} aria-live="assertive">
-          <i />
-          <small>{isTraining ? 'TRAINING CAPITAL IMPACT' : decisiveBlow.winner === 'player' ? 'FINAL CAPITAL IMPACT' : 'RIVAL CAPITAL IMPACT'}</small>
-          <strong>DECISIVE BLOW</strong>
-          <span>{isTraining ? decisiveBlow.winner === 'player' ? '最後の一手が木人耐久を削り切る' : '木人の初期耐久資本に押し戻される' : decisiveBlow.winner === 'player' ? '最後の一手が防衛線を貫く' : '大口防衛出資が所有率を押し潰す'}</span>
-          <i />
-        </div>
-      )}
-
       {cinematicLayer === 'finish' && winner && finishTelegraphVisible && (
-        <div className={`battle-finish-telegraph battle-finish-telegraph--${winner}`} aria-live="assertive">
-          <i />
-          <small>{isTraining ? winner === 'player' ? 'TRAINING COMPLETE' : 'TRAINING ENDED' : winner === 'player' ? 'DUTY COMPLETE' : 'DUTY FAILED'}</small>
-          <strong>{isTraining ? winner === 'player' ? 'SUCCESS!' : 'END' : winner === 'player' ? 'WIN!' : 'LOSE'}</strong>
-          <span>{isTraining
-            ? winner === 'player' ? 'DUMMY BREAK' : 'TRAINING END'
-            : winner === 'player'
-              ? FINISH_LABELS[finishMethod]
-              : defeatReason === 'WALKING_DEAD_FAILED' ? 'WALKING DEAD FAILED' : 'CAPITAL COLLAPSE'}</span>
-          {winner === 'player' && overkill >= 0.5 && <em>OVERKILL +{overkill.toFixed(1)}%</em>}
-          <i />
+        <div className={`battle-terminal-resolution battle-terminal-resolution--${winner}`} aria-live="assertive">
+          <div>
+            <small>
+              {isTraining
+                ? winner === 'player'
+                  ? 'TRAINING COMPLETE'
+                  : 'TRAINING ENDED'
+                : winner === 'player'
+                  ? terminalUsesSelfCollapse
+                    ? 'CAPITAL COLLAPSE'
+                    : 'DEAL CLOSED'
+                  : 'DEAL LOST'}
+            </small>
+            <strong>
+              {isTraining
+                ? winner === 'player'
+                  ? 'COMPLETE'
+                  : 'ENDED'
+                : winner === 'player'
+                  ? 'WIN'
+                  : 'LOSE'}
+            </strong>
+            <span>{isTraining
+              ? winner === 'player'
+                ? terminalUsesSelfCollapse
+                  ? '積み上がった資本で木人を押し切った'
+                  : '最後の一手で木人耐久を削り切った'
+                : '訓練を終了した'
+              : winner === 'player'
+                ? terminalUsesSelfCollapse
+                  ? `${TERMINAL_CAUSE_LABELS[terminalRef.current?.cause ?? 'pressure']}で競合の防衛線が崩れた！`
+                  : `${TERMINAL_CAUSE_LABELS[terminalRef.current?.cause ?? 'pressure']}で契約成立！`
+                : defeatReason === 'WALKING_DEAD_FAILED'
+                  ? '蘇生猶予終了'
+                  : '買収交渉敗北'}</span>
+            {winner === 'player' && overkill >= 0.5 && <em>OVERKILL +{overkill.toFixed(1)}%</em>}
+          </div>
         </div>
       )}
 
@@ -3229,17 +4879,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <ol>
               <li><b>ギルを積む</b><span>左の投資レベルボタンで金額を5段階から選び、右の投資実行ボタンで1回投入します。支援元・SYNERGYの支援は上のアイコンから使います。</span></li>
               {isTraining && <li><b>木人訓練</b><span>参加費・報酬・精算・清算は0。木人は初期耐久資本を全配置し、追加防衛や敵AI行動を行いません。押されても自社1％で訓練を継続でき、その間も通常の毎秒収益とオフライン収益は商会資金へ加算されます。</span></li>}
-              <li><b>戦術選択</b><span>資金源やスキルの選択中は、商戦と商流回復が通常の10%になります。</span></li>
-              <li><b>商流回復</b><span>通常時は相場の0.3%/秒、1戦につき相場の15%まで、その戦闘内だけで再利用できる資金が戻ります。最終残高へ別途加算はされません。</span></li>
+              <li><b>戦術選択</b><span>資金源やアビリティの選択中は、商戦と商流回復が通常の10%になります。</span></li>
+              <li><b>未投入資金</b><span>通常商戦へ持ち込める自社現金は対象相場と同額まで。超過分は商会に安全資金として残り、戦後も失われません。木人訓練は制限対象外です。</span></li>
+              <li><b>商流回復</b><span>自社は開始時の持込資金、競合は開始時の総予算を基準に、双方0.3%/秒で手元資金だけを回復します。現在値は基準100%まで、累積は1戦20%まで。風は回復速度だけを変え、所有率へ直接加算しません。</span></li>
               <li><b>市場の風を読む</b><span>{isTraining ? '木人訓練では風は発生せず、自社・木人双方への補正もありません。' : 'グリダニアは風なし。進行後も開始から最低10秒は静穏です。その後は低頻度の市場気配、3秒の予兆を経て12～15秒だけ風が吹き、終了後は最低18秒の静穏を挟みます。'}</span></li>
-              {!isTraining && <li><b>時代の風</b><span>クガネの交易網を揃えると解放。敵資金を消さず、12秒間だけ自社向きの時流を追加します。1交渉3回までで、使用ごとに必要資金が増えます。</span></li>}
-              <li><b>LIMIT BREAK</b><span>攻防の資金衝突で通常比20％速く蓄積し、動員資金も20％増加。自社＋支援元が合計4/8/16枠で1/2/3本まで解放され、発動のたび全ゲージを0にします。同じ戦闘でも再蓄積すれば再発動できます。</span></li>
-              <li><b>特殊アクション</b><span>商戦フィールド直下のアイコンからLB・選択中のSYNERGY・主要スキルを1タップで実行できます。未解放の枠は表示せず、全スキルと資金源はドロワーで開きます。</span></li>
+              {!isTraining && <li><b>時代の風</b><span>クガネの交易網を揃えると解放。敵資金を消さず、16秒間、自社向きの強い時流を追加します。1交渉につき1回です。</span></li>}
+              <li><b>LIMIT BREAK</b><span>攻防の資金衝突で通常比20％速く蓄積し、動員資金も20％増加。自社＋支援元が合計4/8/16枠で1/2/3本まで解放され、LB1/2の集約資金は対象相場の80％/120％が上限です。発動のたび全ゲージを0にし、同じ戦闘でも再蓄積すれば再発動できます。</span></li>
+              <li><b>特殊アクション</b><span>商戦フィールド直下のアイコンからLB・選択中のSYNERGY・主要アビリティを1タップで実行できます。未解放の枠は表示せず、全アビリティと資金源はドロワーで開きます。</span></li>
               <li><b>効果通知</b><span>味方への良い効果は青く上昇し、競合への妨害や悪い効果は赤く下降します。詳しい履歴は戦局ログで後から確認できます。</span></li>
               <li><b>リビングデッド</b><span>10秒の待機中に所有率0％へ到達すると表示上1％で耐えます。攻防の内部値は進み続け、その後10秒以内に30％以上へ戻せなければ敗北。1交渉1回です。</span></li>
               <li><b>協力協定</b><span>外部協力先から一交渉1回の支援です。LBの参加件数や投入額には含みません。</span></li>
-              <li><b>独立リスク</b><span>支援元へ繰り返し要求できますが、独立すると過去支援も崩れます。</span></li>
-              {!isTraining && <li><b>SHORT</b><span>敵の追加防衛資金が0になった戦況通知。約3.2秒後に自動再開し、所有率99.5%で踏みとどまります。投資実行が「とどめ」に変わるので、FINAL PUSHかLIMIT BREAKで決着してください。</span></li>}
+              <li><b>独立リスク</b><span>支援要求で危険度は上がりますが、商戦中には離脱しません。通常商戦の勝利後、ご祝儀を選んでから支援元ごとに一度だけ判定します。支援元なし・木人訓練は判定対象外です。</span></li>
+              {!isTraining && <li><b>資金繰り逼迫</b><span>競合の手元資金が0になると小さく通知しますが、商戦は停止しません。競合は商流回復後、通常のAI判断で再び防衛資金を投入できます。</span></li>}
+              <li><b>決着</b><span>所有率100%到達を内部確定した時点ですべての数値を固定し、約1秒の最終提示演出後にDEAL CLOSED／DEAL LOSTを1回だけ表示します。追加のとどめ操作は不要です。</span></li>
               <li><b>OVERKILL</b><span>所有率100%をどれだけ超えて押し切ったかを示す派手さの評価です。</span></li>
             </ol>
             <button type="button" className="dialog-close" onClick={() => setShowHelp(false)}>{isTraining ? '木人訓練へ戻る' : '商談へ戻る'}</button>
@@ -3259,6 +4911,59 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
       {battlePhase === 'result' && winner && (
         <div className="buyout-overlay buyout-result-overlay">
+          {resultStep === 'departures' ? (
+          <article
+            ref={phaseDialogRef}
+            className="buyout-dialog buyout-result buyout-departure-report"
+            role="dialog"
+            aria-modal="true"
+            aria-label="資金源の離脱報告"
+            tabIndex={-1}
+          >
+            <header>
+              <ShieldAlert />
+              <strong>{isProtectedBattle ? '一時離脱報告' : '独立離脱報告'}</strong>
+            </header>
+            <div className="departure-report__lead">
+              <img src={FANKIT_ART.tataru.windUp} alt="タタル" />
+              <p>
+                <b>{rebelled.length}件の支援元が戦列を離れました</b>
+                <span>
+                  {isProtectedBattle
+                    ? 'この戦いは保護対象のため、通常の保有状態と独立危険度には反映されません。'
+                    : '独立した事業・契約は支援元から外れ、評価額が商会資金へ強制清算されます。'}
+                </span>
+              </p>
+            </div>
+            <div className="departure-report__list">
+              {rebelled.map((property) => (
+                <article key={property.id}>
+                  <ShieldAlert />
+                  <span>
+                    <b>{property.name}</b>
+                    <small>{isProtectedBattle ? '演習内のみ一時離脱' : '独立・支援終了'}</small>
+                  </span>
+                  <strong>
+                    {isProtectedBattle
+                      ? '保有維持'
+                      : `${formatCurrency(property.marketPrice)}清算`}
+                  </strong>
+                </article>
+              ))}
+            </div>
+            <p className="departure-report__advice">
+              次の商戦では、独立危険度の高い支援元へ要求する前に「守りのサンバ」やネマワシで備えるでっす。
+            </p>
+            <button
+              type="button"
+              className="dialog-close result-confirm result-return-map"
+              onClick={confirmDepartureReport}
+            >
+              <MapPinned />
+              <span>{isTraining ? '確認して木人一覧へ戻る' : '確認して全体マップへ戻る'}</span>
+            </button>
+          </article>
+          ) : (
           <article
             ref={phaseDialogRef}
             className={`buyout-dialog buyout-result buyout-result--${winner}`}
@@ -3294,49 +4999,204 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <img src={FANKIT_ART.tataru.windUp} alt="タタル" />
                <p><b>{isTraining ? 'タタルの訓練分析' : `タタルの${winner === 'player' ? '勝因' : '敗因'}分析`}</b><span>「{resultAnalysis}」</span></p>
             </div>
-            <div className="result-numbers">
-              <span><small>FINISH</small><b>{isTraining ? winner === 'player' ? 'DUMMY BREAK' : 'TRAINING END' : winner === 'opponent' && defeatReason === 'WALKING_DEAD_FAILED' ? 'WALKING DEAD FAILED' : FINISH_LABELS[finishMethod]}</b></span>
-              <span><small>最終所有率</small><b>{finalOwnership.toFixed(1)}%</b></span>
-              <span><small>OVERKILL</small><b>{winner === 'player' ? `+${overkill.toFixed(1)}%` : '---'}</b></span>
-              <span><small>自社競り値</small><b>{formatCurrency(totalPlayerInvested)}</b></span>
-              <span><small>{isTraining ? '木人耐久資本' : '競合競り値'}</small><b>{formatCurrency(enemyInvested)}</b></span>
-              <span><small>戦中再利用（残高加算なし）</small><b>{formatCurrency(battleCashRecovered)}</b></span>
-              <span><small>{isTraining ? '訓練操作による資金差引' : '確定支出'}</small><b>{isTraining ? '+0' : formatCurrency(brokerageFee + resultSettlementCost)}</b></span>
-              <span><small>{isTraining ? '訓練報酬' : '攻略報酬'}</small><b>+{formatCurrency(resultVictoryReward)}</b></span>
-              {!isTraining && <span><small>商会資金差引</small><b>{resultFundsDelta >= 0 ? '+' : '-'}{formatCurrency(Math.abs(resultFundsDelta))}</b></span>}
-              <span><small>{isTraining ? '訓練中の一時離脱' : isHighEndRaid ? '記録戦中の一時離脱' : '資金源離脱'}</small><b>{rebelled.length}件</b></span>
-            </div>
-            {winner === 'player' && <p className="overkill-rating">{getOverkillRating(overkill)}</p>}
-            {rebelled.length > 0 && (
-              <p className="rebel-summary">
-                <ShieldAlert />
-                {isProtectedBattle
-                  ? `一時離脱（通常の事業・契約は保護）：${rebelled.map((item) => item.name).join('・')}`
-                  : `独立：${rebelled.map((item) => item.name).join('・')}`}
-              </p>
+            {winner === 'player' && !isTraining && (
+              <section
+                className="result-company-growth"
+                aria-label="勝利による商会レベルの成長"
+              >
+                <header>
+                  <span>
+                    <small>COMPANY LEVEL</small>
+                    <b>商会 LV.{companyStrengthAfterLevel.level}</b>
+                  </span>
+                  <strong>
+                    <small>成長値</small>
+                    {(displayedCompanyStrength ?? companyStrengthAfter) -
+                      companyStrengthBefore >=
+                    0
+                      ? '+'
+                      : '-'}
+                    {formatCurrency(
+                      Math.abs(
+                        (displayedCompanyStrength ?? companyStrengthAfter) -
+                          companyStrengthBefore
+                      )
+                    )}
+                  </strong>
+                </header>
+                <div className="result-company-growth__score">
+                  <span>{formatCurrency(companyStrengthBefore)}</span>
+                  <i>→</i>
+                  <b>
+                    {formatCurrency(
+                      displayedCompanyStrength ?? companyStrengthAfter
+                    )}
+                  </b>
+                </div>
+                <div className="result-company-growth__meter">
+                  <i
+                    style={{
+                      width: `${companyStrengthAfterLevel.progressPercent}%`,
+                    }}
+                  />
+                </div>
+                <small>
+                  {companyStrengthAfterLevel.level >
+                  companyStrengthBeforeLevel.level
+                    ? `RANK UP！ LV.${companyStrengthBeforeLevel.level} → LV.${companyStrengthAfterLevel.level}`
+                    : `次のレベルまで ${formatCurrency(Math.max(0, companyStrengthAfterLevel.nextThreshold - companyStrengthAfter))}`}
+                </small>
+              </section>
             )}
+            {!isTraining && (
+              <section
+                className={`result-settlement-summary ${
+                  resultFundsDelta >= 0 ? 'is-positive' : 'is-negative'
+                }`}
+                aria-label="商会資金の精算"
+              >
+                <header>
+                  <span>
+                    <small>SETTLEMENT</small>
+                    <b>今回の商会資金</b>
+                  </span>
+                  <strong>
+                    {resultFundsDelta >= 0 ? '+' : '-'}
+                    {formatCurrency(Math.abs(resultFundsDelta))}
+                  </strong>
+                </header>
+                <dl>
+                  <div>
+                    <dt>{winner === 'player' ? '攻略報酬' : '参加報酬'}</dt>
+                    <dd>+{formatCurrency(resultVictoryReward)}</dd>
+                  </div>
+                  <div>
+                    <dt>手数料・確定支出</dt>
+                    <dd>-{formatCurrency(brokerageFee + resultSettlementCost)}</dd>
+                  </div>
+                  {resultLiquidationCashback > 0 && (
+                    <div>
+                      <dt>離脱資産の清算（{rebelled.length}件）</dt>
+                      <dd>+{formatCurrency(resultLiquidationCashback)}</dd>
+                    </div>
+                  )}
+                  {celebrationDecisionRequired && (
+                    <div>
+                      <dt>勝利のご祝儀</dt>
+                      <dd>
+                        {!celebrationDecision
+                          ? '選択待ち'
+                          : celebrationGiftApplied
+                            ? `-${formatCurrency(appliedCelebrationGiftCost)}`
+                            : '商会に残す'}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </section>
+            )}
+            <details className="result-battle-details">
+              <summary><ScrollText />戦闘記録を見る</summary>
+              <div className="result-numbers">
+                <span><small>FINISH</small><b>{isTraining ? winner === 'player' ? 'DUMMY BREAK' : 'TRAINING END' : winner === 'opponent' && defeatReason === 'WALKING_DEAD_FAILED' ? 'WALKING DEAD FAILED' : FINISH_LABELS[finishMethod]}</b></span>
+                <span><small>最終所有率</small><b>{finalOwnership.toFixed(1)}%</b></span>
+                <span><small>OVERKILL</small><b>{winner === 'player' ? `+${overkill.toFixed(1)}%` : '---'}</b></span>
+                <span><small>自社競り値</small><b>{formatCurrency(totalPlayerInvested)}</b></span>
+                <span><small>{isTraining ? '木人耐久資本' : '競合競り値'}</small><b>{formatCurrency(enemyInvested)}</b></span>
+                <span><small>戦中再利用</small><b>{formatCurrency(battleCashRecovered)}</b></span>
+                <span><small>{isTraining ? '一時離脱' : isHighEndRaid ? '記録戦中の一時離脱' : '資金源離脱'}</small><b>{rebelled.length}件</b></span>
+              </div>
+              {winner === 'player' && (
+                <p className="overkill-rating">{getOverkillRating(overkill)}</p>
+              )}
+            </details>
             {!isTraining && winner === 'player' && nextCommunity && <p className="next-community"><CheckCircle2 />次の都市「{nextCommunity}」への交易路が開きます。</p>}
+            {celebrationDecisionRequired && companyGrowthRevealed && (
+              <section className="result-celebration-choice">
+                <header>
+                  <HandCoins />
+                  <span>
+                    <b>勝利の利益をどう配分しますか？</b>
+                    <small>選択後、支援元の離脱判定を1回だけ行います</small>
+                  </span>
+                </header>
+                {celebrationDecision ? (
+                  <p
+                    className={`result-celebration-gift ${
+                      celebrationGiftApplied ? 'is-applied' : ''
+                    }`}
+                  >
+                    <HandCoins />
+                    <span>
+                      <b>
+                        {celebrationGiftApplied
+                          ? 'ご祝儀を配りました'
+                          : '利益を商会に残しました'}
+                      </b>
+                      <small>
+                        {celebrationGiftApplied
+                          ? `報酬の10% ${formatCurrency(celebrationGiftCost)}・全支援元の独立危険度 -${BATTLE_LOYALTY_BALANCE.celebrationRiskReduction}`
+                          : `勝利報酬 ${formatCurrency(resultVictoryReward)}を商会資金へ加算`}
+                      </small>
+                    </span>
+                  </p>
+                ) : (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => resolveVictorySettlement('keep')}
+                    >
+                      <b>利益を商会に残す</b>
+                      <small>
+                        +{formatCurrency(resultVictoryReward)}・危険度はそのまま
+                      </small>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => resolveVictorySettlement('share')}
+                    >
+                      <b>ご祝儀を配る</b>
+                      <small>
+                        報酬の10%・危険度 -
+                        {BATTLE_LOYALTY_BALANCE.celebrationRiskReduction}
+                      </small>
+                    </button>
+                  </div>
+                )}
+              </section>
+            )}
             <button
               type="button"
-              className="dialog-close result-confirm"
+              className="dialog-close result-confirm result-return-map"
               onClick={confirmResult}
-              disabled={!resultConfirmArmed}
+              disabled={
+                !resultConfirmArmed ||
+                (celebrationDecisionRequired && !celebrationDecision)
+              }
               aria-describedby="battle-result-confirm-note"
             >
-              {!resultConfirmArmed
+              {resultConfirmArmed && <MapPinned />}
+              <span>{!resultConfirmArmed
                 ? '結果を確認中…'
+                : celebrationDecisionRequired && !companyGrowthRevealed
+                ? '商会戦力を集計中…'
+                : celebrationDecisionRequired && !celebrationDecision
+                ? '利益の配分を選んでください'
+                : rebelled.length > 0
+                ? '結果を確認して離脱報告へ'
                 : isTraining
                 ? '訓練結果を保存せず木人一覧へ戻る'
                 : winner === 'player'
                 ? isHighEndRaid
-                  ? '攻略結果を確定する'
-                  : '買収結果を確定する'
-                : '敗因を記録して戻る'}
+                  ? '攻略結果を確定して全体マップへ戻る'
+                  : '買収結果を確定して全体マップへ戻る'
+                : '敗因を記録して全体マップへ戻る'}</span>
             </button>
             <small id="battle-result-confirm-note" className="sr-only">
               このボタンを押すまで商戦結果は確定されず、画面も閉じません。
             </small>
           </article>
+          )}
         </div>
       )}
     </div>

@@ -15,6 +15,7 @@ interface HeaderProps {
   totalCommunityCount: number;
   activeTab: AppTab;
   setActiveTab: (tab: AppTab) => void;
+  onOpenMap: () => void;
   activeAllianceName: string | null;
   activeSynergiesCount: number;
   tradeAllianceUnlocked: boolean;
@@ -40,6 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
   totalCommunityCount,
   activeTab,
   setActiveTab,
+  onOpenMap,
   activeAllianceName,
   activeSynergiesCount,
   tradeAllianceUnlocked,
@@ -209,7 +211,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <Zap className="w-4 h-4" />
-          スキル・事業連携
+          アビリティ・事業連携
         </button>
 
         {tradeAllianceUnlocked && (
@@ -248,13 +250,13 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Mobile Sticky Bottom Command Navigation Bar */}
       <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 grid ${savageUnlocked ? 'grid-cols-5' : tradeAllianceUnlocked ? 'grid-cols-4' : 'grid-cols-3'} h-14 px-1 shadow-2xl touch-manipulation select-none pb-safe`}>
         <button
-          onClick={() => setActiveTab('market')}
+          onClick={onOpenMap}
           className={`flex flex-col items-center justify-center py-1 transition-colors ${
             activeTab === 'market' ? 'text-amber-400 font-extrabold' : 'text-slate-400'
           }`}
         >
-          <Building2 className="w-5 h-5 mb-0.5" />
-          <span className="text-[11px] leading-none">市場</span>
+          <MapPin className="w-5 h-5 mb-0.5" />
+          <span className="text-[11px] leading-none">地図</span>
         </button>
 
         <button
@@ -279,7 +281,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <Zap className="w-5 h-5 mb-0.5" />
-          <span className="text-[11px] leading-none">スキル</span>
+          <span className="text-[11px] leading-none">アビリティ</span>
         </button>
 
         {tradeAllianceUnlocked && (

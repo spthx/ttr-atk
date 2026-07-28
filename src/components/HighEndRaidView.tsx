@@ -17,6 +17,7 @@ import {
   SAVAGE_GROUP_MULTIPLIER_BONUS_PER_RANK,
   SAVAGE_PROPERTY_YIELD_BONUS,
   SAVAGE_RAID_DEFINITIONS,
+  SAVAGE_SERIES_DEFINITIONS,
   SAVAGE_YIELD_BONUS_PER_RANK,
   ULTIMATE_RAID_DEFINITION,
 } from '../utils/savage';
@@ -83,18 +84,45 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
           <small>HIGH-END TRADE DUTIES</small>
           <h2>商戦 零式</h2>
           <p>
-            4つの地域連合を順に攻略する、本作独自の高難度交易戦です。
+            3編それぞれの第1～4層、全12章を順に攻略する本作独自の高難度交易戦です。
             失敗しても通常事業は失いません。
           </p>
           <strong>
-            {savageClearedIds.size}/{SAVAGE_RAID_DEFINITIONS.length} LAYERS
+            {savageClearedIds.size}/{SAVAGE_RAID_DEFINITIONS.length} CHAPTERS
             CLEARED
           </strong>
         </div>
       </section>
 
-      <section className="savage-layer-grid" aria-label="商戦 零式 4層">
-        {SAVAGE_RAID_DEFINITIONS.map((raid) => {
+      <div className="savage-series-list" aria-label="商戦 零式 3編 全12章">
+        {SAVAGE_SERIES_DEFINITIONS.map((series) => {
+          const seriesRaids = SAVAGE_RAID_DEFINITIONS.filter(
+            (raid) => raid.series === series.series
+          );
+          const seriesCleared = seriesRaids.filter((raid) =>
+            savageClearedIds.has(raid.id)
+          ).length;
+          return (
+          <section
+            key={series.series}
+            className="savage-series"
+            aria-label={`第${series.series}編 ${series.name} 1層から4層`}
+          >
+            <header className="savage-series__header">
+              <span>第{series.series}編</span>
+              <div>
+                <h2>{series.name}</h2>
+                <p>{series.subtitle}</p>
+              </div>
+              <strong>{seriesCleared}/4 踏破</strong>
+            </header>
+            <div className="savage-layer-grid">
+        {seriesRaids.map((raid) => {
+          const raidIndex = SAVAGE_RAID_DEFINITIONS.findIndex(
+            (candidate) => candidate.id === raid.id
+          );
+          const previousRaid =
+            raidIndex > 0 ? SAVAGE_RAID_DEFINITIONS[raidIndex - 1] : null;
           const property = propertyMap.get(raid.id);
           if (!property) return null;
           const cleared = savageClearedIds.has(raid.id);
@@ -121,7 +149,14 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
               }`}
             >
               <header>
-                <span>第{raid.layer}層</span>
+                <span>
+                  第{raid.layer}層
+                  <small>CHAPTER {raidIndex + 1}/12</small>
+                </span>
+                <i className="savage-layer-card__boss-mark">
+                  <Crown />
+                  BOSS
+                </i>
                 <b>{cleared ? <CheckCircle2 /> : unlocked ? <Swords /> : <Lock />}</b>
               </header>
               <h3>{raid.encounterName}</h3>
@@ -176,7 +211,9 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
                 onClick={() => onStartSavage(property)}
               >
                 {!unlocked
-                  ? `第${raid.layer - 1}層の踏破で解放`
+                  ? previousRaid
+                    ? `第${previousRaid.series}編・第${previousRaid.layer}層の踏破で解放`
+                    : '前章の踏破で解放'
                   : !affordable
                     ? `手数料まで あと${formatCurrency(fee - totalFunds)}`
                     : cleared
@@ -186,9 +223,13 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
             </article>
           );
         })}
-      </section>
+            </div>
+          </section>
+          );
+        })}
+      </div>
 
-      <section
+      {ultimateUnlocked && <section
         className={`ultimate-raid-card ${
           ultimateCleared
             ? 'ultimate-raid-card--cleared'
@@ -201,10 +242,13 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
           {FANKIT_ART.jobs.map((src) => <img key={src} src={src} alt="" />)}
         </div>
         <div className="ultimate-raid-card__copy">
-          <small>ULTIMATE TRADE DUTY / 本作独自</small>
+          <small>
+            <span className="ultimate-raid-card__boss-mark"><Crown /> BOSS</span>
+            ULTIMATE TRADE DUTY / 本作独自
+          </small>
           <h2>{ULTIMATE_RAID_DEFINITION.name}</h2>
           <p>
-            4層踏破で解放される、別枠の単独最終戦です。
+            3編・全12章踏破で解放される、別枠の単独最終戦です。
             全地域の交易共同戦線が、これまでの攻防を重ねて立ちはだかります。
           </p>
           <span>
@@ -227,9 +271,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
               onClick={() => onStartUltimate(ultimateProperty)}
             >
               <Crown />
-              {!ultimateUnlocked
-                ? '零式4層踏破で挑戦資格を解放'
-                : totalFunds < Math.round(ultimateProperty.marketPrice * 0.03)
+              {totalFunds < Math.round(ultimateProperty.marketPrice * 0.03)
                   ? '参加手数料が不足'
                   : ultimateCleared
                     ? '絶へ再挑戦'
@@ -242,7 +284,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
             )}
           </div>
         </div>
-      </section>
+      </section>}
     </div>
   );
 };

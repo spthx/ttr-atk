@@ -81,7 +81,6 @@
   from {
     translate: 0 -4.5rem;
     opacity: 0;
-    filter: brightness(1.7) drop-shadow(0 0 .7rem currentColor);
   }
   72% { opacity: 1; }
   to { translate: 0 0; opacity: 1; }
@@ -392,61 +391,95 @@
   overflow: hidden;
   pointer-events: none;
   background:
-    radial-gradient(circle at 50% 55%, rgba(255, 255, 255, .86) 0 1%, rgba(250, 204, 21, .48) 4%, rgba(16, 185, 129, .22) 18%, transparent 48%),
-    linear-gradient(90deg, rgba(16, 185, 129, .18), transparent 48%, rgba(250, 204, 21, .14));
+    radial-gradient(circle at 58% 54%, rgba(255, 255, 255, .94) 0 .7%, rgba(250, 204, 21, .38) 2.5%, transparent 18%),
+    linear-gradient(105deg, rgba(2, 6, 23, .78), rgba(15, 23, 42, .42) 52%, rgba(2, 6, 23, .72));
   animation: limit-impact-screen 1.45s ease-out both;
+  contain: layout paint style;
 }
 
 .limit-impact-field::before,
 .limit-impact-field::after {
   position: absolute;
-  top: 54%;
-  left: -20%;
-  width: 140%;
-  height: .22rem;
+  inset: 0;
   content: "";
-  background: linear-gradient(90deg, transparent, #34d399, #fff, #fde047, transparent);
-  box-shadow: 0 0 1.3rem #fef08a;
-  transform: rotate(-5deg);
-  animation: limit-impact-slash .72s ease-out both;
+  background: radial-gradient(circle at 58% 54%, rgba(255, 255, 255, .92), rgba(250, 204, 21, .32) 7%, transparent 24%);
+  opacity: 0;
+  animation: limit-impact-flash .7s .38s ease-out both;
 }
 
 .limit-impact-field::after {
-  transform: rotate(6deg);
-  animation-delay: .08s;
+  background:
+    linear-gradient(90deg, transparent 0 56%, rgba(255, 255, 255, .75) 58%, transparent 60%),
+    radial-gradient(circle at 58% 54%, rgba(255, 255, 255, .96), transparent 10%);
+  animation-delay: .45s;
 }
 
-.limit-impact-field i {
+.limit-impact-field span {
+  --slash-angle: -18deg;
   position: absolute;
-  top: -12%;
-  left: calc(14% + var(--limit-x, 0%));
-  width: .85rem;
-  aspect-ratio: 1;
-  border: 2px solid #fff1a8;
-  border-radius: 50%;
-  background: #d99a16;
-  box-shadow: inset 0 0 .22rem #fff8c7, 0 0 .65rem rgba(250, 204, 21, .75);
-  animation: limit-coin-rain 1.15s cubic-bezier(.2, .7, .25, 1) both;
+  top: 36%;
+  left: -18%;
+  width: 138%;
+  height: clamp(.16rem, .42vw, .34rem);
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent 2%, #bae6fd 18%, #fff 48% 72%, #fde68a 88%, transparent 98%);
+  box-shadow:
+    0 0 .28rem #fff,
+    0 0 1rem rgba(125, 211, 252, .95),
+    0 0 2.1rem rgba(250, 204, 21, .58);
+  transform-origin: center;
+  opacity: 0;
+  animation: limit-impact-katana-cut .48s .08s cubic-bezier(.2, .78, .24, 1) both;
 }
 
-.limit-impact-field i:nth-child(2) { --limit-x: 16%; animation-delay: .08s; }
-.limit-impact-field i:nth-child(3) { --limit-x: 34%; animation-delay: .16s; }
-.limit-impact-field i:nth-child(4) { --limit-x: 55%; animation-delay: .04s; }
-.limit-impact-field i:nth-child(5) { --limit-x: 72%; animation-delay: .2s; }
+.limit-impact-field span:nth-of-type(2) {
+  --slash-angle: 14deg;
+  top: 55%;
+  animation-delay: .2s;
+}
 
-.buyout-screen--limit-impact .ownership-board,
-.buyout-screen--limit-impact .capital-arena {
-  animation: limit-board-impact .48s steps(2) 2;
+.limit-impact-field span:nth-of-type(3) {
+  --slash-angle: -8deg;
+  top: 67%;
+  animation-delay: .34s;
+}
+
+.buyout-screen--limit-impact .capital-clash {
+  animation: limit-board-impact .48s steps(2) 1;
+}
+
+.buyout-screen--lightweight .limit-impact-field span:nth-of-type(n + 2) {
+  display: none;
+}
+
+.buyout-screen--lightweight.buyout-screen--limit-impact .capital-clash {
+  animation: none;
 }
 
 @keyframes wind-board-player { to { filter: brightness(1.32); transform: translateX(.12rem); } }
 @keyframes wind-board-enemy { to { filter: brightness(1.3); transform: translateX(-.12rem); } }
 @keyframes wind-board-cross { to { filter: brightness(1.42); } }
 @keyframes wind-sigil-arrival { from { opacity: 0; transform: translateX(-50%) scale(1.7); filter: blur(5px); } }
-@keyframes limit-impact-screen { 0% { opacity: 0; filter: brightness(2.4); } 14%, 62% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes limit-impact-slash { from { opacity: 0; transform: translateX(-35%) rotate(-5deg) scaleX(.3); } 35% { opacity: 1; } to { opacity: 0; transform: translateX(30%) rotate(-5deg) scaleX(1); } }
-@keyframes limit-coin-rain { 0% { opacity: 0; transform: translateY(0) rotate(0); } 18% { opacity: 1; } 100% { opacity: 0; transform: translateY(112vh) rotate(680deg); } }
-@keyframes limit-board-impact { 25% { transform: translate(-.16rem, .1rem); filter: brightness(1.55); } 75% { transform: translate(.16rem, -.08rem); } }
+@keyframes limit-impact-screen { 0% { opacity: 0; } 8%, 66% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes limit-impact-flash { 0%, 22% { opacity: 0; } 32% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes limit-impact-katana-cut {
+  0%, 16% {
+    opacity: 1;
+    transform: translateX(-3%) rotate(var(--slash-angle)) scaleX(.92);
+  }
+  58% {
+    opacity: 1;
+    transform: translateX(8%) rotate(var(--slash-angle)) scaleX(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(24%) rotate(var(--slash-angle)) scaleX(1.08);
+  }
+}
+@keyframes limit-board-impact {
+  25% { transform: translate(-.16rem, .1rem); }
+  75% { transform: translate(.16rem, -.08rem); }
+}
 
 @media (max-width: 639px) {
   .battle-wind-sigil { padding: .12rem .3rem; }
@@ -462,9 +495,8 @@
   .limit-impact-field,
   .limit-impact-field::before,
   .limit-impact-field::after,
-  .limit-impact-field i,
-  .buyout-screen--limit-impact .ownership-board,
-  .buyout-screen--limit-impact .capital-arena {
+  .limit-impact-field span,
+  .buyout-screen--limit-impact .capital-clash {
     animation: none !important;
   }
 }

@@ -28,7 +28,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
     },
     challenge: {
       label: '要工夫',
-      advice: '支援元、有効なスキル、LIMIT BREAKを組み合わせて耐久を削りましょう。',
+      advice: '支援元、有効なアビリティ、LIMIT BREAKを組み合わせて耐久を削りましょう。',
     },
     danger: {
       label: '準備不足',
@@ -134,7 +134,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
             {result.cumulativeSupportFailureProbability > 0 && (
               <span className={result.supportVolatile ? 'strength-comparison__risk' : ''}>
                 <ShieldAlert />
-                {result.supportRoute === '支援元一巡' ? '一巡離反' : '支援離反'}{' '}
+                {result.supportRoute === '支援元一巡' ? '勝利後の一巡離脱' : '勝利後の離脱'}{' '}
                 {Math.round(result.cumulativeSupportFailureProbability * 100)}%
               </span>
             )}
@@ -166,7 +166,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
           )}
           {result.supportVolatile && (
             <span className="strength-comparison__risk">
-              <ShieldAlert />支援離反 {Math.round(result.cumulativeSupportFailureProbability * 100)}%
+              <ShieldAlert />勝利後の離脱 {Math.round(result.cumulativeSupportFailureProbability * 100)}%
             </span>
           )}
         </div>
@@ -184,7 +184,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
           <small className="strength-comparison__note">
             {isTraining
               ? '追加行動なしの固定耐久です。訓練中の出資・離反・LB増減は保存されません。'
-              : `現金＋離反リスクを織り込んだ最良の支援（${result.supportRoute}）＋一交渉1回の協力・スキルで比較。風と押し込み速度は等級に含みません。`}
+              : `現金＋離反リスクを織り込んだ最良の支援（${result.supportRoute}）＋一交渉1回の協力・アビリティで比較。風と押し込み速度は等級に含みません。`}
           </small>
         </>
       )}

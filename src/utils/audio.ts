@@ -11,6 +11,7 @@ class SoundEffects {
   private cinematicAudioGeneration = 0;
   private cinematicSource: AudioBufferSourceNode | null = null;
   private cinematicGain: GainNode | null = null;
+  private limitImpactTimer: number | null = null;
   public enabled: boolean = true;
 
   private stopCinematicAudio(fadeMs = 0) {
@@ -39,7 +40,30 @@ class SoundEffects {
   }
 
   stopBattleCinematicAudio(fadeMs = 160) {
+    if (this.limitImpactTimer !== null && typeof window !== 'undefined') {
+      window.clearTimeout(this.limitImpactTimer);
+      this.limitImpactTimer = null;
+    }
     this.stopCinematicAudio(fadeMs);
+  }
+
+  /**
+   * Resume Web Audio synchronously inside a real pointer/key gesture.
+   * iOS may move a context to its non-standard `interrupted` state after an
+   * app switch; recreate it instead of scheduling silent oscillators.
+   */
+  unlock() {
+    if (!this.enabled || typeof window === 'undefined') return;
+    const state = this.ctx?.state as string | undefined;
+    if (state === 'closed' || state === 'interrupted') {
+      this.stopCinematicAudio();
+      this.ctx = null;
+      this.bufferCache.clear();
+    }
+    const ctx = this.initCtx();
+    if (ctx?.state === 'suspended') {
+      void ctx.resume().catch(() => {});
+    }
   }
 
   private playFankitAudio(
@@ -134,12 +158,22 @@ class SoundEffects {
   // Coin / Investment Chime
   playCoin() {
     if (!this.enabled) return;
+    let osc: OscillatorNode | null = null;
+    let gain: GainNode | null = null;
+    const disconnect = () => {
+      try {
+        osc?.disconnect();
+        gain?.disconnect();
+      } catch {
+        // An interrupted iOS audio context may already be disconnected.
+      }
+    };
     try {
       this.initCtx();
       if (!this.ctx) return;
 
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
+      osc = this.ctx.createOscillator();
+      gain = this.ctx.createGain();
 
       osc.type = 'sine';
       const now = this.ctx.currentTime;
@@ -151,11 +185,12 @@ class SoundEffects {
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
+      osc.onended = disconnect;
 
       osc.start(now);
       osc.stop(now + 0.2);
     } catch {
-      // Audio fallback
+      disconnect();
     }
   }
 
@@ -316,6 +351,243 @@ class SoundEffects {
     }
   }
 
+  /**
+   * First beat of a tactical action. This is intentionally short: the
+   * nameplate gets its own audible "ready" cue before movement begins.
+   */
+  playSkillCast(effectType: string) {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const hostile =
+        effectType === 'INDEPENDENCE_SABOTAGE';
+      const wind = effectType === 'ERA_WIND' || effectType === 'COOLDOWN_REDUCTION';
+      const notes = hostile
+        ? [220, 164.81]
+        : wind
+          ? [392, 587.33, 880]
+          : [329.63, 493.88, 659.25];
+      notes.forEach((frequency, index) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const start = now + index * 0.045;
+        osc.type = hostile ? 'sawtooth' : index === 0 ? 'triangle' : 'sine';
+        osc.frequency.setValueAtTime(frequency, start);
+        osc.frequency.exponentialRampToValueAtTime(
+          frequency * (hostile ? 0.72 : 1.22),
+          start + 0.2
+        );
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.linearRampToValueAtTime(wind ? 0.08 : 0.065, start + 0.025);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.24);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.25);
+      });
+    } catch {
+      // Audio fallback
+    }
+  }
+
+  /**
+   * Second beat: a stereo draw/whip that reads as the actor stepping forward.
+   * Noise is generated inside the existing WebAudio context so iOS does not
+   * have to start a competing media player.
+   */
+  playSkillWhoosh(effectType: string) {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const duration = effectType === 'ERA_WIND' ? 0.42 : 0.26;
+      const frameCount = Math.max(1, Math.floor(ctx.sampleRate * duration));
+      const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
+      const channel = buffer.getChannelData(0);
+      for (let index = 0; index < frameCount; index += 1) {
+        const envelope = Math.sin(Math.PI * index / frameCount);
+        channel[index] = (Math.random() * 2 - 1) * envelope;
+      }
+      const source = ctx.createBufferSource();
+      const filter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      const panner = typeof ctx.createStereoPanner === 'function'
+        ? ctx.createStereoPanner()
+        : null;
+      source.buffer = buffer;
+      filter.type = effectType === 'COVER' ? 'lowpass' : 'bandpass';
+      filter.frequency.setValueAtTime(
+        effectType === 'ERA_WIND' ? 1_400 : 2_600,
+        now
+      );
+      filter.frequency.exponentialRampToValueAtTime(
+        effectType === 'ERA_WIND' ? 4_800 : 720,
+        now + duration
+      );
+      filter.Q.setValueAtTime(0.7, now);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(
+        effectType === 'ERA_WIND' ? 0.2 : 0.14,
+        now + duration * 0.35
+      );
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+      source.connect(filter);
+      filter.connect(gain);
+      if (panner) {
+        panner.pan.setValueAtTime(-0.65, now);
+        panner.pan.linearRampToValueAtTime(0.55, now + duration);
+        gain.connect(panner);
+        panner.connect(ctx.destination);
+      } else {
+        gain.connect(ctx.destination);
+      }
+      source.start(now);
+      source.stop(now + duration);
+    } catch {
+      // Audio fallback
+    }
+  }
+
+  /**
+   * Third beat: one resolved impact. Buffs get a bright seal, hostile actions
+   * get a lower cut, and capital actions keep the familiar coin weight.
+   */
+  playSkillImpact(
+    effectType: string,
+    side: 'player' | 'opponent' = 'player'
+  ) {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const hostile =
+        effectType === 'INDEPENDENCE_SABOTAGE';
+      const wind = effectType === 'ERA_WIND' || effectType === 'COOLDOWN_REDUCTION';
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(wind ? 0.2 : 0.24, now);
+      master.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+      master.connect(ctx.destination);
+
+      [hostile ? 196 : 523.25, hostile ? 98 : wind ? 1046.5 : 783.99]
+        .forEach((frequency, index) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          const start = now + index * 0.045;
+          osc.type = hostile ? 'sawtooth' : index === 0 ? 'triangle' : 'sine';
+          osc.frequency.setValueAtTime(frequency, start);
+          osc.frequency.exponentialRampToValueAtTime(
+            frequency * (hostile ? 0.44 : 1.34),
+            start + 0.3
+          );
+          gain.gain.setValueAtTime(index === 0 ? 0.75 : 0.42, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.34);
+          osc.connect(gain);
+          gain.connect(master);
+          osc.start(start);
+          osc.stop(start + 0.36);
+        });
+
+      if (effectType === 'CAPITAL_BOOST') {
+        this.playCapitalImpact(side, 0.82);
+      }
+    } catch {
+      // Audio fallback
+    }
+  }
+
+  /**
+   * LB impact is separated from the charging cue: draw, three fast cuts, then
+   * one capital hit. This keeps the sequence crisp instead of overlapping all
+   * layers at button press.
+   */
+  playLimitBreakImpact() {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.72, now);
+      master.gain.exponentialRampToValueAtTime(0.001, now + 0.72);
+      master.connect(ctx.destination);
+
+      // A short metallic draw makes the following transients read as a blade,
+      // rather than another electronic gauge cue.
+      const draw = ctx.createOscillator();
+      const drawGain = ctx.createGain();
+      draw.type = 'triangle';
+      draw.frequency.setValueAtTime(340, now);
+      draw.frequency.exponentialRampToValueAtTime(2_600, now + 0.105);
+      drawGain.gain.setValueAtTime(0.001, now);
+      drawGain.gain.linearRampToValueAtTime(0.07, now + 0.025);
+      drawGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      draw.connect(drawGain);
+      drawGain.connect(master);
+      draw.start(now);
+      draw.stop(now + 0.15);
+
+      [0.1, 0.225, 0.36].forEach((delay, index) => {
+        const start = now + delay;
+        const duration = 0.105;
+        const noiseBuffer = ctx.createBuffer(
+          1,
+          Math.ceil(ctx.sampleRate * duration),
+          ctx.sampleRate
+        );
+        const samples = noiseBuffer.getChannelData(0);
+        for (let sample = 0; sample < samples.length; sample += 1) {
+          const progress = sample / samples.length;
+          samples[sample] =
+            (Math.random() * 2 - 1) * Math.pow(1 - progress, 2.4);
+        }
+
+        const slash = ctx.createBufferSource();
+        const slashFilter = ctx.createBiquadFilter();
+        const slashGain = ctx.createGain();
+        slash.buffer = noiseBuffer;
+        slashFilter.type = 'bandpass';
+        slashFilter.frequency.setValueAtTime(2_900 - index * 380, start);
+        slashFilter.Q.setValueAtTime(0.72, start);
+        slashGain.gain.setValueAtTime(0.001, start);
+        slashGain.gain.linearRampToValueAtTime(0.22, start + 0.006);
+        slashGain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+        slash.connect(slashFilter);
+        slashFilter.connect(slashGain);
+        slashGain.connect(master);
+        slash.start(start);
+
+        const blade = ctx.createOscillator();
+        const bladeGain = ctx.createGain();
+        blade.type = index === 1 ? 'sine' : 'triangle';
+        blade.frequency.setValueAtTime(3_200 - index * 420, start);
+        blade.frequency.exponentialRampToValueAtTime(
+          540 + index * 90,
+          start + 0.09
+        );
+        bladeGain.gain.setValueAtTime(0.001, start);
+        bladeGain.gain.linearRampToValueAtTime(0.1, start + 0.004);
+        bladeGain.gain.exponentialRampToValueAtTime(0.001, start + 0.115);
+        blade.connect(bladeGain);
+        bladeGain.connect(master);
+        blade.start(start);
+        blade.stop(start + 0.12);
+      });
+      if (this.limitImpactTimer !== null) {
+        window.clearTimeout(this.limitImpactTimer);
+      }
+      this.limitImpactTimer = window.setTimeout(() => {
+        this.limitImpactTimer = null;
+        this.playCapitalImpact('player', 1);
+      }, 470);
+    } catch {
+      this.playCapitalImpact('player', 1);
+    }
+  }
+
   // Layered coin-and-capital impact for the tug-of-war arena.
   playCapitalImpact(side: 'player' | 'opponent', intensity: number = 0.5) {
     if (!this.enabled) return;
@@ -326,10 +598,7 @@ class SoundEffects {
       const now = ctx.currentTime;
       const power = Math.max(0.25, Math.min(1, intensity));
       const panValue = side === 'player' ? -0.55 : 0.55;
-
       const master = ctx.createGain();
-      master.gain.setValueAtTime(0.42 * power, now);
-      master.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
       const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
       if (panner) {
         panner.pan.setValueAtTime(panValue, now);
@@ -339,30 +608,112 @@ class SoundEffects {
         master.connect(ctx.destination);
       }
 
-      const thud = ctx.createOscillator();
-      const thudGain = ctx.createGain();
-      thud.type = 'sine';
-      thud.frequency.setValueAtTime(side === 'player' ? 128 : 112, now);
-      thud.frequency.exponentialRampToValueAtTime(42, now + 0.22);
-      thudGain.gain.setValueAtTime(0.8, now);
-      thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
-      thud.connect(thudGain);
-      thudGain.connect(master);
-      thud.start(now);
-      thud.stop(now + 0.25);
+      const impactCount =
+        power >= 0.72 ? 4 : power >= 0.48 ? 3 : power >= 0.32 ? 2 : 1;
+      const impactOffsets = [0, 0.14, 0.31, 0.52] as const;
+      const finalImpactAt = now + impactOffsets[impactCount - 1];
+      const tailDuration = 0.54 + power * 0.22;
+      const outputEnd = finalImpactAt + tailDuration;
+      master.gain.setValueAtTime(0.28 * power, now);
+      master.gain.setValueAtTime(0.28 * power, finalImpactAt + 0.035);
+      master.gain.exponentialRampToValueAtTime(0.001, outputEnd);
 
-      [620, 910, 1370].forEach((frequency, index) => {
-        const coin = ctx.createOscillator();
-        const coinGain = ctx.createGain();
-        coin.type = index === 1 ? 'square' : 'triangle';
-        coin.frequency.setValueAtTime(frequency * (side === 'player' ? 1.05 : 0.92), now + index * 0.018);
-        coinGain.gain.setValueAtTime(0.18 / (index + 1), now + index * 0.018);
-        coinGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12 + index * 0.025);
-        coin.connect(coinGain);
-        coinGain.connect(master);
-        coin.start(now + index * 0.018);
-        coin.stop(now + 0.16 + index * 0.025);
-      });
+      let activeVoices = 0;
+      let schedulingFinished = false;
+      let outputDisconnected = false;
+      const disconnectNode = (node: AudioNode) => {
+        try {
+          node.disconnect();
+        } catch {
+          // The node may already be disconnected by an interrupted context.
+        }
+      };
+      const releaseOutput = () => {
+        if (
+          outputDisconnected ||
+          !schedulingFinished ||
+          activeVoices > 0
+        ) {
+          return;
+        }
+        outputDisconnected = true;
+        disconnectNode(master);
+        if (panner) disconnectNode(panner);
+      };
+      const scheduleImpactVoice = (
+        type: OscillatorType,
+        start: number,
+        duration: number,
+        startFrequency: number,
+        endFrequency: number,
+        volume: number
+      ) => {
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        let cleaned = false;
+        const cleanup = () => {
+          if (cleaned) return;
+          cleaned = true;
+          disconnectNode(oscillator);
+          disconnectNode(gain);
+          activeVoices = Math.max(0, activeVoices - 1);
+          releaseOutput();
+        };
+
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(startFrequency, start);
+        oscillator.frequency.exponentialRampToValueAtTime(
+          endFrequency,
+          start + duration
+        );
+        gain.gain.setValueAtTime(volume, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+        oscillator.connect(gain);
+        gain.connect(master);
+        oscillator.onended = cleanup;
+        activeVoices += 1;
+        try {
+          oscillator.start(start);
+          oscillator.stop(start + duration + 0.015);
+        } catch (error) {
+          try {
+            oscillator.stop();
+          } catch {
+            // A voice that failed before starting has nothing left to stop.
+          }
+          cleanup();
+          throw error;
+        }
+      };
+
+      try {
+        const metallicFrequencies = side === 'player'
+          ? [1_520, 1_260, 1_690, 1_080]
+          : [1_310, 1_090, 1_460, 940];
+        for (let index = 0; index < impactCount; index += 1) {
+          const start = now + impactOffsets[index];
+          scheduleImpactVoice(
+            index % 2 === 0 ? 'triangle' : 'sine',
+            start,
+            0.08 + (index % 2) * 0.025,
+            metallicFrequencies[index],
+            520 + index * 35,
+            0.52 - index * 0.045
+          );
+        }
+
+        scheduleImpactVoice(
+          'sine',
+          finalImpactAt + 0.018,
+          tailDuration,
+          side === 'player' ? 76 : 66,
+          27,
+          0.72 + power * 0.08
+        );
+      } finally {
+        schedulingFinished = true;
+        releaseOutput();
+      }
     } catch {
       // Audio fallback
     }
@@ -396,7 +747,7 @@ class SoundEffects {
     if (!this.enabled) return;
     if (!this.playFankitAudio(
       FANKIT_AUDIO.dutyStart,
-      0.62,
+      0.54,
       () => this.playDutyStartSynth(),
       'cinematic'
     )) {
@@ -415,7 +766,7 @@ class SoundEffects {
     if (!this.enabled) return;
     if (!this.playFankitAudio(
       FANKIT_AUDIO.limitBreak,
-      0.7,
+      0.62,
       () => this.playFinalPush(),
       'cinematic'
     )) {
@@ -531,7 +882,6 @@ class SoundEffects {
         osc.start(now + index * 0.08);
         osc.stop(now + 0.74);
       });
-      this.playCapitalImpact('player', 1);
     } catch {
       // Audio fallback
     }
@@ -540,7 +890,7 @@ class SoundEffects {
     if (!this.enabled) return;
     if (!this.playFankitAudio(
       FANKIT_AUDIO.victory,
-      0.64,
+      0.62,
       () => this.playVictorySynth(),
       'cinematic'
     )) {
@@ -598,7 +948,7 @@ class SoundEffects {
     if (!this.enabled) return;
     if (!this.playFankitAudio(
       FANKIT_AUDIO.defeat,
-      0.64,
+      0.58,
       () => this.playDefeatSynth(),
       'cinematic'
     )) {

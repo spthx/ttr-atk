@@ -1,6 +1,8 @@
 import { INITIAL_PROPERTIES } from '../data/initialData';
-import type { AllianceState, Property } from '../types';
+import type { AllianceState, CommunityType, Property } from '../types';
+import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
 import { LIMIT_BREAK_MAX_CHARGE } from './gameBalance';
+import type { SavageProgressVersion } from './savage';
 
 export const SAVE_SCHEMA_VERSION = 3;
 export const SAVE_STORAGE_KEY = 'tataru-world-trade-save-v3';
@@ -12,6 +14,7 @@ interface SavedPropertyState {
   owner: Property['owner'];
   ownerName: string;
   loyaltyRisk: number;
+  reacquisitionLevel?: number;
 }
 
 export interface GameSaveData {
@@ -27,9 +30,11 @@ export interface GameSaveData {
   limitBreakCharge?: number;
   /** Optional schema-v3 additions. Old completed saves unlock the normal ending automatically. */
   savageClearedPropertyIds?: string[];
-  /** Distinguishes four regional raid IDs from the former 20-encounter list. */
-  savageProgressVersion?: 2;
+  /** Distinguishes the current 12-encounter route from former Savage formats. */
+  savageProgressVersion?: SavageProgressVersion;
   normalEndingSeen?: boolean;
+  /** Permanent route progress. A subsidiary leaving never relocks a cleared city. */
+  conqueredCommunityIds?: CommunityType[];
   /** Optional schema-v3 additions for the post-Savage Ultimate route. */
   savageEndingSeen?: boolean;
   ultimateCleared?: boolean;
@@ -76,12 +81,19 @@ const isSavedProperty = (value: unknown): value is SavedPropertyState =>
   typeof value.id === 'string' &&
   typeof value.owner === 'string' &&
   typeof value.ownerName === 'string' &&
-  typeof value.loyaltyRisk === 'number';
+  typeof value.loyaltyRisk === 'number' &&
+  (value.reacquisitionLevel === undefined ||
+    (typeof value.reacquisitionLevel === 'number' &&
+      Number.isFinite(value.reacquisitionLevel)));
 
 export const loadLegacyCompanyName = () => {
   if (typeof window === 'undefined') return null;
-  const name = window.localStorage.getItem(LEGACY_COMPANY_NAME_KEY)?.trim();
-  return name || null;
+  try {
+    const name = window.localStorage.getItem(LEGACY_COMPANY_NAME_KEY)?.trim();
+    return name || null;
+  } catch {
+    return null;
+  }
 };
 
 export const loadGameSave = (): GameSaveData | null => {
@@ -126,8 +138,19 @@ export const loadGameSave = (): GameSaveData | null => {
       savageClearedPropertyIds: Array.isArray(parsed.savageClearedPropertyIds)
         ? parsed.savageClearedPropertyIds.filter((id): id is string => typeof id === 'string')
         : [],
-      savageProgressVersion: parsed.savageProgressVersion === 2 ? 2 : undefined,
+      savageProgressVersion:
+        parsed.savageProgressVersion === 2 ||
+        parsed.savageProgressVersion === 3
+          ? parsed.savageProgressVersion
+          : undefined,
       normalEndingSeen: parsed.normalEndingSeen === true,
+      conqueredCommunityIds: Array.isArray(parsed.conqueredCommunityIds)
+        ? parsed.conqueredCommunityIds.filter(
+            (id): id is CommunityType =>
+              typeof id === 'string' &&
+              COMMUNITY_CAMPAIGN_ORDER.includes(id as CommunityType)
+          )
+        : [],
       savageEndingSeen:
         parsed.savageEndingSeen === true ||
         (parsed.ultimateCleared === undefined && parsed.trueEndingSeen === true),
@@ -164,31 +187,61 @@ export const restoreProperties = (save: GameSaveData | null): Property[] => {
             ? '独立物件'
             : property.ownerName,
       loyaltyRisk: Math.max(0, Math.min(100, saved.loyaltyRisk)),
+      reacquisitionLevel: Math.max(
+        0,
+        Math.min(2, Math.floor(saved.reacquisitionLevel ?? 0))
+      ),
     };
   });
 };
 
 export const saveGame = (data: Omit<GameSaveData, 'schemaVersion' | 'lastSavedAt'>) => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined') return true;
   const payload: GameSaveData = {
     ...data,
-    properties: data.properties.map(({ id, owner, ownerName, loyaltyRisk }) => ({
+    properties: data.properties.map(({
       id,
       owner,
       ownerName,
       loyaltyRisk,
+      reacquisitionLevel,
+    }) => ({
+      id,
+      owner,
+      ownerName,
+      loyaltyRisk,
+      reacquisitionLevel,
     })),
     schemaVersion: SAVE_SCHEMA_VERSION,
     lastSavedAt: Date.now(),
   };
-  window.localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(payload));
-  window.localStorage.setItem(LEGACY_COMPANY_NAME_KEY, payload.companyName);
+  try {
+    window.localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    return false;
+  }
+  try {
+    window.localStorage.setItem(LEGACY_COMPANY_NAME_KEY, payload.companyName);
+  } catch {
+    // The legacy company-name mirror is non-authoritative. A failure here
+    // must not invalidate the complete versioned save written above.
+  }
+  return true;
 };
 
 export const clearGameSave = () => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.removeItem(SAVE_STORAGE_KEY);
-  window.localStorage.removeItem(LEGACY_COMPANY_NAME_KEY);
+  if (typeof window === 'undefined') return true;
+  try {
+    window.localStorage.removeItem(SAVE_STORAGE_KEY);
+  } catch {
+    return false;
+  }
+  try {
+    window.localStorage.removeItem(LEGACY_COMPANY_NAME_KEY);
+  } catch {
+    // The authoritative save is already gone.
+  }
+  return true;
 };
 
 export const calculateOfflineIncome = (

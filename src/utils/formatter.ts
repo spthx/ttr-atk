@@ -71,15 +71,16 @@ export function calculateGaugeVelocity(
 }
 
 /**
- * Independence / Rebellion Probability calculation formula:
- * P_rebellion = 1 / (1 + e^-(lambda * (L_risk - delta)))
- * lambda = 0.1, delta = 60
+ * Independence judgement is deliberately forgiving at low and medium risk.
+ * A subsidiary is checked only once after a victorious normal battle, so the
+ * curve represents that single settlement-time judgement rather than every
+ * support request made during combat.
  */
 export function calculateRebellionProbability(L_risk: number): number {
-  if (L_risk <= 10) return 0.0;
-  const lambda = 0.1;
-  const delta = 60;
-  return 1 / (1 + Math.exp(-lambda * (L_risk - delta)));
+  const risk = Math.max(0, Math.min(100, L_risk));
+  if (risk <= 30) return 0;
+  const normalizedRisk = (risk - 30) / 70;
+  return Math.min(0.9, 0.9 * normalizedRisk * normalizedRisk);
 }
 
 /**
