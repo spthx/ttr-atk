@@ -587,10 +587,7 @@ class SoundEffects {
       const now = ctx.currentTime;
       const power = Math.max(0.25, Math.min(1, intensity));
       const panValue = side === 'player' ? -0.55 : 0.55;
-
       const master = ctx.createGain();
-      master.gain.setValueAtTime(0.42 * power, now);
-      master.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
       const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
       if (panner) {
         panner.pan.setValueAtTime(panValue, now);
@@ -600,43 +597,109 @@ class SoundEffects {
         master.connect(ctx.destination);
       }
 
-      const thud = ctx.createOscillator();
-      const thudGain = ctx.createGain();
-      thud.type = 'sine';
-      thud.frequency.setValueAtTime(side === 'player' ? 136 : 116, now);
-      thud.frequency.exponentialRampToValueAtTime(38, now + 0.27);
-      thudGain.gain.setValueAtTime(0.86, now);
-      thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-      thud.connect(thudGain);
-      thudGain.connect(master);
-      thud.start(now);
-      thud.stop(now + 0.31);
+      const impactCount = power >= 0.72 ? 3 : power >= 0.42 ? 2 : 1;
+      const impactGap = 0.15 - ((power - 0.25) / 0.75) * 0.03;
+      const finalImpactAt = now + (impactCount - 1) * impactGap;
+      const tailDuration = 0.5 + power * 0.2;
+      const outputEnd = finalImpactAt + tailDuration;
+      master.gain.setValueAtTime(0.36 * power, now);
+      master.gain.setValueAtTime(0.36 * power, finalImpactAt + 0.035);
+      master.gain.exponentialRampToValueAtTime(0.001, outputEnd);
 
-      const settleGap = 0.034 + power * 0.022;
-      [560, 860, 1320].forEach((frequency, index) => {
-        const coin = ctx.createOscillator();
-        const coinGain = ctx.createGain();
-        const start = now + 0.04 + index * settleGap;
-        const ringEnd = start + 0.15 + index * 0.035;
-        coin.type = index === 1 ? 'square' : index === 2 ? 'sine' : 'triangle';
-        coin.frequency.setValueAtTime(
-          frequency * (side === 'player' ? 1.05 : 0.92),
-          start
+      let activeVoices = 0;
+      let schedulingFinished = false;
+      let outputDisconnected = false;
+      const disconnectNode = (node: AudioNode) => {
+        try {
+          node.disconnect();
+        } catch {
+          // The node may already be disconnected by an interrupted context.
+        }
+      };
+      const releaseOutput = () => {
+        if (
+          outputDisconnected ||
+          !schedulingFinished ||
+          activeVoices > 0
+        ) {
+          return;
+        }
+        outputDisconnected = true;
+        disconnectNode(master);
+        if (panner) disconnectNode(panner);
+      };
+      const scheduleImpactVoice = (
+        type: OscillatorType,
+        start: number,
+        duration: number,
+        startFrequency: number,
+        endFrequency: number,
+        volume: number
+      ) => {
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        let cleaned = false;
+        const cleanup = () => {
+          if (cleaned) return;
+          cleaned = true;
+          disconnectNode(oscillator);
+          disconnectNode(gain);
+          activeVoices = Math.max(0, activeVoices - 1);
+          releaseOutput();
+        };
+
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(startFrequency, start);
+        oscillator.frequency.exponentialRampToValueAtTime(
+          endFrequency,
+          start + duration
         );
-        coin.frequency.exponentialRampToValueAtTime(
-          frequency * 0.84,
-          ringEnd
+        gain.gain.setValueAtTime(volume, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+        oscillator.connect(gain);
+        gain.connect(master);
+        oscillator.onended = cleanup;
+        activeVoices += 1;
+        try {
+          oscillator.start(start);
+          oscillator.stop(start + duration + 0.015);
+        } catch (error) {
+          try {
+            oscillator.stop();
+          } catch {
+            // A voice that failed before starting has nothing left to stop.
+          }
+          cleanup();
+          throw error;
+        }
+      };
+
+      try {
+        const baseFrequency = side === 'player' ? 118 : 104;
+        for (let index = 0; index < impactCount; index += 1) {
+          const start = now + index * impactGap;
+          scheduleImpactVoice(
+            index === impactCount - 1 ? 'sine' : 'triangle',
+            start,
+            0.14 + index * 0.012,
+            baseFrequency * (1 - index * 0.07),
+            38 + index * 2,
+            0.92 - index * 0.08
+          );
+        }
+
+        scheduleImpactVoice(
+          'sine',
+          finalImpactAt + 0.018,
+          tailDuration,
+          side === 'player' ? 68 : 60,
+          27,
+          0.3 + power * 0.08
         );
-        coinGain.gain.setValueAtTime(
-          (0.22 / (index + 1)) * (0.78 + power * 0.22),
-          start
-        );
-        coinGain.gain.exponentialRampToValueAtTime(0.001, ringEnd);
-        coin.connect(coinGain);
-        coinGain.connect(master);
-        coin.start(start);
-        coin.stop(ringEnd + 0.015);
-      });
+      } finally {
+        schedulingFinished = true;
+        releaseOutput();
+      }
     } catch {
       // Audio fallback
     }

@@ -31,6 +31,7 @@ import {
   getBattleCapitalVisualBundleCount,
   getCapitalCommitTiming,
   getNextBattleSkillId,
+  resolveBattleSkillSelection,
   getTerminalCinematicPresentation,
   getBattleCinematicLayer,
   getCapitalVisualBundleCount,
@@ -480,6 +481,45 @@ assert.equal(
   'skill_fast_horse',
   'a missing legacy selection safely starts at the first equipped skill'
 );
+assert.deepEqual(
+  resolveBattleSkillSelection(
+    ['skill_demoralize', 'skill_fast_horse'],
+    ['skill_fast_horse', 'skill_demoralize', 'skill_era_wind'],
+    'skill_fast_horse'
+  ),
+  {
+    poolIds: ['skill_demoralize', 'skill_fast_horse'],
+    selectedSkillId: 'skill_fast_horse',
+    usingFallback: false,
+  },
+  'battle skill selection preserves equipped order and a valid current selection'
+);
+assert.deepEqual(
+  resolveBattleSkillSelection(
+    [],
+    ['skill_era_wind', 'skill_demoralize'],
+    null
+  ),
+  {
+    poolIds: ['skill_era_wind', 'skill_demoralize'],
+    selectedSkillId: 'skill_era_wind',
+    usingFallback: true,
+  },
+  'the temporary fallback pool preserves the available-skill display order'
+);
+assert.deepEqual(
+  resolveBattleSkillSelection(
+    ['skill_demoralize', 'skill_fast_horse'],
+    ['skill_fast_horse', 'skill_demoralize'],
+    'skill_removed_from_battle'
+  ),
+  {
+    poolIds: ['skill_demoralize', 'skill_fast_horse'],
+    selectedSkillId: 'skill_demoralize',
+    usingFallback: false,
+  },
+  'a stale battle skill selection resets deterministically to the first usable equipped skill'
+);
 assert.equal(
   canConfirmBattleResult({
     battlePhase: 'finisher_notice',
@@ -783,6 +823,12 @@ assert.ok(
   BATTLE_CINEMATIC_TIMING.limitAnnouncementMs <=
     BATTLE_CINEMATIC_TIMING.limitResolveMs,
   'LIMIT BREAK announcement finishes before its capital impact'
+);
+assert.ok(
+  BATTLE_CINEMATIC_TIMING.limitResolveMs -
+    BATTLE_CINEMATIC_TIMING.limitAnnouncementMs >=
+    300,
+  'LIMIT BREAK keeps a readable pause between its announcement and resolution'
 );
 assert.equal(getBattleTerminalWinner(-99.999), null);
 assert.equal(getBattleTerminalWinner(-100), 'player');
@@ -1831,6 +1877,9 @@ assert.equal(coverSkill.oncePerBattle, true);
 assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 10_000);
 assert.equal(TACTICAL_SKILL_BALANCE.cover.absorbRatio, 0.6);
 assert.equal(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity, 24);
+assert.equal(BOSS_COVER_BALANCE.cover.durationMs, 10_000);
+assert.equal(BOSS_COVER_BALANCE.enhancedCover.durationMs, 12_000);
+assert.equal(BOSS_COVER_BALANCE.invincible.durationMs, 8_000);
 assert.equal(BOSS_COVER_BALANCE.cover.gaugeCapacity, 24);
 assert.equal(BOSS_COVER_BALANCE.enhancedCover.gaugeCapacity, 36);
 assert.match(coverSkill.description, /10秒間/);
@@ -1885,7 +1934,6 @@ assert.equal(
   14.3,
   'Cover absorbs the movement from the pre-LB gauge, not the 99% preview'
 );
-assert.equal(BOSS_COVER_BALANCE.invincible.durationMs, 8_000);
 assert.equal(TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio, 0.4);
 assert.equal(livingDeadSkill.id, 'skill_sns_blitz', 'legacy save-compatible skill id');
 assert.equal(livingDeadSkill.effectType, 'LIVING_DEAD');
@@ -1898,7 +1946,7 @@ assert.equal(TACTICAL_SKILL_BALANCE.livingDead.recoveryOwnership, 30);
 assert.equal(calculateEraWindCost(1_000_000, 0), 100_000);
 assert.equal(calculateEraWindCost(100_000_000, 0), 2_000_000);
 assert.equal(calculateEraWindCost(100_000_000, 1), 2_000_000);
-assert.equal(TACTICAL_SKILL_BALANCE.eraWind.durationMs, 24_000);
+assert.equal(TACTICAL_SKILL_BALANCE.eraWind.durationMs, 16_000);
 assert.equal(TACTICAL_SKILL_BALANCE.eraWind.maxUsesPerBattle, 1);
 assert.equal(getEraWindGaugePushPerSecond(0), 1.55);
 assert.equal(getEraWindGaugePushPerSecond(2), 1.55);
@@ -1910,11 +1958,11 @@ assert.equal(
       2
     ).toFixed(1)
   ),
-  18.6,
-  'one full Era Wind pushes displayed ownership by about 18.6 points'
+  12.4,
+  'one full Era Wind pushes displayed ownership by about 12.4 points'
 );
 assert.equal(eraWindSkill.oncePerBattle, true);
-assert.match(eraWindSkill.description, /24秒間/);
+assert.match(eraWindSkill.description, /16秒間/);
 assert.match(eraWindSkill.description, /1交渉につき1回/);
 assert.match(livingDeadSkill.description, /1交渉につき1回/);
 assert.equal(calculateOwnershipFromGauge(98), 1);

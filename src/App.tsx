@@ -1183,7 +1183,13 @@ export default function App() {
 
   // Equipped skills object array
   const equippedSkills = useMemo(() => {
-    return skills.filter((s) => equippedSkillIds.includes(s.id) && unlockedSkillIds.has(s.id));
+    const skillById = new Map(skills.map((skill) => [skill.id, skill]));
+    return equippedSkillIds
+      .map((skillId) => skillById.get(skillId))
+      .filter(
+        (skill): skill is TacticalSkill =>
+          !!skill && unlockedSkillIds.has(skill.id)
+      );
   }, [skills, equippedSkillIds, unlockedSkillIds]);
   const availableSkills = useMemo(
     () => skills.filter((skill) => unlockedSkillIds.has(skill.id)),

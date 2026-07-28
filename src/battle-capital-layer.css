@@ -25,37 +25,18 @@
 .integrated-battlefield .capital-visual-row .gil-chip-image {
   max-width: calc(100% - .2rem);
   max-height: calc(100% - 2rem);
+  scale: 1;
 }
 
 .integrated-battlefield .capital-visual-row .gil-chip-image--medallion {
+  width: min(3.2rem, 31%) !important;
   max-width: calc(100% - .2rem);
   max-height: calc(100% - .35rem);
 }
 
-.integrated-battlefield .capital-visual-row .gil-tower--stage-1 .gil-chip-image--medallion {
-  scale: .3;
-  opacity: .92;
-}
-
-.integrated-battlefield .capital-visual-row .gil-tower--stage-2 .gil-chip-image--medallion {
-  scale: .48;
-}
-
-.integrated-battlefield .capital-visual-row .gil-tower--stage-2 .gil-chip-image--stack {
-  scale: .68;
-}
-
-.integrated-battlefield .capital-visual-row .gil-tower--stage-3 .gil-chip-image--medallion {
-  scale: .66;
-}
-
-.integrated-battlefield .capital-visual-row .gil-tower--stage-3 .gil-chip-image--stack {
-  scale: .82;
-}
-
-.integrated-battlefield .capital-visual-row .gil-tower--stage-4 .gil-chip-image--medallion,
-.integrated-battlefield .capital-visual-row .gil-tower--stage-4 .gil-chip-image--stack {
-  scale: .92;
+.integrated-battlefield .capital-visual-row .gil-chip-image--stack,
+.integrated-battlefield .capital-visual-row .gil-chip-image--stack:nth-of-type(n) {
+  width: min(2.85rem, 29%);
 }
 
 .integrated-battlefield .capital-visual-row .gil-tower__empty {
@@ -291,7 +272,7 @@
   position: absolute;
   z-index: 24;
   bottom: .55rem;
-  width: 5rem;
+  width: 6rem;
   height: 6.4rem;
   pointer-events: none;
   filter: drop-shadow(0 .35rem .3rem rgba(0, 0, 0, .78));
@@ -310,7 +291,6 @@
   height: 100%;
   object-fit: contain;
   object-position: center bottom;
-  image-rendering: pixelated;
 }
 
 .cover-knight--player img {
@@ -364,6 +344,14 @@
   animation: cover-knight-leave-enemy 1s ease-in both;
 }
 
+.cover-knight--breaking.cover-knight--player {
+  animation: cover-knight-break-player .42s ease-out both;
+}
+
+.cover-knight--breaking.cover-knight--enemy {
+  animation: cover-knight-break-enemy .42s ease-out both;
+}
+
 .integrated-battlefield--skill-cover .capital-arena__side:first-child::after,
 .buyout-screen--boss-cover .capital-arena__side:last-child::after,
 .buyout-screen--boss-enhanced_cover .capital-arena__side:last-child::after,
@@ -404,6 +392,20 @@
   to { opacity: 0; translate: 7rem .5rem; }
 }
 
+@keyframes cover-knight-break-player {
+  0%, 22% { opacity: 1; translate: 0 0; }
+  42% { translate: -.18rem .04rem; }
+  62% { translate: .12rem 0; }
+  100% { opacity: .78; translate: 0 .08rem; }
+}
+
+@keyframes cover-knight-break-enemy {
+  0%, 22% { opacity: 1; translate: 0 0; }
+  42% { translate: .18rem .04rem; }
+  62% { translate: -.12rem 0; }
+  100% { opacity: .78; translate: 0 .08rem; }
+}
+
 @keyframes cover-shield-seal {
   0% { opacity: 0; scale: .55; }
   35% { opacity: .82; scale: 1; box-shadow: 0 0 1.4rem #60a5fa; }
@@ -413,16 +415,16 @@
 @media (max-width: 639px) {
   .integrated-battlefield .capital-visual-row .cover-knight {
     bottom: .45rem;
-    width: 3.8rem;
-    height: 5rem;
+    width: 5.9rem;
+    height: 7.6rem;
   }
 
   .integrated-battlefield .capital-visual-row .cover-knight--player {
-    left: 3.55rem;
+    left: 3.15rem;
   }
 
   .integrated-battlefield .capital-visual-row .cover-knight--enemy {
-    right: 3.55rem;
+    right: 3.15rem;
   }
 
   .cover-knight span {
@@ -446,56 +448,38 @@
  * newly committed offer receives the short rise/drop animation.
  */
 .integrated-battlefield .gil-tower {
-  --hoard-scale-x: .34;
-  --hoard-scale-y: .3;
   --hoard-opacity: 0;
 }
 
 .integrated-battlefield .gil-tower--stage-4 {
-  --hoard-scale-x: .48;
-  --hoard-scale-y: .34;
-  --hoard-opacity: .34;
+  --hoard-opacity: .38;
 }
 
 .integrated-battlefield .gil-tower--stage-5 {
-  --hoard-scale-x: .6;
-  --hoard-scale-y: .46;
-  --hoard-opacity: .46;
+  --hoard-opacity: .48;
 }
 
 .integrated-battlefield .gil-tower--stage-6 {
-  --hoard-scale-x: .72;
-  --hoard-scale-y: .58;
   --hoard-opacity: .58;
 }
 
 .integrated-battlefield .gil-tower--stage-7 {
-  --hoard-scale-x: .84;
-  --hoard-scale-y: .72;
   --hoard-opacity: .68;
 }
 
 .integrated-battlefield .gil-tower--stage-8 {
-  --hoard-scale-x: .96;
-  --hoard-scale-y: .88;
   --hoard-opacity: .76;
 }
 
 .integrated-battlefield .gil-tower--stage-9 {
-  --hoard-scale-x: 1.18;
-  --hoard-scale-y: 1.1;
   --hoard-opacity: .82;
 }
 
 .integrated-battlefield .gil-tower--stage-10 {
-  --hoard-scale-x: 1.42;
-  --hoard-scale-y: 1.35;
   --hoard-opacity: .88;
 }
 
 .integrated-battlefield .gil-tower--stage-11 {
-  --hoard-scale-x: 1.72;
-  --hoard-scale-y: 1.62;
   --hoard-opacity: .92;
 }
 
@@ -506,9 +490,8 @@
   overflow: visible;
   opacity: var(--hoard-opacity);
   pointer-events: none;
-  transform: scale(var(--hoard-scale-x), var(--hoard-scale-y));
-  transform-origin: center bottom;
-  transition: opacity .28s ease;
+  transform: none;
+  transition: none;
 }
 
 .integrated-battlefield .gil-tower__hoard::after {
@@ -580,7 +563,8 @@
   display: none;
 }
 
-.integrated-battlefield .gil-tower--stage-5 .gil-tower__hoard-band--far {
+.integrated-battlefield .gil-tower--stage-5 .gil-tower__hoard-band--far,
+.integrated-battlefield .gil-tower--stage-6 .gil-tower__hoard-band--far {
   display: none;
 }
 
@@ -589,33 +573,10 @@
   overflow: visible;
 }
 
-.integrated-battlefield .gil-tower--stage-11 .gil-tower__hoard {
-  inset-inline: -12%;
-}
-
-.integrated-battlefield .gil-tower--impact .gil-tower__hoard {
-  animation: capital-hoard-rise .56s cubic-bezier(.12, .78, .2, 1) both;
-}
-
 .integrated-battlefield .gil-tower__overflow > i {
   animation-duration: .86s;
   animation-iteration-count: 1;
   animation-fill-mode: both;
-}
-
-@keyframes capital-hoard-rise {
-  0% {
-    opacity: .28;
-    translate: 0 -.75rem;
-  }
-  52% {
-    filter: brightness(1.42);
-    translate: 0 .08rem;
-  }
-  100% {
-    opacity: var(--hoard-opacity);
-    translate: 0 0;
-  }
 }
 
 /*
@@ -748,14 +709,7 @@
   100% { opacity: 0; scale: 1.25; rotate: 18deg; }
 }
 
-@media (max-width: 639px) {
-  .integrated-battlefield .gil-tower--stage-11 .gil-tower__hoard {
-    inset-inline: -13%;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .integrated-battlefield .gil-tower--impact .gil-tower__hoard,
   .integrated-battlefield .gil-tower__overflow > i,
   .battle-status-message::before,
   .battle-status-message::after,
@@ -770,6 +724,86 @@
  * Selection never spends the shared command gauge; the adjacent execute
  * button is the only place that commits the chosen action.
  */
+.battle-action-strip__skill-capsule {
+  display: grid;
+  min-width: 0;
+  grid-column: span 2;
+  gap: .24rem;
+  padding: .24rem;
+  border: 1px solid rgba(125, 211, 252, .5);
+  border-radius: .72rem;
+  background:
+    linear-gradient(135deg, rgba(8, 31, 57, .98), rgba(27, 15, 49, .98));
+  box-shadow:
+    inset 0 0 .8rem rgba(125, 211, 252, .07),
+    0 .22rem .5rem rgba(0, 0, 0, .34);
+}
+
+.battle-action-strip__skill-capsule.is-fallback {
+  border-color: rgba(251, 191, 36, .78);
+  background:
+    linear-gradient(135deg, rgba(69, 38, 8, .97), rgba(37, 20, 47, .98));
+}
+
+.battle-action-strip__skill-current {
+  display: flex;
+  min-width: 0;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: .45rem;
+  padding: .25rem .45rem;
+  border-radius: .5rem;
+  color: #f8fafc;
+  background: rgba(2, 6, 23, .68);
+  text-align: left;
+}
+
+.battle-action-strip__skill-current > span {
+  display: grid;
+  min-width: 0;
+  gap: .08rem;
+}
+
+.battle-action-strip__skill-current small {
+  color: #7dd3fc;
+  font-size: .52rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.battle-action-strip__skill-capsule.is-fallback
+  .battle-action-strip__skill-current small {
+  color: #fde68a;
+}
+
+.battle-action-strip__skill-current b {
+  min-width: 0;
+  overflow: hidden;
+  font-size: .7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battle-action-strip__skill-current em {
+  flex: 0 0 auto;
+  padding: .15rem .32rem;
+  border: 1px solid rgba(226, 232, 240, .28);
+  border-radius: 999px;
+  color: #cbd5e1;
+  font-size: .52rem;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.battle-action-strip__skill-controls {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr);
+  gap: .22rem;
+}
+
 .battle-action-strip__action--skill-select {
   padding-bottom: .72rem;
   border-color: rgba(96, 165, 250, .5);
@@ -847,9 +881,38 @@
 }
 
 @media (max-width: 639px) {
+  .buyout-main {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+
+  .buyout-footer:not(.buyout-footer--settled) {
+    position: relative;
+    z-index: 90;
+    margin-top: 0;
+  }
+
+  .battle-action-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-flow: row dense;
+  }
+
+  .battle-action-strip__skill-capsule {
+    grid-column: 1 / -1;
+  }
+
+  .battle-action-strip__skill-current {
+    min-height: 1.8rem;
+    padding-block: .18rem;
+  }
+
+  .battle-action-strip__skill-controls {
+    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  }
+
   .battle-action-strip__action--skill-select,
   .battle-action-strip__action--skill-execute {
-    min-height: 3.8rem;
+    min-height: 3.35rem;
     grid-template-rows: 1.5rem minmax(1.55rem, auto);
     padding-bottom: .3rem;
   }
@@ -1047,32 +1110,74 @@
   bottom: .1rem;
   left: 50%;
   display: block;
-  width: min(2.8rem, 30%);
-  height: min(4.7rem, 70%);
+  width: min(2.72rem, 28%);
+  height: min(4.55rem, 67%);
   object-fit: contain;
   object-position: center bottom;
   filter: brightness(.82) saturate(.9);
-  opacity: .78;
+  opacity: .84;
   translate: -50% 0;
 }
 
-.integrated-battlefield .gil-tower__formation > img:nth-child(2) { left: 30%; height: 56%; }
-.integrated-battlefield .gil-tower__formation > img:nth-child(3) { left: 70%; height: 62%; }
-.integrated-battlefield .gil-tower__formation > img:nth-child(4) { left: 14%; height: 46%; }
-.integrated-battlefield .gil-tower__formation > img:nth-child(5) { left: 86%; height: 50%; }
-.integrated-battlefield .gil-tower__formation > img:nth-child(6) { left: 48%; bottom: 24%; height: 54%; opacity: .62; }
-
-.integrated-battlefield .gil-tower__formation--terrace > img:nth-child(1),
-.integrated-battlefield .gil-tower__formation--wall > img:nth-child(1) { height: 68%; }
-.integrated-battlefield .gil-tower__formation--wall > img { width: min(3rem, 32%); }
-.integrated-battlefield .gil-tower__formation--vault > img,
-.integrated-battlefield .gil-tower__formation--flood > img { width: min(3.35rem, 36%); }
-.integrated-battlefield .gil-tower__formation--flood {
-  inset: -1.2rem -18% -.2rem;
+.integrated-battlefield .gil-tower__formation > img:nth-child(1) {
+  z-index: 6;
+  left: 50%;
 }
-.integrated-battlefield .gil-tower__formation--flood > img {
-  height: 78%;
-  opacity: .88;
+.integrated-battlefield .gil-tower__formation > img:nth-child(2) {
+  z-index: 5;
+  left: 27%;
+}
+.integrated-battlefield .gil-tower__formation > img:nth-child(3) {
+  z-index: 5;
+  left: 73%;
+}
+.integrated-battlefield .gil-tower__formation > img:nth-child(4) {
+  z-index: 4;
+  bottom: 25%;
+  left: 39%;
+  opacity: .78;
+}
+.integrated-battlefield .gil-tower__formation > img:nth-child(5) {
+  z-index: 4;
+  bottom: 25%;
+  left: 61%;
+  opacity: .78;
+}
+.integrated-battlefield .gil-tower__formation > img:nth-child(6) {
+  z-index: 3;
+  bottom: 48%;
+  left: 50%;
+  opacity: .66;
+}
+
+.integrated-battlefield .gil-tower--stage-4
+  .gil-tower__formation > img:nth-child(n + 4),
+.integrated-battlefield .gil-tower--stage-5
+  .gil-tower__formation > img:nth-child(n + 5),
+.integrated-battlefield .gil-tower--stage-6
+  .gil-tower__formation > img:nth-child(n + 6) {
+  display: none;
+}
+
+.integrated-battlefield
+  :is(
+    .gil-tower__formation--terrace,
+    .gil-tower__formation--wall,
+    .gil-tower__formation--vault,
+    .gil-tower__formation--flood
+  ) {
+  inset: .35rem .3rem .45rem;
+}
+
+.integrated-battlefield
+  :is(
+    .gil-tower__formation--terrace,
+    .gil-tower__formation--wall,
+    .gil-tower__formation--vault,
+    .gil-tower__formation--flood
+  ) > img {
+  width: min(2.72rem, 28%);
+  height: min(4.55rem, 67%);
 }
 
 /*
@@ -1123,29 +1228,44 @@
   animation: battle-impact-veil-release .23s ease-out both;
 }
 
+/*
+ * The pile itself is scenery. Weight comes from the fixed bundles landing in
+ * order and the table reacting once, never from wobbling the completed hoard.
+ */
+.integrated-battlefield .gil-tower--impact {
+  transform: none;
+  animation: none;
+}
+
+.integrated-battlefield .ownership-avatar--player.avatar-hurt {
+  animation: battle-player-recoil-stable .34s ease-out both;
+}
+
+.integrated-battlefield .ownership-avatar--enemy.avatar-hurt {
+  animation: battle-enemy-recoil-stable .34s ease-out both;
+}
+
 .integrated-battlefield--impact-hitstop.integrated-battlefield--impact-player
   .ownership-avatar--player.avatar-act {
-  transform: translateX(1.15rem) scaleX(-1) rotate(-6deg);
+  transform: translateX(.72rem) scaleX(-1);
   animation: none;
 }
 
 .integrated-battlefield--impact-hitstop.integrated-battlefield--impact-player
   .ownership-avatar--enemy.avatar-hurt {
-  transform: translateX(.72rem) rotate(7deg);
-  opacity: .84;
+  transform: translateX(.2rem);
   animation: none;
 }
 
 .integrated-battlefield--impact-hitstop.integrated-battlefield--impact-opponent
   .ownership-avatar--enemy.avatar-act {
-  transform: translateX(-1.15rem) rotate(6deg);
+  transform: translateX(-.72rem);
   animation: none;
 }
 
 .integrated-battlefield--impact-hitstop.integrated-battlefield--impact-opponent
   .ownership-avatar--player.avatar-hurt {
-  transform: translateX(-.72rem) scaleX(-1) rotate(7deg);
-  opacity: .84;
+  transform: translateX(-.2rem) scaleX(-1);
   animation: none;
 }
 
@@ -1174,26 +1294,38 @@
   to { opacity: 0; }
 }
 
+@keyframes battle-player-recoil-stable {
+  0%,
+  100% { opacity: 1; transform: scaleX(-1); }
+  38% { opacity: 1; transform: translateX(-4px) scaleX(-1); }
+  64% { opacity: 1; transform: translateX(2px) scaleX(-1); }
+}
+
+@keyframes battle-enemy-recoil-stable {
+  0%,
+  100% { opacity: 1; transform: translateX(0); }
+  38% { opacity: 1; transform: translateX(4px); }
+  64% { opacity: 1; transform: translateX(-2px); }
+}
+
 @keyframes battle-player-impact-release {
-  from { transform: translateX(1.15rem) scaleX(-1) rotate(-6deg); }
+  from { transform: translateX(.72rem) scaleX(-1); }
   to { transform: scaleX(-1); }
 }
 
 @keyframes battle-enemy-recoil-release {
-  0% { transform: translateX(.72rem) rotate(7deg); opacity: .84; }
-  48% { transform: translateX(-.28rem) rotate(-3deg); opacity: .72; }
-  100% { transform: translateX(0) rotate(0); opacity: 1; }
+  from { transform: translateX(.2rem); }
+  to { transform: translateX(0); }
 }
 
 @keyframes battle-enemy-impact-release {
-  from { transform: translateX(-1.15rem) rotate(6deg); }
-  to { transform: translateX(0) rotate(0); }
+  from { transform: translateX(-.72rem); }
+  to { transform: translateX(0); }
 }
 
 @keyframes battle-player-recoil-release {
-  0% { transform: translateX(-.72rem) scaleX(-1) rotate(7deg); opacity: .84; }
-  48% { transform: translateX(.28rem) scaleX(-1) rotate(-3deg); opacity: .72; }
-  100% { transform: scaleX(-1); opacity: 1; }
+  from { transform: translateX(-.2rem) scaleX(-1); }
+  to { transform: scaleX(-1); }
 }
 
 .battle-skill-field {
@@ -1658,8 +1790,7 @@
 .integrated-battlefield--capital-commit
   :is(
     .investment-stake-preview,
-    .ownership-avatar--player,
-    .player-capital-stack .gil-tower__chips
+    .ownership-avatar--player
   ) {
   will-change: transform, opacity;
 }
@@ -1696,6 +1827,29 @@
   opacity: 0;
   translate: -38% 6%;
   animation: none;
+}
+
+.buyout-screen .integrated-battlefield
+  :is(
+    .investment-stake-preview--cargo-bag,
+    .investment-stake-preview--level-4,
+    .investment-stake-preview--level-5
+  ) {
+  right: .3rem;
+  bottom: .42rem;
+  width: min(6.8rem, 43%);
+  height: 4.4rem;
+}
+
+.buyout-screen .integrated-battlefield
+  :is(
+    .investment-stake-preview--cargo-bag,
+    .investment-stake-preview--level-4,
+    .investment-stake-preview--level-5
+  ) > img {
+  right: .35rem;
+  bottom: 0;
+  height: 3.15rem;
 }
 
 .buyout-screen--capital-commit:not(.buyout-screen--terminal-cinematic)
@@ -1740,22 +1894,30 @@
 
 .integrated-battlefield--capital-impact
   .gil-tower--player.gil-tower--impact
-  .gil-tower__chips {
+  .gil-tower__hoard-band {
   animation:
-    capital-pile-settle
-    var(--capital-impact-duration, 475ms)
+    capital-row-lock
+    var(--capital-row-duration, 280ms)
     cubic-bezier(.18, .72, .22, 1)
     both;
 }
 
 .integrated-battlefield--capital-impact
   .gil-tower--player.gil-tower--impact
-  .gil-tower__hoard {
-  animation:
-    capital-hoard-settle
-    var(--capital-impact-duration, 475ms)
-    cubic-bezier(.18, .72, .22, 1)
-    both;
+  .gil-tower__hoard-band--far {
+  animation-delay: 0ms;
+}
+
+.integrated-battlefield--capital-impact
+  .gil-tower--player.gil-tower--impact
+  .gil-tower__hoard-band--mid {
+  animation-delay: var(--capital-stack-step, 48ms);
+}
+
+.integrated-battlefield--capital-impact
+  .gil-tower--player.gil-tower--impact
+  .gil-tower__hoard-band--near {
+  animation-delay: calc(var(--capital-stack-step, 48ms) * 2);
 }
 
 .integrated-battlefield--capital-impact
@@ -1770,13 +1932,7 @@
 
 .integrated-battlefield--capital-afterglow
   .gil-tower--player.gil-tower--impact
-  .gil-tower__chips {
-  animation: none;
-}
-
-.integrated-battlefield--capital-afterglow
-  .gil-tower--player.gil-tower--impact
-  :is(.gil-tower__hoard, .gil-chip-image--falling) {
+  :is(.gil-tower__hoard-band, .gil-chip-image--falling) {
   animation: none;
 }
 
@@ -1790,6 +1946,8 @@
   --capital-lock-slide: -.045rem;
   --capital-camera-drop: .08rem;
   --capital-camera-kick: .025rem;
+  --capital-stack-step: 36ms;
+  --capital-row-duration: 240ms;
 }
 
 .integrated-battlefield--capital-medium {
@@ -1797,6 +1955,8 @@
   --capital-lock-slide: -.075rem;
   --capital-camera-drop: .12rem;
   --capital-camera-kick: .045rem;
+  --capital-stack-step: 48ms;
+  --capital-row-duration: 300ms;
 }
 
 .integrated-battlefield--capital-heavy {
@@ -1804,6 +1964,8 @@
   --capital-lock-slide: -.11rem;
   --capital-camera-drop: .18rem;
   --capital-camera-kick: .08rem;
+  --capital-stack-step: 64ms;
+  --capital-row-duration: 360ms;
 }
 
 .integrated-battlefield--capital-impact
@@ -1840,34 +2002,44 @@
 
 .integrated-battlefield--capital-impact
   .gil-chip-image:not(.gil-chip-image--falling):nth-of-type(2) {
-  animation-delay: 18ms;
+  animation-delay: var(--capital-stack-step, 48ms);
 }
 
 .integrated-battlefield--capital-impact
   .gil-chip-image:not(.gil-chip-image--falling):nth-of-type(3) {
-  animation-delay: 36ms;
+  animation-delay: calc(var(--capital-stack-step, 48ms) * 2);
 }
 
 .integrated-battlefield--capital-impact
   .gil-chip-image:not(.gil-chip-image--falling):nth-of-type(4) {
-  animation-delay: 54ms;
+  animation-delay: calc(var(--capital-stack-step, 48ms) * 3);
 }
 
 .integrated-battlefield--capital-impact
   .gil-chip-image:not(.gil-chip-image--falling):nth-of-type(5) {
-  animation-delay: 72ms;
+  animation-delay: calc(var(--capital-stack-step, 48ms) * 4);
 }
 
 .integrated-battlefield--capital-impact
-  .gil-tower__formation > img:nth-child(2) { animation-delay: 12ms; }
+  .gil-tower__formation > img:nth-child(2) {
+  animation-delay: var(--capital-stack-step, 48ms);
+}
 .integrated-battlefield--capital-impact
-  .gil-tower__formation > img:nth-child(3) { animation-delay: 24ms; }
+  .gil-tower__formation > img:nth-child(3) {
+  animation-delay: calc(var(--capital-stack-step, 48ms) * 2);
+}
 .integrated-battlefield--capital-impact
-  .gil-tower__formation > img:nth-child(4) { animation-delay: 36ms; }
+  .gil-tower__formation > img:nth-child(4) {
+  animation-delay: calc(var(--capital-stack-step, 48ms) * 3);
+}
 .integrated-battlefield--capital-impact
-  .gil-tower__formation > img:nth-child(5) { animation-delay: 48ms; }
+  .gil-tower__formation > img:nth-child(5) {
+  animation-delay: calc(var(--capital-stack-step, 48ms) * 4);
+}
 .integrated-battlefield--capital-impact
-  .gil-tower__formation > img:nth-child(6) { animation-delay: 60ms; }
+  .gil-tower__formation > img:nth-child(6) {
+  animation-delay: calc(var(--capital-stack-step, 48ms) * 5);
+}
 
 .integrated-battlefield--capital-impact
   .gil-tower__formation > img:nth-child(even),
@@ -1934,7 +2106,7 @@
 @keyframes capital-formation-lock {
   0%,
   12% {
-    opacity: .56;
+    opacity: .72;
     transform: translate3d(
       var(--capital-lock-x, 0),
       var(--capital-lock-rise, -.8rem),
@@ -1943,14 +2115,11 @@
   }
   28% {
     opacity: 1;
-    transform: translate3d(0, .12rem, 0);
+    transform: translate3d(0, .105rem, 0);
   }
   52% {
     opacity: 1;
-    transform: translate3d(0, -.055rem, 0);
-  }
-  74% {
-    transform: translate3d(0, .018rem, 0);
+    transform: translate3d(0, -.035rem, 0);
   }
   100% {
     transform: translate3d(0, 0, 0);
@@ -1960,22 +2129,38 @@
 @keyframes capital-foreground-lock {
   0%,
   12% {
-    opacity: .62;
+    opacity: .76;
     translate:
       var(--capital-lock-x, 0)
       var(--capital-lock-rise, -.8rem);
   }
   30% {
     opacity: 1;
-    translate: 0 .09rem;
+    translate: 0 .085rem;
   }
   54% {
-    translate: 0 -.045rem;
-  }
-  76% {
-    translate: 0 .015rem;
+    translate: 0 -.03rem;
   }
   100% {
+    translate: 0 0;
+  }
+}
+
+@keyframes capital-row-lock {
+  0%,
+  12% {
+    opacity: .7;
+    translate: 0 var(--capital-lock-rise, -.8rem);
+  }
+  30% {
+    opacity: 1;
+    translate: 0 .1rem;
+  }
+  56% {
+    translate: 0 -.035rem;
+  }
+  100% {
+    opacity: 1;
     translate: 0 0;
   }
 }
@@ -2037,6 +2222,16 @@
     both;
 }
 
+.integrated-battlefield .ownership-capital-readout > strong {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes capital-readout-impact {
+  0% { filter: brightness(1); opacity: 1; }
+  38% { filter: brightness(1.7); opacity: .96; }
+  100% { filter: brightness(1); opacity: 1; }
+}
+
 .integrated-battlefield--capital-impact
   .battlefield-capital-deluge > i {
   animation-duration: .62s !important;
@@ -2082,25 +2277,25 @@
 
 @keyframes capital-tataru-prepare {
   0% { transform: scaleX(-1); }
-  70% { transform: translate3d(-.22rem, .12rem, 0) scaleX(-1) rotate(2deg); }
-  100% { transform: translate3d(-.14rem, .08rem, 0) scaleX(-1) rotate(1deg); }
+  70% { transform: translate3d(-.22rem, .08rem, 0) scaleX(-1); }
+  100% { transform: translate3d(-.14rem, .05rem, 0) scaleX(-1); }
 }
 
 @keyframes capital-tataru-travel {
-  0% { transform: translate3d(-.14rem, .08rem, 0) scaleX(-1) rotate(1deg); }
-  78% { transform: translate3d(.88rem, -.05rem, 0) scaleX(-1) rotate(-5deg); }
-  100% { transform: translate3d(1.15rem, 0, 0) scaleX(-1) rotate(-6deg); }
+  0% { transform: translate3d(-.14rem, .05rem, 0) scaleX(-1); }
+  78% { transform: translate3d(.76rem, -.03rem, 0) scaleX(-1); }
+  100% { transform: translate3d(.94rem, 0, 0) scaleX(-1); }
 }
 
 @keyframes capital-tataru-impact {
   0%, 13% {
-    transform: translate3d(1.15rem, 0, 0) scaleX(-1) rotate(-6deg);
+    transform: translate3d(.94rem, 0, 0) scaleX(-1);
   }
   38% {
-    transform: translate3d(.72rem, .08rem, 0) scaleX(-1) rotate(3deg);
+    transform: translate3d(.68rem, .06rem, 0) scaleX(-1);
   }
   68% {
-    transform: translate3d(.2rem, -.04rem, 0) scaleX(-1) rotate(-1deg);
+    transform: translate3d(.2rem, -.03rem, 0) scaleX(-1);
   }
   100% { transform: translate3d(.16rem, -.03rem, 0) scaleX(-1); }
 }
@@ -2112,35 +2307,6 @@
   }
   100% {
     transform: scaleX(-1);
-  }
-}
-
-@keyframes capital-pile-settle {
-  0%, 13% {
-    opacity: 1;
-    translate: 0 -.85rem;
-  }
-  32% { translate: 0 .16rem; }
-  52% { translate: 0 -.06rem; }
-  76% { translate: 0 .02rem; }
-  100% { opacity: 1; translate: 0 0; }
-}
-
-@keyframes capital-hoard-settle {
-  0%, 13% {
-    opacity: .68;
-    translate: 0 -.95rem;
-  }
-  32% {
-    opacity: var(--hoard-opacity);
-    translate: 0 .14rem;
-  }
-  54% {
-    translate: 0 -.05rem;
-  }
-  100% {
-    opacity: var(--hoard-opacity);
-    translate: 0 0;
   }
 }
 
@@ -2164,9 +2330,9 @@
 }
 
 @keyframes capital-readout-confirm {
-  0%, 13% { opacity: 1; translate: 0 .08rem; }
-  46% { opacity: .92; translate: 0 -.025rem; }
-  100% { opacity: 1; translate: 0 0; }
+  0%, 13% { filter: brightness(1); opacity: 1; }
+  46% { filter: brightness(1.65); opacity: .96; }
+  100% { filter: brightness(1); opacity: 1; }
 }
 
 @keyframes capital-cue-prepare {
@@ -2218,6 +2384,21 @@
   animation-duration: .44s !important;
 }
 
+.buyout-screen--lightweight .integrated-battlefield--capital-small {
+  --capital-stack-step: 12ms;
+  --capital-row-duration: 180ms;
+}
+
+.buyout-screen--lightweight .integrated-battlefield--capital-medium {
+  --capital-stack-step: 16ms;
+  --capital-row-duration: 180ms;
+}
+
+.buyout-screen--lightweight .integrated-battlefield--capital-heavy {
+  --capital-stack-step: 20ms;
+  --capital-row-duration: 180ms;
+}
+
 .buyout-screen--lightweight
   .integrated-battlefield--capital-impact
   .gil-tower__overflow > i,
@@ -2228,6 +2409,9 @@
   animation-duration: .46s;
 }
 
+.buyout-screen--lightweight
+  .integrated-battlefield--capital-impact
+  .gil-tower__hoard-band,
 .buyout-screen--lightweight
   .integrated-battlefield--capital-impact
   .gil-tower__formation > img {
@@ -2252,6 +2436,28 @@
 }
 
 @media (max-width: 639px) {
+  .buyout-screen .integrated-battlefield
+    :is(
+      .investment-stake-preview--cargo-bag,
+      .investment-stake-preview--level-4,
+      .investment-stake-preview--level-5
+    ) {
+    right: .12rem;
+    bottom: .34rem;
+    width: min(5.7rem, 44%);
+    height: 3.75rem;
+  }
+
+  .buyout-screen .integrated-battlefield
+    :is(
+      .investment-stake-preview--cargo-bag,
+      .investment-stake-preview--level-4,
+      .investment-stake-preview--level-5
+    ) > img {
+    right: .22rem;
+    height: 3.05rem;
+  }
+
   .integrated-battlefield .ownership-capital-readout {
     right: auto;
     left: 50%;
@@ -2277,6 +2483,13 @@
 
   .capital-commit-cue strong {
     font-size: .66rem;
+  }
+}
+
+@media (max-height: 700px) {
+  .integrated-battlefield .capital-visual-row .cover-knight {
+    width: 5.6rem;
+    height: 5.9rem;
   }
 }
 

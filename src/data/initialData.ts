@@ -454,7 +454,7 @@ export const INITIAL_SKILLS: TacticalSkill[] = [
     name: '時代の風',
     costType: 'high',
     cooldownMs: TACTICAL_SKILL_BALANCE.eraWind.cooldownMs,
-    description: '敵の投入資金を消さずに24秒間、自社側へ強い時流を加える逆転技。1交渉につき1回。',
+    description: '敵の投入資金を消さずに16秒間、自社側へ強い時流を加える逆転技。1交渉につき1回。',
     effectType: 'ERA_WIND',
     unlockRequirements: '事業連携「東方交易中継網」を成立',
     requiredAllPropertyIds: [
