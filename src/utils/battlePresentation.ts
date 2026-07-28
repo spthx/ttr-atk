@@ -11,6 +11,7 @@ export const BATTLE_CINEMATIC_TIMING = {
 
 export const RESULT_CONFIRM_ARM_DELAY_MS = 1_200;
 export const BATTLE_GAUGE_VISUAL_COMMIT_MS = 100;
+export const BATTLE_STATE_UPDATE_INTERVAL_MS = 100;
 export const LIGHTWEIGHT_GAUGE_FRAME_MS = 1_000 / 30;
 
 export const BATTLE_HIT_STOP_TIMING = {
@@ -87,28 +88,28 @@ const CAPITAL_COMMIT_TIMINGS: Record<
   },
   compact: {
     small: {
-      prepareMs: 100,
-      travelMs: 120,
+      prepareMs: 120,
+      travelMs: 140,
       hitStopMs: 38,
-      settleMs: 280,
-      afterglowMs: 220,
-      totalMs: 758,
+      settleMs: 360,
+      afterglowMs: 242,
+      totalMs: 900,
     },
     medium: {
-      prepareMs: 110,
-      travelMs: 135,
+      prepareMs: 150,
+      travelMs: 170,
       hitStopMs: 45,
-      settleMs: 310,
-      afterglowMs: 245,
-      totalMs: 845,
+      settleMs: 430,
+      afterglowMs: 355,
+      totalMs: 1_150,
     },
     heavy: {
-      prepareMs: 125,
-      travelMs: 155,
+      prepareMs: 190,
+      travelMs: 210,
       hitStopMs: 52,
-      settleMs: 345,
-      afterglowMs: 270,
-      totalMs: 947,
+      settleMs: 600,
+      afterglowMs: 448,
+      totalMs: 1_500,
     },
   },
 };
@@ -565,10 +566,30 @@ export const getCapitalVisualStageForBundleCount = (bundleCount: number) => {
 export const getCapitalVisualSpriteCount = (bundleCount: number) =>
   Math.max(0, Math.min(5, Math.floor(bundleCount)));
 
-export const CAPITAL_PRIMARY_DROP_COUNT = 1;
-export const CAPITAL_OVERFLOW_PARTICLE_COUNT = 7;
-export const CAPITAL_DELUGE_PARTICLE_COUNT = 8;
 export const MAX_CAPITAL_DROP_PARTICLE_COUNT = 16;
+
+const CAPITAL_DROP_PARTICLE_COUNTS: Record<
+  CapitalCommitTier,
+  Readonly<{ standard: number; compact: number }>
+> = {
+  small: { standard: 4, compact: 2 },
+  medium: { standard: 8, compact: 4 },
+  heavy: { standard: 12, compact: 6 },
+};
+
+/**
+ * A direct investment gets one bounded shower based on its command tier, not
+ * its gil value. Compact mode reduces paint work while keeping the same audio
+ * cadence and presentation time.
+ */
+export const getCapitalDropParticleCount = (
+  tier: CapitalCommitTier,
+  compact = false
+) =>
+  Math.min(
+    MAX_CAPITAL_DROP_PARTICLE_COUNT,
+    CAPITAL_DROP_PARTICLE_COUNTS[tier][compact ? 'compact' : 'standard']
+  );
 
 /**
  * The carried stake is one readable cargo silhouette, never a coin-per-value
