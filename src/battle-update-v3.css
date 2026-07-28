@@ -81,7 +81,6 @@
   from {
     translate: 0 -4.5rem;
     opacity: 0;
-    filter: brightness(1.7) drop-shadow(0 0 .7rem currentColor);
   }
   72% { opacity: 1; }
   to { translate: 0 0; opacity: 1; }
@@ -395,6 +394,7 @@
     radial-gradient(circle at 58% 54%, rgba(255, 255, 255, .94) 0 .7%, rgba(250, 204, 21, .38) 2.5%, transparent 18%),
     linear-gradient(105deg, rgba(2, 6, 23, .78), rgba(15, 23, 42, .42) 52%, rgba(2, 6, 23, .72));
   animation: limit-impact-screen 1.45s ease-out both;
+  contain: layout paint style;
 }
 
 .limit-impact-field::before,
@@ -444,9 +444,16 @@
   animation-delay: .34s;
 }
 
-.buyout-screen--limit-impact .ownership-board,
-.buyout-screen--limit-impact .capital-arena {
-  animation: limit-board-impact .48s steps(2) 2;
+.buyout-screen--limit-impact .capital-clash {
+  animation: limit-board-impact .48s steps(2) 1;
+}
+
+.buyout-screen--lightweight .limit-impact-field span:nth-of-type(n + 2) {
+  display: none;
+}
+
+.buyout-screen--lightweight.buyout-screen--limit-impact .capital-clash {
+  animation: none;
 }
 
 @keyframes wind-board-player { to { filter: brightness(1.32); transform: translateX(.12rem); } }
@@ -456,12 +463,23 @@
 @keyframes limit-impact-screen { 0% { opacity: 0; } 8%, 66% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes limit-impact-flash { 0%, 22% { opacity: 0; } 32% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes limit-impact-katana-cut {
-  0% { opacity: 0; transform: translateX(-42%) rotate(var(--slash-angle)) scaleX(.18); filter: brightness(1.6); }
-  18% { opacity: 1; }
-  58% { opacity: 1; transform: translateX(8%) rotate(var(--slash-angle)) scaleX(1); filter: brightness(2.2); }
-  100% { opacity: 0; transform: translateX(24%) rotate(var(--slash-angle)) scaleX(1.08); filter: brightness(1); }
+  0%, 16% {
+    opacity: 1;
+    transform: translateX(-3%) rotate(var(--slash-angle)) scaleX(.92);
+  }
+  58% {
+    opacity: 1;
+    transform: translateX(8%) rotate(var(--slash-angle)) scaleX(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(24%) rotate(var(--slash-angle)) scaleX(1.08);
+  }
 }
-@keyframes limit-board-impact { 25% { transform: translate(-.16rem, .1rem); filter: brightness(1.55); } 75% { transform: translate(.16rem, -.08rem); } }
+@keyframes limit-board-impact {
+  25% { transform: translate(-.16rem, .1rem); }
+  75% { transform: translate(.16rem, -.08rem); }
+}
 
 @media (max-width: 639px) {
   .battle-wind-sigil { padding: .12rem .3rem; }
@@ -478,8 +496,7 @@
   .limit-impact-field::before,
   .limit-impact-field::after,
   .limit-impact-field span,
-  .buyout-screen--limit-impact .ownership-board,
-  .buyout-screen--limit-impact .capital-arena {
+  .buyout-screen--limit-impact .capital-clash {
     animation: none !important;
   }
 }

@@ -175,7 +175,7 @@ export const TACTICAL_SKILL_BALANCE = {
   cover: {
     durationMs: 10_000,
     absorbRatio: 0.6,
-    gaugeCapacity: 16,
+    gaugeCapacity: 24,
   },
   capitalBoost: {
     marketRatio: 0.4,
@@ -192,7 +192,7 @@ export const TACTICAL_SKILL_BALANCE = {
     pushMultiplier: 1.8,
   },
   eraWind: {
-    durationMs: 36_000,
+    durationMs: 24_000,
     cooldownMs: 0,
     minimumCost: 100_000,
     marketCostRatio: 0.02,
@@ -295,9 +295,23 @@ export const LIMIT_BREAK_OWNERSHIP_CAPS: Record<
   Exclude<LimitBreakTier, 0>,
   number
 > = {
-  1: 10,
-  2: 20,
+  1: 7,
+  2: 14,
   3: 30,
+};
+
+/**
+ * Early LIMIT BREAKs still aggregate every participating company, but may not
+ * turn a cheap target after a price-band transition into several targets'
+ * worth of permanent capital. LB3 remains the uncapped late-game payoff.
+ */
+export const LIMIT_BREAK_CAPITAL_CAP_RATIOS: Record<
+  Exclude<LimitBreakTier, 0>,
+  number | null
+> = {
+  1: 0.8,
+  2: 1.2,
+  3: null,
 };
 
 export const ENEMY_BALANCE_FACTOR = {
@@ -564,12 +578,12 @@ export const BOSS_COVER_BALANCE = {
   cover: {
     durationMs: 6_000,
     absorbRatio: 0.65,
-    gaugeCapacity: 16,
+    gaugeCapacity: 24,
   },
   enhancedCover: {
     durationMs: 8_000,
     absorbRatio: 0.8,
-    gaugeCapacity: 28,
+    gaugeCapacity: 36,
   },
   invincible: {
     durationMs: 8_000,
@@ -751,9 +765,16 @@ export const calculateLimitBreakAmount = (
       ),
     0
   );
-  return Math.round(
+  const aggregatedAmount = Math.round(
     (selfSlot + subsidiarySlots) * LIMIT_BREAK_MULTIPLIERS[tier]
   );
+  const capRatio = LIMIT_BREAK_CAPITAL_CAP_RATIOS[tier];
+  return capRatio === null
+    ? aggregatedAmount
+    : Math.min(
+        aggregatedAmount,
+        Math.round(Math.max(0, targetMarketPrice) * capRatio)
+      );
 };
 
 export const calculateLimitBreakOwnershipPush = (

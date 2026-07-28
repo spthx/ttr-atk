@@ -13,6 +13,125 @@ export const RESULT_CONFIRM_ARM_DELAY_MS = 1_200;
 export const BATTLE_GAUGE_VISUAL_COMMIT_MS = 100;
 export const LIGHTWEIGHT_GAUGE_FRAME_MS = 1_000 / 30;
 
+export const BATTLE_HIT_STOP_TIMING = {
+  standardMs: 55,
+  heavyMs: 78,
+  lightweightStandardMs: 38,
+  lightweightHeavyMs: 52,
+  releaseMs: 230,
+  lightweightReleaseMs: 150,
+} as const;
+
+export const getBattleHitStopTiming = (
+  heavy = false,
+  lightweightMode = false
+) => ({
+  hitStopMs: lightweightMode
+    ? heavy
+      ? BATTLE_HIT_STOP_TIMING.lightweightHeavyMs
+      : BATTLE_HIT_STOP_TIMING.lightweightStandardMs
+    : heavy
+      ? BATTLE_HIT_STOP_TIMING.heavyMs
+      : BATTLE_HIT_STOP_TIMING.standardMs,
+  releaseMs: lightweightMode
+    ? BATTLE_HIT_STOP_TIMING.lightweightReleaseMs
+    : BATTLE_HIT_STOP_TIMING.releaseMs,
+});
+
+export type CapitalCommitTier = 'small' | 'medium' | 'heavy';
+export type CapitalCommitStage =
+  | 'prepare'
+  | 'travel'
+  | 'impact'
+  | 'afterglow';
+
+export interface CapitalCommitTiming {
+  tier: CapitalCommitTier;
+  prepareMs: number;
+  travelMs: number;
+  hitStopMs: number;
+  settleMs: number;
+  afterglowMs: number;
+  totalMs: number;
+}
+
+const CAPITAL_COMMIT_TIMINGS: Record<
+  'standard' | 'compact',
+  Record<CapitalCommitTier, Omit<CapitalCommitTiming, 'tier'>>
+> = {
+  standard: {
+    small: {
+      prepareMs: 150,
+      travelMs: 170,
+      hitStopMs: 55,
+      settleMs: 420,
+      afterglowMs: 320,
+      totalMs: 1_115,
+    },
+    medium: {
+      prepareMs: 190,
+      travelMs: 210,
+      hitStopMs: 64,
+      settleMs: 480,
+      afterglowMs: 360,
+      totalMs: 1_304,
+    },
+    heavy: {
+      prepareMs: 300,
+      travelMs: 320,
+      hitStopMs: 88,
+      settleMs: 610,
+      afterglowMs: 520,
+      totalMs: 1_838,
+    },
+  },
+  compact: {
+    small: {
+      prepareMs: 90,
+      travelMs: 110,
+      hitStopMs: 38,
+      settleMs: 250,
+      afterglowMs: 200,
+      totalMs: 688,
+    },
+    medium: {
+      prepareMs: 100,
+      travelMs: 125,
+      hitStopMs: 45,
+      settleMs: 280,
+      afterglowMs: 220,
+      totalMs: 770,
+    },
+    heavy: {
+      prepareMs: 120,
+      travelMs: 150,
+      hitStopMs: 52,
+      settleMs: 320,
+      afterglowMs: 260,
+      totalMs: 902,
+    },
+  },
+};
+
+/**
+ * Direct investment is the game's primary reward beat. Small offers stay
+ * light, while all-in offers receive a longer wind-up and afterglow. The
+ * timeline only changes presentation; battle state is still committed once,
+ * synchronously, by the caller.
+ */
+export const getCapitalCommitTiming = (
+  investmentLevel: number,
+  compact = false
+): CapitalCommitTiming => {
+  const level = Math.max(1, Math.min(5, Math.round(investmentLevel)));
+  const tier: CapitalCommitTier =
+    level <= 2 ? 'small' : level === 3 ? 'medium' : 'heavy';
+  return {
+    tier,
+    ...CAPITAL_COMMIT_TIMINGS[compact ? 'compact' : 'standard'][tier],
+  };
+};
+
 export const shouldProcessGaugeFrame = (
   elapsedMs: number,
   lightweightMode: boolean
@@ -25,18 +144,34 @@ export const shouldProcessGaugeFrame = (
  * frame: name card, actor wind-up, impact, then a brief readable result.
  */
 export const SKILL_CINEMATIC_TIMING = {
-  nameMs: 360,
-  castMs: 360,
-  impactMs: 420,
-  resolveMs: 280,
-  totalMs: 1_420,
+  nameMs: 320,
+  castMs: 340,
+  hitStopMs: 80,
+  impactMs: 280,
+  resolveMs: 260,
+  totalMs: 1_280,
+} as const;
+
+export const LIGHTWEIGHT_SKILL_CINEMATIC_TIMING = {
+  nameMs: 180,
+  castMs: 180,
+  hitStopMs: 40,
+  impactMs: 140,
+  resolveMs: 180,
+  totalMs: 720,
 } as const;
 
 export type SkillCinematicStage =
   | 'name'
   | 'cast'
+  | 'hitstop'
   | 'impact'
   | 'resolve';
+
+export const getSkillCinematicTiming = (compact = false) =>
+  compact
+    ? LIGHTWEIGHT_SKILL_CINEMATIC_TIMING
+    : SKILL_CINEMATIC_TIMING;
 
 export const getNextBattleSkillId = (
   skillIds: readonly string[],
@@ -62,25 +197,28 @@ export const getNextBattleSkillId = (
  * not use these stages as additional chances to mutate battle state.
  */
 export const TERMINAL_CINEMATIC_TIMING = {
-  anticipationMs: 1_200,
-  impactMs: 760,
-  resolutionMs: 1_100,
-  totalMs: 3_060,
-  reducedMotionAnticipationMs: 180,
-  reducedMotionImpactMs: 180,
-  reducedMotionResolutionMs: 700,
-  reducedMotionTotalMs: 1_060,
+  anticipationMs: 1_000,
+  hitStopMs: 90,
+  impactMs: 420,
+  resolutionMs: 900,
+  totalMs: 2_410,
+  reducedMotionAnticipationMs: 140,
+  reducedMotionHitStopMs: 40,
+  reducedMotionImpactMs: 120,
+  reducedMotionResolutionMs: 520,
+  reducedMotionTotalMs: 820,
 } as const;
 
 export type TerminalCinematicStage =
   | 'anticipation'
+  | 'hitstop'
   | 'impact'
   | 'resolution'
   | 'complete';
 
 export interface TerminalCinematicPresentation {
   stage: TerminalCinematicStage;
-  timeScale: 0 | 0.1;
+  timeScale: 0;
   showImpact: boolean;
   showResolution: boolean;
   suppressAmbientEffects: boolean;
@@ -91,7 +229,8 @@ export interface TerminalCinematicPresentation {
  * Pure timeline projection for the single terminal cinematic.
  *
  * `elapsedMs` is measured from the instant the terminal winner is latched.
- * Reduced-motion keeps the readable resolution card while replacing the
+ * Every stage freezes simulation so presentation mode cannot alter battle
+ * results. Reduced-motion keeps the readable resolution card while replacing
  * moving anticipation and impact with short, static beats.
  */
 export const getTerminalCinematicPresentation = (
@@ -102,8 +241,13 @@ export const getTerminalCinematicPresentation = (
   const anticipationEnd = reducedMotion
     ? TERMINAL_CINEMATIC_TIMING.reducedMotionAnticipationMs
     : TERMINAL_CINEMATIC_TIMING.anticipationMs;
-  const impactEnd =
+  const hitStopEnd =
     anticipationEnd +
+    (reducedMotion
+      ? TERMINAL_CINEMATIC_TIMING.reducedMotionHitStopMs
+      : TERMINAL_CINEMATIC_TIMING.hitStopMs);
+  const impactEnd =
+    hitStopEnd +
     (reducedMotion
       ? TERMINAL_CINEMATIC_TIMING.reducedMotionImpactMs
       : TERMINAL_CINEMATIC_TIMING.impactMs);
@@ -116,7 +260,7 @@ export const getTerminalCinematicPresentation = (
   if (elapsed < anticipationEnd) {
     return {
       stage: 'anticipation',
-      timeScale: 0.1,
+      timeScale: 0,
       showImpact: false,
       showResolution: false,
       suppressAmbientEffects: true,
@@ -125,6 +269,16 @@ export const getTerminalCinematicPresentation = (
   }
 
   if (elapsed < impactEnd) {
+    if (elapsed < hitStopEnd) {
+      return {
+        stage: 'hitstop',
+        timeScale: 0,
+        showImpact: true,
+        showResolution: false,
+        suppressAmbientEffects: true,
+        complete: false,
+      };
+    }
     return {
       stage: 'impact',
       timeScale: 0,
@@ -258,9 +412,10 @@ export const canConfirmBattleResult = ({
 
 export const getVictoryConfettiParticleCount = (
   viewportWidth: number,
-  reducedMotion: boolean
+  reducedMotion: boolean,
+  lightweightMode = false
 ) => {
-  if (reducedMotion) return 0;
+  if (reducedMotion || lightweightMode) return 0;
   // Canvas confetti can force an iPad WebContent reload when it overlaps the
   // terminal field animations. Compact/tablet finishes use the CSS resolution
   // beat only; the richer particle finish remains on desktop.
@@ -348,7 +503,7 @@ const BATTLE_CAPITAL_RATIO_THRESHOLDS = [
  * Live battles need to show the act of stacking capital, not the campaign's
  * nominal gil scale. A first offer therefore starts with one visible bundle
  * in every chapter, while a pre-funded opponent remains a modest pile.
- * Repeated over-investment can still grow into the full thirteen-piece wall.
+ * Repeated over-investment can still reach the twelfth and final visual beat.
  */
 export const getBattleCapitalVisualBundleCount = (
   amount: number,
@@ -372,10 +527,10 @@ export const getBattleCapitalVisualBundleCount = (
 };
 
 export const getCapitalVisualStageForBundleCount = (bundleCount: number) => {
-  // The live field owns thirteen distinct capital beats. Do not collapse them
-  // into seven visual classes: a player should see every additional offer
-  // build the mound, while the DOM renderer remains capped separately.
-  return Math.max(0, Math.min(13, Math.floor(bundleCount)));
+  // The live field owns twelve decorative beats (0-11). Capital may keep
+  // growing numerically after the last beat, but the mound itself stays
+  // bounded and uses glow/motion for over-cap investment.
+  return Math.max(0, Math.min(11, Math.floor(bundleCount)));
 };
 
 /**
@@ -385,6 +540,18 @@ export const getCapitalVisualStageForBundleCount = (bundleCount: number) => {
  */
 export const getCapitalVisualSpriteCount = (bundleCount: number) =>
   Math.max(0, Math.min(5, Math.floor(bundleCount)));
+
+export const CAPITAL_PRIMARY_DROP_COUNT = 1;
+export const CAPITAL_OVERFLOW_PARTICLE_COUNT = 7;
+export const CAPITAL_DELUGE_PARTICLE_COUNT = 8;
+export const MAX_CAPITAL_DROP_PARTICLE_COUNT = 16;
+
+/**
+ * The carried stake is one readable cargo silhouette, never a coin-per-value
+ * pile. Its sprite and scale communicate the selected level; the bounded
+ * 0-11 hoard remains the place where accumulated capital is shown.
+ */
+export const getInvestmentStakeVisualPieceCount = (_level: number) => 1;
 
 export const shouldInertBattleFooter = (
   backgroundInert: boolean,
