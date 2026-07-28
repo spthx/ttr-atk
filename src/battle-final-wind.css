@@ -527,12 +527,13 @@
 .battle-decisive-blow--impact strong { transform: scale(1); filter: brightness(1.75); }
 .battle-decisive-blow span { font-size: clamp(.68rem, 2.5vw, 1rem); font-weight: 1000; letter-spacing: .1em; }
 
-.buyout-screen--decisive .buyout-main,
-.buyout-screen--decisive .buyout-header,
-.buyout-screen--decisive .buyout-footer {
-  animation: decisive-world-slow 1.4s cubic-bezier(.12, .72, .2, 1) both;
+.buyout-screen--terminal-anticipation .buyout-main {
+  animation: decisive-world-slow 1s cubic-bezier(.12, .72, .2, 1) both;
 }
-.buyout-screen--decisive-opponent .buyout-main { filter: saturate(.65) contrast(1.2) sepia(.15); }
+
+.buyout-screen--lightweight.buyout-screen--terminal-anticipation .buyout-main {
+  animation-duration: .14s;
+}
 
 @keyframes battle-condition-screen { 0%, 100% { opacity: 0; } 9%, 84% { opacity: 1; } }
 @keyframes battle-condition-title { 0% { opacity: 0; transform: scale(1.5); filter: blur(.7rem); } 17%, 78% { opacity: 1; transform: scale(1); filter: none; } 100% { opacity: 0; transform: scale(.92); filter: blur(.25rem); } }
@@ -558,9 +559,7 @@
   .battle-condition-announcement__wind i,
   .battle-condition-announcement--burst strong,
   .battle-decisive-blow,
-  .buyout-screen--decisive .buyout-main,
-  .buyout-screen--decisive .buyout-header,
-  .buyout-screen--decisive .buyout-footer {
+  .buyout-screen--terminal-anticipation .buyout-main {
     animation: none !important;
   }
 }

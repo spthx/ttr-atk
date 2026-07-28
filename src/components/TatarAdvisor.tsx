@@ -27,12 +27,12 @@ const getAdvice = ({
 }: TatarAdvisorProps) => {
   if (activeTab === 'savage') {
     if (ultimateCleared) {
-      return '商戦 零式4層と絶商戦、すべて踏破でっす！ 記録戦には何度でも再挑戦できるので、自分らしい商いの回し方を磨くでっす。';
+      return '商戦 零式3編・全12章と絶商戦、すべて踏破でっす！ 記録戦には何度でも再挑戦できるので、自分らしい商いの回し方を磨くでっす。';
     }
     if (ultimateUnlocked) {
-      return '商戦 零式4層を踏破したでっす！ 次は別枠の単独最終戦「絶商戦」で、積み上げた全システムを使い切るでっす。';
+      return '商戦 零式3編・全12章を踏破したでっす！ 次は別枠の単独最終戦「絶商戦」で、積み上げた全システムを使い切るでっす。';
     }
-    return `商戦 零式は4つの地域連合へ順に挑む記録戦でっす。現在${savageClearedCount}/${savageTargetCount}層、競合アクションの予兆を覚えて次へ進むでっす！`;
+    return `商戦 零式は3編×4層を順に挑む全12章の記録戦でっす。現在${savageClearedCount}/${savageTargetCount}章、競合アクションの予兆を覚えて次へ進むでっす！`;
   }
 
   if (conqueredCommunityCount === totalCommunityCount && totalCommunityCount > 0) {

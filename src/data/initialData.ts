@@ -411,7 +411,7 @@ export const INITIAL_SKILLS: TacticalSkill[] = [
     name: 'かばう',
     costType: 'high',
     cooldownMs: 0,
-    description: '一交渉に1回、ナイトが10秒間援護に入り、競合から受ける所有率への押し込みを一部肩代わりする。',
+    description: '一交渉に1回、ナイトが10秒間援護に入り、競合から受ける所有率への押し込みを60%軽減する（最大12pt）。',
     effectType: 'COVER',
     unlockRequirements: '警備または兵装に関わる事業を保有',
     requiredPropertyIds: ['prop_security_firm', 'prop_weapon_dealer', 'prop_blacksmith'],
@@ -454,7 +454,7 @@ export const INITIAL_SKILLS: TacticalSkill[] = [
     name: '時代の風',
     costType: 'high',
     cooldownMs: TACTICAL_SKILL_BALANCE.eraWind.cooldownMs,
-    description: '敵の投入資金を消さずに36秒間、自社側へ強い時流を加える逆転技。1交渉につき1回。',
+    description: '敵の投入資金を消さずに24秒間、自社側へ強い時流を加える逆転技。1交渉につき1回。',
     effectType: 'ERA_WIND',
     unlockRequirements: '事業連携「東方交易中継網」を成立',
     requiredAllPropertyIds: [

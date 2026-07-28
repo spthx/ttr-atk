@@ -105,15 +105,15 @@ export const EndingModal: React.FC<EndingModalProps> = ({
         </div>
 
         <div className="ending-card__copy">
-          <small>{trueEnding ? 'ULTIMATE TRADE DUTY CLEARED' : savageEnding ? 'FOUR SAVAGE LAYERS CLEARED' : 'TEN CITIES UNITED BY TRADE'}</small>
+          <small>{trueEnding ? 'ULTIMATE TRADE DUTY CLEARED' : savageEnding ? 'TWELVE SAVAGE CHAPTERS CLEARED' : 'TEN CITIES UNITED BY TRADE'}</small>
           <h1 id="ending-title">
-            {trueEnding ? '真・全商戦制覇！' : savageEnding ? '商戦 零式4層 踏破！' : '十都市交易網 全制覇！'}
+            {trueEnding ? '真・全商戦制覇！' : savageEnding ? '商戦 零式3編・全12章 踏破！' : '十都市交易網 全制覇！'}
           </h1>
           <p>
             {trueEnding
               ? `${companyName}は、単独の最終高難度「絶商戦」を踏破しました。仲間と積み上げた一手一手こそ、どんな大口資本にも負けない最大の財産でっす！`
               : savageEnding
-                ? `${companyName}は、4つの地域連合による商戦 零式をすべて踏破したでっす！ 仲間と読み切った攻防を、次の大商戦へつなげるでっす。`
+                ? `${companyName}は、3編・全12章の商戦 零式をすべて踏破したでっす！ 仲間と読み切った攻防を、次の大商戦へつなげるでっす。`
                 : `${companyName}の交易路が十都市を結びました。けれど、完成した交易網には腕利きだけが挑める高難度の取引記録が残っているようでっす。`}
           </p>
         </div>
@@ -124,8 +124,8 @@ export const EndingModal: React.FC<EndingModalProps> = ({
             <span>
               <b>{savageEnding ? '「絶商戦」挑戦資格 解放' : '「商戦 零式」タブ解放'}</b>
               {savageEnding
-                ? '4層踏破で解放された、別枠の単独最終高難度交易戦へ挑戦できます。'
-                : '通常制覇時の仲間・アビリティ・LBを持ち込み、本作独自の地域連合1～4層へ挑戦できます。'}
+                ? '3編・全12章踏破で解放された、別枠の単独最終高難度交易戦へ挑戦できます。'
+                : '通常制覇時の仲間・アビリティ・LBを持ち込み、本作独自の3編×1～4層へ挑戦できます。'}
             </span>
           </section>
         )}

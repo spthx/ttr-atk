@@ -78,6 +78,55 @@
   font: 900 .76rem/1 ui-monospace, monospace;
 }
 
+.savage-series-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.savage-series {
+  display: grid;
+  gap: .7rem;
+  padding: .8rem;
+  border: 1px solid rgba(148, 163, 184, .18);
+  border-radius: 1rem;
+  background: rgba(2, 6, 23, .34);
+}
+
+.savage-series__header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .7rem;
+}
+
+.savage-series__header > span {
+  padding: .35rem .5rem;
+  border: 1px solid rgba(251, 113, 133, .45);
+  border-radius: .45rem;
+  color: #fecdd3;
+  background: rgba(76, 5, 25, .62);
+  font-size: .72rem;
+  font-weight: 1000;
+}
+
+.savage-series__header h2 {
+  color: #fff1f2;
+  font-size: 1rem;
+  font-weight: 1000;
+}
+
+.savage-series__header p {
+  margin-top: .1rem;
+  color: #94a3b8;
+  font-size: .7rem;
+  font-weight: 700;
+}
+
+.savage-series__header strong {
+  color: #fda4af;
+  font: 900 .7rem/1 ui-monospace, monospace;
+}
+
 .savage-layer-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -142,6 +191,14 @@
   color: #fda4af;
   font-size: .78rem;
   font-weight: 1000;
+}
+
+.savage-layer-card > header span small {
+  display: block;
+  margin-top: .18rem;
+  color: #64748b;
+  font: 800 .56rem/1 ui-monospace, monospace;
+  letter-spacing: .06em;
 }
 
 .savage-layer-card > header svg {
@@ -398,6 +455,18 @@
 }
 
 @media (max-width: 720px) {
+  .savage-series {
+    padding: .65rem;
+  }
+
+  .savage-series__header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .savage-series__header > strong {
+    grid-column: 2;
+  }
+
   .savage-layer-grid {
     grid-template-columns: 1fr;
   }

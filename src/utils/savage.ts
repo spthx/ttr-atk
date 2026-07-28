@@ -6,10 +6,13 @@ import type {
 } from '../types';
 
 export type SavageLayer = 1 | 2 | 3 | 4;
+export type SavageSeries = 1 | 2 | 3;
+export type SavageProgressVersion = 2 | 3;
 
 export interface SavageRaidDefinition {
-  /** Uses a legacy normal-property ID so existing schema-v3 clear records stay useful. */
+  /** The first four IDs stay equal to the former four-layer save keys. */
   id: string;
+  series: SavageSeries;
   layer: SavageLayer;
   encounterName: string;
   coalitionName: string;
@@ -23,93 +26,214 @@ export interface SavageRaidDefinition {
 
 export const SAVAGE_YIELD_BONUS_PER_RANK = 0.05;
 export const SAVAGE_PROPERTY_YIELD_BONUS = 0.1;
-export const SAVAGE_GROUP_MULTIPLIER_BASE = 1.28;
+export const SAVAGE_GROUP_MULTIPLIER_BASE = 1.45;
 export const SAVAGE_GROUP_MULTIPLIER_BONUS_PER_RANK = 0.04;
 
+export const SAVAGE_SERIES_DEFINITIONS = [
+  {
+    series: 1,
+    name: '三都市交易編',
+    subtitle: '森・海・砂都の基礎商流',
+  },
+  {
+    series: 2,
+    name: '蒼天・東方交易編',
+    subtitle: '生産拠点と情報網の集中防衛',
+  },
+  {
+    series: 3,
+    name: '星海・黄金交易編',
+    subtitle: '世界をまたぐ最終資本戦線',
+  },
+] as const satisfies readonly {
+  series: SavageSeries;
+  name: string;
+  subtitle: string;
+}[];
+
 /**
- * This four-layer tier borrows only the current FFXIV progression rhythm.
- * The coalitions, encounter names, rewards and trade-battle rules are original.
+ * Three original four-layer tiers: twelve encounters in one linear unlock path.
+ * The first tier keeps the former four save IDs so partial schema-v3 progress
+ * has an unambiguous, lossless migration target.
  */
 export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
   {
     id: 'prop_starter_farm',
+    series: 1,
     layer: 1,
     encounterName: '森海生活商圏連合',
-    coalitionName: '三都市通商連合',
+    coalitionName: '黒衣森共同調達会',
     battlePropertyId: 'prop_starter_farm',
     memberPropertyIds: [
       'prop_starter_farm',
       'prop_starter_bakery',
       'prop_timber_ake',
-      'prop_land_transport',
-      'prop_brewery_beer',
-      'prop_iron_mine',
-      'prop_pub_central',
-      'prop_casino_grand',
     ],
-    communities: ['グリダニア', 'リムサ・ロミンサ', 'ウルダハ'],
-    rewardSynergyIds: [
-      'GRIDANIA_FOREST_ECONOMY',
-      'EORZEA_FOOD_ROUTE',
-      'ULDAH_LUXURY_MARKET',
-    ],
+    communities: ['グリダニア'],
+    rewardSynergyIds: ['GRIDANIA_FOREST_ECONOMY'],
     marketPrice: 600_000_000,
     description:
-      '三都市の生活物資網が共同防衛する第1層。小口の連携と資金源管理を同時に試します。',
+      '森林資源と生活物資の連携を崩す開幕層。小口の連携と資金源管理を同時に試します。',
   },
   {
     id: 'prop_blacksmith',
+    series: 1,
     layer: 2,
-    encounterName: '蒼天産業共同体',
-    coalitionName: '北方・東方交易連合',
+    encounterName: '黒潮輸送共同体',
+    coalitionName: 'バイルブランド海陸運連合',
     battlePropertyId: 'prop_blacksmith',
-    memberPropertyIds: [
-      'prop_ranch_1',
-      'prop_horse_meat',
-      'prop_blacksmith',
-      'prop_weapon_dealer',
-      'prop_detective',
-      'prop_info_broker',
-    ],
-    communities: ['イシュガルド', 'クガネ'],
-    rewardSynergyIds: ['ISHGARD_DEFENSE_INDUSTRY', 'KUGANE_TRADE_GATEWAY'],
-    marketPrice: 900_000_000,
+    memberPropertyIds: ['prop_land_transport'],
+    communities: ['リムサ・ロミンサ'],
+    rewardSynergyIds: [],
+    marketPrice: 675_000_000,
     description:
-      '北方の生産拠点が一体となる第2層。短い予兆から続く集中防衛を崩します。',
+      '海運と陸運が交互に資本を運ぶ第2層。短い予兆から続く集中防衛を崩します。',
   },
   {
     id: 'prop_wheat_farm',
+    series: 1,
     layer: 3,
-    encounterName: '星海学商連合',
-    coalitionName: '第一世界・学都・サベネア共同市場',
+    encounterName: '砂都歓楽市場連合',
+    coalitionName: 'ザナラーン興行・飲食共同市場',
     battlePropertyId: 'prop_wheat_farm',
     memberPropertyIds: [
-      'prop_inn_town',
-      'prop_wheat_farm',
-      'prop_security_firm',
+      'prop_brewery_beer',
+      'prop_pub_central',
     ],
-    communities: ['クリスタリウム', 'オールド・シャーレアン', 'ラザハン'],
+    communities: ['リムサ・ロミンサ', 'ウルダハ'],
     rewardSynergyIds: ['EORZEA_FOOD_ROUTE'],
-    marketPrice: 1_350_000_000,
+    marketPrice: 765_000_000,
     description:
-      '異なる世界と学術都市の調達網を結ぶ第3層。風と競合アクションの読み合いが重なります。',
+      '需要の波を味方につける第3層。時代の風と競合アクションの読み合いが重なります。',
   },
   {
     id: 'prop_abyss_heavy',
+    series: 1,
     layer: 4,
-    encounterName: '黄金新興経済連合',
-    coalitionName: 'トラル・未来都市共同戦線',
+    encounterName: '三都市通商総力戦',
+    coalitionName: '三都市黄金資本防衛線',
     battlePropertyId: 'prop_abyss_heavy',
     memberPropertyIds: [
-      'prop_coffee_aurora',
-      'prop_abyss_heavy',
-      'prop_abyss_mine',
+      'prop_iron_mine',
+      'prop_casino_grand',
     ],
-    communities: ['トライヨラ', 'ソリューション・ナイン'],
+    communities: ['ウルダハ'],
+    rewardSynergyIds: ['ULDAH_LUXURY_MARKET'],
+    marketPrice: 860_000_000,
+    description:
+      '三都市編の締めとなる無敵防衛戦。全押し込み経路を見極めて突破する総力戦です。',
+  },
+  {
+    id: 'savage_raid_2_layer_1',
+    series: 2,
+    layer: 1,
+    encounterName: '蒼天畜産共同体',
+    coalitionName: 'クルザス生産者連盟',
+    battlePropertyId: 'prop_ranch_1',
+    memberPropertyIds: ['prop_ranch_1', 'prop_horse_meat'],
+    communities: ['イシュガルド'],
+    rewardSynergyIds: [],
+    marketPrice: 1_100_000_000,
+    description:
+      '寒冷地の供給網が粘り強く資本を戻す第1層。基礎手順を高い速度で試します。',
+  },
+  {
+    id: 'savage_raid_2_layer_2',
+    series: 2,
+    layer: 2,
+    encounterName: '蒼天産業共同体',
+    coalitionName: 'イシュガルド機工防衛会',
+    battlePropertyId: 'prop_weapon_dealer',
+    memberPropertyIds: ['prop_blacksmith', 'prop_weapon_dealer'],
+    communities: ['イシュガルド'],
+    rewardSynergyIds: ['ISHGARD_DEFENSE_INDUSTRY'],
+    marketPrice: 1_235_000_000,
+    description:
+      '生産拠点が一体となる第2層。強化かばうを挟む集中防衛を崩します。',
+  },
+  {
+    id: 'savage_raid_2_layer_3',
+    series: 2,
+    layer: 3,
+    encounterName: '東方相場監査局',
+    coalitionName: 'クガネ情報商会連合',
+    battlePropertyId: 'prop_detective',
+    memberPropertyIds: ['prop_detective'],
+    communities: ['クガネ'],
+    rewardSynergyIds: [],
+    marketPrice: 1_400_000_000,
+    description:
+      '投入履歴を読んで先回りする第3層。情報戦と資本の間を崩さず攻め続けます。',
+  },
+  {
+    id: 'savage_raid_2_layer_4',
+    series: 2,
+    layer: 4,
+    encounterName: '紅蓮交易関門',
+    coalitionName: '東方海運・仲介共同戦線',
+    battlePropertyId: 'prop_info_broker',
+    memberPropertyIds: ['prop_info_broker'],
+    communities: ['クガネ'],
+    rewardSynergyIds: ['KUGANE_TRADE_GATEWAY'],
+    marketPrice: 1_580_000_000,
+    description:
+      '東方交易の全経路を閉ざす第4層。無敵時間を越えて決定打を通す連続戦です。',
+  },
+  {
+    id: 'savage_raid_3_layer_1',
+    series: 3,
+    layer: 1,
+    encounterName: '第一世界復興商圏',
+    coalitionName: 'クリスタリウム商旅連盟',
+    battlePropertyId: 'prop_inn_town',
+    memberPropertyIds: ['prop_inn_town'],
+    communities: ['クリスタリウム'],
     rewardSynergyIds: [],
     marketPrice: 2_000_000_000,
     description:
-      '資源調達から販売網までを束ねた最終層。全システムを使う長期の総力戦です。',
+      '復興需要が絶えず循環する最終編第1層。資金回復を含む長期戦の入口です。',
+  },
+  {
+    id: 'savage_raid_3_layer_2',
+    series: 3,
+    layer: 2,
+    encounterName: '星海学商連合',
+    coalitionName: '学都・サベネア共同市場',
+    battlePropertyId: 'prop_security_firm',
+    memberPropertyIds: ['prop_wheat_farm', 'prop_security_firm'],
+    communities: ['オールド・シャーレアン', 'ラザハン'],
+    rewardSynergyIds: ['EORZEA_FOOD_ROUTE'],
+    marketPrice: 2_250_000_000,
+    description:
+      '学術予測と港湾防衛が同期する第2層。強化かばうの後隙へ商流を集中させます。',
+  },
+  {
+    id: 'savage_raid_3_layer_3',
+    series: 3,
+    layer: 3,
+    encounterName: '黄金香料交易網',
+    coalitionName: 'トラル国際交易会',
+    battlePropertyId: 'prop_coffee_aurora',
+    memberPropertyIds: ['prop_coffee_aurora'],
+    communities: ['トライヨラ'],
+    rewardSynergyIds: [],
+    marketPrice: 2_550_000_000,
+    description:
+      '世界規模の需要変動を操る第3層。風・支援・アビリティの順序が勝敗を分けます。',
+  },
+  {
+    id: 'savage_raid_3_layer_4',
+    series: 3,
+    layer: 4,
+    encounterName: '黄金新興経済連合',
+    coalitionName: 'トラル・未来都市共同戦線',
+    battlePropertyId: 'prop_abyss_mine',
+    memberPropertyIds: ['prop_abyss_heavy', 'prop_abyss_mine'],
+    communities: ['トライヨラ', 'ソリューション・ナイン'],
+    rewardSynergyIds: [],
+    marketPrice: 2_880_000_000,
+    description:
+      '資源調達から販売網までを束ねた最終層。無敵防衛を含む全システムの総力戦です。',
   },
 ] as const;
 
@@ -135,11 +259,74 @@ export const ULTIMATE_RAID_DEFINITION = {
   industry: '娯楽・商業' as IndustryType,
   community: 'ソリューション・ナイン' as CommunityType,
   description:
-    '商戦 零式4層を踏破した商会だけが挑める、本作独自の単独・最終高難度交易戦。通常の所有権と収益からは独立した名誉記録です。',
+    '商戦 零式3編・全12章を踏破した商会だけが挑める、本作独自の単独・最終高難度交易戦。通常の所有権と収益からは独立した名誉記録です。',
 } as const;
 
 const propertyById = (properties: Property[], id: string) =>
   properties.find((property) => property.id === id);
+
+const LEGACY_FOUR_LAYER_MIGRATIONS = [
+  {
+    legacyRaidId: 'prop_starter_farm',
+    newRaidIds: [
+      'prop_starter_farm',
+      'prop_blacksmith',
+      'prop_wheat_farm',
+      'prop_abyss_heavy',
+    ],
+    memberPropertyIds: [
+      'prop_starter_farm',
+      'prop_starter_bakery',
+      'prop_timber_ake',
+      'prop_land_transport',
+      'prop_brewery_beer',
+      'prop_iron_mine',
+      'prop_pub_central',
+      'prop_casino_grand',
+    ],
+  },
+  {
+    legacyRaidId: 'prop_blacksmith',
+    newRaidIds: [
+      'savage_raid_2_layer_1',
+      'savage_raid_2_layer_2',
+      'savage_raid_2_layer_3',
+      'savage_raid_2_layer_4',
+    ],
+    memberPropertyIds: [
+      'prop_ranch_1',
+      'prop_horse_meat',
+      'prop_blacksmith',
+      'prop_weapon_dealer',
+      'prop_detective',
+      'prop_info_broker',
+    ],
+  },
+  {
+    legacyRaidId: 'prop_wheat_farm',
+    newRaidIds: [
+      'savage_raid_3_layer_1',
+      'savage_raid_3_layer_2',
+    ],
+    memberPropertyIds: [
+      'prop_inn_town',
+      'prop_wheat_farm',
+      'prop_security_firm',
+    ],
+  },
+  {
+    legacyRaidId: 'prop_abyss_heavy',
+    newRaidIds: [
+      'savage_raid_3_layer_3',
+      'savage_raid_3_layer_4',
+    ],
+    memberPropertyIds: [
+      'prop_coffee_aurora',
+      'prop_abyss_heavy',
+      'prop_abyss_mine',
+    ],
+  },
+] as const;
 
 export const getSavageTargetIds = (properties: Property[]) =>
   SAVAGE_RAID_DEFINITIONS
@@ -147,34 +334,50 @@ export const getSavageTargetIds = (properties: Property[]) =>
     .map((raid) => raid.id);
 
 /**
- * Converts the former 20-encounter clear list into the four-layer tier.
- * A legacy layer counts only when every normal encounter assigned to it was
- * cleared. New saves carry a progress-version marker and store the four IDs
- * directly.
+ * Progress-version 3 stores all twelve IDs directly. Version 2 stored the
+ * former four layers; each one expands to the new chapters that carry the same
+ * property and synergy rewards. Pre-versioned 20-encounter saves still require
+ * every encounter in a former layer. A previously acknowledged Savage ending
+ * is grandfathered as a complete tier so an already unlocked Ultimate duty is
+ * never relocked.
  */
 export const normalizeSavageClearedRaidIds = (
   savedIds: readonly string[],
-  isCurrentFormat: boolean,
+  progressVersion: SavageProgressVersion | undefined,
   legacyTierWasComplete = false
 ) => {
   const saved = new Set(savedIds);
-  if (isCurrentFormat) {
+  if (legacyTierWasComplete) {
+    return SAVAGE_RAID_DEFINITIONS.map((raid) => raid.id);
+  }
+  if (progressVersion === 3) {
     return SAVAGE_RAID_DEFINITIONS
       .filter((raid) => saved.has(raid.id))
       .map((raid) => raid.id);
   }
-  if (legacyTierWasComplete) {
-    return SAVAGE_RAID_DEFINITIONS.map((raid) => raid.id);
-  }
+  const migrated = new Set(
+    LEGACY_FOUR_LAYER_MIGRATIONS.flatMap((migration) => {
+      const completed =
+        progressVersion === 2
+          ? saved.has(migration.legacyRaidId)
+          : migration.memberPropertyIds.every((propertyId) =>
+              saved.has(propertyId)
+            );
+      return completed ? migration.newRaidIds : [];
+    })
+  );
   return SAVAGE_RAID_DEFINITIONS
-    .filter((raid) =>
-      raid.memberPropertyIds.every((propertyId) => saved.has(propertyId))
-    )
+    .filter((raid) => migrated.has(raid.id))
     .map((raid) => raid.id);
 };
 
 export const getSavageRaidDefinition = (id: string) =>
   SAVAGE_RAID_DEFINITIONS.find((raid) => raid.id === id) ?? null;
+
+export const getSavageSeriesDefinition = (series: SavageSeries) =>
+  SAVAGE_SERIES_DEFINITIONS.find(
+    (definition) => definition.series === series
+  ) ?? SAVAGE_SERIES_DEFINITIONS[0];
 
 export const buildSavageProperties = (
   properties: Property[],
@@ -197,7 +400,7 @@ export const buildSavageProperties = (
       countsTowardCityConquest: false,
       groupKeys: raid.rewardSynergyIds,
       description:
-        `${raid.description} 通常物件の所有権・毎秒収益・独立危険度は変化しません。`,
+        `第${raid.series}編「${getSavageSeriesDefinition(raid.series).name}」。${raid.description} 通常物件の所有権・毎秒収益・独立危険度は変化しません。`,
     }];
   });
 
