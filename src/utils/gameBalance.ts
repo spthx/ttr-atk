@@ -8,6 +8,7 @@ export const BATTLE_GAUGE_SPEED_FACTOR = 4;
 export const TRAINING_GAUGE_SPEED_MULTIPLIER = 0.1;
 export const TRAINING_MIN_OWNERSHIP_PERCENT = 1;
 export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
+export const STARTER_BAKERY_ENEMY_BUDGET_RATIO = 0.8;
 export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.58;
 export const SAVAGE_LAYER_BUDGET_MULTIPLIERS = [1, 1.08, 1.16, 1.25] as const;
 export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 2.2;
@@ -27,6 +28,53 @@ export const holdTrainingGaugeAboveDefeat = (
 ) => isTraining
   ? Math.min(gauge, 100 - TRAINING_MIN_OWNERSHIP_PERCENT * 2)
   : gauge;
+
+export const DIRECT_INVESTMENT_BALANCE = {
+  baseGaugeImpact: 1.2,
+  gaugeImpactPerMarketRatio: 20,
+  standardImpactCap: 14,
+  levelOneTrainingMultiplier: 12.5,
+  levelOneTrainingImpactCap: 40,
+} as const;
+
+/**
+ * Direct investment normally uses one campaign-wide curve. The first
+ * training dummy alone amplifies that same input so a new player can see a
+ * complete capital cycle in a few commands instead of grinding for minutes.
+ */
+export const calculateDirectInvestmentGaugeImpact = ({
+  investmentAmount,
+  marketPrice,
+  windMultiplier = 1,
+  levelOneTraining = false,
+}: {
+  investmentAmount: number;
+  marketPrice: number;
+  windMultiplier?: number;
+  levelOneTraining?: boolean;
+}) => {
+  const baseImpact =
+    (
+      DIRECT_INVESTMENT_BALANCE.baseGaugeImpact +
+      (
+        Math.max(0, investmentAmount) /
+        Math.max(1, marketPrice)
+      ) *
+        DIRECT_INVESTMENT_BALANCE.gaugeImpactPerMarketRatio
+    ) *
+    Math.max(0, windMultiplier);
+
+  return levelOneTraining
+    ? Math.min(
+        DIRECT_INVESTMENT_BALANCE.levelOneTrainingImpactCap,
+        baseImpact *
+          DIRECT_INVESTMENT_BALANCE.levelOneTrainingMultiplier
+      )
+    : Math.min(
+        DIRECT_INVESTMENT_BALANCE.standardImpactCap,
+        baseImpact
+      );
+};
 
 export type BattleTerminalWinner = 'player' | 'opponent' | null;
 
@@ -697,7 +745,7 @@ export const calculateEnemyBudget = ({
               ? ENEMY_BALANCE_FACTOR.uldah
               : ENEMY_BALANCE_FACTOR.advanced;
 
-  return Math.round(
+  const calculatedBudget = Math.round(
     baseBudget * balanceFactor *
     (isUltimate
       ? ULTIMATE_ENEMY_BUDGET_MULTIPLIER
@@ -707,6 +755,20 @@ export const calculateEnemyBudget = ({
         : NORMAL_ENEMY_BUDGET_MULTIPLIER *
           getNormalEnemyCampaignMultiplier(targetProperty, isTutorial))
   );
+
+  if (
+    !isTutorial &&
+    !isSavage &&
+    !isUltimate &&
+    targetProperty.id === 'prop_starter_bakery'
+  ) {
+    return Math.max(
+      calculatedBudget,
+      Math.round(price * STARTER_BAKERY_ENEMY_BUDGET_RATIO)
+    );
+  }
+
+  return calculatedBudget;
 };
 
 export const getLimitBreakTier = (

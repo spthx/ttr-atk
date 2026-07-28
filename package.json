@@ -14,7 +14,8 @@
     "build": "npm run build:game && vinext build",
     "start": "vinext start",
     "lint": "tsc --noEmit",
-    "check:balance": "tsx scripts/check-balance.ts"
+    "check:balance": "tsx scripts/check-balance.ts",
+    "check:simulations": "tsx scripts/check-battle-simulations.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
