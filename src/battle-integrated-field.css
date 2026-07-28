@@ -1563,18 +1563,18 @@
 
 .integrated-battlefield.integrated-battlefield--finisher-player
   .ownership-avatar.ownership-avatar--player {
-  animation: tataru-final-charge 1.12s cubic-bezier(.22, .76, .2, 1) both;
+  animation: tataru-final-charge 1s cubic-bezier(.22, .76, .2, 1) both;
 }
 
 .integrated-battlefield.integrated-battlefield--finisher-direct.integrated-battlefield--finisher-impact
   .ownership-avatar.ownership-avatar--enemy {
-  animation: enemy-final-knockout .56s cubic-bezier(.18, .72, .24, 1) both;
+  animation: enemy-final-knockout .4s cubic-bezier(.18, .72, .24, 1) both;
 }
 
 .integrated-battlefield.integrated-battlefield--finisher-collapse.integrated-battlefield--finisher-impact
   .ownership-avatar.ownership-avatar--enemy {
   transform-origin: 52% 84%;
-  animation: enemy-self-collapse .78s cubic-bezier(.2, .68, .22, 1) both;
+  animation: enemy-self-collapse .4s cubic-bezier(.2, .68, .22, 1) both;
 }
 
 .integrated-battlefield--finisher-direct.integrated-battlefield--finisher-impact .capital-clash {
@@ -1612,19 +1612,16 @@
 }
 
 @keyframes tataru-final-charge {
-  0% { transform: scaleX(-1); filter: brightness(1); }
+  0% { transform: scaleX(-1); }
   16% { transform: translateX(-.45rem) scaleX(-1) rotate(4deg); }
   58% {
     transform: translateX(var(--finisher-travel)) scaleX(-1) rotate(-7deg);
-    filter: brightness(1.3) drop-shadow(0 0 .8rem rgba(125, 211, 252, .9));
   }
   72% {
     transform: translateX(calc(var(--finisher-travel) + .7rem)) scaleX(-1) rotate(-10deg);
-    filter: brightness(1.8) drop-shadow(0 0 1rem rgba(250, 204, 21, .92));
   }
   100% {
     transform: translateX(calc(var(--finisher-travel) - .3rem)) scaleX(-1);
-    filter: brightness(1.12);
   }
 }
 
@@ -1632,17 +1629,14 @@
   0% { transform: translateX(0) rotate(0); opacity: 1; }
   38% {
     transform: translateX(1.5rem) rotate(12deg) scale(.94);
-    filter: brightness(1.9);
   }
   72% {
     transform: translateX(2.7rem) translateY(.4rem) rotate(48deg) scale(.87);
     opacity: .82;
-    filter: brightness(1.02);
   }
   100% {
     transform: translateX(3.2rem) translateY(1rem) rotate(72deg) scale(.78);
     opacity: .58;
-    filter: brightness(.68);
   }
 }
 
@@ -1650,29 +1644,25 @@
   0%, 18% {
     transform: translateX(0) translateY(0) rotate(0deg);
     opacity: 1;
-    filter: brightness(1);
   }
   42% {
     transform: translateX(.15rem) translateY(.05rem) rotate(7deg);
     opacity: 1;
-    filter: brightness(1.34);
   }
   78% {
     transform: translateX(1.2rem) translateY(.74rem) rotate(78deg) scale(.9);
     opacity: .8;
-    filter: brightness(.82) grayscale(.2);
   }
   100% {
     transform: translateX(1.5rem) translateY(1rem) rotate(90deg) scale(.86);
     opacity: .58;
-    filter: brightness(.62) grayscale(.38);
   }
 }
 
 @keyframes final-clash-burst {
   0% { opacity: .4; transform: scale(.6); }
-  38% { opacity: 1; transform: scale(2.2); filter: brightness(2.2); }
-  100% { opacity: 0; transform: scale(3.2); filter: blur(.18rem); }
+  38% { opacity: 1; transform: scale(2.2); }
+  100% { opacity: 0; transform: scale(3.2); }
 }
 
 .integrated-battlefield .ownership-board__labels > b > strong {
@@ -1710,6 +1700,7 @@
   .integrated-battlefield--finisher-player {
     --finisher-travel: clamp(12rem, 53vw, 14.5rem);
   }
+
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2280,8 +2271,267 @@
   animation-play-state: paused !important;
 }
 
+/*
+ * Cinematics own the eye and the animation budget. Keep only the finite
+ * foreground action moving; background currents resume from the same frame.
+ */
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .battlefield-pressure-lane__player,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .battlefield-pressure-lane__enemy,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .battlefield-pressure-lane__front i,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .battle-commerce-flow > i,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .ownership-track,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .ownership-track__player,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .ownership-track__tension,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .ownership-track__marker,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .ownership-track__marker > i,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .capital-clash i,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .gil-tower__overflow > i,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .battle-wind-magic > i,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .battle-marquee--active > span,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .investment-execute.is-ready,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .battle-action-strip__overflow i {
+  animation-play-state: paused !important;
+}
+
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .ownership-track__player::after,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .ownership-track__enemy-flow::after,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .capital-visual-row::before,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .capital-visual-row::after,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .capital-clash::before,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .capital-clash::after,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .integrated-battlefield--era-wind .battlefield-pressure-lane::before,
+.buyout-screen:is(
+  .buyout-screen--skill-cinematic,
+  .buyout-screen--impact-hitstop,
+  .buyout-screen--impact-release,
+  .buyout-screen--limit-impact,
+  .buyout-screen--terminal-cinematic,
+  .buyout-screen--ambient-paused
+) .integrated-battlefield--era-wind .battlefield-pressure-lane::after {
+  animation-play-state: paused !important;
+}
+
+.integrated-battlefield--finisher-enemy {
+  --enemy-finisher-travel: clamp(-39rem, -52vw, -13rem);
+}
+
+.integrated-battlefield--finisher-enemy
+  .ownership-avatar.ownership-avatar--enemy {
+  z-index: 64;
+  animation: enemy-final-charge 1s cubic-bezier(.22, .76, .2, 1) both;
+}
+
+.integrated-battlefield--terminal-hitstop.integrated-battlefield--finisher-player
+  .ownership-avatar.ownership-avatar--player {
+  transform: translateX(calc(var(--finisher-travel) - .3rem)) scaleX(-1);
+  animation: none;
+}
+
+.integrated-battlefield--terminal-hitstop.integrated-battlefield--finisher-direct
+  .ownership-avatar.ownership-avatar--enemy {
+  transform: translateX(1.5rem) rotate(12deg) scale(.94);
+  opacity: 1;
+  animation: none;
+}
+
+.integrated-battlefield--terminal-hitstop.integrated-battlefield--finisher-collapse
+  .ownership-avatar.ownership-avatar--enemy {
+  transform: translateX(.15rem) translateY(.05rem) rotate(7deg);
+  opacity: 1;
+  animation: none;
+}
+
+.integrated-battlefield--terminal-impact.integrated-battlefield--finisher-player
+  .ownership-avatar.ownership-avatar--player {
+  animation: tataru-final-settle .4s ease-out both;
+}
+
+.integrated-battlefield--terminal-hitstop.integrated-battlefield--finisher-direct
+  .capital-clash {
+  opacity: 1;
+  transform: scale(1.7);
+  animation: none;
+}
+
+.integrated-battlefield--terminal-hitstop.integrated-battlefield--finisher-enemy
+  .ownership-avatar.ownership-avatar--enemy {
+  transform: translateX(var(--enemy-finisher-travel)) rotate(-8deg);
+  animation: none;
+}
+
+.integrated-battlefield--terminal-hitstop.integrated-battlefield--finisher-enemy
+  .ownership-avatar.ownership-avatar--player {
+  transform: translateX(-1.5rem) scaleX(-1) rotate(-12deg) scale(.94);
+  opacity: 1;
+  animation: none;
+}
+
+.integrated-battlefield--terminal-impact.integrated-battlefield--finisher-enemy
+  .ownership-avatar.ownership-avatar--enemy {
+  animation: enemy-final-settle .4s ease-out both;
+}
+
+.integrated-battlefield--terminal-impact.integrated-battlefield--finisher-enemy
+  .ownership-avatar.ownership-avatar--player {
+  animation: player-final-knockout .4s cubic-bezier(.18, .72, .24, 1) both;
+}
+
 .integrated-battlefield--terminal-anticipation {
-  filter: saturate(.74) contrast(1.08);
+  filter: none;
 }
 
 .integrated-battlefield--terminal-anticipation .battlefield-pressure-lane__front {
@@ -2289,12 +2539,13 @@
   transition-duration: .9s;
 }
 
+.integrated-battlefield--terminal-hitstop,
 .integrated-battlefield--terminal-impact {
-  filter: brightness(1.28) contrast(1.12);
+  filter: none;
 }
 
+.integrated-battlefield--terminal-hitstop .battlefield-pressure-lane__front,
 .integrated-battlefield--terminal-impact .battlefield-pressure-lane__front {
-  width: .42rem;
   filter: brightness(2);
   box-shadow:
     0 0 .4rem #fff,
@@ -2302,7 +2553,75 @@
 }
 
 .integrated-battlefield--terminal-resolution {
-  filter: saturate(.82) brightness(.76);
+  filter: none;
+}
+
+@keyframes enemy-final-charge {
+  0% { transform: translateX(0); }
+  16% { transform: translateX(.45rem) rotate(-4deg); }
+  72% { transform: translateX(calc(var(--enemy-finisher-travel) - .7rem)) rotate(10deg); }
+  100% { transform: translateX(var(--enemy-finisher-travel)) rotate(-8deg); }
+}
+
+@keyframes tataru-final-settle {
+  0%, 16% {
+    transform: translateX(calc(var(--finisher-travel) - .3rem)) scaleX(-1);
+  }
+  55% {
+    transform: translateX(calc(var(--finisher-travel) + .25rem)) scaleX(-1) rotate(-5deg);
+  }
+  100% {
+    transform: translateX(calc(var(--finisher-travel) - .1rem)) scaleX(-1);
+  }
+}
+
+@keyframes enemy-final-settle {
+  0%, 16% { transform: translateX(var(--enemy-finisher-travel)) rotate(-8deg); }
+  55% { transform: translateX(calc(var(--enemy-finisher-travel) - .25rem)) rotate(5deg); }
+  100% { transform: translateX(var(--enemy-finisher-travel)); }
+}
+
+@keyframes player-final-knockout {
+  0% {
+    transform: translateX(-1.5rem) scaleX(-1) rotate(-12deg) scale(.94);
+    opacity: 1;
+  }
+  62% {
+    transform: translateX(-2.7rem) translateY(.4rem) scaleX(-1) rotate(-48deg) scale(.87);
+    opacity: .82;
+  }
+  100% {
+    transform: translateX(-3.2rem) translateY(1rem) scaleX(-1) rotate(-72deg) scale(.78);
+    opacity: .58;
+  }
+}
+
+.buyout-screen--lightweight
+  .integrated-battlefield--terminal-anticipation.integrated-battlefield--finisher-player
+  .ownership-avatar--player,
+.buyout-screen--lightweight
+  .integrated-battlefield--terminal-anticipation.integrated-battlefield--finisher-enemy
+  .ownership-avatar--enemy {
+  animation-duration: .14s;
+}
+
+.buyout-screen--lightweight
+  .integrated-battlefield--terminal-impact
+  .ownership-avatar,
+.buyout-screen--lightweight
+  .integrated-battlefield--terminal-impact
+  .capital-clash {
+  animation-duration: .12s;
+}
+
+.buyout-screen--lightweight .battle-terminal-resolution {
+  animation-duration: .28s;
+}
+
+@media (max-width: 639px) {
+  .integrated-battlefield--finisher-enemy {
+    --enemy-finisher-travel: clamp(-14.5rem, -53vw, -12rem);
+  }
 }
 
 .integrated-battlefield--terminal-resolution.integrated-battlefield--terminal-winner-player
@@ -2347,6 +2666,7 @@
     radial-gradient(circle at center, rgba(59, 130, 246, .22), transparent 38%),
     linear-gradient(180deg, transparent 18%, rgba(2, 6, 23, .5) 42% 62%, transparent 86%);
   animation: battle-terminal-resolution-in .72s cubic-bezier(.2, .76, .2, 1) both;
+  contain: layout paint style;
 }
 
 .battle-terminal-resolution > div {
@@ -2357,6 +2677,7 @@
   padding: 1rem .8rem;
   color: #eff6ff;
   text-align: center;
+  animation: battle-terminal-resolution-card .28s cubic-bezier(.2, .76, .2, 1) both;
 }
 
 .battle-terminal-resolution small {
@@ -2402,18 +2723,13 @@
 }
 
 @keyframes battle-terminal-resolution-in {
-  0% {
-    opacity: 0;
-    filter: brightness(1.9);
-  }
-  24% {
-    opacity: 1;
-    filter: brightness(1.25);
-  }
-  100% {
-    opacity: 1;
-    filter: brightness(1);
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes battle-terminal-resolution-card {
+  from { opacity: 0; transform: scale(.96); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 @media (max-width: 639px) {
@@ -2447,7 +2763,8 @@
 @media (prefers-reduced-motion: reduce) {
   .battle-commerce-flow > i,
   .battle-status-message,
-  .battle-terminal-resolution {
+  .battle-terminal-resolution,
+  .battle-terminal-resolution > div {
     animation: none !important;
   }
 
@@ -3393,9 +3710,9 @@
 }
 
 @keyframes capital-readout-impact {
-  0% { filter: brightness(1); scale: 1; }
-  38% { filter: brightness(1.75); scale: 1.08; }
-  100% { filter: brightness(1); scale: 1; }
+  0% { filter: brightness(1); translate: 0 .06rem; }
+  38% { filter: brightness(1.75); translate: 0 -.025rem; }
+  100% { filter: brightness(1); translate: 0 0; }
 }
 
 .integrated-battlefield .battle-wind-sigil {
@@ -3685,7 +4002,7 @@
 .integrated-battlefield .battlefield-pressure-lane__player,
 .integrated-battlefield .battlefield-pressure-lane__enemy,
 .integrated-battlefield .battlefield-pressure-lane__front {
-  will-change: background-position, left, right, filter, opacity;
+  will-change: auto;
 }
 
 .integrated-battlefield .battlefield-pressure-lane__player {
@@ -4117,14 +4434,14 @@
 }
 
 @keyframes battlefield-avatar-player-hurt {
-  0%, 100% { transform: scaleX(-1); filter: brightness(1); }
-  38% { transform: translateX(-8px) scaleX(-1) rotate(4deg); filter: brightness(1.65); }
+  0%, 100% { transform: scaleX(-1); opacity: 1; }
+  38% { transform: translateX(-8px) scaleX(-1) rotate(4deg); opacity: .72; }
   64% { transform: translateX(4px) scaleX(-1); }
 }
 
 @keyframes battlefield-avatar-enemy-hurt {
-  0%, 100% { transform: none; filter: brightness(1); }
-  38% { transform: translateX(8px) rotate(-4deg); filter: brightness(1.65); }
+  0%, 100% { transform: none; opacity: 1; }
+  38% { transform: translateX(8px) rotate(-4deg); opacity: .72; }
   64% { transform: translateX(-4px); }
 }
 
@@ -4238,6 +4555,7 @@
   .integrated-battlefield .battle-wind-magic i,
   .gil-tower__overflow > i,
   .integrated-battlefield--finisher-player .ownership-avatar--player,
+  .integrated-battlefield--finisher-enemy .ownership-avatar,
   .integrated-battlefield--finisher-impact .ownership-avatar--enemy,
   .integrated-battlefield--finisher-impact .capital-clash,
   .investment-execute-button:not(:disabled) {
@@ -4434,6 +4752,17 @@
 
 .buyout-screen--lightweight .integrated-battlefield .battle-commerce-flow {
   filter: none;
+}
+
+.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__front i,
+.buyout-screen--lightweight .integrated-battlefield .ownership-track__marker,
+.buyout-screen--lightweight .integrated-battlefield .ownership-track__marker > i,
+.buyout-screen--lightweight .integrated-battlefield .capital-clash i {
+  animation: none !important;
+}
+
+.buyout-screen--lightweight .battle-action-strip__overflow i:nth-child(n + 3) {
+  display: none;
 }
 
 @media (max-width: 639px) {
@@ -4766,7 +5095,7 @@
   display: none;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview {
+.buyout-screen .integrated-battlefield .investment-stake-preview {
   position: absolute;
   z-index: 5;
   right: .3rem;
@@ -4780,7 +5109,7 @@
   transform-origin: 65% 86%;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview::after {
+.buyout-screen .integrated-battlefield .investment-stake-preview::after {
   position: absolute;
   z-index: -1;
   right: 2%;
@@ -4794,167 +5123,59 @@
   box-shadow: 0 .2rem .42rem rgba(0, 0, 0, .54);
 }
 
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview > img {
+.buyout-screen .integrated-battlefield .investment-stake-preview > img {
   position: absolute;
-  right: 0;
+  right: .2rem;
   bottom: 0;
   display: block;
   width: auto;
-  height: 3.15rem;
+  height: 3.1rem;
   object-fit: contain;
   object-position: center bottom;
+  transform-origin: center bottom;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-1 > img {
+.buyout-screen .integrated-battlefield .investment-stake-preview--cargo-coin > img {
   right: .4rem;
   height: 1.42rem;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-2 > img {
+.buyout-screen .integrated-battlefield .investment-stake-preview--cargo-bundle > img {
   right: .25rem;
-  height: 1.55rem;
-  rotate: -6deg;
+  height: 2.35rem;
+  rotate: -3deg;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-2 > img:nth-child(2) {
-  right: 1.5rem;
-  rotate: 6deg;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-3 > img {
+.buyout-screen .integrated-battlefield .investment-stake-preview--cargo-bag > img {
   right: .35rem;
-  height: 3.05rem;
+  height: 3.15rem;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-4 > img {
+.buyout-screen .integrated-battlefield .investment-stake-preview--level-4 > img {
   right: .2rem;
-  height: 3.35rem;
+  height: 3.62rem;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-4 > img:nth-child(2) {
-  right: 1.75rem;
-  height: 3.07rem;
+.buyout-screen .integrated-battlefield .investment-stake-preview--level-5 {
+  right: .08rem;
+  bottom: .24rem;
+  width: min(7rem, 44%);
+  height: 4.95rem;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 {
-  right: -1.35rem;
-  bottom: .12rem;
-  width: min(14rem, 112%);
-  height: 7.35rem;
+.buyout-screen .integrated-battlefield .investment-stake-preview--level-5 > img {
+  right: 0;
+  bottom: 0;
+  height: 4.58rem;
+  opacity: 1;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img {
-  right: -.8rem;
-  bottom: 3.18rem;
-  z-index: 1;
-  height: 2.68rem;
-  opacity: .64;
-  filter: none;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(2) {
-  right: 2rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(3) {
-  right: 5rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(4) {
-  right: 8rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(5) {
-  right: 11rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(n + 6):nth-child(-n + 10) {
-  bottom: 1.72rem;
-  z-index: 2;
-  height: 3.14rem;
-  opacity: .82;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(6) {
-  right: -.34rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(7) {
-  right: 2.4rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(8) {
-  right: 5.2rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(9) {
-  right: 8rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(10) {
-  right: 10.8rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(n + 11):nth-child(-n + 16) {
-  bottom: .18rem;
-  z-index: 3;
-  height: 3.64rem;
-  opacity: .98;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(11) {
-  right: -.64rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(12) {
-  right: 1.5rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(13) {
-  right: 3.7rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(14) {
-  right: 5.9rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(15) {
-  right: 8.1rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(16) {
-  right: 10.3rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(n + 17) {
-  bottom: 3.68rem;
-  z-index: 4;
-  height: 3.38rem;
-  opacity: .92;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(17) {
-  right: 1.4rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(18) {
-  right: 4.3rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(19) {
-  right: 7.2rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img:nth-child(20) {
-  right: 10.1rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5::after {
-  right: -3%;
-  bottom: -.08rem;
-  width: 106%;
-  height: 1.22rem;
-  border-color: rgba(252, 211, 77, .54);
+.buyout-screen .integrated-battlefield .investment-stake-preview--level-5::after {
+  right: 0;
+  bottom: -.12rem;
+  width: 82%;
+  height: .82rem;
+  border-color: rgba(252, 211, 77, .42);
   background:
     linear-gradient(180deg, rgba(30, 41, 59, .42), rgba(2, 6, 23, .88)),
     radial-gradient(ellipse, rgba(250, 204, 21, .34), transparent 68%);
@@ -4964,31 +5185,12 @@
     0 0 .58rem rgba(250, 204, 21, .24);
 }
 
-.buyout-screen--lightweight .integrated-battlefield .investment-stake-preview.is-committing {
-  animation: investment-stake-commit .42s cubic-bezier(.24, .74, .28, 1) both;
-}
-
 .buyout-screen--lightweight .integrated-battlefield .gil-tower--enemy .gil-chip-image,
 .buyout-screen--lightweight .integrated-battlefield .gil-tower--enemy .gil-tower__formation > img {
   filter:
     saturate(.96)
     brightness(.92)
     drop-shadow(0 0 .34rem rgba(244, 63, 94, .46));
-}
-
-@keyframes investment-stake-commit {
-  0% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  72% {
-    opacity: .92;
-    transform: translate3d(-18%, -18%, 0) scale(.78);
-  }
-  100% {
-    opacity: 0;
-    transform: translate3d(-24%, -22%, 0) scale(.66);
-  }
 }
 
 .buyout-screen--lightweight .integrated-battlefield .ownership-capital-readout > strong {
@@ -5018,29 +5220,29 @@
     left: -.85rem;
   }
 
-  .buyout-screen--lightweight .integrated-battlefield .investment-stake-preview {
+  .buyout-screen .integrated-battlefield .investment-stake-preview {
     right: .12rem;
     bottom: .34rem;
     width: min(5.7rem, 44%);
     height: 3.75rem;
   }
 
-  .buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 > img {
-    height: 2.68rem;
+  .buyout-screen .integrated-battlefield .investment-stake-preview--level-5 > img {
+    right: .05rem;
+    height: 3.95rem;
   }
 
-  .buyout-screen--lightweight .integrated-battlefield .investment-stake-preview--level-5 {
-    right: -1.28rem;
-    bottom: .08rem;
-    width: min(13.5rem, 112%);
-    height: 7.15rem;
-    scale: 1;
+  .buyout-screen .integrated-battlefield .investment-stake-preview--level-5 {
+    right: .04rem;
+    bottom: .2rem;
+    width: min(5.8rem, 44%);
+    height: 4.25rem;
     transform-origin: right bottom;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .buyout-screen--lightweight .integrated-battlefield .investment-stake-preview.is-committing {
+  .buyout-screen .integrated-battlefield .investment-stake-preview.is-committing {
     animation: none;
   }
 }
