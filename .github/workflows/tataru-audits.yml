@@ -1,0 +1,99 @@
+name: Tataru audit tasks
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    name: Baseline build and rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+      - run: npm ci
+      - name: TypeScript check
+        run: npm run lint
+      - name: Existing balance assertions
+        run: npm run check:balance
+      - name: Production build
+        run: npm run build:pages
+
+  save-load:
+    name: Task 1 - Save and load stability
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: baseline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+      - run: npm ci
+      - name: Run 1000-cycle save/load audit
+        env:
+          TATARU_SAVE_AUDIT_ITERATIONS: 1000
+        run: npx tsx scripts/audit-save-load.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tataru-save-load-audit
+          path: artifacts/tataru-save-load/
+          if-no-files-found: warn
+
+  battle-balance:
+    name: Task 2 - Battle balance
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: baseline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+      - run: npm ci
+      - name: Run strategy and encounter simulations
+        env:
+          TATARU_BATTLE_AUDIT_SEEDS: 80
+          TATARU_BATTLE_WIND_SEEDS: 250
+        run: npx tsx scripts/audit-battle-balance.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tataru-battle-balance-audit
+          path: artifacts/tataru-battle-balance/
+          if-no-files-found: warn
+
+  economy-progression:
+    name: Task 3 - Economy and progression
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: baseline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+      - run: npm ci
+      - name: Run 1000 campaign and liquidation-cycle audit
+        env:
+          TATARU_ECONOMY_AUDIT_CAMPAIGNS: 1000
+          TATARU_LIQUIDATION_AUDIT_TRIALS: 1000
+        run: npx tsx scripts/audit-economy-progression.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tataru-economy-progression-audit
+          path: artifacts/tataru-economy-progression/
+          if-no-files-found: warn
