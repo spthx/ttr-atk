@@ -744,6 +744,19 @@ export default function App() {
   }, [activeBattleProperty]);
 
   // Handlers
+  const hasBattleBrokerageFunds = (property: Property) => {
+    const brokerageFee = Math.round(property.marketPrice * 0.03);
+    if (totalFunds >= brokerageFee) return true;
+    soundFx.playWarning();
+    addGameLog(
+      `【資金不足】${property.name}との商戦には仲介手数料 ${formatCurrency(
+        brokerageFee
+      )} が必要です。`,
+      'warning'
+    );
+    return false;
+  };
+
   const handleStartBuyout = (property: Property) => {
     if (!unlockedCommunityIds.has(property.community)) {
       soundFx.playWarning();
@@ -751,17 +764,7 @@ export default function App() {
       setActiveTab('market');
       return;
     }
-    const brokerageFee = Math.round(property.marketPrice * 0.03);
-    if (totalFunds < brokerageFee) {
-      soundFx.playWarning();
-      addGameLog(
-        `【資金不足】${property.name}との交渉には仲介手数料 ${formatCurrency(
-          brokerageFee
-        )} が必要です。`,
-        'warning'
-      );
-      return;
-    }
+    if (!hasBattleBrokerageFunds(property)) return;
     soundFx.playCoin();
     persistGameState();
     persistPendingBattleSession('normal', property);
@@ -772,6 +775,7 @@ export default function App() {
 
   const handleStartSavageBuyout = (property: Property) => {
     if (!savageUnlocked || !savageUnlockedIds.has(property.id)) return;
+    if (!hasBattleBrokerageFunds(property)) return;
     soundFx.playCoin();
     persistGameState();
     persistPendingBattleSession('savage', property);
@@ -782,6 +786,7 @@ export default function App() {
 
   const handleStartUltimateBuyout = (property: Property) => {
     if (!ultimateUnlocked) return;
+    if (!hasBattleBrokerageFunds(property)) return;
     soundFx.playCoin();
     persistGameState();
     persistPendingBattleSession('ultimate', property);
