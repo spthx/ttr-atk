@@ -95,6 +95,42 @@ export const LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER = 1.2;
 export const BATTLE_CASH_RECOVERY_RATE_PER_SECOND = 0.003;
 export const BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO = 0.2;
 
+export type EnemySupportSkillId =
+  | 'cure'
+  | 'mug'
+  | 'drill'
+  | 'divination';
+
+export interface EnemySupportDifficultyContext {
+  isSavage?: boolean;
+  isUltimate?: boolean;
+}
+
+export const ENEMY_SUPPORT_SKILL_BALANCE = {
+  cure: {
+    normalRecoveryRatio: 0.08,
+    highDifficultyRecoveryRatio: 0.1,
+    triggerReserveRatio: 0.35,
+    triggerPlayerOwnership: 55,
+    minimumUsefulRecoveryRatio: 0.03,
+  },
+  mug: {
+    maxMarks: 1,
+    nextGaugeImpactMultiplier: 1.05,
+  },
+  drill: {
+    normalOwnershipPush: 4,
+    savageOwnershipPush: 5,
+    ultimateOwnershipPush: 6,
+    reserveCostRatio: 0.06,
+  },
+  divination: {
+    normalDurationMs: 3_500,
+    highDifficultyDurationMs: 4_000,
+    enemyInvestmentMultiplier: 1.35,
+  },
+} as const;
+
 export type BattleCashRecoveryWindType =
   | 'TAILWIND_PLAYER'
   | 'HEADWIND_PLAYER'
@@ -204,6 +240,166 @@ export const advanceBattleCashRecovery = ({
 export const getBattleCashRecoveryWindMultipliers = (
   windType: BattleCashRecoveryWindType
 ) => BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS[windType];
+
+export const getEnemyCureRecoveryRatio = ({
+  isSavage = false,
+  isUltimate = false,
+}: EnemySupportDifficultyContext) =>
+  isSavage || isUltimate
+    ? ENEMY_SUPPORT_SKILL_BALANCE.cure.highDifficultyRecoveryRatio
+    : ENEMY_SUPPORT_SKILL_BALANCE.cure.normalRecoveryRatio;
+
+export interface EnemyCureRecoveryInput
+  extends BattleCashRecoveryState,
+    EnemySupportDifficultyContext {
+  baselineFunds: number;
+}
+
+/**
+ * Applies the one-shot enemy Cure to the same cumulative 20% recovery pool as
+ * passive battle recovery. It never changes ownership or invested capital.
+ */
+export const applyEnemyCureRecovery = ({
+  baselineFunds,
+  availableFunds,
+  cumulativeRecovered,
+  isSavage = false,
+  isUltimate = false,
+}: EnemyCureRecoveryInput): BattleCashRecoveryStepResult => {
+  const baseline = finiteNonNegative(baselineFunds);
+  const currentFunds = Math.min(
+    baseline,
+    finiteNonNegative(availableFunds)
+  );
+  const cumulativeCap =
+    baseline * BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO;
+  const recoveredSoFar = Math.min(
+    cumulativeCap,
+    finiteNonNegative(cumulativeRecovered)
+  );
+  const requestedRecovery =
+    baseline *
+    getEnemyCureRecoveryRatio({ isSavage, isUltimate });
+  const recoveredThisStep = Math.min(
+    requestedRecovery,
+    baseline - currentFunds,
+    cumulativeCap - recoveredSoFar
+  );
+  const nextCumulativeRecovered =
+    recoveredSoFar + recoveredThisStep;
+
+  return {
+    availableFunds: currentFunds + recoveredThisStep,
+    cumulativeRecovered: nextCumulativeRecovered,
+    recoveredThisStep,
+    cumulativeRecoveryRatio:
+      baseline > 0 ? nextCumulativeRecovered / baseline : 0,
+  };
+};
+
+export interface EnemyCureTriggerInput
+  extends EnemyCureRecoveryInput {
+  playerOwnership: number;
+  terminal: boolean;
+}
+
+export const shouldEnemyUseCure = ({
+  playerOwnership,
+  terminal,
+  ...recoveryInput
+}: EnemyCureTriggerInput) => {
+  if (terminal) return false;
+  const baseline = finiteNonNegative(recoveryInput.baselineFunds);
+  if (baseline <= 0) return false;
+  const currentFunds = Math.min(
+    baseline,
+    finiteNonNegative(recoveryInput.availableFunds)
+  );
+  const reserveRatio = currentFunds / baseline;
+  const pressureTrigger =
+    normalizeBattleOwnership(playerOwnership) >=
+    ENEMY_SUPPORT_SKILL_BALANCE.cure.triggerPlayerOwnership;
+  const reserveTrigger =
+    reserveRatio <=
+    ENEMY_SUPPORT_SKILL_BALANCE.cure.triggerReserveRatio;
+  if (!pressureTrigger && !reserveTrigger) return false;
+
+  const recovery = applyEnemyCureRecovery(recoveryInput);
+  return (
+    recovery.recoveredThisStep >=
+    baseline *
+      ENEMY_SUPPORT_SKILL_BALANCE.cure.minimumUsefulRecoveryRatio
+  );
+};
+
+export const getEnemyDrillOwnershipPush = ({
+  isSavage = false,
+  isUltimate = false,
+}: EnemySupportDifficultyContext) =>
+  isUltimate
+    ? ENEMY_SUPPORT_SKILL_BALANCE.drill.ultimateOwnershipPush
+    : isSavage
+      ? ENEMY_SUPPORT_SKILL_BALANCE.drill.savageOwnershipPush
+      : ENEMY_SUPPORT_SKILL_BALANCE.drill.normalOwnershipPush;
+
+export const calculateEnemyDrillReserveCost = (enemyBudget: number) =>
+  finiteNonNegative(enemyBudget) <= 0
+    ? 0
+    : Math.max(
+        1,
+        Math.round(
+          finiteNonNegative(enemyBudget) *
+            ENEMY_SUPPORT_SKILL_BALANCE.drill.reserveCostRatio
+        )
+      );
+
+export const canEnemyAffordDrill = (
+  enemyReserve: number,
+  enemyBudget: number
+) =>
+  calculateEnemyDrillReserveCost(enemyBudget) > 0 &&
+  finiteNonNegative(enemyReserve) >=
+    calculateEnemyDrillReserveCost(enemyBudget);
+
+export const getEnemyDrillImpact = ({
+  enemyBudget,
+  hasMugMark = false,
+  isSavage = false,
+  isUltimate = false,
+}: EnemySupportDifficultyContext & {
+  enemyBudget: number;
+  hasMugMark?: boolean;
+}) => {
+  const baseOwnershipPush = getEnemyDrillOwnershipPush({
+    isSavage,
+    isUltimate,
+  });
+  const ownershipPush = Number(
+    (
+      baseOwnershipPush *
+      (
+        hasMugMark
+          ? ENEMY_SUPPORT_SKILL_BALANCE.mug.nextGaugeImpactMultiplier
+          : 1
+      )
+    ).toFixed(2)
+  );
+  return {
+    baseOwnershipPush,
+    ownershipPush,
+    gaugeDelta: Number((ownershipPush * 2).toFixed(2)),
+    reserveCost: calculateEnemyDrillReserveCost(enemyBudget),
+    consumesMugMark: hasMugMark,
+  };
+};
+
+export const getEnemyDivinationDurationMs = ({
+  isSavage = false,
+  isUltimate = false,
+}: EnemySupportDifficultyContext) =>
+  isSavage || isUltimate
+    ? ENEMY_SUPPORT_SKILL_BALANCE.divination.highDifficultyDurationMs
+    : ENEMY_SUPPORT_SKILL_BALANCE.divination.normalDurationMs;
 
 export const TACTICAL_SKILL_BALANCE = {
   fastAction: {
@@ -683,6 +879,59 @@ export const applyCoverToGaugeDelta = ({
 export const getSavageLayer = (targetProperty: Property) => {
   const match = targetProperty.name.match(/商戦 零式：第([1-4])層/);
   return match ? Math.max(1, Math.min(4, Number(match[1]))) : 1;
+};
+
+const NO_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [];
+const CURE_ONLY: readonly EnemySupportSkillId[] = ['cure'];
+const MUG_ONLY: readonly EnemySupportSkillId[] = ['mug'];
+const MUG_DRILL: readonly EnemySupportSkillId[] = ['mug', 'drill'];
+const DIVINATION_ONLY: readonly EnemySupportSkillId[] = ['divination'];
+const CURE_DIVINATION: readonly EnemySupportSkillId[] = [
+  'cure',
+  'divination',
+];
+const ALL_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [
+  'cure',
+  'mug',
+  'drill',
+  'divination',
+];
+
+export interface EnemySupportProfileContext
+  extends EnemySupportDifficultyContext {
+  targetProperty: Property;
+  isCityBoss: boolean;
+}
+
+/**
+ * Keeps support mechanics on authored boss encounters. Ordinary properties
+ * and training battles retain their existing AI and balance.
+ */
+export const getEnemySupportSkillProfile = ({
+  targetProperty,
+  isCityBoss,
+  isSavage = false,
+  isUltimate = false,
+}: EnemySupportProfileContext): readonly EnemySupportSkillId[] => {
+  if (isUltimate) return ALL_ENEMY_SUPPORT_SKILLS;
+  if (isSavage) {
+    const layer = getSavageLayer(targetProperty);
+    if (layer === 1) return CURE_ONLY;
+    if (layer === 2) return MUG_ONLY;
+    if (layer === 3) return MUG_DRILL;
+    return DIVINATION_ONLY;
+  }
+  if (!isCityBoss) return NO_ENEMY_SUPPORT_SKILLS;
+
+  const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
+    targetProperty.community
+  );
+  if (campaignIndex === 5) return CURE_ONLY;
+  if (campaignIndex === 6) return MUG_ONLY;
+  if (campaignIndex === 7) return MUG_DRILL;
+  if (campaignIndex === 8) return DIVINATION_ONLY;
+  if (campaignIndex === 9) return CURE_DIVINATION;
+  return NO_ENEMY_SUPPORT_SKILLS;
 };
 
 export const getSavageLayerBudgetMultiplier = (targetProperty: Property) =>
