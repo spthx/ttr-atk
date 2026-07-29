@@ -711,6 +711,13 @@
 .tataru-analysis p { display: flex; flex-direction: column; gap: .22rem; margin: 0; }
 .tataru-analysis b { color: #f7d978; font-size: .68rem; }
 .tataru-analysis span { color: #c5cfdd; font-size: .63rem; line-height: 1.5; }
+.tataru-analysis .tataru-analysis__finance {
+  margin-top: .08rem;
+  padding-top: .28rem;
+  border-top: 1px solid rgba(245, 196, 81, .2);
+  color: #fde68a;
+  font-weight: 800;
+}
 .result-numbers {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -829,6 +836,12 @@
     radial-gradient(circle at 88% 8%, rgba(251, 113, 133, .12), transparent 30%),
     linear-gradient(125deg, rgba(64, 10, 28, .96), rgba(10, 17, 33, .98));
 }
+.result-settlement-summary.is-neutral {
+  border-color: rgba(125, 211, 252, .42);
+  background:
+    radial-gradient(circle at 88% 8%, rgba(125, 211, 252, .11), transparent 30%),
+    linear-gradient(125deg, rgba(8, 35, 55, .96), rgba(6, 18, 35, .98));
+}
 .result-settlement-summary > header {
   display: flex;
   align-items: center;
@@ -857,6 +870,9 @@
 .result-settlement-summary.is-negative > header strong {
   color: #fda4af;
 }
+.result-settlement-summary.is-neutral > header strong {
+  color: #bae6fd;
+}
 .result-settlement-summary dl {
   display: grid;
   gap: .2rem;
@@ -881,6 +897,16 @@
   font: 900 .65rem/1.2 ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+.result-settlement-summary dl > .result-settlement-summary__funds-total {
+  margin-top: .12rem;
+  padding-top: .36rem;
+  border-top-color: rgba(250, 204, 21, .38);
+}
+.result-settlement-summary__funds-total dt,
+.result-settlement-summary__funds-total dd {
+  color: #fde68a;
+  font-weight: 900;
 }
 .result-battle-details {
   margin: 0 .8rem .65rem;
