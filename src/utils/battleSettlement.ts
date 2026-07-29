@@ -31,6 +31,49 @@ export const calculateLiquidationCashback = (
   );
 };
 
+export interface BattleSettlementSummary {
+  transactionDelta: number;
+  fundsDelta: number;
+  outcome: 'profit' | 'loss' | 'balanced';
+}
+
+/**
+ * Keeps the result headline tied to the battle itself. Liquidation proceeds
+ * are reported separately so a profitable asset sale cannot disguise a
+ * loss-making acquisition.
+ */
+export const calculateBattleSettlementSummary = ({
+  victoryReward,
+  brokerageFee,
+  settlementCost,
+  celebrationGiftCost,
+  liquidationCashback,
+}: {
+  victoryReward: number;
+  brokerageFee: number;
+  settlementCost: number;
+  celebrationGiftCost: number;
+  liquidationCashback: number;
+}): BattleSettlementSummary => {
+  const transactionDelta =
+    victoryReward -
+    brokerageFee -
+    settlementCost -
+    celebrationGiftCost;
+  const fundsDelta = transactionDelta + liquidationCashback;
+
+  return {
+    transactionDelta,
+    fundsDelta,
+    outcome:
+      transactionDelta > 0
+        ? 'profit'
+        : transactionDelta < 0
+          ? 'loss'
+          : 'balanced',
+  };
+};
+
 export interface PostVictoryLoyaltySettlement {
   survivors: Property[];
   leaving: Property[];
