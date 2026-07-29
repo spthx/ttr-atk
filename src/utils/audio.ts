@@ -500,18 +500,19 @@ class SoundEffects {
   }
 
   /**
-   * LB impact is separated from the charging cue: draw, three fast cuts, then
-   * one capital hit. This keeps the sequence crisp instead of overlapping all
-   * layers at button press.
+   * LB impact is separated from the shared fan-kit charging cue. The same
+   * bounded voices become one, two or three cuts so higher tiers sound
+   * stronger without loading or decoding another asset.
    */
-  playLimitBreakImpact() {
+  playLimitBreakImpact(tier: number = 1) {
     if (!this.enabled) return;
     try {
       const ctx = this.initCtx();
       if (!ctx) return;
+      const resolvedTier = Math.max(1, Math.min(3, Math.floor(tier)));
       const now = ctx.currentTime;
       const master = ctx.createGain();
-      master.gain.setValueAtTime(0.72, now);
+      master.gain.setValueAtTime(0.56 + resolvedTier * 0.055, now);
       master.gain.exponentialRampToValueAtTime(0.001, now + 0.72);
       master.connect(ctx.destination);
 
@@ -530,7 +531,8 @@ class SoundEffects {
       draw.start(now);
       draw.stop(now + 0.15);
 
-      [0.1, 0.225, 0.36].forEach((delay, index) => {
+      const slashDelays = [0.1, 0.225, 0.36].slice(0, resolvedTier);
+      slashDelays.forEach((delay, index) => {
         const start = now + delay;
         const duration = 0.105;
         const noiseBuffer = ctx.createBuffer(
@@ -579,12 +581,20 @@ class SoundEffects {
       if (this.limitImpactTimer !== null) {
         window.clearTimeout(this.limitImpactTimer);
       }
+      const finalSlashDelay = slashDelays.at(-1) ?? 0.1;
       this.limitImpactTimer = window.setTimeout(() => {
         this.limitImpactTimer = null;
-        this.playCapitalImpact('player', 1);
-      }, 470);
+        this.playCapitalImpact(
+          'player',
+          resolvedTier === 1 ? 0.55 : resolvedTier === 2 ? 0.78 : 1
+        );
+      }, Math.round((finalSlashDelay + 0.11) * 1_000));
     } catch {
-      this.playCapitalImpact('player', 1);
+      const resolvedTier = Math.max(1, Math.min(3, Math.floor(tier)));
+      this.playCapitalImpact(
+        'player',
+        resolvedTier === 1 ? 0.55 : resolvedTier === 2 ? 0.78 : 1
+      );
     }
   }
 

@@ -15,6 +15,7 @@ import {
 import { calculateBattleReadiness } from '../src/utils/battleReadiness';
 import {
   applyNormalBattlePropertyUpdates,
+  calculateBattleSettlementSummary,
   calculateLiquidationCashback,
   resolvePostVictoryLoyalty,
 } from '../src/utils/battleSettlement';
@@ -2166,6 +2167,47 @@ assert.equal(
   ]),
   2_000,
   'liquidation cashback is calculated outside React state updaters and deduplicated'
+);
+assert.deepEqual(
+  calculateBattleSettlementSummary({
+    victoryReward: 5_000,
+    brokerageFee: 3_000,
+    settlementCost: 1_000,
+    celebrationGiftCost: 0,
+    liquidationCashback: 0,
+  }),
+  {
+    transactionDelta: 1_000,
+    fundsDelta: 1_000,
+    outcome: 'profit',
+  },
+  'a profitable acquisition is labelled from the battle transaction itself'
+);
+assert.deepEqual(
+  calculateBattleSettlementSummary({
+    victoryReward: 5_000,
+    brokerageFee: 3_000,
+    settlementCost: 4_000,
+    celebrationGiftCost: 500,
+    liquidationCashback: 8_000,
+  }),
+  {
+    transactionDelta: -2_500,
+    fundsDelta: 5_500,
+    outcome: 'loss',
+  },
+  'liquidation proceeds cannot disguise a loss-making acquisition'
+);
+assert.equal(
+  calculateBattleSettlementSummary({
+    victoryReward: 4_000,
+    brokerageFee: 3_000,
+    settlementCost: 1_000,
+    celebrationGiftCost: 0,
+    liquidationCashback: 0,
+  }).outcome,
+  'balanced',
+  'zero transaction profit is reported as balanced rather than black ink'
 );
 const settledProperties = applyNormalBattlePropertyUpdates({
   properties: [
