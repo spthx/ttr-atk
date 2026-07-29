@@ -112,6 +112,7 @@ import {
 } from '../src/utils/trainingDummy';
 import {
   advanceBattleCashRecovery,
+  applyEnemyCureRecovery,
   applyCoverToGaugeDelta,
   applyTrainingGaugeSpeed,
   BOSS_COVER_BALANCE,
@@ -122,6 +123,7 @@ import {
   BATTLE_LOYALTY_BALANCE,
   BATTLE_SUPPORT_BALANCE,
   calculateDirectInvestmentGaugeImpact,
+  calculateEnemyDrillReserveCost,
   calculateSubsidiarySupportAmount,
   calculateCelebrationGiftCost,
   calculateCompanyStrengthScore,
@@ -170,10 +172,18 @@ import {
   STARTER_BAKERY_ENEMY_BUDGET_RATIO,
   ULTIMATE_ENEMY_BUDGET_MULTIPLIER,
   getEnemyDifficultyLevel,
+  getEnemyDivinationDurationMs,
+  getEnemyDrillImpact,
+  getEnemyDrillOwnershipPush,
+  getEnemySupportSkillProfile,
   getNormalEnemyCampaignMultiplier,
   getSavageLayerBudgetMultiplier,
   calculateEraWindCost,
   getEraWindGaugePushPerSecond,
+  canEnemyAffordDrill,
+  ENEMY_SUPPORT_SKILL_BALANCE,
+  getEnemyCureRecoveryRatio,
+  shouldEnemyUseCure,
 } from '../src/utils/gameBalance';
 import {
   advanceBattleWind,
@@ -1238,6 +1248,41 @@ const campaignSummary = COMMUNITY_CAMPAIGN_ORDER.map((community, index) => {
   };
 });
 
+const expectedNormalEnemySupportProfiles = [
+  [],
+  [],
+  [],
+  [],
+  [],
+  ['cure'],
+  ['mug'],
+  ['mug', 'drill'],
+  ['divination'],
+  ['cure', 'divination'],
+] as const;
+COMMUNITY_CAMPAIGN_ORDER.forEach((community, index) => {
+  const targets = getCampaignProperties(INITIAL_PROPERTIES, community);
+  const boss = targets.at(-1)!;
+  assert.deepEqual(
+    getEnemySupportSkillProfile({
+      targetProperty: boss,
+      isCityBoss: true,
+    }),
+    expectedNormalEnemySupportProfiles[index],
+    `normal city ${index + 1} has its authored enemy support profile`
+  );
+  if (targets.length > 1) {
+    assert.deepEqual(
+      getEnemySupportSkillProfile({
+        targetProperty: targets[0],
+        isCityBoss: false,
+      }),
+      [],
+      `normal city ${index + 1} ordinary encounters keep the base AI`
+    );
+  }
+});
+
 for (let index = 4; index <= 8; index += 1) {
   assert.ok(
     campaignSummary[index].maxPrice > campaignSummary[index - 1].maxPrice,
@@ -1257,6 +1302,21 @@ assert.deepEqual(
 assert.deepEqual(
   SAVAGE_RAID_DEFINITIONS.map((raid) => raid.layer),
   [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4]
+);
+assert.deepEqual(
+  savageProperties.map((property) =>
+    getEnemySupportSkillProfile({
+      targetProperty: property,
+      isCityBoss: false,
+      isSavage: true,
+    })
+  ),
+  [
+    ['cure'], ['mug'], ['mug', 'drill'], ['divination'],
+    ['cure'], ['mug'], ['mug', 'drill'], ['divination'],
+    ['cure'], ['mug'], ['mug', 'drill'], ['divination'],
+  ],
+  'all three Savage series repeat the authored four-layer support pattern'
 );
 SAVAGE_SERIES_DEFINITIONS.forEach((series) => {
   assert.deepEqual(
@@ -1456,6 +1516,15 @@ assert.equal(
 const ultimateProperty = buildUltimateProperty(false, '検証商会');
 assert.equal(ultimateProperty.id, ULTIMATE_RAID_DEFINITION.id);
 assert.equal(ultimateProperty.annualRevenue, 0);
+assert.deepEqual(
+  getEnemySupportSkillProfile({
+    targetProperty: ultimateProperty,
+    isCityBoss: false,
+    isUltimate: true,
+  }),
+  ['cure', 'mug', 'drill', 'divination'],
+  'Ultimate exposes the complete sequential enemy support kit'
+);
 assert.ok(
   ultimateProperty.marketPrice > savageProperties[savageProperties.length - 1].marketPrice
 );
@@ -2554,6 +2623,198 @@ assert.deepEqual(
     cumulativeRecoveryRatio: 0.0567,
   },
   'terminal battle state freezes cash recovery'
+);
+
+assert.deepEqual(ENEMY_SUPPORT_SKILL_BALANCE.cure, {
+  normalRecoveryRatio: 0.08,
+  highDifficultyRecoveryRatio: 0.1,
+  triggerReserveRatio: 0.35,
+  triggerPlayerOwnership: 55,
+  minimumUsefulRecoveryRatio: 0.03,
+});
+assert.equal(getEnemyCureRecoveryRatio({}), 0.08);
+assert.equal(getEnemyCureRecoveryRatio({ isSavage: true }), 0.1);
+assert.equal(getEnemyCureRecoveryRatio({ isUltimate: true }), 0.1);
+assert.deepEqual(
+  applyEnemyCureRecovery({
+    baselineFunds: recoveryBaseline,
+    availableFunds: 0,
+    cumulativeRecovered: 0,
+  }),
+  {
+    availableFunds: 800,
+    cumulativeRecovered: 800,
+    recoveredThisStep: 800,
+    cumulativeRecoveryRatio: 0.08,
+  },
+  'normal Cure restores 8% of the enemy opening budget'
+);
+assert.deepEqual(
+  applyEnemyCureRecovery({
+    baselineFunds: recoveryBaseline,
+    availableFunds: 0,
+    cumulativeRecovered: 0,
+    isSavage: true,
+  }),
+  {
+    availableFunds: 1_000,
+    cumulativeRecovered: 1_000,
+    recoveredThisStep: 1_000,
+    cumulativeRecoveryRatio: 0.1,
+  },
+  'Savage Cure restores 10% of the enemy opening budget'
+);
+assert.deepEqual(
+  applyEnemyCureRecovery({
+    baselineFunds: recoveryBaseline,
+    availableFunds: 2_500,
+    cumulativeRecovered: 1_500,
+  }),
+  {
+    availableFunds: 3_000,
+    cumulativeRecovered: 2_000,
+    recoveredThisStep: 500,
+    cumulativeRecoveryRatio: 0.2,
+  },
+  'Cure shares and cannot exceed the existing cumulative 20% recovery pool'
+);
+assert.deepEqual(
+  applyEnemyCureRecovery({
+    baselineFunds: recoveryBaseline,
+    availableFunds: 9_700,
+    cumulativeRecovered: 0,
+    isUltimate: true,
+  }),
+  {
+    availableFunds: 10_000,
+    cumulativeRecovered: 300,
+    recoveredThisStep: 300,
+    cumulativeRecoveryRatio: 0.03,
+  },
+  'Cure cannot overflow the enemy opening reserve'
+);
+assert.equal(
+  shouldEnemyUseCure({
+    baselineFunds: recoveryBaseline,
+    availableFunds: 3_500,
+    cumulativeRecovered: 0,
+    playerOwnership: 54.99,
+    terminal: false,
+  }),
+  true,
+  'Cure reserve trigger includes the exact 35% boundary'
+);
+assert.equal(
+  shouldEnemyUseCure({
+    baselineFunds: recoveryBaseline,
+    availableFunds: 3_501,
+    cumulativeRecovered: 0,
+    playerOwnership: 54.99,
+    terminal: false,
+  }),
+  false,
+  'Cure does not trigger above both pressure thresholds'
+);
+assert.equal(
+  shouldEnemyUseCure({
+    baselineFunds: recoveryBaseline,
+    availableFunds: 9_000,
+    cumulativeRecovered: 0,
+    playerOwnership: 55,
+    terminal: false,
+  }),
+  true,
+  'Cure player-pressure trigger includes the exact 55% boundary'
+);
+assert.equal(
+  shouldEnemyUseCure({
+    baselineFunds: recoveryBaseline,
+    availableFunds: 3_500,
+    cumulativeRecovered: 1_700,
+    playerOwnership: 55,
+    terminal: false,
+  }),
+  true,
+  'Cure can consume the final exact 3% of the shared recovery pool'
+);
+assert.equal(
+  shouldEnemyUseCure({
+    baselineFunds: recoveryBaseline,
+    availableFunds: 3_500,
+    cumulativeRecovered: 1_701,
+    playerOwnership: 55,
+    terminal: false,
+  }),
+  false,
+  'Cure skips a visually negligible remainder below 3%'
+);
+assert.equal(
+  shouldEnemyUseCure({
+    baselineFunds: recoveryBaseline,
+    availableFunds: 0,
+    cumulativeRecovered: 0,
+    playerOwnership: 100,
+    terminal: true,
+  }),
+  false,
+  'Cure never starts after terminal settlement'
+);
+assert.deepEqual(
+  applyEnemyCureRecovery({
+    baselineFunds: 0,
+    availableFunds: Number.NaN,
+    cumulativeRecovered: Number.POSITIVE_INFINITY,
+  }),
+  {
+    availableFunds: 0,
+    cumulativeRecovered: 0,
+    recoveredThisStep: 0,
+    cumulativeRecoveryRatio: 0,
+  },
+  'Cure sanitizes invalid zero-baseline recovery input'
+);
+
+assert.equal(calculateEnemyDrillReserveCost(10_000), 600);
+assert.equal(calculateEnemyDrillReserveCost(0), 0);
+assert.equal(canEnemyAffordDrill(599, 10_000), false);
+assert.equal(canEnemyAffordDrill(600, 10_000), true);
+assert.equal(canEnemyAffordDrill(0, 0), false);
+assert.equal(getEnemyDrillOwnershipPush({}), 4);
+assert.equal(getEnemyDrillOwnershipPush({ isSavage: true }), 5);
+assert.equal(getEnemyDrillOwnershipPush({ isUltimate: true }), 6);
+assert.deepEqual(
+  getEnemyDrillImpact({
+    enemyBudget: 10_000,
+  }),
+  {
+    baseOwnershipPush: 4,
+    ownershipPush: 4,
+    gaugeDelta: 8,
+    reserveCost: 600,
+    consumesMugMark: false,
+  }
+);
+assert.deepEqual(
+  getEnemyDrillImpact({
+    enemyBudget: 10_000,
+    isUltimate: true,
+    hasMugMark: true,
+  }),
+  {
+    baseOwnershipPush: 6,
+    ownershipPush: 6.3,
+    gaugeDelta: 12.6,
+    reserveCost: 600,
+    consumesMugMark: true,
+  },
+  'Mug adds one 5% vulnerability mark and Drill consumes it'
+);
+assert.equal(getEnemyDivinationDurationMs({}), 3_500);
+assert.equal(getEnemyDivinationDurationMs({ isSavage: true }), 4_000);
+assert.equal(getEnemyDivinationDurationMs({ isUltimate: true }), 4_000);
+assert.equal(
+  ENEMY_SUPPORT_SKILL_BALANCE.divination.enemyInvestmentMultiplier,
+  1.35
 );
 
 const enemyOwnershipBeforeReserveRecovery = 48;
