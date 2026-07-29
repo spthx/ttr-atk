@@ -51,7 +51,10 @@ import {
   PlayerBattleAction,
 } from '../utils/enemyAi';
 import { calculateBattleReadiness } from '../utils/battleReadiness';
-import { resolvePostVictoryLoyalty } from '../utils/battleSettlement';
+import {
+  calculateBattleSettlementSummary,
+  resolvePostVictoryLoyalty,
+} from '../utils/battleSettlement';
 import {
   BATTLE_CINEMATIC_TIMING,
   BATTLE_GAUGE_VISUAL_COMMIT_MS,
@@ -140,8 +143,6 @@ import {
 } from '../utils/gameBalance';
 export { ENEMY_BALANCE_FACTOR, LIMIT_BREAK_MULTIPLIERS };
 import gilChipPlayer from '../assets/battle/gil-chip-player.png';
-import gilMedallionPlayer from '../assets/battle/gil-medallion-player.png';
-import capitalCargoPlayer from '../assets/battle/capital-cargo-player.webp';
 import '../battle-buyout.css';
 import '../battle-balance.css';
 import '../battle-clarity.css';
@@ -490,7 +491,6 @@ const GilTower: React.FC<{
   const visualStage = getCapitalVisualStageForBundleCount(bundleCount);
   const spriteCount = getCapitalVisualSpriteCount(bundleCount);
   const chipAsset = gilChipPlayer;
-  const medallionAsset = gilMedallionPlayer;
   const capitalRatio = committedCapital / Math.max(marketPrice, 1);
   const formation = getCapitalFormation(visualStage);
 
@@ -524,7 +524,7 @@ const GilTower: React.FC<{
             <i className="gil-tower__hoard-band gil-tower__hoard-band--near" />
           </span>
         )}
-        {visualStage >= 4 && (
+        {visualStage >= 5 && (
           <span
             className={`gil-tower__formation gil-tower__formation--${formation}`}
             aria-hidden="true"
@@ -542,10 +542,10 @@ const GilTower: React.FC<{
         {Array.from({ length: spriteCount }).map((_, index) => (
           <img
             key={`${side}-${index}`}
-            src={index === 0 ? medallionAsset : chipAsset}
+            src={chipAsset}
             alt=""
             aria-hidden="true"
-            className={`${index === 0 ? 'gil-chip-image gil-chip-image--medallion' : 'gil-chip-image gil-chip-image--stack'}${motion === side && index === Math.max(0, spriteCount - 1) ? ' gil-chip-image--falling' : ''}`}
+            className={`gil-chip-image gil-chip-image--stack${index === 0 ? ' gil-chip-image--starter' : ''}${motion === side && index === Math.max(0, spriteCount - 1) ? ' gil-chip-image--falling' : ''}`}
             style={{
               '--chip-index': index,
               '--chip-count': bundleCount,
@@ -564,12 +564,7 @@ const InvestmentStakePreview: React.FC<{
   motionSerial: number;
   lightweightMode: boolean;
 }> = ({ level, stage, motionSerial, lightweightMode }) => {
-  const cargo =
-    level <= 1
-      ? { kind: 'coin', src: gilMedallionPlayer }
-      : level === 2
-        ? { kind: 'bundle', src: gilChipPlayer }
-        : { kind: 'bag', src: capitalCargoPlayer };
+  const cargo = { kind: 'bundle', src: gilChipPlayer } as const;
 
   return (
     <div
@@ -2336,7 +2331,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setTerminalCinematicStage('hitstop');
       updateGauge(result === 'player' ? -100 : 100);
       setDecisiveBlow({ winner: result, impacted: true });
-      soundFx.playCapitalImpact(result, 1);
+      // The tiered LB impact already supplies the contact beat. Reusing it
+      // avoids a second synthesized hit during compact terminal timelines.
+      if (cause !== 'limit_break' || !compactCinematic) {
+        soundFx.playCapitalImpact(result, 1);
+      }
     }, anticipationMs);
     decisiveReleaseTimerRef.current = window.setTimeout(() => {
       decisiveReleaseTimerRef.current = null;
@@ -3151,7 +3150,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const demandFromAllies = () => {
-    if (limitBreakTier === 0 || !consumeCommand()) return;
+    if (
+      limitBreakTier === 0 ||
+      limitBreakTimerRef.current !== null ||
+      limitTerminalHandoffTimerRef.current !== null ||
+      !consumeCommand()
+    ) {
+      return;
+    }
     setPanel('capital');
     setLastPlayerAction('LIMIT_BREAK');
     setActiveLimitBreakTier(limitBreakTier);
@@ -3245,16 +3251,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       );
       const resolvedGaugeAfter = coveredLimitBreak.nextGauge;
       const coverOwnershipPushback = coveredLimitBreak.absorbedGauge / 2;
+      const coverResultLabel =
+        bossAbilityTier === 'invincible' ? '無敵' : 'かばう';
       const limitBreakResultText =
         `LIMIT BREAK ${limitBreakTier}！ 所有率+${ownershipPush.toFixed(1)}pt` +
         (defenseResult.actual > 0
           ? ` / 緊急防衛-${defenseOwnershipPushback.toFixed(1)}pt`
           : '') +
         (coverOwnershipPushback > 0
-          ? ` / かばう-${coverOwnershipPushback.toFixed(1)}pt`
+          ? ` / ${coverResultLabel}-${coverOwnershipPushback.toFixed(1)}pt`
           : '');
       addLog(limitBreakResultText, 'skill');
-      soundFx.playLimitBreakImpact();
+      soundFx.playLimitBreakImpact(limitBreakTier);
       const pendingLimitWinner = getBattleTerminalWinner(resolvedGaugeAfter);
       if (pendingLimitWinner) {
         updateGauge(pendingLimitWinner === 'player' ? -99 : 99);
@@ -3615,26 +3623,84 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const appliedCelebrationGiftCost = celebrationGiftApplied
     ? celebrationGiftCost
     : 0;
+  const resultSettlementPending =
+    celebrationDecisionRequired && !celebrationDecision;
   const resultLiquidationCashback = isProtectedBattle
     ? 0
     : Array.from(
         new Map(rebelled.map((property) => [property.id, property])).values()
       ).reduce((total, property) => total + property.marketPrice, 0);
-  const resultFundsDelta = isTraining
-    ? 0
-    : resultVictoryReward +
-      resultLiquidationCashback -
-      brokerageFee -
-      resultSettlementCost -
-      appliedCelebrationGiftCost;
+  const resultSettlementSummary = isTraining
+    ? {
+        transactionDelta: 0,
+        fundsDelta: 0,
+        outcome: 'balanced' as const,
+      }
+    : calculateBattleSettlementSummary({
+        victoryReward: resultVictoryReward,
+        brokerageFee,
+        settlementCost: resultSettlementCost,
+        celebrationGiftCost: appliedCelebrationGiftCost,
+        liquidationCashback: resultLiquidationCashback,
+      });
+  const resultTransactionDelta = resultSettlementSummary.transactionDelta;
+  const resultFundsDelta = resultSettlementSummary.fundsDelta;
+  const resultSettlementTone =
+    resultSettlementPending
+      ? 'is-neutral'
+      : resultSettlementSummary.outcome === 'profit'
+      ? 'is-positive'
+      : resultSettlementSummary.outcome === 'loss'
+        ? 'is-negative'
+        : 'is-neutral';
+  const resultSettlementLabel =
+    resultSettlementPending
+      ? '配分前収支'
+      : resultSettlementSummary.outcome === 'balanced'
+      ? '収支均衡'
+      : resultSettlementSummary.outcome === 'profit'
+        ? isHighEndRaid
+          ? '黒字攻略'
+          : winner === 'player'
+            ? '黒字買収'
+            : '黒字撤退'
+        : winner === 'player'
+          ? isHighEndRaid
+            ? '赤字攻略'
+            : '赤字買収'
+          : '赤字撤退';
+  const resultTransactionName = isHighEndRaid ? '攻略' : '買収';
+  const resultFinancialComment = isTraining
+    ? '訓練収支は0ギルでっす。'
+    : resultSettlementPending
+      ? '利益の配分を選ぶと、買収収支が確定するでっす。'
+      : resultSettlementSummary.outcome === 'balanced'
+      ? `${resultTransactionName}収支は均衡でっす。`
+      : winner === 'player'
+        ? `${resultTransactionName}収支は${formatCurrency(
+            Math.abs(resultTransactionDelta)
+          )}の${resultSettlementSummary.outcome === 'profit' ? '黒字' : '赤字'}でっす。`
+        : `今回は${formatCurrency(Math.abs(resultTransactionDelta))}の赤字撤退でっす。`;
+  const resultLiquidationComment =
+    resultLiquidationCashback > 0
+      ? ` 離脱資産の清算込みの資金増減は${resultFundsDelta >= 0 ? '+' : '-'}${formatCurrency(
+          Math.abs(resultFundsDelta)
+        )}でっす。`
+      : '';
 
+  const rebelledPropertyIds = new Set(
+    rebelled.map((property) => property.id)
+  );
+  const continuingProperties = ownedProperties.filter(
+    (property) => !rebelledPropertyIds.has(property.id)
+  );
   const growthProperties =
     winner === 'player' &&
     !isTraining &&
     !isHighEndRaid &&
     !ownedProperties.some((property) => property.id === targetProperty.id)
       ? [
-          ...ownedProperties,
+          ...continuingProperties,
           {
             ...targetProperty,
             owner: 'player' as const,
@@ -3642,7 +3708,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             loyaltyRisk: 0,
           },
         ]
-      : ownedProperties;
+      : continuingProperties;
   const companyStrengthBefore = calculateCompanyStrengthScore(
     totalFunds,
     ownedProperties
@@ -3877,6 +3943,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     isDirectTerminalCause(terminalRef.current?.cause);
   const terminalUsesSelfCollapse =
     decisiveBlow?.winner === 'player' && !terminalUsesDirectFinisher;
+  const displayedLimitBreakTier =
+    activeLimitBreakTier || limitBreakTier || 1;
   const announcementEncounterName = isSavage
     ? targetProperty.name.replace(
         /\s*商戦 零式：第([1-4])層$/,
@@ -3892,7 +3960,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   return (
     <div
       ref={rootDialogRef}
-      className={`buyout-screen buyout-screen--phase-${battlePhase} buyout-screen--living-${livingDeadPhase} ${lightweightMode ? 'buyout-screen--lightweight' : ''} ${lightweightPauseActive ? 'buyout-screen--ambient-paused' : ''} ${isTraining ? 'buyout-screen--training' : ''} ${isBossBattle ? `buyout-screen--boss buyout-screen--boss-${bossAbilityTier}` : ''} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''} ${impactStop ? `buyout-screen--impact-${impactStop.phase} buyout-screen--impact-${impactStop.side} ${impactStop.heavy ? 'buyout-screen--impact-heavy' : ''}` : ''} ${capitalPresentationStage && activeCapitalTiming ? `buyout-screen--capital-commit buyout-screen--capital-${capitalPresentationStage} buyout-screen--capital-${activeCapitalTiming.tier}` : ''} ${skillCinematic ? `buyout-screen--skill-cinematic buyout-screen--skill-stage-${skillCinematic.stage} buyout-screen--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${isBurstTime ? 'buyout-screen--burst' : ''} ${decisiveBlow ? `buyout-screen--decisive buyout-screen--decisive-${decisiveBlow.winner}` : ''} ${terminalCinematicStage ? `buyout-screen--terminal-cinematic buyout-screen--terminal-${terminalCinematicStage}` : ''}`}
+      className={`buyout-screen buyout-screen--phase-${battlePhase} buyout-screen--living-${livingDeadPhase} ${lightweightMode ? 'buyout-screen--lightweight' : ''} ${lightweightPauseActive ? 'buyout-screen--ambient-paused' : ''} ${isTraining ? 'buyout-screen--training' : ''} ${isBossBattle ? `buyout-screen--boss buyout-screen--boss-${bossAbilityTier}` : ''} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''} ${battleAnnouncement === 'limit' || limitImpactActive ? `buyout-screen--limit-tier-${displayedLimitBreakTier}` : ''} ${impactStop ? `buyout-screen--impact-${impactStop.phase} buyout-screen--impact-${impactStop.side} ${impactStop.heavy ? 'buyout-screen--impact-heavy' : ''}` : ''} ${capitalPresentationStage && activeCapitalTiming ? `buyout-screen--capital-commit buyout-screen--capital-${capitalPresentationStage} buyout-screen--capital-${activeCapitalTiming.tier}` : ''} ${skillCinematic ? `buyout-screen--skill-cinematic buyout-screen--skill-stage-${skillCinematic.stage} buyout-screen--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${isBurstTime ? 'buyout-screen--burst' : ''} ${decisiveBlow ? `buyout-screen--decisive buyout-screen--decisive-${decisiveBlow.winner}` : ''} ${terminalCinematicStage ? `buyout-screen--terminal-cinematic buyout-screen--terminal-${terminalCinematicStage}` : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label={
@@ -3907,13 +3975,21 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         <img className="buyout-backdrop" src={FANKIT_ART.battleBackdrop} alt="" aria-hidden="true" />
       )}
       {limitImpactActive && (
-        <div className="limit-impact-field" aria-hidden="true">
+        <div
+          className={`limit-impact-field limit-impact-field--tier-${displayedLimitBreakTier}`}
+          data-limit-tier={displayedLimitBreakTier}
+          aria-hidden="true"
+        >
           <span /><span /><span />
         </div>
       )}
 
       {cinematicLayer === 'battle_announcement' && battleAnnouncement && (
-        <div className={`battle-announcement battle-announcement--${battleAnnouncement}`} aria-live="assertive">
+        <div
+          className={`battle-announcement battle-announcement--${battleAnnouncement}${battleAnnouncement === 'limit' ? ` battle-announcement--limit-tier-${displayedLimitBreakTier}` : ''}`}
+          data-limit-tier={battleAnnouncement === 'limit' ? displayedLimitBreakTier : undefined}
+          aria-live="assertive"
+        >
           <div>
             <small>{battleAnnouncement === 'start' ? isTraining ? 'TRAINING COMMENCED' : 'CONTENT COMMENCED' : `LIMIT BREAK ${activeLimitBreakTier || limitBreakTier}`}</small>
             <strong>
@@ -4196,12 +4272,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   motion={playerCapitalMotion}
                   lightweightMode={lightweightMode}
                 />
-                <InvestmentStakePreview
-                  level={selectedLevel}
-                  stage={capitalPresentationStage}
-                  motionSerial={motionSerial}
-                  lightweightMode={lightweightMode}
-                />
+                {capitalPresentationStage && (
+                  <InvestmentStakePreview
+                    level={selectedLevel}
+                    stage={capitalPresentationStage}
+                    motionSerial={motionSerial}
+                    lightweightMode={lightweightMode}
+                  />
+                )}
                 {playerCoverKnightPhase !== 'absent' && (
                   <div
                     className={`cover-knight cover-knight--player cover-knight--${playerCoverKnightPhase}`}
@@ -4997,7 +5075,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <h2>{targetProperty.name}</h2>
             <div className="tataru-analysis">
               <img src={FANKIT_ART.tataru.windUp} alt="タタル" />
-               <p><b>{isTraining ? 'タタルの訓練分析' : `タタルの${winner === 'player' ? '勝因' : '敗因'}分析`}</b><span>「{resultAnalysis}」</span></p>
+              <p>
+                <b>{isTraining ? 'タタルの訓練分析' : `タタルの${winner === 'player' ? '勝因' : '敗因'}分析`}</b>
+                <span>「{resultAnalysis}」</span>
+                <span className="tataru-analysis__finance">
+                  {resultFinancialComment}{resultLiquidationComment}
+                </span>
+              </p>
             </div>
             {winner === 'player' && !isTraining && (
               <section
@@ -5050,19 +5134,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             )}
             {!isTraining && (
               <section
-                className={`result-settlement-summary ${
-                  resultFundsDelta >= 0 ? 'is-positive' : 'is-negative'
-                }`}
-                aria-label="商会資金の精算"
+                className={`result-settlement-summary ${resultSettlementTone}`}
+                aria-label={`${resultTransactionName}収支の精算`}
               >
                 <header>
                   <span>
-                    <small>SETTLEMENT</small>
-                    <b>今回の商会資金</b>
+                    <small>{isHighEndRaid ? 'RAID P/L' : 'BUYOUT P/L'}</small>
+                    <b>{resultSettlementLabel}</b>
                   </span>
                   <strong>
-                    {resultFundsDelta >= 0 ? '+' : '-'}
-                    {formatCurrency(Math.abs(resultFundsDelta))}
+                    {resultTransactionDelta >= 0 ? '+' : '-'}
+                    {formatCurrency(Math.abs(resultTransactionDelta))}
                   </strong>
                 </header>
                 <dl>
@@ -5076,7 +5158,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   </div>
                   {resultLiquidationCashback > 0 && (
                     <div>
-                      <dt>離脱資産の清算（{rebelled.length}件）</dt>
+                      <dt>離脱資産の清算（別枠・{rebelled.length}件）</dt>
                       <dd>+{formatCurrency(resultLiquidationCashback)}</dd>
                     </div>
                   )}
@@ -5089,6 +5171,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                           : celebrationGiftApplied
                             ? `-${formatCurrency(appliedCelebrationGiftCost)}`
                             : '商会に残す'}
+                      </dd>
+                    </div>
+                  )}
+                  {resultLiquidationCashback > 0 && (
+                    <div className="result-settlement-summary__funds-total">
+                      <dt>清算込みの資金増減</dt>
+                      <dd>
+                        {resultFundsDelta >= 0 ? '+' : '-'}
+                        {formatCurrency(Math.abs(resultFundsDelta))}
                       </dd>
                     </div>
                   )}

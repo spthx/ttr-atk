@@ -441,7 +441,29 @@
 .limit-impact-field span:nth-of-type(3) {
   --slash-angle: -8deg;
   top: 67%;
-  animation-delay: .34s;
+  animation-delay: .3s;
+}
+
+.limit-impact-field--tier-1 {
+  background:
+    radial-gradient(circle at 58% 54%, rgba(255, 255, 255, .84) 0 .45%, rgba(250, 204, 21, .25) 2%, transparent 14%),
+    linear-gradient(105deg, rgba(2, 6, 23, .68), rgba(15, 23, 42, .32) 52%, rgba(2, 6, 23, .62));
+  animation-duration: 1.05s;
+}
+
+.limit-impact-field--tier-1::after {
+  display: none;
+}
+
+.limit-impact-field--tier-1 span:nth-of-type(n + 2),
+.limit-impact-field--tier-2 span:nth-of-type(n + 3) {
+  display: none;
+}
+
+.limit-impact-field--tier-3 {
+  background:
+    radial-gradient(circle at 58% 54%, #fff 0 .9%, rgba(250, 204, 21, .52) 3%, transparent 22%),
+    linear-gradient(105deg, rgba(2, 6, 23, .86), rgba(15, 23, 42, .48) 52%, rgba(2, 6, 23, .8));
 }
 
 .buyout-screen--limit-impact .capital-clash {
@@ -449,6 +471,15 @@
 }
 
 .buyout-screen--lightweight .limit-impact-field span:nth-of-type(n + 2) {
+  display: none;
+}
+
+.buyout-screen--lightweight
+  .limit-impact-field--tier-3 span:nth-of-type(2) {
+  display: block;
+}
+
+.buyout-screen--lightweight .limit-impact-field::after {
   display: none;
 }
 
@@ -465,15 +496,15 @@
 @keyframes limit-impact-katana-cut {
   0%, 16% {
     opacity: 1;
-    transform: translateX(-3%) rotate(var(--slash-angle)) scaleX(.92);
+    transform: translateX(-3%) rotate(var(--slash-angle));
   }
   58% {
     opacity: 1;
-    transform: translateX(8%) rotate(var(--slash-angle)) scaleX(1);
+    transform: translateX(8%) rotate(var(--slash-angle));
   }
   100% {
     opacity: 0;
-    transform: translateX(24%) rotate(var(--slash-angle)) scaleX(1.08);
+    transform: translateX(24%) rotate(var(--slash-angle));
   }
 }
 @keyframes limit-board-impact {
