@@ -721,12 +721,19 @@ assert.equal(
   'the default first offer starts with one visible bundle'
 );
 assert.equal(getBattleCapitalVisualBundleCount(20_000, 100_000), 2);
+assert.deepEqual(
+  [0.1, 0.2, 0.3, 0.4].map((ratio) =>
+    getBattleCapitalVisualBundleCount(ratio * 100_000, 100_000)
+  ),
+  [1, 2, 3, 4],
+  'repeated default offers reveal the first four capital steps one by one'
+);
 assert.equal(
   getBattleCapitalVisualBundleCount(50_000, 100_000),
-  3,
+  4,
   'a typical opening defence stays a modest pile'
 );
-assert.equal(getBattleCapitalVisualBundleCount(100_000, 100_000), 5);
+assert.equal(getBattleCapitalVisualBundleCount(100_000, 100_000), 6);
 assert.equal(getBattleCapitalVisualBundleCount(2_000_000, 100_000), 13);
 assert.equal(
   getBattleCapitalVisualBundleCount(20_000, 1_000_000),
@@ -738,10 +745,10 @@ assert.equal(
   1,
   'a first 10% offer stays sparse even in the final chapter'
 );
-assert.ok(
-  getBattleCapitalVisualBundleCount(500_000_000, 1_000_000_000) >
-    getBattleCapitalVisualBundleCount(50_000, 100_000),
-  'the same relative pressure becomes a larger spectacle in late chapters'
+assert.equal(
+  getBattleCapitalVisualBundleCount(500_000_000, 1_000_000_000),
+  getBattleCapitalVisualBundleCount(50_000, 100_000),
+  'the same relative pressure follows the same visual steps in every chapter'
 );
 assert.equal(getCapitalVisualStageForBundleCount(0), 0);
 assert.equal(getCapitalVisualStageForBundleCount(4), 4);
