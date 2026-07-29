@@ -16,6 +16,26 @@ const JOB_ART = [
   publicAsset('ff14-fankit/job-12.png'),
 ] as const;
 
+// Keep the seeded JOB_ART order stable, and expose semantic job names separately.
+// Some of the original local filenames predate their current artwork, so callers
+// should use these named entries instead of relying on those filenames.
+const JOB_ART_BY_JOB = {
+  paladin: JOB_ART[0],
+  warrior: JOB_ART[1],
+  darkKnight: JOB_ART[2],
+  gunbreaker: JOB_ART[3],
+  monk: JOB_ART[4],
+  samurai: JOB_ART[5],
+  dragoon: JOB_ART[6],
+  reaper: JOB_ART[7],
+  ninja: JOB_ART[8],
+  viper: JOB_ART[9],
+  bard: JOB_ART[10],
+  machinist: JOB_ART[11],
+  whiteMage: publicAsset('ff14-fankit/job-whitemage.png'),
+  astrologian: publicAsset('ff14-fankit/job-astrologian.png'),
+} as const;
+
 const COMMERCE_ICONS = [
   publicAsset('ff14-fankit/icon-goldsmith.png'),
   publicAsset('ff14-fankit/icon-weaver.png'),
@@ -47,9 +67,10 @@ export const FANKIT_ART = {
   launchWallpaperMobile: publicAsset('ff14-fankit/launch-wallpaper-mobile.jpg'),
   battleBackdrop: publicAsset('ff14-fankit/stormblood-fankit.jpg'),
   jobs: JOB_ART,
+  jobsByJob: JOB_ART_BY_JOB,
   commerceIcons: COMMERCE_ICONS,
   trainingDummies: TRAINING_DUMMY_ART,
-  paladin: publicAsset('ff14-fankit/job-paladin.png'),
+  ...JOB_ART_BY_JOB,
   tataru: {
     dressUp: publicAsset('ff14-fankit/minion-dress-up-tataru.png'),
     windUp: publicAsset('ff14-fankit/minion-wind-up-tataru.png'),
