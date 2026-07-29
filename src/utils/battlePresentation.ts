@@ -511,16 +511,16 @@ export const getCapitalVisualBundleCountForAmount = (amount: number) => {
 
 const BATTLE_CAPITAL_RATIO_THRESHOLDS = [
   0.12,
-  0.28,
+  0.24,
+  0.36,
   0.5,
-  0.8,
-  1.15,
-  1.55,
-  2,
-  2.6,
-  3.4,
+  0.7,
+  1,
+  1.45,
+  2.1,
+  3.1,
   4.4,
-  5.7,
+  5.8,
   7.5,
 ] as const;
 
@@ -544,11 +544,7 @@ export const getBattleCapitalVisualBundleCount = (
   const baseBundleCount = thresholdIndex < 0
     ? CAPITAL_VISUAL_BUNDLE_COUNTS.at(-1) ?? 13
     : thresholdIndex + 1;
-  if (baseBundleCount <= 1) return baseBundleCount;
-
-  const campaignScaleBonus =
-    marketPrice >= 1_000_000_000 ? 2 : marketPrice >= 10_000_000 ? 1 : 0;
-  return Math.min(13, baseBundleCount + campaignScaleBonus);
+  return Math.min(13, baseBundleCount);
 };
 
 export const getCapitalVisualStageForBundleCount = (bundleCount: number) => {
@@ -559,9 +555,10 @@ export const getCapitalVisualStageForBundleCount = (bundleCount: number) => {
 };
 
 /**
- * A detailed hoard does not need one DOM image per visible bundle. Five
- * foreground sprites plus the CSS-composited mound bands preserve the staged
- * silhouette while keeping mobile paint and layout work bounded.
+ * Small painted bundles read as a growing treasury better than a handful of
+ * oversized props. Five foreground sprites plus six already-mounted formation
+ * slots provide the perceived density; CSS reveals those slots one by one
+ * without creating one node per coin or per gil amount.
  */
 export const getCapitalVisualSpriteCount = (bundleCount: number) =>
   Math.max(0, Math.min(5, Math.floor(bundleCount)));
