@@ -21,7 +21,7 @@ export const getSkillUnlockExplanation = (
   skill: TacticalSkill
 ): UnlockExplanation => {
   const usageLimit = skill.oncePerBattle
-    ? '使用回数は1交渉につき1回。'
+    ? '使用回数は1争奪戦につき1回。'
     : `再使用まで${formatDuration(skill.cooldownMs)}。`;
 
   return {
@@ -29,10 +29,10 @@ export const getSkillUnlockExplanation = (
     kind: 'skill',
     kicker: 'NEW ABILITY',
     title: `${skill.name} 修得`,
-    dialogue: `${skill.name}を修得したでっす！ 商戦前に装備して、ここぞという場面で使ってくだされ。`,
+    dialogue: `${skill.name}を修得したでっす！ 商戦前に装備して、ここぞという場面で使うでっす。`,
     detail: `${skill.description} ${usageLimit}`,
     operation:
-      '「かけひき」画面のアビリティ装備へ。開幕AUTO・窮地AUTOに設定した技は、手動発動の一覧から外れます。',
+      '「アビリティ」画面でアビリティ装備を設定します。開幕アビリティ・窮地アビリティに設定した技は、手動発動の一覧から外れます。',
   };
 };
 
@@ -49,14 +49,14 @@ export const getSynergyUnlockExplanation = (
       kind: 'synergy',
       kicker: 'NEW SYNERGY',
       title: `${synergy.name} 解放`,
-      dialogue: `${synergy.name}が商戦の号令として使えるようになったでっす！ 新しい連携へ切り替えておきましたぞ。`,
+      dialogue: `${synergy.name}が商戦の号令として使えるようになったでっす！ 新しい連携へ切り替えておいたでっす。`,
       detail: `${synergy.description} 発動すると${formatDuration(
         synergy.battleEffect.durationMs
       )}、資金圧力が${synergy.battleEffect.capitalPressureMultiplier.toFixed(
         2
-      )}倍${ownershipPush}。使用回数は1交渉につき1回。`,
+      )}倍${ownershipPush}。使用回数は1争奪戦につき1回。`,
       operation:
-        '「かけひき」画面のSYNERGY枠で選択し、商戦中に手動発動します。',
+        '「アビリティ」画面のSYNERGY枠で選択し、商戦中に手動発動します。',
     };
   }
 
@@ -68,9 +68,9 @@ export const getSynergyUnlockExplanation = (
     kind: 'synergy',
     kicker: 'NEW SYNERGY',
     title: `${synergy.name} 成立`,
-    dialogue: `${synergy.name}が成立したでっす！ 事業同士がつながり、普段の収益と商戦の支援が強くなりますぞ。`,
+    dialogue: `${synergy.name}が成立したでっす！ 事業同士がつながり、普段の収益と商戦の支援が強くなるでっす。`,
     detail: `${synergy.description} 成立中は毎秒収益が${yieldIncrease}%上昇します。`,
     operation:
-      '収益効果は自動。「かけひき」画面のSYNERGY枠へ選ぶと、商戦中に手動で一斉出資できます。',
+      '収益効果は自動。「アビリティ」画面のSYNERGY枠へ選ぶと、商戦中に手動で一斉出資できます。',
   };
 };

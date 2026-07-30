@@ -34,6 +34,7 @@ jobs:
           cp -R public/ff14-fankit dist/ff14-fankit
           cp public/manifest.webmanifest dist/manifest.webmanifest
           cp public/title-hero-v1.png dist/title-hero-v1.png
+          cp public/title-hero-v1.webp dist/title-hero-v1.webp
           touch dist/.nojekyll
       - name: Publish gh-pages branch
         uses: peaceiris/actions-gh-pages@v4

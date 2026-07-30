@@ -11,7 +11,7 @@ export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
 export const STARTER_BAKERY_ENEMY_BUDGET_RATIO = 0.8;
 export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.58;
 export const SAVAGE_LAYER_BUDGET_MULTIPLIERS = [1, 1.08, 1.16, 1.25] as const;
-export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 2.2;
+export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 2.75;
 export const LIMIT_BREAK_CHARGE_PER_BAR = 100;
 export const LIMIT_BREAK_MAX_BARS = 3;
 
@@ -111,7 +111,9 @@ export type EnemySupportSkillId =
   | 'cure'
   | 'mug'
   | 'drill'
-  | 'divination';
+  | 'divination'
+  | 'rapid_assault'
+  | 'limit_break_3';
 
 export interface EnemySupportDifficultyContext {
   isSavage?: boolean;
@@ -140,6 +142,14 @@ export const ENEMY_SUPPORT_SKILL_BALANCE = {
     normalDurationMs: 3_500,
     highDifficultyDurationMs: 4_000,
     enemyInvestmentMultiplier: 1.35,
+  },
+  rapidAssault: {
+    durationMs: 15_000,
+    actionProgressMultiplier: 5.2 / 2.8,
+  },
+  limitBreak3: {
+    ownershipPush: 30,
+    gaugeDelta: 60,
   },
 } as const;
 
@@ -429,9 +439,9 @@ export const TACTICAL_SKILL_BALANCE = {
     collapseMarketRatio: 0.14,
   },
   cover: {
-    durationMs: 18_000,
-    absorbRatio: 0.72,
-    gaugeCapacity: 36,
+    durationMs: 20_000,
+    absorbRatio: 0.78,
+    gaugeCapacity: 48,
   },
   capitalBoost: {
     marketRatio: 0.4,
@@ -577,7 +587,7 @@ export const ENEMY_BALANCE_FACTOR = {
   uldah: 1.55,
   goldSaucer: 1.72,
   advanced: 1.55,
-  cartelHQ: 1.75,
+  cartelHQ: 1.85,
 } as const;
 
 export const BATTLE_SUPPORT_BALANCE = {
@@ -798,6 +808,7 @@ interface EnemyBudgetContext {
   isTutorial: boolean;
   isSavage?: boolean;
   isUltimate?: boolean;
+  isCityBoss?: boolean;
 }
 
 interface SkillUnlockContext {
@@ -868,14 +879,14 @@ export const getBossAbilityTier = ({
 export const BOSS_COVER_BALANCE = {
   triggerPlayerOwnership: 60,
   cover: {
-    durationMs: 16_000,
-    absorbRatio: 0.72,
-    gaugeCapacity: 40,
+    durationMs: 20_000,
+    absorbRatio: 0.78,
+    gaugeCapacity: 48,
   },
   enhancedCover: {
-    durationMs: 18_000,
-    absorbRatio: 0.85,
-    gaugeCapacity: 56,
+    durationMs: 22_000,
+    absorbRatio: 0.9,
+    gaugeCapacity: 68,
   },
   invincible: {
     durationMs: 8_000,
@@ -952,9 +963,16 @@ export const getSavageLayer = (targetProperty: Property) => {
   return match ? Math.max(1, Math.min(4, Number(match[1]))) : 1;
 };
 
+export const getSavageSeries = (targetProperty: Property) => {
+  const match = targetProperty.id.match(/^savage_raid_([1-3])_layer_[1-4]$/);
+  return match ? Math.max(1, Math.min(3, Number(match[1]))) : 1;
+};
+
 const NO_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [];
 const CURE_ONLY: readonly EnemySupportSkillId[] = ['cure'];
+const CURE_MUG: readonly EnemySupportSkillId[] = ['cure', 'mug'];
 const MUG_ONLY: readonly EnemySupportSkillId[] = ['mug'];
+const MUG_DIVINATION: readonly EnemySupportSkillId[] = ['mug', 'divination'];
 const MUG_DRILL: readonly EnemySupportSkillId[] = ['mug', 'drill'];
 const DIVINATION_ONLY: readonly EnemySupportSkillId[] = ['divination'];
 const CURE_DIVINATION: readonly EnemySupportSkillId[] = [
@@ -974,6 +992,58 @@ export interface EnemySupportProfileContext
   isCityBoss: boolean;
 }
 
+export interface EnemySupportAutoProfile {
+  opening: EnemySupportSkillId | null;
+  critical: EnemySupportSkillId | null;
+}
+
+export const ULTIMATE_ENEMY_AUTO_PATTERNS = [
+  { id: 'mug_drill', opening: 'mug', critical: 'drill' },
+  {
+    id: 'divination_cure',
+    opening: 'divination',
+    critical: 'cure',
+  },
+  {
+    id: 'rapid_assault_drill',
+    opening: 'rapid_assault',
+    critical: 'drill',
+  },
+  {
+    id: 'mug_limit_break_3',
+    opening: 'mug',
+    critical: 'limit_break_3',
+  },
+  {
+    id: 'limit_break_3_cure',
+    opening: 'limit_break_3',
+    critical: 'cure',
+  },
+  {
+    id: 'rapid_assault_limit_break_3',
+    opening: 'rapid_assault',
+    critical: 'limit_break_3',
+  },
+] as const satisfies readonly {
+  id: string;
+  opening: EnemySupportSkillId;
+  critical: EnemySupportSkillId;
+}[];
+
+export const getUltimateEnemyAutoProfile = (
+  patternIndex: number
+): EnemySupportAutoProfile => {
+  const normalizedIndex = Number.isFinite(patternIndex)
+    ? Math.abs(Math.floor(patternIndex)) %
+      ULTIMATE_ENEMY_AUTO_PATTERNS.length
+    : 0;
+  const pattern = ULTIMATE_ENEMY_AUTO_PATTERNS[normalizedIndex];
+  return {
+    opening: pattern.opening,
+    critical: pattern.critical,
+  };
+};
+
 /**
  * Keeps support mechanics on authored boss encounters. Ordinary properties
  * and training battles retain their existing AI and balance.
@@ -987,10 +1057,10 @@ export const getEnemySupportSkillProfile = ({
   if (isUltimate) return ALL_ENEMY_SUPPORT_SKILLS;
   if (isSavage) {
     const layer = getSavageLayer(targetProperty);
-    if (layer === 1) return CURE_ONLY;
-    if (layer === 2) return MUG_ONLY;
+    if (layer === 1) return CURE_MUG;
+    if (layer === 2) return MUG_DIVINATION;
     if (layer === 3) return MUG_DRILL;
-    return DIVINATION_ONLY;
+    return ALL_ENEMY_SUPPORT_SKILLS;
   }
   if (!isCityBoss) return NO_ENEMY_SUPPORT_SKILLS;
 
@@ -1005,6 +1075,51 @@ export const getEnemySupportSkillProfile = ({
   return NO_ENEMY_SUPPORT_SKILLS;
 };
 
+/**
+ * High-end duties reserve explicit support actions for authored battle beats.
+ * Savage layer two owns a separate opening Cover; layer four fixes its
+ * Divination/Drill progression pair. Ultimate chooses one curated pair at
+ * battle start so every surprise remains deterministic for that attempt.
+ */
+export const getEnemySupportAutoProfile = ({
+  targetProperty,
+  isSavage = false,
+  isUltimate = false,
+  ultimatePatternIndex = 0,
+}: EnemySupportProfileContext & {
+  ultimatePatternIndex?: number;
+}): EnemySupportAutoProfile => {
+  if (isUltimate) {
+    return getUltimateEnemyAutoProfile(ultimatePatternIndex);
+  }
+  if (isSavage) {
+    const layer = getSavageLayer(targetProperty);
+    if (layer === 4) {
+      const series = getSavageSeries(targetProperty);
+      if (series === 1) {
+        return { opening: 'mug', critical: 'drill' };
+      }
+      if (series === 2) {
+        return { opening: 'divination', critical: 'cure' };
+      }
+      return { opening: 'divination', critical: 'drill' };
+    }
+  }
+  return {
+    opening: null,
+    critical: null,
+  };
+};
+
+export const getOpeningBossAbilityTier = ({
+  targetProperty,
+  isSavage = false,
+}: {
+  targetProperty: Property;
+  isSavage?: boolean;
+}): BossAbilityTier =>
+  isSavage && getSavageLayer(targetProperty) === 2 ? 'cover' : 'none';
+
 export const getSavageLayerBudgetMultiplier = (targetProperty: Property) =>
   SAVAGE_LAYER_BUDGET_MULTIPLIERS[getSavageLayer(targetProperty) - 1];
 
@@ -1012,17 +1127,32 @@ export const getEnemyDifficultyLevel = (
   targetProperty: Property,
   isTutorial: boolean,
   isSavage = false,
-  isUltimate = false
+  isUltimate = false,
+  isCityBoss = false
 ) => {
   if (isTutorial) return 0;
   if (isUltimate) return 6;
-  if (isSavage) return getSavageLayer(targetProperty) >= 3 ? 6 : 5;
-  if (targetProperty.id === 'prop_casino_grand') return 4;
+  if (isSavage) return 6;
+  if (targetProperty.id === 'prop_casino_grand') {
+    // ゴールドソーサーは専用の高予算補正だけで十分に手強い。
+    // 都市ボス補正まで重ねると、判断レベル5の温存挙動で泥仕合化する。
+    return 4;
+  }
   const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
-  if (campaignIndex === 0) return 1;
-  if (campaignIndex === 1) return 2;
-  if (campaignIndex === 2) return 3;
-  return 4;
+  const baseDifficulty =
+    campaignIndex === 0
+      ? 1
+      : campaignIndex === 1
+        ? 2
+        : campaignIndex === 2
+          ? 3
+          : 4;
+  return Math.min(
+    6,
+    baseDifficulty +
+      (isCityBoss ? 1 : 0) +
+      (targetProperty.isCartelHQ ? 1 : 0)
+  );
 };
 
 export const calculateEnemyBudget = ({
@@ -1032,6 +1162,7 @@ export const calculateEnemyBudget = ({
   isTutorial,
   isSavage = false,
   isUltimate = false,
+  isCityBoss = false,
 }: EnemyBudgetContext) => {
   const price = targetProperty.marketPrice;
   const rankFactor =
@@ -1065,8 +1196,19 @@ export const calculateEnemyBudget = ({
               ? ENEMY_BALANCE_FACTOR.uldah
               : ENEMY_BALANCE_FACTOR.advanced;
 
+  const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
+    targetProperty.community
+  );
+  const cityBossBudgetMultiplier =
+    isCityBoss &&
+    campaignIndex >= 0 &&
+    campaignIndex <= 2 &&
+    targetProperty.id !== 'prop_casino_grand'
+      ? 1.05
+      : 1;
+
   const calculatedBudget = Math.round(
-    baseBudget * balanceFactor *
+    baseBudget * balanceFactor * cityBossBudgetMultiplier *
     (isUltimate
       ? ULTIMATE_ENEMY_BUDGET_MULTIPLIER
       : isSavage

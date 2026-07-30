@@ -72,7 +72,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     ],
     communities: ['グリダニア'],
     rewardSynergyIds: ['GRIDANIA_FOREST_ECONOMY'],
-    marketPrice: 600_000_000,
+    marketPrice: 3_000_000_000,
     description:
       '森林資源と生活物資の連携を崩す開幕層。小口の連携と資金源管理を同時に試します。',
   },
@@ -86,7 +86,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     memberPropertyIds: ['prop_land_transport'],
     communities: ['リムサ・ロミンサ'],
     rewardSynergyIds: [],
-    marketPrice: 675_000_000,
+    marketPrice: 3_200_000_000,
     description:
       '海運と陸運が交互に資本を運ぶ第2層。短い予兆から続く集中防衛を崩します。',
   },
@@ -103,7 +103,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     ],
     communities: ['リムサ・ロミンサ', 'ウルダハ'],
     rewardSynergyIds: ['EORZEA_FOOD_ROUTE'],
-    marketPrice: 765_000_000,
+    marketPrice: 3_400_000_000,
     description:
       '需要の波を味方につける第3層。時代の風と競合アクションの読み合いが重なります。',
   },
@@ -120,7 +120,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     ],
     communities: ['ウルダハ'],
     rewardSynergyIds: ['ULDAH_LUXURY_MARKET', 'GRAND_COMPANY_EORZEA'],
-    marketPrice: 860_000_000,
+    marketPrice: 3_600_000_000,
     description:
       '三都市編の締めとなる無敵防衛戦。全押し込み経路を見極めて突破する総力戦です。',
   },
@@ -134,7 +134,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     memberPropertyIds: ['prop_ranch_1', 'prop_horse_meat'],
     communities: ['イシュガルド'],
     rewardSynergyIds: [],
-    marketPrice: 1_100_000_000,
+    marketPrice: 3_200_000_000,
     description:
       '寒冷地の供給網が粘り強く資本を戻す第1層。基礎手順を高い速度で試します。',
   },
@@ -148,9 +148,9 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     memberPropertyIds: ['prop_blacksmith', 'prop_weapon_dealer'],
     communities: ['イシュガルド'],
     rewardSynergyIds: ['ISHGARD_DEFENSE_INDUSTRY'],
-    marketPrice: 1_235_000_000,
+    marketPrice: 3_400_000_000,
     description:
-      '生産拠点が一体となる第2層。強化かばうを挟む集中防衛を崩します。',
+      '生産拠点が一体となる第2層。パッセージ・オブ・アームズを挟む集中防衛を崩します。',
   },
   {
     id: 'savage_raid_2_layer_3',
@@ -162,7 +162,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     memberPropertyIds: ['prop_detective'],
     communities: ['クガネ'],
     rewardSynergyIds: [],
-    marketPrice: 1_400_000_000,
+    marketPrice: 3_600_000_000,
     description:
       '投入履歴を読んで先回りする第3層。情報戦と資本の間を崩さず攻め続けます。',
   },
@@ -176,7 +176,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     memberPropertyIds: ['prop_info_broker'],
     communities: ['クガネ'],
     rewardSynergyIds: ['KUGANE_TRADE_GATEWAY', 'GRAND_COMPANY_EORZEA'],
-    marketPrice: 1_580_000_000,
+    marketPrice: 3_800_000_000,
     description:
       '東方交易の全経路を閉ざす第4層。無敵時間を越えて決定打を通す連続戦です。',
   },
@@ -190,7 +190,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     memberPropertyIds: ['prop_inn_town'],
     communities: ['クリスタリウム'],
     rewardSynergyIds: [],
-    marketPrice: 2_000_000_000,
+    marketPrice: 3_500_000_000,
     description:
       '復興需要が絶えず循環する最終編第1層。資金回復を含む長期戦の入口です。',
   },
@@ -204,9 +204,9 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     memberPropertyIds: ['prop_wheat_farm', 'prop_security_firm'],
     communities: ['オールド・シャーレアン', 'ラザハン'],
     rewardSynergyIds: ['EORZEA_FOOD_ROUTE'],
-    marketPrice: 2_250_000_000,
+    marketPrice: 3_700_000_000,
     description:
-      '学術予測と港湾防衛が同期する第2層。強化かばうの後隙へ商流を集中させます。',
+      '学術予測と港湾防衛が同期する第2層。パッセージ・オブ・アームズの後隙へ商流を集中させます。',
   },
   {
     id: 'savage_raid_3_layer_3',
@@ -218,7 +218,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     memberPropertyIds: ['prop_coffee_aurora'],
     communities: ['トライヨラ'],
     rewardSynergyIds: [],
-    marketPrice: 2_550_000_000,
+    marketPrice: 3_900_000_000,
     description:
       '世界規模の需要変動を操る第3層。風・支援・アビリティの順序が勝敗を分けます。',
   },
@@ -232,7 +232,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     memberPropertyIds: ['prop_abyss_heavy', 'prop_abyss_mine'],
     communities: ['トライヨラ', 'ソリューション・ナイン'],
     rewardSynergyIds: ['GRAND_COMPANY_EORZEA'],
-    marketPrice: 2_880_000_000,
+    marketPrice: 4_200_000_000,
     description:
       '資源調達から販売網までを束ねた最終層。無敵防衛を含む全システムの総力戦です。',
   },
@@ -256,7 +256,7 @@ export const ULTIMATE_RAID_DEFINITION = {
     'トライヨラ',
     'ソリューション・ナイン',
   ] as CommunityType[],
-  marketPrice: 3_000_000_000,
+  marketPrice: 6_000_000_000,
   industry: '娯楽・商業' as IndustryType,
   community: 'ソリューション・ナイン' as CommunityType,
   description:
