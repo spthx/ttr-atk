@@ -1,4 +1,5 @@
 import type { BattlePhase } from '../types';
+import type { BossAbilityTier } from './gameBalance';
 
 export const BATTLE_CINEMATIC_TIMING = {
   startAnnouncementMs: 3_800,
@@ -13,6 +14,30 @@ export const RESULT_CONFIRM_ARM_DELAY_MS = 1_200;
 export const BATTLE_GAUGE_VISUAL_COMMIT_MS = 100;
 export const BATTLE_STATE_UPDATE_INTERVAL_MS = 100;
 export const LIGHTWEIGHT_GAUGE_FRAME_MS = 1_000 / 30;
+
+export const getBossEnemyPartySize = ({
+  bossAbilityTier,
+  isSavage = false,
+  isUltimate = false,
+  lightweightMode = false,
+}: {
+  bossAbilityTier: BossAbilityTier;
+  isSavage?: boolean;
+  isUltimate?: boolean;
+  lightweightMode?: boolean;
+}) => {
+  if (bossAbilityTier === 'none') return 1;
+  if (lightweightMode) return 2;
+  if (
+    isSavage ||
+    isUltimate ||
+    bossAbilityTier === 'enhanced_cover' ||
+    bossAbilityTier === 'invincible'
+  ) {
+    return 3;
+  }
+  return 2;
+};
 
 export const BATTLE_HIT_STOP_TIMING = {
   standardMs: 55,

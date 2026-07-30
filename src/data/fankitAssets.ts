@@ -55,6 +55,16 @@ const hashText = (value: string) =>
   Array.from(value).reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7);
 
 export const getFankitJobArt = (seed: string) => JOB_ART[hashText(seed) % JOB_ART.length];
+export const getFankitJobPartyArt = (seed: string, requestedCount: number) => {
+  const count = Math.max(1, Math.min(3, Math.floor(requestedCount)));
+  const firstIndex = hashText(seed) % JOB_ART.length;
+  // Five is coprime to the twelve-art set, so the first three entries are
+  // always distinct without retries, random state or extra runtime work.
+  return Array.from(
+    { length: count },
+    (_, index) => JOB_ART[(firstIndex + index * 5) % JOB_ART.length]
+  );
+};
 export const getFankitCommerceIcon = (seed: string) => COMMERCE_ICONS[hashText(seed) % COMMERCE_ICONS.length];
 export const getFankitTrainingDummyArt = (level: number) =>
   TRAINING_DUMMY_ART[
