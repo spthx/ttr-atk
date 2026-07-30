@@ -163,6 +163,7 @@ import {
   countsTowardCityConquest,
   getCampaignProperties,
   getBossAbilityTier,
+  getCoverGuardDisplayPercent,
   HIGH_DIFFICULTY_SUPPORT_MULTIPLIER,
   getBattleCashRecoveryWindMultipliers,
   getCompanyStrengthLevel,
@@ -2271,6 +2272,46 @@ assert.deepEqual(
     absorbedGauge: 20,
     remainingGaugeCapacity: 0,
   }
+);
+assert.equal(
+  getCoverGuardDisplayPercent({
+    remainingGaugeCapacity: 36,
+    maximumGaugeCapacity: 36,
+    remainingMs: 18_000,
+    durationMs: 18_000,
+  }),
+  100,
+  'a fresh Cover guard starts with a full display gauge'
+);
+assert.equal(
+  getCoverGuardDisplayPercent({
+    remainingGaugeCapacity: 17,
+    maximumGaugeCapacity: 36,
+    remainingMs: 12_000,
+    durationMs: 18_000,
+  }),
+  50,
+  'the display gauge follows the lower of absorption capacity and duration'
+);
+assert.equal(
+  getCoverGuardDisplayPercent({
+    remainingGaugeCapacity: Number.POSITIVE_INFINITY,
+    maximumGaugeCapacity: Number.POSITIVE_INFINITY,
+    remainingMs: 4_000,
+    durationMs: 8_000,
+  }),
+  50,
+  'Invincible displays its remaining duration as guard gauge'
+);
+assert.equal(
+  getCoverGuardDisplayPercent({
+    remainingGaugeCapacity: 0,
+    maximumGaugeCapacity: 36,
+    remainingMs: 12_000,
+    durationMs: 18_000,
+  }),
+  0,
+  'a depleted guard reaches zero before the knight is blown away'
 );
 const terminalLimitBreakBeforeCover = -102;
 const terminalLimitBreakCovered = applyCoverToGaugeDelta({

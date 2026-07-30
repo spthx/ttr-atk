@@ -924,6 +924,29 @@ export const applyCoverToGaugeDelta = ({
   };
 };
 
+export const getCoverGuardDisplayPercent = ({
+  remainingGaugeCapacity,
+  maximumGaugeCapacity,
+  remainingMs,
+  durationMs,
+}: {
+  remainingGaugeCapacity: number;
+  maximumGaugeCapacity: number;
+  remainingMs: number;
+  durationMs: number;
+}) => {
+  if (remainingMs <= 0 || durationMs <= 0 || remainingGaugeCapacity <= 0) {
+    return 0;
+  }
+  const capacityRatio = Number.isFinite(maximumGaugeCapacity)
+    ? remainingGaugeCapacity / Math.max(1, maximumGaugeCapacity)
+    : 1;
+  const timeRatio = remainingMs / durationMs;
+  const rawPercent =
+    Math.max(0, Math.min(1, capacityRatio, timeRatio)) * 100;
+  return Math.max(5, Math.min(100, Math.ceil(rawPercent / 5) * 5));
+};
+
 export const getSavageLayer = (targetProperty: Property) => {
   const match = targetProperty.name.match(/商戦 零式：第([1-4])層/);
   return match ? Math.max(1, Math.min(4, Number(match[1]))) : 1;
