@@ -3397,3 +3397,127 @@
     top: 4.15rem;
   }
 }
+
+/*
+ * Permanent premium casino field.
+ *
+ * This is shared by 30fps and 60fps. Frame-rate selection must never swap the
+ * battlefield artwork or fall back to the former blue/red patterned panels.
+ * Ownership remains visible as a restrained live tint over the neutral felt.
+ */
+.buyout-screen .integrated-battlefield {
+  background:
+    #03100c
+    url("./assets/battle/battlefield-casino-wide.webp")
+    center / cover no-repeat;
+}
+
+.buyout-screen .integrated-battlefield .battlefield-pressure-lane {
+  background: transparent;
+}
+
+.buyout-screen
+  .integrated-battlefield
+  .battlefield-pressure-lane__player {
+  background: rgba(20, 96, 148, .2);
+}
+
+.buyout-screen
+  .integrated-battlefield
+  .battlefield-pressure-lane__enemy {
+  background: rgba(137, 34, 62, .22);
+}
+
+.buyout-screen .integrated-battlefield .capital-arena__side,
+.buyout-screen
+  .integrated-battlefield
+  .capital-arena__side:last-of-type {
+  overflow: visible;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.buyout-screen
+  .integrated-battlefield--push-player
+  .capital-arena__side:first-child,
+.buyout-screen
+  .integrated-battlefield--push-enemy
+  .capital-arena__side:last-child {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+@media (max-width: 639px) {
+  .buyout-screen .integrated-battlefield {
+    background-image:
+      url("./assets/battle/battlefield-casino-mobile.webp");
+  }
+}
+
+/*
+ * A landscape phone has enough width for the complete command row but very
+ * little height. Keep the same artwork and effects while tightening only the
+ * fixed HUD geometry so the two investment buttons remain reachable without
+ * an initial scroll.
+ */
+@media (orientation: landscape) and (max-width: 950px) and (max-height: 500px) {
+  .buyout-screen .buyout-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, .62fr);
+    grid-template-rows: auto auto;
+    align-content: start;
+    gap: .16rem;
+    padding-top: .16rem;
+  }
+
+  .buyout-screen .integrated-battlefield {
+    height: clamp(11.5rem, 52dvh, 13rem);
+    max-height: 13rem;
+    grid-column: 1 / -1;
+    grid-row: 1;
+    flex: none !important;
+  }
+
+  .battle-action-strip {
+    grid-column: 1;
+    grid-row: 2;
+    gap: .18rem;
+    padding: .18rem;
+  }
+
+  .battle-action-strip__action {
+    min-height: 2.75rem;
+    padding: .24rem .3rem;
+  }
+
+  .command-deck--compact {
+    grid-column: 2;
+    grid-row: 2;
+    padding: .18rem .3rem .22rem;
+  }
+
+  .investment-level-button,
+  .investment-execute-button {
+    min-height: 2.75rem;
+    padding: .28rem .5rem;
+  }
+
+  .investment-level-button > span:first-child small,
+  .command-deck--compact .command-panel--capital > p {
+    display: none !important;
+  }
+
+  .buyout-footer:not(.buyout-footer--settled) {
+    min-height: 2.75rem;
+    margin-top: 0;
+    padding: 0 max(.45rem, var(--game-safe-right))
+      max(0rem, var(--game-safe-bottom))
+      max(.45rem, var(--game-safe-left));
+  }
+
+  .buyout-footer:not(.buyout-footer--settled) button {
+    min-height: 2.75rem;
+  }
+}

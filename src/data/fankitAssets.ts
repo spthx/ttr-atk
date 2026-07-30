@@ -73,6 +73,9 @@ export const getFankitTrainingDummyArt = (level: number) =>
 
 export const FANKIT_ART = {
   titleHero: publicAsset('title-hero-v1.webp'),
+  marketBackdrop: publicAsset('ff14-fankit/dawntrail-fankit.webp'),
+  launchWallpaperMobile: publicAsset('ff14-fankit/launch-wallpaper-mobile.webp'),
+  battleBackdrop: publicAsset('ff14-fankit/stormblood-fankit.webp'),
   jobs: JOB_ART,
   jobsByJob: JOB_ART_BY_JOB,
   commerceIcons: COMMERCE_ICONS,

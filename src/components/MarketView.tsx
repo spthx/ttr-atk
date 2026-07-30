@@ -226,7 +226,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
       <div className="market-screen-enter space-y-3 font-sans">
         <section className="relative flex min-h-44 flex-col overflow-hidden rounded-2xl border border-amber-400/40 shadow-2xl sm:min-h-36">
           <img
-            src={FANKIT_ART.titleHero}
+            src={campaignMode === 'savage' ? FANKIT_ART.battleBackdrop : FANKIT_ART.marketBackdrop}
             alt="FFXIVファンキットによる交易世界の背景"
             decoding="async"
             className="absolute inset-0 h-full w-full object-cover object-center"

@@ -119,7 +119,7 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
       >
         <header className="relative overflow-hidden border-b border-cyan-400/25 px-4 py-5 sm:px-6">
           <img
-            src={FANKIT_ART.titleHero}
+            src={FANKIT_ART.battleBackdrop}
             alt=""
             aria-hidden="true"
             decoding="async"

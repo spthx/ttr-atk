@@ -1875,7 +1875,7 @@ export default function App() {
             }`}
           >
             <img
-              src={FANKIT_ART.titleHero}
+              src={FANKIT_ART.marketBackdrop}
               alt=""
               aria-hidden="true"
               decoding="async"
@@ -1934,7 +1934,7 @@ export default function App() {
           aria-label={`${featureUnlockNotice.title}の説明を閉じる`}
         >
           <span className="city-unlock__card relative block w-full max-w-2xl overflow-hidden rounded-2xl border border-cyan-300/60 bg-slate-900 p-5 shadow-2xl sm:p-7">
-            <img src={FANKIT_ART.titleHero} alt="" aria-hidden="true" decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-20" />
+            <img src={FANKIT_ART.marketBackdrop} alt="" aria-hidden="true" decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-20" />
             <span className="relative z-10 flex items-end gap-4">
               <img src={FANKIT_ART.tataru.dressUp} alt="タタル" className="h-28 w-24 shrink-0 object-contain object-bottom drop-shadow-[0_0_16px_rgba(103,232,249,.5)] sm:h-36 sm:w-32" />
               <span className="min-w-0 pb-1">
@@ -1952,7 +1952,7 @@ export default function App() {
       {unlockNotice && (
         <button type="button" onClick={() => setUnlockNotice(null)} className="city-unlock fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/90 p-4 text-left">
           <span className="city-unlock__card relative block w-full max-w-2xl overflow-hidden rounded-2xl border border-amber-300/60 bg-slate-900 p-5 shadow-2xl sm:p-7">
-            <img src={FANKIT_ART.titleHero} alt="" aria-hidden="true" decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-25" />
+            <img src={FANKIT_ART.marketBackdrop} alt="" aria-hidden="true" decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-25" />
             <span className="relative z-10 flex items-end gap-4">
               <img src={FANKIT_ART.tataru.windUp} alt="タタル" className="h-28 w-24 shrink-0 object-contain object-bottom sm:h-36 sm:w-32" />
               <span className="min-w-0 pb-1">
