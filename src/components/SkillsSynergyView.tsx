@@ -93,6 +93,9 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
     null;
   const resolvedSelectedBattleSynergyId =
     selectedBattleSynergy?.id ?? null;
+  const equippedSkills = skills.filter((skill) =>
+    equippedSkillIds.includes(skill.id)
+  );
 
   const handleToggle = (skill: TacticalSkill) => {
     const isEquipped = equippedSkillIds.includes(skill.id);
@@ -108,6 +111,21 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
     if (!equippedSkillIds.includes(skill.id)) return;
     soundFx.playGaugeTick(mode === 'manual' ? 0.94 : 1.04);
     onSetSkillActivationMode(skill.id, mode);
+  };
+
+  const handleAutoSlotChange = (
+    mode: Extract<SkillActivationMode, 'opening_auto' | 'critical_auto'>,
+    currentSkillId: string | null,
+    nextSkillId: string
+  ) => {
+    soundFx.playGaugeTick(nextSkillId ? 1.04 : 0.94);
+    if (!nextSkillId) {
+      if (currentSkillId) {
+        onSetSkillActivationMode(currentSkillId, 'manual');
+      }
+      return;
+    }
+    onSetSkillActivationMode(nextSkillId, mode);
   };
 
   return (
@@ -139,6 +157,73 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
             </span>
           </div>
         </div>
+
+        {openingAutoUnlocked && (
+          <section
+            className={`grid gap-3 rounded-xl border border-slate-700 bg-slate-950/80 p-4 ${
+              criticalAutoUnlocked ? 'md:grid-cols-2' : ''
+            }`}
+            aria-label="オートアビリティ設定"
+          >
+            <label className="grid gap-2 rounded-lg border border-cyan-500/35 bg-cyan-950/25 p-3">
+              <span>
+                <b className="block text-sm text-cyan-100">開幕AUTO</b>
+                <small className="text-[11px] leading-relaxed text-cyan-200/70">
+                  開始演出後に一度だけ自動発動。設定した技は手動一覧から外れます。
+                </small>
+              </span>
+              <select
+                value={openingAutoSkillId ?? ''}
+                onChange={(event) =>
+                  handleAutoSlotChange(
+                    'opening_auto',
+                    openingAutoSkillId,
+                    event.target.value
+                  )
+                }
+                className="min-h-11 w-full rounded-lg border border-cyan-400/45 bg-slate-900 px-3 text-sm font-bold text-cyan-50"
+                aria-label="開幕AUTOへ設定するアビリティ"
+              >
+                <option value="">設定なし</option>
+                {equippedSkills.map((skill) => (
+                  <option key={skill.id} value={skill.id}>
+                    {skill.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {criticalAutoUnlocked && (
+              <label className="grid gap-2 rounded-lg border border-rose-500/35 bg-rose-950/25 p-3">
+                <span>
+                  <b className="block text-sm text-rose-100">窮地AUTO</b>
+                  <small className="text-[11px] leading-relaxed text-rose-200/70">
+                    所有率25％以下へ入る時に一度だけ割り込み。設定した技は手動一覧から外れます。
+                  </small>
+                </span>
+                <select
+                  value={criticalAutoSkillId ?? ''}
+                  onChange={(event) =>
+                    handleAutoSlotChange(
+                      'critical_auto',
+                      criticalAutoSkillId,
+                      event.target.value
+                    )
+                  }
+                  className="min-h-11 w-full rounded-lg border border-rose-400/45 bg-slate-900 px-3 text-sm font-bold text-rose-50"
+                  aria-label="窮地AUTOへ設定するアビリティ"
+                >
+                  <option value="">設定なし</option>
+                  {equippedSkills.map((skill) => (
+                    <option key={skill.id} value={skill.id}>
+                      {skill.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </section>
+        )}
 
         {/* Skills Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -212,50 +297,25 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                 <div className="mt-4 pt-3 border-t border-slate-800/80">
                   {unlocked && isEquipped ? (
                     <div className="space-y-2">
-                      {openingAutoUnlocked && (
-                        <fieldset>
-                          <legend className="mb-1.5 text-[11px] font-bold text-slate-400">
-                            発動方法
-                          </legend>
-                          <div className={`grid gap-1.5 ${
-                            criticalAutoUnlocked
-                              ? 'grid-cols-3'
-                              : 'grid-cols-2'
-                          }`}>
-                            {([
-                              ['manual', '手動'],
-                              ['opening_auto', '開幕AUTO'],
-                              ...(criticalAutoUnlocked
-                                ? [['critical_auto', '窮地AUTO']]
-                                : []),
-                            ] as Array<[SkillActivationMode, string]>).map(
-                              ([mode, label]) => {
-                                const selected = activationMode === mode;
-                                return (
-                                  <button
-                                    key={mode}
-                                    type="button"
-                                    onClick={() =>
-                                      handleActivationMode(skill, mode)
-                                    }
-                                    aria-pressed={selected}
-                                    className={`min-h-11 rounded-lg border px-1.5 py-2 text-[11px] font-black transition-colors ${
-                                      selected
-                                        ? mode === 'opening_auto'
-                                          ? 'border-cyan-300/60 bg-cyan-500/20 text-cyan-100'
-                                          : mode === 'critical_auto'
-                                            ? 'border-rose-300/60 bg-rose-500/20 text-rose-100'
-                                            : 'border-amber-300/60 bg-amber-500/20 text-amber-100'
-                                        : 'border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-500 hover:text-slate-200'
-                                    }`}
-                                  >
-                                    {label}
-                                  </button>
-                                );
-                              }
-                            )}
-                          </div>
-                        </fieldset>
+                      {activationMode !== 'manual' && (
+                        <div
+                          className={`rounded-lg border px-3 py-2 text-[11px] font-bold ${
+                            activationMode === 'opening_auto'
+                              ? 'border-cyan-400/35 bg-cyan-950/35 text-cyan-100'
+                              : 'border-rose-400/35 bg-rose-950/35 text-rose-100'
+                          }`}
+                        >
+                          {activationModeLabel}へ設定中。商戦中の手動一覧には表示されません。
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleActivationMode(skill, 'manual')
+                            }
+                            className="mt-2 min-h-11 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-black text-slate-200"
+                          >
+                            手動へ戻す
+                          </button>
+                        </div>
                       )}
                       <button
                         type="button"

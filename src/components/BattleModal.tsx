@@ -272,6 +272,7 @@ const ENEMY_SUPPORT_PRESENTATION = {
   cure: {
     jobName: 'WHITE MAGE',
     actionName: 'ケアル',
+    telegraphText: '白魔道士が回復の構え',
     art: FANKIT_ART.whiteMage,
     telegraphMs: 520,
     castMs: 1_200,
@@ -282,6 +283,7 @@ const ENEMY_SUPPORT_PRESENTATION = {
   mug: {
     jobName: 'NINJA',
     actionName: 'ぶんどる',
+    telegraphText: '忍者が切り崩しの構え',
     art: FANKIT_ART.ninja,
     telegraphMs: 480,
     castMs: 650,
@@ -292,6 +294,7 @@ const ENEMY_SUPPORT_PRESENTATION = {
   drill: {
     jobName: 'MACHINIST',
     actionName: '整備 → ドリル',
+    telegraphText: '機工士が狙撃の構え',
     art: FANKIT_ART.machinist,
     telegraphMs: 1_600,
     castMs: 1_100,
@@ -302,6 +305,7 @@ const ENEMY_SUPPORT_PRESENTATION = {
   divination: {
     jobName: 'ASTROLOGIAN',
     actionName: 'ディヴィネーション',
+    telegraphText: '占星術師が相場誘導の構え',
     art: FANKIT_ART.astrologian,
     telegraphMs: 700,
     castMs: 1_100,
@@ -314,6 +318,7 @@ const ENEMY_SUPPORT_PRESENTATION = {
   {
     jobName: string;
     actionName: string;
+    telegraphText: string;
     art: string;
     telegraphMs: number;
     castMs: number;
@@ -570,9 +575,9 @@ const getCapitalFormation = (stage: number) => {
 
 const CAPITAL_STAGE_NUDGES = [
   { x: '0rem', y: '0rem' },
-  { x: '-.045rem', y: '.018rem' },
-  { x: '.035rem', y: '-.014rem' },
-  { x: '-.018rem', y: '.008rem' },
+  { x: '-.08rem', y: '.025rem' },
+  { x: '.065rem', y: '-.02rem' },
+  { x: '-.035rem', y: '.012rem' },
 ] as const;
 
 const GilTower: React.FC<{
@@ -682,7 +687,7 @@ const GilTower: React.FC<{
             style={{
               '--chip-index': index,
               '--chip-count': bundleCount,
-              '--chip-angle': `${((index * 7 + (side === 'player' ? 3 : 9)) % 15) - 7}deg`,
+              '--chip-angle': '0deg',
             } as React.CSSProperties}
           />
         ))}
@@ -852,7 +857,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [activeLimitBreakTier, setActiveLimitBreakTier] = useState<LimitBreakTier>(0);
   const [panel, setPanel] = useState<Panel>('capital');
   const [selectedLevel, setSelectedLevel] = useState(3);
-  const [commandProgress, setCommandProgress] = useState(100);
+  const [commandProgress, setCommandProgress] = useState(0);
   const [fastHorseRemaining, setFastHorseRemaining] = useState(0);
   const [playerCoverRemaining, setPlayerCoverRemaining] = useState(0);
   const [enemyCoverRemaining, setEnemyCoverRemaining] = useState(0);
@@ -1138,7 +1143,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const stageSequence = getCapitalStageSequence(
         previousStage,
         targetStage,
-        compact ? 2 : heavy ? 6 : 4
+        compact ? 3 : heavy ? 8 : 6
       );
       const setPreviewStage =
         side === 'player'
@@ -2142,7 +2147,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const timer = window.setTimeout(() => {
       floaterTimersRef.current.delete(timer);
       setFloaters((current) => current.filter((item) => item.id !== id));
-    }, 1450);
+    }, 2600);
     floaterTimersRef.current.add(timer);
   };
 
@@ -2371,7 +2376,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         : `${companyName}対${targetProperty.name}、討滅戦開始。競合は${formatCurrency(initialEnemyCommitment)}を先に積みました。`,
     };
     changeBattlePhase('active');
-    if (isTraining) setCommandProgress(100);
+    setCommandProgress(0);
     const canQueueOpeningAuto =
       !!openingAutoSkill &&
       isSkillUsableInBattle({
@@ -2606,10 +2611,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     announceCondition({
       kind: 'enemy',
       tone: 'enemy',
-      text:
-        bossAbilityTier === 'invincible'
-          ? `競合代表は\n${abilityName}を構えた！`
-          : `ナイトが現れた！\n競合を${abilityName}`,
+      text: `ナイトが防御の構え\n${abilityName}発動`,
       priority: 4,
       sound: 'warning',
     });
@@ -3353,10 +3355,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       stage: 'telegraph',
       serial,
     });
-    setStatusText(
-      `競合支援――${presentation.jobName}が${presentation.actionName}を準備`
-    );
-    setAiText(`${presentation.actionName} / 発動準備`);
+    setStatusText(`${presentation.telegraphText}――次の行動を予告`);
+    setAiText(`${presentation.telegraphText} / 次の行動を予告`);
     soundFx.playSkillCast(
       skillId === 'divination'
         ? 'ERA_WIND'
@@ -4686,7 +4686,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (!commandAlreadyConsumed) {
       if (source === 'manual') {
         if (!consumeCommand()) return false;
-      } else {
+      } else if (source === 'critical-auto') {
         if (!commandReady) return false;
         setCommandProgress(0);
       }
@@ -4968,21 +4968,27 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           : '赤字撤退';
   const resultTransactionName = isHighEndRaid ? '攻略' : '買収';
   const resultFinancialComment = isTraining
-    ? '訓練収支は0ギルでっす。'
+    ? '訓練の収支は0ギル。帳簿への影響はなしでっす。'
     : resultSettlementPending
-      ? '利益の配分を選ぶと、買収収支が確定するでっす。'
+      ? '利益の配分を決めれば、買収収支が確定しますぞ。'
       : resultSettlementSummary.outcome === 'balanced'
-      ? `${resultTransactionName}収支は均衡でっす。`
+      ? `${resultTransactionName}収支はきれいに均衡でっす。`
       : winner === 'player'
-        ? `${resultTransactionName}収支は${formatCurrency(
+        ? resultSettlementSummary.outcome === 'profit'
+          ? `${resultTransactionName}収支は${formatCurrency(
+              Math.abs(resultTransactionDelta)
+            )}の黒字を確保しましたぞ！`
+          : `${resultTransactionName}収支は${formatCurrency(
+              Math.abs(resultTransactionDelta)
+            )}の赤字。次の利益で取り返すでっす。`
+        : `今回は${formatCurrency(
             Math.abs(resultTransactionDelta)
-          )}の${resultSettlementSummary.outcome === 'profit' ? '黒字' : '赤字'}でっす。`
-        : `今回は${formatCurrency(Math.abs(resultTransactionDelta))}の赤字撤退でっす。`;
+          )}の赤字撤退。立て直して再挑戦するでっす。`;
   const resultLiquidationComment =
     resultLiquidationCashback > 0
-      ? ` 離脱資産の清算込みの資金増減は${resultFundsDelta >= 0 ? '+' : '-'}${formatCurrency(
+      ? ` 離脱資産の清算を含めた資金増減は${resultFundsDelta >= 0 ? '+' : '-'}${formatCurrency(
           Math.abs(resultFundsDelta)
-        )}でっす。`
+        )}ですぞ。`
       : '';
 
   const rebelledPropertyIds = new Set(
@@ -5190,24 +5196,26 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const resultAnalysis = isTraining
     ? winner === 'player'
       ? demandInvested > companyInvested
-        ? `支援元・協力先の支援を組み合わせ、木人耐久資本を削り切ったでっす。訓練中の出資と離反は通常の事業・契約へ残らないでっす。`
-        : `自社資金の投入順が安定していたでっす。同じLEVELへ何度でも挑み、有効なアビリティやLIMIT BREAKも試せるでっす。`
+        ? '支援元と協力先をうまく組み合わせ、木人耐久資本を削り切ったでっす！ 訓練中の出資と離反は通常の事業・契約へ残りませんぞ。'
+        : '自社資金の投入順が安定していたでっす！ 同じLEVELへ何度でも挑み、アビリティやLIMIT BREAKも試せますぞ。'
       : rebelled.length > 0
-        ? `${rebelled.length}件が訓練中に一時離脱したでっす。通常の事業・契約は保護されるので、支援の順番を変えて再挑戦するでっす。`
-        : '木人の初期耐久資本を削り切れなかったでっす。費用も進行変化もないので、投入順を変えて再挑戦するでっす。'
+        ? `${rebelled.length}件が訓練中に一時離脱しましたな。通常の事業・契約は保護されるので、支援の順番を変えて再挑戦するでっす。`
+        : '木人の初期耐久資本を削り切れなかったですな。費用も進行変化もないので、投入順を変えて再挑戦するでっす。'
     : winner === 'player'
       ? finishMethod.startsWith('LIMIT_BREAK')
-        ? '勝因はカンパニー網の総動員でっす。LIMIT BREAKの全支援元一斉出資で、所有率を一気に押し切ったでっす。'
+        ? 'カンパニー網の総動員が勝因でっす！ LIMIT BREAKの一斉出資で、所有率を見事に押し切りましたぞ。'
         : demandInvested > companyInvested
-          ? `勝因は支援元・協力先からの支援でっす。合計${formatCurrency(demandInvested)}の支援が競り値を押し上げたでっす。`
-          : `勝因は資金差の維持でっす。競合の防衛中も出資優位を保ち、${FINISH_LABELS[finishMethod]}で所有率を押し切ったでっす。`
+          ? `支援元と協力先の連携が勝因でっす！ 合計${formatCurrency(
+              demandInvested
+            )}の支援が競り値を押し上げましたぞ。`
+          : `最後まで資金差を維持できたのが勝因でっす！ 競合の防衛を崩し、${FINISH_LABELS[finishMethod]}で押し切りましたぞ。`
       : defeatReason === 'WALKING_DEAD_FAILED'
-        ? 'リビングデッドは発動したでっすが、10秒以内に所有率30％へ戻せなかったでっす。蘇生猶予では意気衝天や大口出資を温存しておくでっす。'
+        ? 'リビングデッドは発動しましたが、10秒以内に所有率30％へ戻せなかったですな。次は意気衝天や大口出資を温存しておくでっす。'
         : rebelled.length > 0
           ? isHighEndRaid
-            ? `${rebelled.length}件が記録戦中に一時離脱し、支援の山が崩れたでっす。通常の事業・契約は保護されるので、資金要求の順番を組み直すでっす。`
-            : `${rebelled.length}件の独立で資金の山が崩れたでっす。次は独立危険度の高い支援元へ要求する前に、危険度を抑えるアビリティを使うでっす。`
-          : '風と支援を反映した競り値で劣勢となり、所有率を押し戻されたでっす。';
+            ? `${rebelled.length}件が記録戦中に一時離脱し、支援の山が崩れましたな。事業・契約は保護されるので、資金要求の順番を組み直すでっす。`
+            : `${rebelled.length}件の独立で資金の山が崩れましたな。次は危険度の高い支援元へ頼る前に、守りのサンバやネマワシを使うでっす。`
+          : '風と支援を含めた競り値で劣勢となり、所有率を押し戻されましたな。資金を積む順番から見直すでっす。';
 
   const briefingSynergies = [
     ...(battleSubs.length + 1 >= 4
@@ -5404,17 +5412,25 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               role="status"
               aria-live="assertive"
             >
-              <small>TACTICAL ACTION</small>
-              <strong>{skillCinematic.skillName}</strong>
-              <em>{skillCinematic.stage === 'name'
-                ? '発動'
-                : skillCinematic.stage === 'cast'
-                  ? '構え'
-                  : skillCinematic.stage === 'hitstop'
-                    ? 'HIT STOP'
-                    : skillCinematic.stage === 'impact'
-                    ? '効果発生'
-                    : '効果確定'}</em>
+              <small>
+                {skillCinematic.stage === 'name'
+                  ? 'NEXT ACTION'
+                  : 'TACTICAL ACTION'}
+              </small>
+              <strong>
+                {skillCinematic.stage === 'name'
+                  ? `${skillCinematic.skillName}の構え`
+                  : skillCinematic.skillName}
+              </strong>
+              <em>
+                {skillCinematic.stage === 'name'
+                  ? '次の行動を予告'
+                  : skillCinematic.stage === 'cast'
+                    ? '発動'
+                    : skillCinematic.stage === 'resolve'
+                      ? '効果適用'
+                      : ''}
+              </em>
             </div>
           </>
         )}
@@ -5709,7 +5725,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                       aria-hidden="true"
                     />
                     <span className="enemy-support-actor__name">
-                      {ENEMY_SUPPORT_PRESENTATION[enemySupportCinematic.skillId].actionName}
+                      {enemySupportCinematic.stage === 'telegraph'
+                        ? ENEMY_SUPPORT_PRESENTATION[
+                            enemySupportCinematic.skillId
+                          ].telegraphText
+                        : ENEMY_SUPPORT_PRESENTATION[
+                            enemySupportCinematic.skillId
+                          ].actionName}
                     </span>
                     <span className="enemy-support-actor__castbar" aria-hidden="true">
                       <i className="enemy-support-actor__castbar-fill" />
@@ -6416,11 +6438,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               ))}
             </div>
             <p className="departure-report__advice">
-              次の商戦では、独立危険度の高い支援元へ要求する前に「守りのサンバ」やネマワシで備えるでっす。
+              次の商戦では、危険度の高い支援元へ頼る前に「守りのサンバ」やネマワシで備えますぞ。
             </p>
             <button
               type="button"
-              className="dialog-close result-confirm result-return-map"
+              className="dialog-close result-confirm result-return-map result-return-map--departure"
               onClick={confirmDepartureReport}
             >
               <MapPinned />
@@ -6572,21 +6594,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 </dl>
               </section>
             )}
-            <details className="result-battle-details">
-              <summary><ScrollText />戦闘記録を見る</summary>
-              <div className="result-numbers">
-                <span><small>FINISH</small><b>{isTraining ? winner === 'player' ? 'DUMMY BREAK' : 'TRAINING END' : winner === 'opponent' && defeatReason === 'WALKING_DEAD_FAILED' ? 'WALKING DEAD FAILED' : FINISH_LABELS[finishMethod]}</b></span>
-                <span><small>最終所有率</small><b>{finalOwnership.toFixed(1)}%</b></span>
-                <span><small>OVERKILL</small><b>{winner === 'player' ? `+${overkill.toFixed(1)}%` : '---'}</b></span>
-                <span><small>自社競り値</small><b>{formatCurrency(totalPlayerInvested)}</b></span>
-                <span><small>{isTraining ? '木人耐久資本' : '競合競り値'}</small><b>{formatCurrency(enemyInvested)}</b></span>
-                <span><small>戦中再利用</small><b>{formatCurrency(battleCashRecovered)}</b></span>
-                <span><small>{isTraining ? '一時離脱' : isHighEndRaid ? '記録戦中の一時離脱' : '資金源離脱'}</small><b>{rebelled.length}件</b></span>
-              </div>
-              {winner === 'player' && (
-                <p className="overkill-rating">{getOverkillRating(overkill)}</p>
-              )}
-            </details>
             {!isTraining && winner === 'player' && nextCommunity && <p className="next-community"><CheckCircle2 />次の都市「{nextCommunity}」への交易路が開きます。</p>}
             {celebrationDecisionRequired && companyGrowthRevealed && (
               <section className="result-celebration-choice">
@@ -6648,9 +6655,28 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 )}
               </section>
             )}
+            <details className="result-battle-details">
+              <summary><ScrollText />戦闘記録を見る</summary>
+              <div className="result-numbers">
+                <span><small>FINISH</small><b>{isTraining ? winner === 'player' ? 'DUMMY BREAK' : 'TRAINING END' : winner === 'opponent' && defeatReason === 'WALKING_DEAD_FAILED' ? 'WALKING DEAD FAILED' : FINISH_LABELS[finishMethod]}</b></span>
+                <span><small>最終所有率</small><b>{finalOwnership.toFixed(1)}%</b></span>
+                <span><small>OVERKILL</small><b>{winner === 'player' ? `+${overkill.toFixed(1)}%` : '---'}</b></span>
+                <span><small>自社競り値</small><b>{formatCurrency(totalPlayerInvested)}</b></span>
+                <span><small>{isTraining ? '木人耐久資本' : '競合競り値'}</small><b>{formatCurrency(enemyInvested)}</b></span>
+                <span><small>戦中再利用</small><b>{formatCurrency(battleCashRecovered)}</b></span>
+                <span><small>{isTraining ? '一時離脱' : isHighEndRaid ? '記録戦中の一時離脱' : '資金源離脱'}</small><b>{rebelled.length}件</b></span>
+              </div>
+              {winner === 'player' && (
+                <p className="overkill-rating">{getOverkillRating(overkill)}</p>
+              )}
+            </details>
             <button
               type="button"
-              className="dialog-close result-confirm result-return-map"
+              className={`dialog-close result-confirm result-return-map ${
+                winner === 'player'
+                  ? 'result-return-map--victory'
+                  : 'result-return-map--defeat'
+              }`}
               onClick={confirmResult}
               disabled={
                 !resultConfirmArmed ||
