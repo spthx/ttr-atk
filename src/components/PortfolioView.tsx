@@ -151,6 +151,34 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
         </div>
       </div>
 
+      {ownedProperties.length > 0 && (
+        <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-4">
+          <strong className="mb-1 block text-sm text-indigo-200">
+            一括ネマワシ
+          </strong>
+          <p className="mb-3 text-xs leading-relaxed text-indigo-200/80">
+            独立危険度が残る支援元だけをまとめてケアします。個別の事業・契約は下の一覧から選べます。
+          </p>
+          <button
+            onClick={onGlobalNemawashi}
+            disabled={!canGlobalNemawashi}
+            title={HELP_TEXT.nemawashi}
+            className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold shadow-md transition-all ${
+              canGlobalNemawashi
+                ? 'cursor-pointer bg-indigo-600 text-white hover:bg-indigo-500'
+                : 'cursor-not-allowed border border-slate-700 bg-slate-800 text-slate-500'
+            }`}
+          >
+            <RefreshCw className="h-4 w-4 text-indigo-300" />
+            {globalNemawashiTargets.length > 0
+              ? `残り${globalNemawashiTargets.length}件を一括ネマワシ（費用 ${formatCurrency(
+                  globalNemawashiCost
+                )}）`
+              : '一括ネマワシが必要な支援元はありません'}
+          </button>
+        </div>
+      )}
+
       {/* Owned Properties List */}
       <div className="space-y-3">
         <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
@@ -285,30 +313,6 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
         )}
       </div>
 
-      {ownedProperties.length > 0 && (
-        <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-4">
-          <p className="mb-3 text-xs leading-relaxed text-indigo-200">
-            個別ネマワシの結果を反映し、まだ独立危険度が残る支援元だけを一括対象にします。
-          </p>
-          <button
-            onClick={onGlobalNemawashi}
-            disabled={!canGlobalNemawashi}
-            title={HELP_TEXT.nemawashi}
-            className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold shadow-md transition-all ${
-              canGlobalNemawashi
-                ? 'cursor-pointer bg-indigo-600 text-white hover:bg-indigo-500'
-                : 'cursor-not-allowed border border-slate-700 bg-slate-800 text-slate-500'
-            }`}
-          >
-            <RefreshCw className="h-4 w-4 text-indigo-300" />
-            {globalNemawashiTargets.length > 0
-              ? `残り${globalNemawashiTargets.length}件を一括ネマワシ（費用 ${formatCurrency(
-                  globalNemawashiCost
-                )}）`
-              : '一括ネマワシが必要な支援元はありません'}
-          </button>
-        </div>
-      )}
     </div>
   );
 };
