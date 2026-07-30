@@ -62,28 +62,28 @@ const CAPITAL_COMMIT_TIMINGS: Record<
 > = {
   standard: {
     small: {
-      prepareMs: 180,
-      travelMs: 210,
+      prepareMs: 220,
+      travelMs: 240,
       hitStopMs: 55,
-      settleMs: 520,
-      afterglowMs: 420,
-      totalMs: 1_385,
+      settleMs: 590,
+      afterglowMs: 480,
+      totalMs: 1_585,
     },
     medium: {
-      prepareMs: 230,
-      travelMs: 260,
+      prepareMs: 280,
+      travelMs: 300,
       hitStopMs: 64,
-      settleMs: 610,
-      afterglowMs: 500,
-      totalMs: 1_664,
+      settleMs: 700,
+      afterglowMs: 570,
+      totalMs: 1_914,
     },
     heavy: {
-      prepareMs: 350,
-      travelMs: 390,
+      prepareMs: 400,
+      travelMs: 440,
       hitStopMs: 88,
-      settleMs: 760,
-      afterglowMs: 680,
-      totalMs: 2_268,
+      settleMs: 860,
+      afterglowMs: 760,
+      totalMs: 2_548,
     },
   },
   compact: {
@@ -216,11 +216,11 @@ export const resolveBattleSkillSelection = (
  * not use these stages as additional chances to mutate battle state.
  */
 export const TERMINAL_CINEMATIC_TIMING = {
-  anticipationMs: 1_000,
-  hitStopMs: 90,
-  impactMs: 420,
-  resolutionMs: 900,
-  totalMs: 2_410,
+  anticipationMs: 1_100,
+  hitStopMs: 100,
+  impactMs: 650,
+  resolutionMs: 1_050,
+  totalMs: 2_900,
   reducedMotionAnticipationMs: 140,
   reducedMotionHitStopMs: 40,
   reducedMotionImpactMs: 120,
@@ -559,16 +559,17 @@ export const getCapitalVisualStageForBundleCount = (bundleCount: number) => {
 
 /**
  * Small painted bundles read as a growing treasury better than a handful of
- * oversized props. Five foreground sprites plus six already-mounted formation
+ * oversized props. Eight foreground sprites plus six already-mounted formation
  * slots provide close-up depth. Three repeated, clipped background bands carry
  * the sixty fine-grained width changes without creating one node per coin or
  * per gil amount.
  */
-export const getCapitalVisualSpriteCount = (bundleCount: number) =>
-  Math.max(
-    0,
-    Math.min(5, Math.ceil((Math.floor(bundleCount) - 12) / 10))
-  );
+export const getCapitalVisualSpriteCount = (bundleCount: number) => {
+  const stage = Math.max(0, Math.floor(bundleCount));
+  if (stage === 0) return 0;
+  if (stage <= 4) return 1;
+  return Math.min(8, 1 + Math.ceil((stage - 4) / 8));
+};
 
 export const getCapitalFormationPieceCount = (stage: number) =>
   Math.max(0, Math.min(6, Math.floor((Math.max(0, stage) + 1) / 10)));
