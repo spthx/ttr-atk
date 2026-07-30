@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { INITIAL_PROPERTIES } from '../src/data/initialData';
+import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
 import { decideEnemyAction } from '../src/utils/enemyAi';
 import {
   advanceBattleCashRecovery,
@@ -22,8 +23,11 @@ import {
   getEnemyMinimumCommitment,
   getEnemySupportSkillProfile,
   getBossAbilityTier,
+  getCampaignProperties,
+  LIMIT_BREAK_OWNERSHIP_CAPS,
   shouldEnemyUseCure,
   TACTICAL_SKILL_BALANCE,
+  HIGH_DIFFICULTY_SUPPORT_MULTIPLIER,
 } from '../src/utils/gameBalance';
 import {
   getBattleHitStopTiming,
@@ -34,7 +38,10 @@ import {
   buildSavageProperties,
   buildUltimateProperty,
 } from '../src/utils/savage';
-import { buildTrainingDummyProperty } from '../src/utils/trainingDummy';
+import {
+  buildTrainingDummyProperty,
+  TRAINING_DUMMY_DEFINITIONS,
+} from '../src/utils/trainingDummy';
 import type { PlayerBattleAction } from '../src/utils/enemyAi';
 import type { Property } from '../src/types';
 
@@ -63,9 +70,18 @@ interface SimulationScenario {
   isUltimate?: boolean;
   disableEnemySupport?: boolean;
   maxSeconds?: number;
+  playerBaselineCash?: number;
+  openingCapitalBoostRatio?: number;
   influenceBonus?: number;
   supportSources?: readonly Property[];
   supportAfterDirectActions?: (supportIndex: number, seed: number) => number;
+  timedCapitalBuff?: {
+    triggerAfterDirectActions: number;
+    triggerAfterSupportActions?: number;
+    durationSeconds: number;
+    multiplier: number;
+    ownershipPush: number;
+  };
 }
 
 type EnemySupportActivationCounts = Record<
@@ -80,11 +96,13 @@ interface SimulationResult {
   supportActions: number;
   finalOwnership: number;
   enemySupportActivations: EnemySupportActivationCounts;
+  maximumPlayerRecoveryRatio: number;
   maximumEnemyRecoveryRatio: number;
   minimumEnemyReserve: number;
   enemyBossDefenseTier: ReturnType<typeof getBossAbilityTier>;
   enemyBossDefenseActivations: number;
   enemyBossDefenseAbsorbedGauge: number;
+  timedCapitalBuffActivations: number;
 }
 
 const createEnemySupportActivationCounts =
@@ -202,10 +220,13 @@ const simulateBattle = (
   const initialEnemyCommitment = isTraining
     ? enemyBudget
     : Math.round(enemyBudget * ENEMY_INITIAL_COMMITMENT_RATIO);
-  const playerBaselineCash = isTraining ? 20_000 : marketPrice;
+  const playerBaselineCash =
+    scenario.playerBaselineCash ??
+    (isTraining ? 20_000 : marketPrice);
 
   let gauge = 0;
-  let playerInvested = 0;
+  let playerInvested =
+    marketPrice * (scenario.openingCapitalBoostRatio ?? 0);
   let enemyInvested = initialEnemyCommitment;
   let playerCash = playerBaselineCash;
   let enemyReserve = enemyBudget - initialEnemyCommitment;
@@ -222,6 +243,7 @@ const simulateBattle = (
   let wallSeconds = 0;
   let mugMarkActive = false;
   let divinationRemainingSeconds = 0;
+  let maximumPlayerRecoveryRatio = 0;
   let maximumEnemyRecoveryRatio = 0;
   let minimumEnemyReserve = enemyReserve;
   let pendingEnemySupport: PendingEnemySupport | null = null;
@@ -230,6 +252,9 @@ const simulateBattle = (
   let enemyBossDefenseCapacity = 0;
   let enemyBossDefenseActivations = 0;
   let enemyBossDefenseAbsorbedGauge = 0;
+  let timedCapitalBuffUsed = false;
+  let timedCapitalBuffRemainingSeconds = 0;
+  let timedCapitalBuffActivations = 0;
   const usedEnemySupportSkills = new Set(
     [] as (typeof enemySupportProfile)[number][]
   );
@@ -282,11 +307,13 @@ const simulateBattle = (
         supportActions,
         finalOwnership: (100 - gauge) / 2,
         enemySupportActivations,
+        maximumPlayerRecoveryRatio,
         maximumEnemyRecoveryRatio,
         minimumEnemyReserve,
         enemyBossDefenseTier,
         enemyBossDefenseActivations,
         enemyBossDefenseAbsorbedGauge,
+        timedCapitalBuffActivations,
       };
     }
     if (!isTraining && gauge >= 100) {
@@ -297,11 +324,13 @@ const simulateBattle = (
         supportActions,
         finalOwnership: 0,
         enemySupportActivations,
+        maximumPlayerRecoveryRatio,
         maximumEnemyRecoveryRatio,
         minimumEnemyReserve,
         enemyBossDefenseTier,
         enemyBossDefenseActivations,
         enemyBossDefenseAbsorbedGauge,
+        timedCapitalBuffActivations,
       };
     }
     if (isTraining) gauge = Math.min(gauge, 98);
@@ -396,6 +425,12 @@ const simulateBattle = (
         divinationRemainingSeconds - STEP_SECONDS
       );
     }
+    if (timedCapitalBuffRemainingSeconds > 0) {
+      timedCapitalBuffRemainingSeconds = Math.max(
+        0,
+        timedCapitalBuffRemainingSeconds - STEP_SECONDS
+      );
+    }
 
     const playerOwnership = (100 - gauge) / 2;
     const bossGuardNeedsPriority =
@@ -478,6 +513,12 @@ const simulateBattle = (
     });
     playerCash = playerRecovery.availableFunds;
     playerRecovered = playerRecovery.cumulativeRecovered;
+    maximumPlayerRecoveryRatio = Math.max(
+      maximumPlayerRecoveryRatio,
+      playerBaselineCash > 0
+        ? playerRecovered / playerBaselineCash
+        : 0
+    );
 
     const enemyRecovery = advanceBattleCashRecovery({
       baselineFunds: enemyBudget,
@@ -496,18 +537,51 @@ const simulateBattle = (
     );
 
     if (commandProgress >= 100 && reactionDelaySeconds <= 0) {
+      const timedCapitalBuff = scenario.timedCapitalBuff;
+      if (
+        timedCapitalBuff &&
+        !timedCapitalBuffUsed &&
+        directActions >= timedCapitalBuff.triggerAfterDirectActions &&
+        supportActions >=
+          (timedCapitalBuff.triggerAfterSupportActions ?? 0)
+      ) {
+        timedCapitalBuffUsed = true;
+        timedCapitalBuffActivations += 1;
+        timedCapitalBuffRemainingSeconds =
+          timedCapitalBuff.durationSeconds;
+        applyPlayerGaugeCandidate(
+          gauge - timedCapitalBuff.ownershipPush * 2
+        );
+        // Progression SYNERGY consumes the ready command, then its rally
+        // effect explicitly prepares the next action when the cinematic lands.
+        commandProgress = 100;
+        presentationLockSeconds = 1.8;
+        lastPlayerAction = 'SYNERGY';
+        continue;
+      }
+      const playerCapitalMultiplier =
+        timedCapitalBuffRemainingSeconds > 0
+          ? scenario.timedCapitalBuff?.multiplier ?? 1
+          : 1;
       const supportSource = scenario.supportSources?.[supportActions];
       const supportThreshold =
         scenario.supportAfterDirectActions?.(supportActions, seed) ??
         Number.POSITIVE_INFINITY;
 
       if (supportSource && directActions >= supportThreshold) {
-        const amount = calculateSubsidiarySupportAmount(supportSource);
+        const amount = Math.round(
+          calculateSubsidiarySupportAmount(supportSource) *
+            (isSavage || isUltimate
+              ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
+              : 1)
+        );
         const impact = Math.min(
           BATTLE_SUPPORT_BALANCE.subsidiaryImpactCap,
-          BATTLE_SUPPORT_BALANCE.subsidiaryImpactBase +
-            (amount / Math.max(1, marketPrice)) *
-              BATTLE_SUPPORT_BALANCE.subsidiaryImpactPerMarketRatio
+          (
+            BATTLE_SUPPORT_BALANCE.subsidiaryImpactBase +
+              (amount / Math.max(1, marketPrice)) *
+                BATTLE_SUPPORT_BALANCE.subsidiaryImpactPerMarketRatio
+          ) * playerCapitalMultiplier
         );
         playerInvested += amount;
         applyPlayerGaugeCandidate(gauge - impact);
@@ -532,10 +606,14 @@ const simulateBattle = (
               calculateDirectInvestmentGaugeImpact({
                 investmentAmount: amount,
                 marketPrice,
-                levelOneTraining:
-                  isTraining &&
-                  scenario.target.id ===
-                    'training_dummy_level_1',
+                windMultiplier: playerCapitalMultiplier,
+                trainingLevel: isTraining
+                  ? Number(
+                      scenario.target.id.match(
+                        /training_dummy_level_(\d+)/
+                      )?.[1] ?? 0
+                    ) || undefined
+                  : undefined,
               })
           );
           directActions += 1;
@@ -633,7 +711,12 @@ const simulateBattle = (
 
     const gapRatio =
       Math.abs(
-        playerInvested -
+        playerInvested *
+          (
+            timedCapitalBuffRemainingSeconds > 0
+              ? scenario.timedCapitalBuff?.multiplier ?? 1
+              : 1
+          ) -
           enemyInvested *
             (divinationRemainingSeconds > 0
               ? ENEMY_SUPPORT_SKILL_BALANCE.divination
@@ -645,7 +728,12 @@ const simulateBattle = (
     const deadZone = gapRatio < 0.025 ? 0.32 : 1;
     const velocity = applyTrainingGaugeSpeed(
       calculateGaugeVelocity(
-        playerInvested,
+        playerInvested *
+          (
+            timedCapitalBuffRemainingSeconds > 0
+              ? scenario.timedCapitalBuff?.multiplier ?? 1
+              : 1
+          ),
         enemyInvested *
           (divinationRemainingSeconds > 0
             ? ENEMY_SUPPORT_SKILL_BALANCE.divination
@@ -677,11 +765,13 @@ const simulateBattle = (
     supportActions,
     finalOwnership: (100 - gauge) / 2,
     enemySupportActivations,
+    maximumPlayerRecoveryRatio,
     maximumEnemyRecoveryRatio,
     minimumEnemyReserve,
     enemyBossDefenseTier,
     enemyBossDefenseActivations,
     enemyBossDefenseAbsorbedGauge,
+    timedCapitalBuffActivations,
   };
 };
 
@@ -706,42 +796,12 @@ const summarize = (
   const results = Array.from({ length: count }, (_, index) =>
     simulateBattle(scenario, seedOffset + index)
   );
-  const playerWins = results.filter(
+  const wins = results.filter(
     (result) => result.winner === 'player'
-  );
-  return {
-    id: scenario.id,
-    battles: count,
-    wins: playerWins.length,
-    losses: results.filter((result) => result.winner === 'opponent').length,
-    timeouts: results.filter((result) => result.winner === 'timeout').length,
-    medianSeconds: percentile(
-      results.map((result) => result.wallSeconds),
-      0.5
-    ),
-    p90Seconds: percentile(
-      results.map((result) => result.wallSeconds),
-      0.9
-    ),
-    medianDirectActions: percentile(
-      results.map((result) => result.directActions),
-      0.5
-    ),
-    medianSupportActions: percentile(
-      results.map((result) => result.supportActions),
-      0.5
-    ),
-  };
-};
-
-const summarizeEnemySupport = (
-  scenario: SimulationScenario,
-  count: number,
-  seedOffset: number
-) => {
-  const results = Array.from({ length: count }, (_, index) =>
-    simulateBattle(scenario, seedOffset + index)
-  );
+  ).length;
+  const timeouts = results.filter(
+    (result) => result.winner === 'timeout'
+  ).length;
   const activations = results.reduce(
     (totals, result) => {
       totals.cure += result.enemySupportActivations.cure;
@@ -767,20 +827,33 @@ const summarizeEnemySupport = (
     targetId: scenario.target.id,
     profile,
     battles: count,
-    wins: results.filter((result) => result.winner === 'player')
-      .length,
-    losses: results.filter(
-      (result) => result.winner === 'opponent'
-    ).length,
-    timeouts: results.filter(
-      (result) => result.winner === 'timeout'
-    ).length,
+    wins,
+    winRate: wins / count,
+    losses: results.filter((result) => result.winner === 'opponent').length,
+    timeouts,
+    timeoutRate: timeouts / count,
     medianSeconds: percentile(
       results.map((result) => result.wallSeconds),
       0.5
     ),
     p90Seconds: percentile(
       results.map((result) => result.wallSeconds),
+      0.9
+    ),
+    medianDirectActions: percentile(
+      results.map((result) => result.directActions),
+      0.5
+    ),
+    p90DirectActions: percentile(
+      results.map((result) => result.directActions),
+      0.9
+    ),
+    medianSupportActions: percentile(
+      results.map((result) => result.supportActions),
+      0.5
+    ),
+    p90SupportActions: percentile(
+      results.map((result) => result.supportActions),
       0.9
     ),
     activations,
@@ -795,6 +868,16 @@ const summarizeEnemySupport = (
         (result) => result.enemyBossDefenseAbsorbedGauge
       ),
       0.5
+    ),
+    timedCapitalBuffActivations: results.reduce(
+      (total, result) =>
+        total + result.timedCapitalBuffActivations,
+      0
+    ),
+    maximumPlayerRecoveryRatio: Math.max(
+      ...results.map(
+        (result) => result.maximumPlayerRecoveryRatio
+      )
     ),
     maximumEnemyRecoveryRatio: Math.max(
       ...results.map(
@@ -891,87 +974,149 @@ const runDivinationEraWindCancelProbe = () => {
   };
 };
 
-const runForcedInvincibleProbe = ({
+const runForcedBossDefenseProbe = ({
   id,
   target,
   isCityBoss = false,
+  isSavage = false,
   isUltimate = false,
 }: {
   id: string;
   target: Property;
   isCityBoss?: boolean;
+  isSavage?: boolean;
   isUltimate?: boolean;
 }) => {
   const tier = getBossAbilityTier({
     targetProperty: target,
     isCityBoss,
+    isSavage,
     isUltimate,
   });
-  const balance = BOSS_COVER_BALANCE.invincible;
-  let gauge = -18;
-  let used = false;
-  let activations = 0;
-  let remainingMs = 0;
-  let capacity = 0;
-  let totalAbsorbedGauge = 0;
+  const balance =
+    tier === 'cover'
+      ? BOSS_COVER_BALANCE.cover
+      : tier === 'enhanced_cover'
+        ? BOSS_COVER_BALANCE.enhancedCover
+        : tier === 'invincible'
+          ? BOSS_COVER_BALANCE.invincible
+          : null;
+  assert.ok(balance, `${id} must have an active boss defense`);
+
+  const createDefenseState = () => ({
+    gauge: -18,
+    used: false,
+    activations: 0,
+    remainingMs: 0,
+    capacity: 0,
+    totalAbsorbedGauge: 0,
+  });
 
   const applyPlayerPush = (
+    state: ReturnType<typeof createDefenseState>,
     gaugeDelta: number,
     path: string
   ) => {
-    const currentGauge = gauge;
-    let nextGauge = gauge - gaugeDelta;
+    const currentGauge = state.gauge;
+    let nextGauge = state.gauge - gaugeDelta;
     const predictedOwnership = (100 - nextGauge) / 2;
     if (
-      !used &&
+      !state.used &&
       predictedOwnership >=
         BOSS_COVER_BALANCE.triggerPlayerOwnership
     ) {
-      used = true;
-      activations += 1;
-      remainingMs = balance.durationMs;
-      capacity = balance.gaugeCapacity;
+      state.used = true;
+      state.activations += 1;
+      state.remainingMs = balance.durationMs;
+      state.capacity = balance.gaugeCapacity;
     }
     let absorbedGauge = 0;
-    if (remainingMs > 0) {
+    if (state.remainingMs > 0) {
       const covered = applyCoverToGaugeDelta({
         currentGauge,
         nextGauge,
         protects: 'opponent',
         absorbRatio: balance.absorbRatio,
-        remainingGaugeCapacity: capacity,
+        remainingGaugeCapacity: state.capacity,
       });
       nextGauge = covered.nextGauge;
-      capacity = covered.remainingGaugeCapacity;
+      state.capacity = covered.remainingGaugeCapacity;
       absorbedGauge = covered.absorbedGauge;
-      totalAbsorbedGauge += absorbedGauge;
+      state.totalAbsorbedGauge += absorbedGauge;
     }
-    gauge = nextGauge;
+    state.gauge = nextGauge;
     return {
       path,
       incomingGauge: gaugeDelta,
       appliedGauge: Number(
-        (gauge - currentGauge).toFixed(4)
+        (state.gauge - currentGauge).toFixed(4)
       ),
       absorbedGauge: Number(absorbedGauge.toFixed(4)),
+      remainingGaugeCapacity: state.capacity,
     };
   };
 
-  const trigger = applyPlayerPush(2, 'threshold_exact_60');
-  const blockedPaths = [
-    applyPlayerPush(8, 'direct_investment'),
-    applyPlayerPush(12, 'subsidiary_support'),
-    applyPlayerPush(20, 'limit_break'),
-    applyPlayerPush(6, 'era_wind'),
-    applyPlayerPush(4, 'continuous_pressure'),
+  const exercisePath = (
+    path: string,
+    incomingGauge: number
+  ) => {
+    const state = createDefenseState();
+    const trigger = applyPlayerPush(
+      state,
+      2,
+      'threshold_exact_60'
+    );
+    const impact = applyPlayerPush(
+      state,
+      incomingGauge,
+      path
+    );
+    return {
+      path,
+      trigger,
+      impact,
+      activations: state.activations,
+      totalAbsorbedGauge: Number(
+        state.totalAbsorbedGauge.toFixed(4)
+      ),
+    };
+  };
+
+  const independentPaths = [
+    exercisePath('direct_investment', 8),
+    exercisePath('subsidiary_support', 12),
+    exercisePath(
+      'limit_break_1',
+      LIMIT_BREAK_OWNERSHIP_CAPS[1] * 2
+    ),
+    exercisePath(
+      'limit_break_2',
+      LIMIT_BREAK_OWNERSHIP_CAPS[2] * 2
+    ),
+    exercisePath(
+      'limit_break_3',
+      LIMIT_BREAK_OWNERSHIP_CAPS[3] * 2
+    ),
+    exercisePath('era_wind', 6),
+    exercisePath('timed_synergy', 16),
+    exercisePath('continuous_pressure', 4),
   ];
-  remainingMs = 1;
+
+  const durationState = createDefenseState();
+  const durationTrigger = applyPlayerPush(
+    durationState,
+    2,
+    'threshold_exact_60'
+  );
+  durationState.remainingMs = 1;
   const finalActiveMillisecond = applyPlayerPush(
+    durationState,
     5,
     'duration_last_millisecond'
   );
-  remainingMs = 0;
+  durationState.remainingMs = 0;
   const afterExpiry = applyPlayerPush(
+    durationState,
     5,
     'after_duration_expiry'
   );
@@ -979,37 +1124,45 @@ const runForcedInvincibleProbe = ({
   return {
     id,
     tier,
-    activations,
+    absorbRatio: balance.absorbRatio,
     configuredDurationMs: balance.durationMs,
-    capacityIsInfinite:
-      balance.gaugeCapacity === Number.POSITIVE_INFINITY &&
-      capacity === Number.POSITIVE_INFINITY,
-    trigger,
-    blockedPaths,
+    configuredGaugeCapacity: balance.gaugeCapacity,
+    independentPaths,
+    durationTrigger,
     finalActiveMillisecond,
     afterExpiry,
-    totalAbsorbedGauge: Number(
-      totalAbsorbedGauge.toFixed(4)
-    ),
   };
 };
 
-const trainingLevelOne = buildTrainingDummyProperty({
-  id: 'training_dummy_level_1',
-  level: 1,
-  name: '入門',
-  marketPrice: 7_500,
-  requiredConqueredCommunityCount: 0,
-  description: 'simulation',
-});
+const trainingDummies = TRAINING_DUMMY_DEFINITIONS.map(
+  buildTrainingDummyProperty
+);
 const starterFarm = INITIAL_PROPERTIES.find(
   (property) => property.id === 'prop_starter_farm'
 )!;
 const starterBakery = INITIAL_PROPERTIES.find(
   (property) => property.id === 'prop_starter_bakery'
 )!;
+const limsaTransport = INITIAL_PROPERTIES.find(
+  (property) => property.id === 'prop_land_transport'
+)!;
+const uldahPub = INITIAL_PROPERTIES.find(
+  (property) => property.id === 'prop_pub_central'
+)!;
+const uldahIronMine = INITIAL_PROPERTIES.find(
+  (property) => property.id === 'prop_iron_mine'
+)!;
 const gridaniaBoss = INITIAL_PROPERTIES.find(
   (property) => property.id === 'prop_timber_ake'
+)!;
+const limsaBoss = INITIAL_PROPERTIES.find(
+  (property) => property.id === 'prop_brewery_beer'
+)!;
+const uldahBoss = INITIAL_PROPERTIES.find(
+  (property) => property.id === 'prop_casino_grand'
+)!;
+const ishgardBoss = INITIAL_PROPERTIES.find(
+  (property) => property.id === 'prop_weapon_dealer'
 )!;
 const crystariumBoss = INITIAL_PROPERTIES.find(
   (property) => property.id === 'prop_inn_town'
@@ -1029,6 +1182,9 @@ const solutionNineBoss = INITIAL_PROPERTIES.find(
 const kuganeTradeBroker = INITIAL_PROPERTIES.find(
   (property) => property.id === 'prop_info_broker'
 )!;
+const kuganeOrdinaryTarget = INITIAL_PROPERTIES.find(
+  (property) => property.id === 'prop_detective'
+)!;
 const ishgardWeaponDealer = INITIAL_PROPERTIES.find(
   (property) => property.id === 'prop_weapon_dealer'
 )!;
@@ -1046,68 +1202,125 @@ const savageProperties = buildSavageProperties(
   new Set(),
   '決定論監査商会'
 );
-const savageLayerSanityTargets = savageProperties.slice(0, 4);
 const ultimateSanityTarget = buildUltimateProperty(
   false,
   '決定論監査商会'
 );
 const useProgressionSupport = (supportIndex: number, seed: number) =>
   3 + supportIndex * 3 + (seed % 2);
+const useHighDifficultySupport = () => 0;
 
-const reports = [
+const trainingReports = trainingDummies.map((target, index) =>
   summarize(
     {
-      id: 'training_level_1',
-      target: trainingLevelOne,
+      id: `training_level_${index + 1}`,
+      target,
       isTraining: true,
+      playerBaselineCash:
+        index === 0 ? 20_000 : target.marketPrice,
+      maxSeconds: index === 0 ? MAX_SECONDS : 900,
     },
-    200,
-    0
-  ),
-  summarize(
-    {
-      id: 'gridania_first',
-      target: starterFarm,
-      isTutorial: true,
-    },
-    200,
-    200
-  ),
-  summarize(
-    {
-      id: 'gridania_second_with_support',
-      target: starterBakery,
-      influenceBonus: 0.03,
-      supportSources: [starterFarm],
-      supportAfterDirectActions: (_supportIndex, seed) => 6 + (seed % 3),
-    },
-    200,
-    400
-  ),
-  summarize(
-    {
-      id: 'gridania_second_without_support',
-      target: starterBakery,
-      influenceBonus: 0.03,
-    },
-    200,
-    600
-  ),
-  summarize(
-    {
-      id: 'gridania_boss_unchanged',
-      target: gridaniaBoss,
-      influenceBonus: 0.03,
-      supportSources: [starterFarm, starterBakery],
-      supportAfterDirectActions: (supportIndex, seed) =>
-        4 + supportIndex * 4 + (seed % 2),
-    },
-    200,
-    800
-  ),
-] as const;
+    8,
+    1_000 + index * 100
+  )
+);
 
+const normalScenarios = [
+  {
+    id: 'gridania_first',
+    target: starterFarm,
+    isTutorial: true,
+  },
+  {
+    id: 'gridania_second_with_support',
+    target: starterBakery,
+    influenceBonus: 0.03,
+    supportSources: [starterFarm],
+    supportAfterDirectActions: (_supportIndex, seed) => 6 + (seed % 3),
+  },
+  {
+    id: 'gridania_second_without_support',
+    target: starterBakery,
+    influenceBonus: 0.03,
+  },
+  {
+    id: 'normal_mid_kugane',
+    target: kuganeOrdinaryTarget,
+    maxSeconds: 600,
+    supportSources: [ishgardWeaponDealer, gridaniaBoss],
+    supportAfterDirectActions: useProgressionSupport,
+  },
+  {
+    id: 'normal_late_solution_nine',
+    target: solutionNineIndustry,
+    maxSeconds: 600,
+    supportSources: [
+      easternAldenardHeadquarters,
+      tuliyollalBoss,
+      radzAtHanBoss,
+      oldSharlayanBoss,
+    ],
+    supportAfterDirectActions: useProgressionSupport,
+  },
+] as const satisfies readonly SimulationScenario[];
+
+const normalReports = normalScenarios.map((scenario, index) =>
+  summarize(scenario, 8, 2_000 + index * 100)
+);
+
+const authoredCityBossTargets = COMMUNITY_CAMPAIGN_ORDER.map(
+  (community) =>
+    getCampaignProperties(INITIAL_PROPERTIES, community).at(-1)!
+);
 const cityAuditScenarios = [
+  {
+    id: 'city_1_gridania_display',
+    target: gridaniaBoss,
+    isCityBoss: true,
+    maxSeconds: 600,
+    supportSources: [starterFarm, starterBakery],
+    supportAfterDirectActions: useProgressionSupport,
+  },
+  {
+    id: 'city_2_limsa_display',
+    target: limsaBoss,
+    isCityBoss: true,
+    maxSeconds: 600,
+    supportSources: [gridaniaBoss, starterBakery],
+    supportAfterDirectActions: useProgressionSupport,
+  },
+  {
+    id: 'city_3_uldah_display',
+    target: uldahBoss,
+    isCityBoss: true,
+    maxSeconds: 600,
+    supportSources: [
+      uldahPub,
+      uldahIronMine,
+      limsaTransport,
+      limsaBoss,
+      gridaniaBoss,
+      starterBakery,
+      starterFarm,
+    ],
+    supportAfterDirectActions: useProgressionSupport,
+  },
+  {
+    id: 'city_4_ishgard_cover',
+    target: ishgardBoss,
+    isCityBoss: true,
+    maxSeconds: 600,
+    supportSources: [uldahBoss, limsaBoss],
+    supportAfterDirectActions: useProgressionSupport,
+  },
+  {
+    id: 'city_5_kugane_cover',
+    target: kuganeTradeBroker,
+    isCityBoss: true,
+    maxSeconds: 600,
+    supportSources: [ishgardBoss, uldahBoss],
+    supportAfterDirectActions: useProgressionSupport,
+  },
   {
     id: 'city_6_crystarium_cure',
     target: crystariumBoss,
@@ -1145,6 +1358,8 @@ const cityAuditScenarios = [
     target: solutionNineBoss,
     isCityBoss: true,
     maxSeconds: 600,
+    openingCapitalBoostRatio:
+      TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
     supportSources: [
       solutionNineIndustry,
       tuliyollalBoss,
@@ -1154,87 +1369,196 @@ const cityAuditScenarios = [
   },
 ] as const satisfies readonly SimulationScenario[];
 
-const enemySupportReports = cityAuditScenarios.map(
+const cityReports = cityAuditScenarios.map(
   (scenario, index) =>
-    summarizeEnemySupport(
+    summarize(
       scenario,
-      200,
-      10_000 + index * 200
+      10,
+      3_000 + index * 100
     )
 );
 
-const enemySupportBaselineReports = cityAuditScenarios.map(
+const cityEnemySupportScenarios = cityAuditScenarios.slice(5);
+const cityEnemySupportDisabledReports =
+  cityEnemySupportScenarios.map(
   (scenario, index) =>
-    summarizeEnemySupport(
+    summarize(
       {
         ...scenario,
         id: `${scenario.id}_support_disabled`,
         disableEnemySupport: true,
       },
-      100,
-      10_000 + index * 200
+      10,
+      3_000 + (index + 5) * 100
     )
-);
+  );
 
-const enemySupportWinRateComparison = enemySupportReports.map(
+const cityEnemySupportComparison =
+  cityReports.slice(5).map(
   (enabled, index) => {
-    const baseline = enemySupportBaselineReports[index];
-    const enabledWinRate = enabled.wins / enabled.battles;
-    const baselineWinRate = baseline.wins / baseline.battles;
+    const baseline = cityEnemySupportDisabledReports[index];
     return {
-      id: cityAuditScenarios[index].id,
-      enabledWinRate,
-      baselineWinRate,
+      id: cityEnemySupportScenarios[index].id,
+      enabledWinRate: enabled.winRate,
+      baselineWinRate: baseline.winRate,
       percentagePointDelta: Number(
-        ((enabledWinRate - baselineWinRate) * 100).toFixed(1)
+        ((enabled.winRate - baseline.winRate) * 100).toFixed(1)
+      ),
+      p90SecondsDelta: Number(
+        (enabled.p90Seconds - baseline.p90Seconds).toFixed(2)
       ),
     };
   }
 );
 
-const highDifficultySupportSources = [
-  knowledgeAllianceHeadquarters,
-  easternAldenardHeadquarters,
-  solutionNineIndustry,
-  solutionNineBoss,
-  tuliyollalBoss,
-] as const;
-const highDifficultyScenarios: SimulationScenario[] = [
-  ...savageLayerSanityTargets.map((target, index) => ({
-    id: `savage_layer_${index + 1}_support_sanity`,
+const highDifficultySupportSources = [...INITIAL_PROPERTIES]
+  .sort(
+    (left, right) =>
+      calculateSubsidiarySupportAmount(right) -
+      calculateSubsidiarySupportAmount(left)
+  )
+  .slice(0, 12);
+const grandCompanyEorzeaBurst = {
+  // Manual progression SYNERGY is intentionally available at the opening.
+  // A low-cash save should layer it over ally capital before personal buys.
+  triggerAfterDirectActions: 0,
+  durationSeconds: 18,
+  multiplier: 1.78,
+  ownershipPush: 12,
+} as const;
+const ultimateGrandCompanyEorzeaBurst = {
+  ...grandCompanyEorzeaBurst,
+  // Three Savage upgrades (+0.06) and full integration (+0.07).
+  multiplier: 1.91,
+} as const;
+const savageScenarios: SimulationScenario[] =
+  savageProperties.map((target, index) => ({
+    id: `savage_chapter_${index + 1}`,
     target,
     isSavage: true,
     maxSeconds: 900,
+    // Normal-clear cash can be far below a late Savage target's market price.
+    // Audit the intended ally/AUTO route with only a 10% personal war chest
+    // instead of silently granting the simulator a full target-price bankroll.
+    playerBaselineCash: Math.round(target.marketPrice * 0.1),
+    openingCapitalBoostRatio:
+      TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
     supportSources: highDifficultySupportSources,
-    supportAfterDirectActions: useProgressionSupport,
-  })),
-  {
-    id: 'ultimate_support_sanity',
-    target: ultimateSanityTarget,
-    isUltimate: true,
-    maxSeconds: 1_200,
-  },
-];
-const highDifficultySupportReports =
-  highDifficultyScenarios.map((scenario, index) =>
-    summarizeEnemySupport(
+    // A low-cash normal-clear save must be able to open with its holdings.
+    // Requiring three personal buys before the first ally call made the
+    // simulator test an impossible route rather than the in-game support plan.
+    supportAfterDirectActions: useHighDifficultySupport,
+    timedCapitalBuff: {
+      ...grandCompanyEorzeaBurst,
+      // On layer 3/4, spend the early calls baiting cover/invincibility,
+      // then land the one-shot rally after the guard window.
+      triggerAfterSupportActions:
+        index >= 8 && index % 4 >= 2 ? 8 : 0,
+    },
+  }));
+const savageReports = savageScenarios.map(
+  (scenario, index) =>
+    summarize(
       scenario,
-      100,
-      20_000 + index * 100
+      10,
+      5_000 + index * 100
+    )
+);
+const savageEnemySupportDisabledReports =
+  savageScenarios.map((scenario, index) =>
+    summarize(
+      {
+        ...scenario,
+        id: `${scenario.id}_support_disabled`,
+        disableEnemySupport: true,
+      },
+      10,
+      5_000 + index * 100
     )
   );
+const savageEnemySupportComparison = savageReports.map(
+  (enabled, index) => {
+    const baseline =
+      savageEnemySupportDisabledReports[index];
+    return {
+      id: savageScenarios[index].id,
+      enabledWinRate: enabled.winRate,
+      baselineWinRate: baseline.winRate,
+      percentagePointDelta: Number(
+        ((enabled.winRate - baseline.winRate) * 100).toFixed(1)
+      ),
+      p90SecondsDelta: Number(
+        (enabled.p90Seconds - baseline.p90Seconds).toFixed(2)
+      ),
+    };
+  }
+);
+const ultimateScenario = {
+  id: 'ultimate_support_enabled',
+  target: ultimateSanityTarget,
+  isUltimate: true,
+  maxSeconds: 1_200,
+  playerBaselineCash: Math.round(
+    ultimateSanityTarget.marketPrice * 0.1
+  ),
+  openingCapitalBoostRatio:
+    TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
+  supportSources: highDifficultySupportSources,
+  supportAfterDirectActions: useHighDifficultySupport,
+  timedCapitalBuff: {
+    ...ultimateGrandCompanyEorzeaBurst,
+    triggerAfterSupportActions: 8,
+  },
+} as const satisfies SimulationScenario;
+const ultimateReports = [
+  summarize(ultimateScenario, 15, 9_000),
+  summarize(
+    {
+      ...ultimateScenario,
+      id: 'ultimate_support_disabled',
+      disableEnemySupport: true,
+    },
+    15,
+    9_000
+  ),
+];
 const runtimeAlignmentProbes = {
   drillTelegraphPlayerCover:
     runDrillTelegraphCoverProbe(),
   divinationTelegraphEraWindCancel:
     runDivinationEraWindCancelProbe(),
-  forcedInvincible: [
-    runForcedInvincibleProbe({
+  forcedBossDefense: [
+    runForcedBossDefenseProbe({
+      id: 'city_4_cover_forced',
+      target: ishgardBoss,
+      isCityBoss: true,
+    }),
+    runForcedBossDefenseProbe({
+      id: 'city_8_enhanced_cover_forced',
+      target: radzAtHanBoss,
+      isCityBoss: true,
+    }),
+    runForcedBossDefenseProbe({
       id: 'city_10_invincible_forced',
       target: solutionNineBoss,
       isCityBoss: true,
     }),
-    runForcedInvincibleProbe({
+    runForcedBossDefenseProbe({
+      id: 'savage_layer_1_cover_forced',
+      target: savageProperties[0],
+      isSavage: true,
+    }),
+    runForcedBossDefenseProbe({
+      id: 'savage_layer_2_enhanced_cover_forced',
+      target: savageProperties[1],
+      isSavage: true,
+    }),
+    runForcedBossDefenseProbe({
+      id: 'savage_layer_4_invincible_forced',
+      target: savageProperties[3],
+      isSavage: true,
+    }),
+    runForcedBossDefenseProbe({
       id: 'ultimate_invincible_forced',
       target: ultimateSanityTarget,
       isUltimate: true,
@@ -1242,56 +1566,104 @@ const runtimeAlignmentProbes = {
   ],
 };
 
+const allReports = [
+  ...trainingReports,
+  ...normalReports,
+  ...cityReports,
+  ...cityEnemySupportDisabledReports,
+  ...savageReports,
+  ...savageEnemySupportDisabledReports,
+  ...ultimateReports,
+];
+const totalBattles = allReports.reduce(
+  (total, report) => total + report.battles,
+  0
+);
 assert.equal(
-  reports.reduce((total, report) => total + report.battles, 0),
-  1_000,
-  'the deterministic audit executes exactly one thousand battles'
+  totalBattles,
+  500,
+  'the deterministic audit executes exactly five hundred battles'
 );
 
 const reportById = Object.fromEntries(
-  reports.map((report) => [report.id, report])
+  allReports.map((report) => [report.id, report])
 );
 console.log(JSON.stringify({
-  totalBattles: 1_000,
-  reports,
-  enemySupportAudit: {
-    totalBattles: enemySupportReports.reduce(
+  totalBattles,
+  trainingAudit: {
+    totalBattles: trainingReports.reduce(
       (total, report) => total + report.battles,
       0
     ),
-    reports: enemySupportReports,
+    reports: trainingReports,
   },
-  enemySupportDisabledBaselineAudit: {
-    totalBattles: enemySupportBaselineReports.reduce(
+  normalProgressionAudit: {
+    totalBattles: normalReports.reduce(
       (total, report) => total + report.battles,
       0
     ),
-    reports: enemySupportBaselineReports,
-    winRateComparison: enemySupportWinRateComparison,
+    reports: normalReports,
   },
-  highDifficultySupportSanityAudit: {
-    totalBattles: highDifficultySupportReports.reduce(
+  cityBossAudit: {
+    totalBattles: cityReports.reduce(
       (total, report) => total + report.battles,
       0
     ),
-    reports: highDifficultySupportReports,
+    reports: cityReports,
+  },
+  cityEnemySupportDisabledAudit: {
+    totalBattles: cityEnemySupportDisabledReports.reduce(
+      (total, report) => total + report.battles,
+      0
+    ),
+    reports: cityEnemySupportDisabledReports,
+    comparison: cityEnemySupportComparison,
+  },
+  savageAudit: {
+    totalBattles: savageReports.reduce(
+      (total, report) => total + report.battles,
+      0
+    ),
+    reports: savageReports,
+  },
+  savageEnemySupportDisabledAudit: {
+    totalBattles: savageEnemySupportDisabledReports.reduce(
+      (total, report) => total + report.battles,
+      0
+    ),
+    reports: savageEnemySupportDisabledReports,
+    comparison: savageEnemySupportComparison,
+  },
+  ultimateAudit: {
+    totalBattles: ultimateReports.reduce(
+      (total, report) => total + report.battles,
+      0
+    ),
+    reports: ultimateReports,
   },
   runtimeAlignmentProbes,
 }, null, 2));
 
-assert.equal(reportById.training_level_1.wins, 200);
+assert.equal(reportById.training_level_1.wins, 8);
+for (const report of trainingReports) {
+  assert.equal(
+    report.wins,
+    report.battles,
+    `${report.id} should remain completable with its authored training funds`
+  );
+}
 assert.ok(
   reportById.training_level_1.medianDirectActions >= 3 &&
     reportById.training_level_1.medianDirectActions <= 5,
   'level-one training should take three to five default direct offers'
 );
 assert.ok(reportById.training_level_1.p90Seconds <= 25);
-assert.equal(reportById.gridania_first.wins, 200);
+assert.equal(reportById.gridania_first.wins, 8);
 assert.ok(
   reportById.gridania_first.medianDirectActions >= 10 &&
     reportById.gridania_first.medianDirectActions <= 12
 );
-assert.equal(reportById.gridania_second_with_support.wins, 200);
+assert.equal(reportById.gridania_second_with_support.wins, 8);
 assert.equal(
   reportById.gridania_second_with_support.medianSupportActions,
   1
@@ -1303,24 +1675,20 @@ assert.ok(
 );
 assert.ok(
   reportById.gridania_second_with_support.medianDirectActions <
-    reportById.gridania_second_without_support.medianDirectActions,
+  reportById.gridania_second_without_support.medianDirectActions,
   'the first acquired ally reduces the direct-investment grind'
 );
-assert.equal(reportById.gridania_boss_unchanged.wins, 200);
 
-assert.equal(
-  enemySupportReports.reduce(
-    (total, report) => total + report.battles,
-    0
-  ),
-  1_000,
-  'the enemy-support audit executes exactly one thousand additional battles'
-);
-for (const report of enemySupportReports) {
+for (const report of allReports) {
   assert.equal(
-    report.timeouts,
-    0,
-    `${report.id} should always reach a finite battle result`
+    report.wins + report.losses + report.timeouts,
+    report.battles,
+    `${report.id} must account for every battle`
+  );
+  assert.ok(
+    report.timeouts >= 0 &&
+      report.timeouts <= report.battles,
+    `${report.id} must report a valid timeout count`
   );
   assert.equal(
     report.allWallTimesFinite,
@@ -1330,6 +1698,11 @@ for (const report of enemySupportReports) {
   assert.ok(
     report.minimumEnemyReserve >= 0,
     `${report.id} must never overspend the enemy reserve`
+  );
+  assert.ok(
+    report.maximumPlayerRecoveryRatio <=
+      BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO + Number.EPSILON,
+    `${report.id} must keep player recovery within the cumulative 20% cap`
   );
   assert.ok(
     report.maximumEnemyRecoveryRatio <=
@@ -1344,60 +1717,103 @@ for (const report of enemySupportReports) {
   ] as const) {
     if (report.profile.includes(skill)) {
       assert.ok(
-        report.activations[skill] > 0 &&
-          report.activations[skill] <= report.battles,
-        `${report.id} should exercise configured ${skill} without double activation`
+        report.activations[skill] <= report.battles,
+        `${report.id} must not activate configured ${skill} more than once per battle`
       );
     } else {
       assert.equal(report.activations[skill], 0);
     }
   }
-}
-
-for (const expected of [
-  {
-    id: 'city_8_radz_at_han_mug_drill',
-    tier: 'enhanced_cover',
-  },
-  {
-    id: 'city_9_tuliyollal_divination',
-    tier: 'enhanced_cover',
-  },
-  {
-    id: 'city_10_solution_nine_cure_divination',
-    tier: 'invincible',
-  },
-] as const) {
-  const report = enemySupportReports.find(
-    (candidate) => candidate.id === expected.id
-  )!;
-  assert.equal(report.bossDefenseTier, expected.tier);
-  assert.ok(report.bossDefenseActivations <= report.battles);
-  if (expected.tier === 'enhanced_cover') {
-    assert.ok(
-      report.bossDefenseActivations > 0,
-      `${expected.id} should reach and exercise enhanced Cover`
-    );
-    assert.ok(report.medianBossDefenseAbsorbedGauge > 0);
-  }
-}
-
-assert.equal(
-  enemySupportBaselineReports.reduce(
-    (total, report) => total + report.battles,
-    0
-  ),
-  500,
-  'the support-disabled baseline compares five cities at one hundred battles each'
-);
-for (const report of enemySupportBaselineReports) {
-  assert.equal(report.timeouts, 0);
-  assert.equal(report.allWallTimesFinite, true);
-  assert.ok(report.minimumEnemyReserve >= 0);
   assert.ok(
-    report.maximumEnemyRecoveryRatio <=
-      BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO + Number.EPSILON
+    report.bossDefenseActivations <= report.battles,
+    `${report.id} must not activate boss defense more than once per battle`
   );
+}
+
+for (const report of [
+  ...trainingReports,
+  ...normalReports,
+  ...cityReports,
+  ...cityEnemySupportDisabledReports,
+]) {
+  assert.equal(
+    report.timeouts,
+    0,
+    `${report.id} should resolve within its deterministic normal-difficulty audit window`
+  );
+}
+
+for (const report of [
+  ...trainingReports,
+  ...normalReports,
+  ...cityReports,
+]) {
+  assert.ok(
+    report.p90Seconds < 120,
+    `${report.id} should keep its p90 below two minutes`
+  );
+  assert.ok(
+    report.p90DirectActions + report.p90SupportActions < 30,
+    `${report.id} should not require thirty capital commands`
+  );
+}
+
+const expectedCityBossIds = [
+  'prop_timber_ake',
+  'prop_brewery_beer',
+  'prop_casino_grand',
+  'prop_weapon_dealer',
+  'prop_info_broker',
+  'prop_inn_town',
+  'prop_wheat_farm',
+  'prop_security_firm',
+  'prop_coffee_aurora',
+  'prop_abyss_mine',
+] as const;
+const expectedCityDefenseTiers = [
+  'boss',
+  'boss',
+  'boss',
+  'cover',
+  'cover',
+  'cover',
+  'cover',
+  'enhanced_cover',
+  'enhanced_cover',
+  'invincible',
+] as const;
+const expectedCitySupportProfiles = [
+  [],
+  [],
+  [],
+  [],
+  [],
+  ['cure'],
+  ['mug'],
+  ['mug', 'drill'],
+  ['divination'],
+  ['cure', 'divination'],
+] as const;
+
+assert.equal(cityReports.length, 10);
+assert.deepEqual(
+  authoredCityBossTargets.map((target) => target.id),
+  expectedCityBossIds
+);
+cityReports.forEach((report, index) => {
+  assert.equal(report.targetId, expectedCityBossIds[index]);
+  assert.equal(
+    report.bossDefenseTier,
+    expectedCityDefenseTiers[index]
+  );
+  assert.deepEqual(
+    report.profile,
+    expectedCitySupportProfiles[index]
+  );
+});
+
+assert.equal(cityEnemySupportDisabledReports.length, 5);
+for (const report of cityEnemySupportDisabledReports) {
   assert.deepEqual(report.profile, []);
   assert.deepEqual(
     report.activations,
@@ -1405,46 +1821,74 @@ for (const report of enemySupportBaselineReports) {
   );
 }
 
-assert.equal(savageLayerSanityTargets.length, 4);
-assert.equal(
-  highDifficultySupportReports.reduce(
-    (total, report) => total + report.battles,
-    0
-  ),
-  500,
-  'Savage layers one through four and Ultimate each execute one hundred sanity battles'
-);
-for (const report of highDifficultySupportReports) {
+assert.equal(savageProperties.length, 12);
+assert.equal(savageReports.length, 12);
+savageReports.forEach((report, index) => {
+  const layer = (index % 4) + 1;
+  const expectedTier =
+    layer === 1
+      ? 'cover'
+      : layer < 4
+        ? 'enhanced_cover'
+        : 'invincible';
+  const expectedProfile =
+    layer === 1
+      ? ['cure']
+      : layer === 2
+        ? ['mug']
+        : layer === 3
+          ? ['mug', 'drill']
+          : ['divination'];
+  assert.equal(report.bossDefenseTier, expectedTier);
+  assert.deepEqual(report.profile, expectedProfile);
   assert.equal(
-    report.timeouts,
-    0,
-    `${report.id} should reach a finite high-difficulty result`
+    report.wins,
+    report.battles,
+    `${report.id} remains clearable with opening AUTO, support and Grand Company Eorzea`
   );
-  assert.equal(report.allWallTimesFinite, true);
-  assert.ok(report.minimumEnemyReserve >= 0);
   assert.ok(
-    report.maximumEnemyRecoveryRatio <=
-      BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO + Number.EPSILON
+    report.p90Seconds < 120,
+    `${report.id} avoids a two-minute mud fight`
   );
-  assert.ok(report.bossDefenseActivations <= report.battles);
-  if (!report.id.startsWith('ultimate_')) {
-    assert.ok(
-      report.bossDefenseActivations > 0,
-      `${report.id} should exercise its authored boss defense`
-    );
-    assert.ok(report.medianBossDefenseAbsorbedGauge > 0);
-  }
-  const totalSupportActivations = Object.values(
-    report.activations
-  ).reduce((total, count) => total + count, 0);
   assert.ok(
-    totalSupportActivations > 0,
-    `${report.id} should exercise at least one enemy support skill`
+    report.p90DirectActions < 30,
+    `${report.id} avoids a thirty-investment grind`
   );
-  for (const count of Object.values(report.activations)) {
-    assert.ok(count <= report.battles);
-  }
+  assert.equal(
+    report.timedCapitalBuffActivations,
+    report.battles,
+    `${report.id} evaluates the manual Grand Company Eorzea burst`
+  );
+});
+
+assert.equal(savageEnemySupportDisabledReports.length, 12);
+for (const report of savageEnemySupportDisabledReports) {
+  assert.deepEqual(report.profile, []);
+  assert.deepEqual(
+    report.activations,
+    createEnemySupportActivationCounts()
+  );
 }
+
+assert.deepEqual(
+  ultimateReports[0].profile,
+  ['cure', 'mug', 'drill', 'divination']
+);
+assert.deepEqual(ultimateReports[1].profile, []);
+assert.deepEqual(
+  ultimateReports[1].activations,
+  createEnemySupportActivationCounts()
+);
+assert.equal(
+  ultimateReports[0].wins,
+  ultimateReports[0].battles,
+  'Ultimate remains clearable with the complete authored player kit'
+);
+assert.ok(
+  ultimateReports[0].p90Seconds < 120 &&
+    ultimateReports[0].p90DirectActions < 30,
+  'Ultimate avoids both a two-minute mud fight and thirty direct investments'
+);
 
 const drillCoverProbe =
   runtimeAlignmentProbes.drillTelegraphPlayerCover;
@@ -1485,40 +1929,117 @@ assert.equal(
 );
 assert.equal(divinationCancelProbe.eraWindActive, true);
 
+assert.deepEqual(BOSS_COVER_BALANCE.cover, {
+  durationMs: 16_000,
+  absorbRatio: 0.72,
+  gaugeCapacity: 40,
+});
+assert.deepEqual(BOSS_COVER_BALANCE.enhancedCover, {
+  durationMs: 18_000,
+  absorbRatio: 0.85,
+  gaugeCapacity: 56,
+});
+assert.deepEqual(BOSS_COVER_BALANCE.invincible, {
+  durationMs: 8_000,
+  absorbRatio: 1,
+  gaugeCapacity: Number.POSITIVE_INFINITY,
+});
+
+const expectedForcedDefenseTiers = [
+  'cover',
+  'enhanced_cover',
+  'invincible',
+  'cover',
+  'enhanced_cover',
+  'invincible',
+  'invincible',
+] as const;
+const assertNearlyEqual = (
+  actual: number,
+  expected: number,
+  message: string
+) =>
+  assert.ok(
+    Math.abs(actual - expected) <= 0.0001,
+    `${message}: expected ${expected}, received ${actual}`
+  );
+
 assert.equal(
-  runtimeAlignmentProbes.forcedInvincible.length,
-  2
+  runtimeAlignmentProbes.forcedBossDefense.length,
+  expectedForcedDefenseTiers.length
 );
-for (const probe of runtimeAlignmentProbes.forcedInvincible) {
-  assert.equal(probe.tier, 'invincible');
-  assert.equal(probe.activations, 1);
-  assert.equal(
-    probe.configuredDurationMs,
-    BOSS_COVER_BALANCE.invincible.durationMs
-  );
-  assert.equal(probe.capacityIsInfinite, true);
-  assert.equal(probe.trigger.appliedGauge, 0);
-  assert.equal(
-    probe.trigger.absorbedGauge,
-    probe.trigger.incomingGauge
-  );
-  for (const path of probe.blockedPaths) {
+runtimeAlignmentProbes.forcedBossDefense.forEach(
+  (probe, probeIndex) => {
     assert.equal(
-      path.appliedGauge,
-      0,
-      `${probe.id} should block ${path.path}`
+      probe.tier,
+      expectedForcedDefenseTiers[probeIndex]
     );
-    assert.equal(path.absorbedGauge, path.incomingGauge);
+    const balance =
+      probe.tier === 'cover'
+        ? BOSS_COVER_BALANCE.cover
+        : probe.tier === 'enhanced_cover'
+          ? BOSS_COVER_BALANCE.enhancedCover
+          : BOSS_COVER_BALANCE.invincible;
+    assert.equal(
+      probe.configuredDurationMs,
+      balance.durationMs
+    );
+    assert.equal(
+      probe.configuredGaugeCapacity,
+      balance.gaugeCapacity
+    );
+    assert.equal(probe.absorbRatio, balance.absorbRatio);
+
+    for (const path of probe.independentPaths) {
+      assert.equal(
+        path.activations,
+        1,
+        `${probe.id} should independently activate for ${path.path}`
+      );
+      const triggerAbsorbed =
+        path.trigger.incomingGauge * balance.absorbRatio;
+      assertNearlyEqual(
+        path.trigger.absorbedGauge,
+        triggerAbsorbed,
+        `${probe.id} trigger absorption`
+      );
+      const capacityAfterTrigger =
+        balance.gaugeCapacity === Number.POSITIVE_INFINITY
+          ? Number.POSITIVE_INFINITY
+          : balance.gaugeCapacity - triggerAbsorbed;
+      const expectedAbsorbed = Math.min(
+        path.impact.incomingGauge * balance.absorbRatio,
+        capacityAfterTrigger
+      );
+      assertNearlyEqual(
+        path.impact.absorbedGauge,
+        expectedAbsorbed,
+        `${probe.id} ${path.path} absorption`
+      );
+      assertNearlyEqual(
+        path.impact.appliedGauge,
+        -(path.impact.incomingGauge - expectedAbsorbed),
+        `${probe.id} ${path.path} applied gauge`
+      );
+      assert.ok(
+        path.totalAbsorbedGauge > 0,
+        `${probe.id} ${path.path} must absorb player pressure`
+      );
+    }
+
+    assert.ok(
+      probe.finalActiveMillisecond.absorbedGauge > 0,
+      `${probe.id} remains defensive through the final active millisecond`
+    );
+    assert.equal(
+      probe.afterExpiry.absorbedGauge,
+      0,
+      `${probe.id} stops absorbing after its authored duration`
+    );
+    assert.equal(
+      probe.afterExpiry.appliedGauge,
+      -probe.afterExpiry.incomingGauge,
+      `${probe.id} allows player pressure after expiry`
+    );
   }
-  assert.equal(
-    probe.finalActiveMillisecond.appliedGauge,
-    0,
-    `${probe.id} remains invincible through the final active millisecond`
-  );
-  assert.equal(
-    probe.afterExpiry.appliedGauge,
-    -probe.afterExpiry.incomingGauge,
-    `${probe.id} allows player pressure after eight seconds expire`
-  );
-  assert.ok(probe.totalAbsorbedGauge > 0);
-}
+);

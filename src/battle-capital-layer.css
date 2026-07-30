@@ -16,6 +16,7 @@
   left: -.55rem;
   width: auto;
   max-width: none;
+  overflow: visible;
 }
 
 .integrated-battlefield .capital-visual-row .ownership-fighter {
@@ -36,11 +37,11 @@
 
 .integrated-battlefield .capital-visual-row .gil-chip-image--stack,
 .integrated-battlefield .capital-visual-row .gil-chip-image--stack:nth-of-type(n) {
-  width: min(2.2rem, 22%);
+  width: min(1.32rem, 13.2%);
 }
 
 .integrated-battlefield .capital-visual-row .gil-chip-image--starter {
-  width: min(2.05rem, 20.5%) !important;
+  width: min(1.23rem, 12.3%) !important;
 }
 
 .integrated-battlefield
@@ -463,6 +464,20 @@
 }
 
 /*
+ * The result panel can stay open while the player reads Tataru's analysis.
+ * Terminal theatre has finished by this phase, so freeze every battlefield
+ * animation instead of keeping decorative infinite loops alive behind it.
+ */
+.buyout-screen--phase-result .integrated-battlefield,
+.buyout-screen--phase-result .integrated-battlefield::before,
+.buyout-screen--phase-result .integrated-battlefield::after,
+.buyout-screen--phase-result .integrated-battlefield *,
+.buyout-screen--phase-result .integrated-battlefield *::before,
+.buyout-screen--phase-result .integrated-battlefield *::after {
+  animation-play-state: paused !important;
+}
+
+/*
  * Enemy support jobs share one event-only stage. The actor exists only while
  * a skill is being presented, so there is no idle animation or persistent
  * compositor work between casts.
@@ -818,55 +833,22 @@
 }
 
 /*
- * Twelve-step hoard composition (stages 0-11).
+ * Sixty logical hoard beats (stages 0-59).
  *
- * The numeric stage grows from a single small bundle to a broad treasury.
- * Persistent DOM stays fixed at three repeated mound bands, five foreground
- * sprites and six already-mounted formation slots. Those slots are revealed
- * one at a time, so smaller art gains density without a coin-per-gil node
- * model. The bands stay static between investments; only a new offer receives
- * the finite landing animation.
+ * Inline widths advance three fixed, repeated background bands: a broad near
+ * row, a tightly overlapped middle row, then a smaller offset back row.
+ * Their overlapping painted bundles make a compact mound rather than a shelf.
+ * Persistent DOM remains three bands, five foreground sprites and six mounted
+ * formation slots; no coin-per-gil nodes or idle animation are introduced.
  */
 .integrated-battlefield .gil-tower {
   --hoard-opacity: 0;
-}
-
-.integrated-battlefield .gil-tower--stage-4 {
-  --hoard-opacity: .38;
-}
-
-.integrated-battlefield .gil-tower--stage-5 {
-  --hoard-opacity: .48;
-}
-
-.integrated-battlefield .gil-tower--stage-6 {
-  --hoard-opacity: .58;
-}
-
-.integrated-battlefield .gil-tower--stage-7 {
-  --hoard-opacity: .68;
-}
-
-.integrated-battlefield .gil-tower--stage-8 {
-  --hoard-opacity: .76;
-}
-
-.integrated-battlefield .gil-tower--stage-9 {
-  --hoard-opacity: .82;
-}
-
-.integrated-battlefield .gil-tower--stage-10 {
-  --hoard-opacity: .88;
-  --hoard-chip-near: 76%;
-  --hoard-chip-mid: 72%;
-  --hoard-chip-far: 68%;
-}
-
-.integrated-battlefield .gil-tower--stage-11 {
-  --hoard-opacity: .92;
-  --hoard-chip-near: 70%;
-  --hoard-chip-mid: 66%;
-  --hoard-chip-far: 62%;
+  --hoard-near-width: 0%;
+  --hoard-mid-width: 0%;
+  --hoard-far-width: 0%;
+  --hoard-near-x: 50%;
+  --hoard-mid-x: 50%;
+  --hoard-far-x: 50%;
 }
 
 .integrated-battlefield .gil-tower__hoard {
@@ -883,9 +865,12 @@
 .integrated-battlefield .gil-tower__hoard::after {
   position: absolute;
   z-index: -1;
-  right: 4%;
+  right: auto;
   bottom: -2%;
-  left: 4%;
+  left: 50%;
+  width: var(--hoard-near-width);
+  min-width: 2.4rem;
+  max-width: 88%;
   height: 58%;
   border-radius: 50%;
   content: "";
@@ -896,6 +881,7 @@
     transparent 72%
   );
   box-shadow: 0 0 1rem rgba(250, 204, 21, .2);
+  translate: -50% 0;
 }
 
 .integrated-battlefield .gil-tower--enemy .gil-tower__hoard::after {
@@ -910,55 +896,67 @@
 
 .integrated-battlefield .gil-tower__hoard-band {
   position: absolute;
-  right: -4%;
+  right: auto;
   bottom: 0;
-  left: -4%;
+  left: 50%;
   display: block;
-  height: 58%;
+  width: var(--hoard-near-width);
+  max-width: 92%;
+  height: 1.24rem;
   background-image: var(--capital-stack-image);
-  background-position: center bottom;
+  background-position: var(--hoard-near-x) bottom;
   background-repeat: repeat-x;
-  background-size: auto var(--hoard-chip-near, 82%);
+  background-size: auto 1.24rem;
   filter: drop-shadow(0 .24rem .2rem rgba(0, 0, 0, .56));
+  translate: -50% 0;
 }
 
 .integrated-battlefield .gil-tower__hoard-band--far {
   z-index: 1;
-  bottom: 34%;
-  height: 44%;
+  bottom: 1.68rem;
+  width: var(--hoard-far-width);
+  max-width: 84%;
+  height: 1.08rem;
   opacity: .52;
-  background-size: auto var(--hoard-chip-far, 74%);
+  background-position-x: var(--hoard-far-x);
+  background-size: auto 1.08rem;
 }
 
 .integrated-battlefield .gil-tower__hoard-band--mid {
   z-index: 2;
-  bottom: 16%;
-  height: 56%;
+  bottom: .86rem;
+  width: var(--hoard-mid-width);
+  max-width: 88%;
+  height: 1.16rem;
   opacity: .76;
-  background-position-x: 32%;
-  background-size: auto var(--hoard-chip-mid, 78%);
+  background-position-x: var(--hoard-mid-x);
+  background-size: auto 1.16rem;
 }
 
 .integrated-battlefield .gil-tower__hoard-band--near {
   z-index: 3;
-  height: 64%;
-  background-position-x: 68%;
+  height: 1.24rem;
 }
 
-.integrated-battlefield .gil-tower--stage-4 .gil-tower__hoard-band--far,
-.integrated-battlefield .gil-tower--stage-4 .gil-tower__hoard-band--mid {
-  display: none;
+.integrated-battlefield .gil-tower--impact .gil-tower__chips {
+  translate:
+    var(--capital-stage-nudge-x, 0)
+    var(--capital-stage-nudge-y, 0);
+  transition: translate 96ms cubic-bezier(.2, .72, .22, 1);
 }
 
-.integrated-battlefield .gil-tower--stage-5 .gil-tower__hoard-band--far,
-.integrated-battlefield .gil-tower--stage-6 .gil-tower__hoard-band--far,
-.integrated-battlefield .gil-tower--stage-7 .gil-tower__hoard-band--far {
-  display: none;
+.buyout-screen--lightweight
+  .integrated-battlefield
+  .gil-tower--impact
+  .gil-tower__chips {
+  transition-duration: 64ms;
 }
 
-.integrated-battlefield .gil-tower--stage-10 .gil-tower__chips,
-.integrated-battlefield .gil-tower--stage-11 .gil-tower__chips {
-  overflow: visible;
+@media (prefers-reduced-motion: reduce) {
+  .integrated-battlefield .gil-tower--impact .gil-tower__chips {
+    translate: 0 0;
+    transition: none;
+  }
 }
 
 .integrated-battlefield .gil-tower__overflow > i {
@@ -1241,7 +1239,7 @@
 
   .buyout-footer:not(.buyout-footer--settled) {
     position: relative;
-    z-index: 90;
+    z-index: 100;
     margin-top: 0;
   }
 
@@ -1445,13 +1443,18 @@
   bottom: .1rem;
   left: 50%;
   display: block;
-  width: min(2.1rem, 21%);
-  height: min(3.75rem, 56%);
+  width: min(1.26rem, 12.6%);
+  height: min(2.25rem, 34%);
   object-fit: contain;
   object-position: center bottom;
   filter: brightness(.82) saturate(.9);
   opacity: .84;
   translate: -50% 0;
+}
+
+.integrated-battlefield .gil-tower__formation > img[hidden],
+.integrated-battlefield .gil-tower__hoard-band[hidden] {
+  display: none !important;
 }
 
 .integrated-battlefield .gil-tower__formation > img:nth-child(1) {
@@ -1485,19 +1488,6 @@
   opacity: .66;
 }
 
-.integrated-battlefield .gil-tower--stage-5
-  .gil-tower__formation > img:nth-child(n + 2),
-.integrated-battlefield .gil-tower--stage-6
-  .gil-tower__formation > img:nth-child(n + 3),
-.integrated-battlefield .gil-tower--stage-7
-  .gil-tower__formation > img:nth-child(n + 4),
-.integrated-battlefield .gil-tower--stage-8
-  .gil-tower__formation > img:nth-child(n + 5),
-.integrated-battlefield .gil-tower--stage-9
-  .gil-tower__formation > img:nth-child(n + 6) {
-  display: none;
-}
-
 .integrated-battlefield
   :is(
     .gil-tower__formation--terrace,
@@ -1515,8 +1505,8 @@
     .gil-tower__formation--vault,
     .gil-tower__formation--flood
   ) > img {
-  width: min(2.1rem, 21%);
-  height: min(3.75rem, 56%);
+  width: min(1.26rem, 12.6%);
+  height: min(2.25rem, 34%);
 }
 
 .integrated-battlefield .gil-tower__formation--flood {
@@ -2248,11 +2238,7 @@
 .integrated-battlefield--capital-impact
   .gil-tower--player.gil-tower--impact
   .gil-tower__hoard-band {
-  animation:
-    capital-row-lock
-    var(--capital-row-duration, 280ms)
-    cubic-bezier(.18, .72, .22, 1)
-    both;
+  animation: none;
 }
 
 .integrated-battlefield--capital-impact
@@ -2330,7 +2316,7 @@
 .integrated-battlefield--capital-impact
   .gil-tower--player.gil-tower--impact
   .gil-tower__formation > img {
-  animation: capital-formation-lock 360ms cubic-bezier(.16, .72, .2, 1) both;
+  animation: none;
 }
 
 .integrated-battlefield--capital-impact.integrated-battlefield--capital-small
@@ -2346,7 +2332,7 @@
 .integrated-battlefield--capital-impact
   .gil-tower--player.gil-tower--impact
   .gil-chip-image:not(.gil-chip-image--falling) {
-  animation: capital-foreground-lock 330ms cubic-bezier(.16, .72, .2, 1) both;
+  animation: none;
 }
 
 .integrated-battlefield--capital-impact.integrated-battlefield--capital-small
@@ -2874,6 +2860,45 @@
   }
 }
 
+.buyout-footer:not(.buyout-footer--settled) {
+  position: relative;
+  z-index: 100;
+  isolation: isolate;
+}
+
+@media (orientation: landscape) and (max-width: 950px) and (max-height: 500px) {
+  .buyout-screen .integrated-battlefield .ownership-capital-readout {
+    right: auto;
+    left: 50%;
+    width:
+      calc(
+        100vw - 1.25rem - var(--game-safe-left) - var(--game-safe-right)
+      );
+    max-width:
+      calc(
+        100vw - 1.25rem - var(--game-safe-left) - var(--game-safe-right)
+      );
+    grid-template-columns: minmax(0, 1fr) 3.4rem minmax(0, 1fr);
+    gap: .2rem;
+    box-sizing: border-box;
+    transform: translateX(-50%);
+  }
+
+  .integrated-battlefield .ownership-capital-readout > strong {
+    font-size: clamp(.9rem, 2.7vw, 1.16rem);
+  }
+
+  .integrated-battlefield
+    .ownership-capital-readout > strong:first-child {
+    padding-left: .16rem;
+  }
+
+  .integrated-battlefield
+    .ownership-capital-readout > strong:last-child {
+    padding-right: .16rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .buyout-screen--capital-commit
     :is(
@@ -3009,5 +3034,29 @@
     .integrated-battlefield--terminal-winner-player
     .ownership-avatar {
     animation: none !important;
+  }
+}
+
+/*
+ * Portrait phones have only half a field per side. Nudge each fixed-size pile
+ * slightly toward the centre so its middle growth remains visible beside the
+ * foreground actor. Width and node counts stay unchanged, and the centre lane
+ * still separates the two mounds.
+ */
+@media (max-width: 639px) and (min-height: 701px) {
+  .integrated-battlefield
+    .capital-visual-row
+    .gil-tower--player
+    .gil-tower__chips {
+    right: -1.1rem;
+    left: 0;
+  }
+
+  .integrated-battlefield
+    .capital-visual-row
+    .gil-tower--enemy
+    .gil-tower__chips {
+    right: 0;
+    left: -1.1rem;
   }
 }

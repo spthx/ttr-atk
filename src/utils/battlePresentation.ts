@@ -194,13 +194,10 @@ export const getNextBattleSkillId = (
 
 export const resolveBattleSkillSelection = (
   usableEquippedIds: readonly string[],
-  usableAvailableIds: readonly string[],
+  _usableAvailableIds: readonly string[],
   selectedSkillId: string | null
 ) => {
-  const usingFallbackPool = usableEquippedIds.length === 0;
-  const poolIds = usingFallbackPool
-    ? [...usableAvailableIds]
-    : [...usableEquippedIds];
+  const poolIds = [...usableEquippedIds];
   const resolvedSelectedId =
     selectedSkillId && poolIds.includes(selectedSkillId)
       ? selectedSkillId
@@ -209,10 +206,7 @@ export const resolveBattleSkillSelection = (
   return {
     poolIds,
     selectedSkillId: resolvedSelectedId,
-    usingFallback:
-      !!resolvedSelectedId &&
-      usingFallbackPool &&
-      !usableEquippedIds.includes(resolvedSelectedId),
+    usingFallback: false,
   };
 };
 
@@ -509,26 +503,33 @@ export const getCapitalVisualBundleCountForAmount = (amount: number) => {
   );
 };
 
+export const BATTLE_CAPITAL_VISUAL_STAGE_COUNT = 60;
+export const MAX_BATTLE_CAPITAL_VISUAL_STAGE =
+  BATTLE_CAPITAL_VISUAL_STAGE_COUNT - 1;
+
 const BATTLE_CAPITAL_RATIO_THRESHOLDS = [
-  0.12,
-  0.24,
-  0.36,
-  0.5,
-  0.7,
-  1,
-  1.45,
-  2.1,
+  ...Array.from(
+    { length: 50 },
+    (_, index) => Number(((index + 1) * 0.05).toFixed(2))
+  ),
+  2.7,
+  2.9,
   3.1,
+  3.4,
+  3.8,
   4.4,
-  5.8,
-  7.5,
+  5.2,
+  6.2,
+  Number.POSITIVE_INFINITY,
 ] as const;
 
 /**
  * Live battles need to show the act of stacking capital, not the campaign's
- * nominal gil scale. A first offer therefore starts with one visible bundle
- * in every chapter, while a pre-funded opponent remains a modest pile.
- * Repeated over-investment can still reach the twelfth and final visual beat.
+ * nominal gil scale. A small first offer starts sparsely in every chapter,
+ * while a standard ten-percent offer exposes two compact beats. Five-percent
+ * steps stay legible through 250% of the asking price; the last nine stages
+ * cover late-raid overcapital without enlarging a bundle. These are logical
+ * paint states, not images or amount-proportional DOM nodes.
  */
 export const getBattleCapitalVisualBundleCount = (
   amount: number,
@@ -542,26 +543,113 @@ export const getBattleCapitalVisualBundleCount = (
     (threshold) => ratio <= threshold
   );
   const baseBundleCount = thresholdIndex < 0
-    ? CAPITAL_VISUAL_BUNDLE_COUNTS.at(-1) ?? 13
+    ? BATTLE_CAPITAL_RATIO_THRESHOLDS.length
     : thresholdIndex + 1;
-  return Math.min(13, baseBundleCount);
+  return Math.min(BATTLE_CAPITAL_RATIO_THRESHOLDS.length, baseBundleCount);
 };
 
 export const getCapitalVisualStageForBundleCount = (bundleCount: number) => {
-  // The live field owns twelve decorative beats (0-11). Capital may keep
-  // growing numerically after the last beat, but the mound itself stays
-  // bounded and uses glow/motion for over-cap investment.
-  return Math.max(0, Math.min(11, Math.floor(bundleCount)));
+  // The live field owns sixty logical beats (0-59). Capital may keep growing
+  // numerically after the last beat, while the mound retains fixed DOM caps.
+  return Math.max(
+    0,
+    Math.min(MAX_BATTLE_CAPITAL_VISUAL_STAGE, Math.floor(bundleCount))
+  );
 };
 
 /**
  * Small painted bundles read as a growing treasury better than a handful of
  * oversized props. Five foreground sprites plus six already-mounted formation
- * slots provide the perceived density; CSS reveals those slots one by one
- * without creating one node per coin or per gil amount.
+ * slots provide close-up depth. Three repeated, clipped background bands carry
+ * the sixty fine-grained width changes without creating one node per coin or
+ * per gil amount.
  */
 export const getCapitalVisualSpriteCount = (bundleCount: number) =>
-  Math.max(0, Math.min(5, Math.floor(bundleCount)));
+  Math.max(
+    0,
+    Math.min(5, Math.ceil((Math.floor(bundleCount) - 12) / 10))
+  );
+
+export const getCapitalFormationPieceCount = (stage: number) =>
+  Math.max(0, Math.min(6, Math.floor((Math.max(0, stage) + 1) / 10)));
+
+export const getCapitalHoardBandCount = (stage: number) =>
+  stage < 1 ? 0 : stage < 3 ? 1 : stage < 6 ? 2 : 3;
+
+const CAPITAL_HOARD_ROW_SEQUENCE = [
+  ...Array.from(
+    { length: 8 },
+    () => ['near', 'near', 'mid', 'near', 'mid', 'far'] as const
+  ).flat(),
+  'far',
+  'mid',
+  'far',
+  'mid',
+  'far',
+  'mid',
+  'far',
+  'mid',
+  'far',
+  'far',
+  'far',
+] as const;
+
+const CAPITAL_HOARD_FILL_STAGES = Array.from(
+  { length: BATTLE_CAPITAL_VISUAL_STAGE_COUNT },
+  (_, stage) => {
+    const counts = { near: 0, mid: 0, far: 0 };
+    CAPITAL_HOARD_ROW_SEQUENCE
+      .slice(0, stage)
+      .forEach((row) => {
+        counts[row] += 1;
+      });
+    return {
+      near: counts.near / 24,
+      mid: counts.mid / 20,
+      far: counts.far / 15,
+    } as const;
+  }
+);
+
+export const getCapitalHoardFillRatios = (stage: number) => {
+  const normalizedStage = getCapitalVisualStageForBundleCount(stage);
+  return CAPITAL_HOARD_FILL_STAGES[normalizedStage];
+};
+
+/**
+ * Builds a bounded monotonic sequence for the painted pile during one landing.
+ * It is independent from gil amount and never creates DOM nodes.
+ */
+export const getCapitalStageSequence = (
+  previousStage: number,
+  targetStage: number,
+  maxFrames: number
+) => {
+  const from = Math.max(
+    0,
+    Math.min(MAX_BATTLE_CAPITAL_VISUAL_STAGE, Math.floor(previousStage))
+  );
+  const to = Math.max(
+    0,
+    Math.min(MAX_BATTLE_CAPITAL_VISUAL_STAGE, Math.floor(targetStage))
+  );
+  const frameCount = Math.max(1, Math.floor(maxFrames));
+  if (from === to) return [to];
+  const direction = to > from ? 1 : -1;
+  const distance = Math.abs(to - from);
+  const steps = Math.min(distance, frameCount);
+  const sequence: number[] = [];
+  for (let index = 1; index <= steps; index += 1) {
+    const progress = index / steps;
+    const stage =
+      index === steps
+        ? to
+        : from + direction * Math.max(1, Math.round(distance * progress));
+    if (sequence.at(-1) !== stage) sequence.push(stage);
+  }
+  if (sequence.at(-1) !== to) sequence.push(to);
+  return sequence;
+};
 
 export const MAX_CAPITAL_DROP_PARTICLE_COUNT = 16;
 
@@ -590,8 +678,8 @@ export const getCapitalDropParticleCount = (
 
 /**
  * The carried stake is one readable cargo silhouette, never a coin-per-value
- * pile. Its sprite and scale communicate the selected level; the bounded
- * 0-11 hoard remains the place where accumulated capital is shown.
+ * pile. Its sprite and static size communicate the selected level; the bounded
+ * 0-59 hoard remains the place where accumulated capital is shown.
  */
 export const getInvestmentStakeVisualPieceCount = (_level: number) => 1;
 

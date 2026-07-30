@@ -970,7 +970,7 @@
 }
 .result-celebration-choice > div {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: .38rem;
 }
 .result-celebration-choice > div > button {
@@ -984,7 +984,8 @@
   color: #e2e8f0;
   background: #111827;
 }
-.result-celebration-choice > div > button:last-child {
+.result-celebration-choice > div > button:nth-child(2),
+.result-celebration-choice > div > button:nth-child(3) {
   border-color: rgba(250, 204, 21, .62);
   color: #fff7cf;
   background: linear-gradient(115deg, rgba(120, 53, 15, .95), rgba(67, 56, 11, .9));
@@ -1034,6 +1035,17 @@
 @keyframes company-growth-count {
   from { opacity: 0; transform: translateY(.3rem); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+.result-celebration-choice > div > button:nth-child(3) {
+  border-color: rgba(250, 204, 21, .86);
+  box-shadow: inset 0 0 .7rem rgba(250, 204, 21, .12);
+}
+
+@media (max-width: 390px) {
+  .result-celebration-choice > div {
+    grid-template-columns: 1fr;
+  }
 }
 
 @keyframes company-growth-meter {
