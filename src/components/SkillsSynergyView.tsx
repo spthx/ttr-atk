@@ -142,9 +142,9 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
             <p className="mt-1 text-xs text-slate-400">事業・契約や業界の条件を満たすと修得できます。使用後は再使用時間が必要です。</p>
             {openingAutoUnlocked && (
               <p className="mt-1 text-xs text-amber-200/80">
-                装備中の技は、手動または開幕AUTO
-                {criticalAutoUnlocked ? '・窮地AUTO' : ''}
-                に設定できます。AUTOへ設定した技は商戦中の手動選択から外れます。
+                装備中の技は、手動または開幕アビリティ
+                {criticalAutoUnlocked ? '・窮地アビリティ' : ''}
+                に設定できます。自動枠へ設定した技は商戦中の手動選択から外れます。
               </p>
             )}
             <p className="mt-1 text-xs text-cyan-300/80">主な名称はFFXIVのアクションをモチーフにし、交易戦での効果は本作独自にアレンジしています。</p>
@@ -163,11 +163,11 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
             className={`grid gap-3 rounded-xl border border-slate-700 bg-slate-950/80 p-4 ${
               criticalAutoUnlocked ? 'md:grid-cols-2' : ''
             }`}
-            aria-label="オートアビリティ設定"
+            aria-label="開幕・窮地アビリティ設定"
           >
             <label className="grid gap-2 rounded-lg border border-cyan-500/35 bg-cyan-950/25 p-3">
               <span>
-                <b className="block text-sm text-cyan-100">開幕AUTO</b>
+                <b className="block text-sm text-cyan-100">開幕アビリティ</b>
                 <small className="text-[11px] leading-relaxed text-cyan-200/70">
                   開始演出後に一度だけ自動発動。設定した技は手動一覧から外れます。
                 </small>
@@ -182,7 +182,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                   )
                 }
                 className="min-h-11 w-full rounded-lg border border-cyan-400/45 bg-slate-900 px-3 text-sm font-bold text-cyan-50"
-                aria-label="開幕AUTOへ設定するアビリティ"
+                aria-label="開幕アビリティへ設定するアビリティ"
               >
                 <option value="">設定なし</option>
                 {equippedSkills.map((skill) => (
@@ -196,9 +196,9 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
             {criticalAutoUnlocked && (
               <label className="grid gap-2 rounded-lg border border-rose-500/35 bg-rose-950/25 p-3">
                 <span>
-                  <b className="block text-sm text-rose-100">窮地AUTO</b>
+                  <b className="block text-sm text-rose-100">窮地アビリティ</b>
                   <small className="text-[11px] leading-relaxed text-rose-200/70">
-                    所有率25％以下へ入る時に一度だけ割り込み。設定した技は手動一覧から外れます。
+                    所有率25%以下へ入る時に一度だけ割り込み。設定した技は手動一覧から外れます。
                   </small>
                 </span>
                 <select
@@ -211,7 +211,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                     )
                   }
                   className="min-h-11 w-full rounded-lg border border-rose-400/45 bg-slate-900 px-3 text-sm font-bold text-rose-50"
-                  aria-label="窮地AUTOへ設定するアビリティ"
+                  aria-label="窮地アビリティへ設定するアビリティ"
                 >
                   <option value="">設定なし</option>
                   {equippedSkills.map((skill) => (
@@ -238,9 +238,9 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                   : 'manual';
             const activationModeLabel =
               activationMode === 'opening_auto'
-                ? '開幕AUTO'
+                ? '開幕アビリティ'
                 : activationMode === 'critical_auto'
-                  ? '窮地AUTO'
+                  ? '窮地アビリティ'
                   : '手動';
 
             return (
@@ -268,7 +268,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                       </span>
                     )}
                     <span className="text-xs text-slate-400">
-                      {skill.oncePerBattle ? '使用制限: 1交渉1回' : `再使用: ${(skill.cooldownMs / 1000).toFixed(1)}秒`}
+                      {skill.oncePerBattle ? '使用制限: 1争奪戦につき1回' : `再使用: ${(skill.cooldownMs / 1000).toFixed(1)}秒`}
                     </span>
                   </div>
 

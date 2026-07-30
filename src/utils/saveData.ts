@@ -145,7 +145,7 @@ export const loadGameSave = (): GameSaveData | null => {
     const parsed: unknown = JSON.parse(raw);
 
     if (!isRecord(parsed) || parsed.schemaVersion !== SAVE_SCHEMA_VERSION) {
-      console.warn('[タタルの大繁盛店] 対応していないセーブデータのため初期状態で開始します。');
+      console.warn('[タタルの大繁盛商店] 対応していないセーブデータのため初期状態で開始します。');
       return null;
     }
 
@@ -160,7 +160,7 @@ export const loadGameSave = (): GameSaveData | null => {
       !isAllianceState(parsed.alliance) ||
       typeof parsed.lastSavedAt !== 'number'
     ) {
-      console.warn('[タタルの大繁盛店] セーブデータが壊れているため初期状態で開始します。');
+      console.warn('[タタルの大繁盛商店] セーブデータが壊れているため初期状態で開始します。');
       return null;
     }
 
@@ -214,7 +214,7 @@ export const loadGameSave = (): GameSaveData | null => {
       lastSavedAt: parsed.lastSavedAt,
     };
   } catch (error) {
-    console.warn('[タタルの大繁盛店] セーブデータを読み込めませんでした。', error);
+    console.warn('[タタルの大繁盛商店] セーブデータを読み込めませんでした。', error);
     return null;
   }
 };

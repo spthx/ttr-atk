@@ -13,21 +13,22 @@ export const BATTLE_CINEMATIC_TIMING = {
 export const RESULT_CONFIRM_ARM_DELAY_MS = 1_200;
 export const BATTLE_GAUGE_VISUAL_COMMIT_MS = 100;
 export const BATTLE_STATE_UPDATE_INTERVAL_MS = 100;
-export const LIGHTWEIGHT_GAUGE_FRAME_MS = 1_000 / 30;
+export type BattleFrameRate = 30 | 60;
+export const BATTLE_GAUGE_FRAME_MS: Record<BattleFrameRate, number> = {
+  30: 1_000 / 30,
+  60: 1_000 / 60,
+};
 
 export const getBossEnemyPartySize = ({
   bossAbilityTier,
   isSavage = false,
   isUltimate = false,
-  lightweightMode = false,
 }: {
   bossAbilityTier: BossAbilityTier;
   isSavage?: boolean;
   isUltimate?: boolean;
-  lightweightMode?: boolean;
 }) => {
   if (bossAbilityTier === 'none') return 1;
-  if (lightweightMode) return 2;
   if (
     isSavage ||
     isUltimate ||
@@ -42,25 +43,25 @@ export const getBossEnemyPartySize = ({
 export const BATTLE_HIT_STOP_TIMING = {
   standardMs: 55,
   heavyMs: 78,
-  lightweightStandardMs: 38,
-  lightweightHeavyMs: 52,
+  reducedMotionStandardMs: 38,
+  reducedMotionHeavyMs: 52,
   releaseMs: 230,
-  lightweightReleaseMs: 150,
+  reducedMotionReleaseMs: 150,
 } as const;
 
 export const getBattleHitStopTiming = (
   heavy = false,
-  lightweightMode = false
+  reducedMotion = false
 ) => ({
-  hitStopMs: lightweightMode
+  hitStopMs: reducedMotion
     ? heavy
-      ? BATTLE_HIT_STOP_TIMING.lightweightHeavyMs
-      : BATTLE_HIT_STOP_TIMING.lightweightStandardMs
+      ? BATTLE_HIT_STOP_TIMING.reducedMotionHeavyMs
+      : BATTLE_HIT_STOP_TIMING.reducedMotionStandardMs
     : heavy
       ? BATTLE_HIT_STOP_TIMING.heavyMs
       : BATTLE_HIT_STOP_TIMING.standardMs,
-  releaseMs: lightweightMode
-    ? BATTLE_HIT_STOP_TIMING.lightweightReleaseMs
+  releaseMs: reducedMotion
+    ? BATTLE_HIT_STOP_TIMING.reducedMotionReleaseMs
     : BATTLE_HIT_STOP_TIMING.releaseMs,
 });
 
@@ -160,10 +161,9 @@ export const getCapitalCommitTiming = (
 
 export const shouldProcessGaugeFrame = (
   elapsedMs: number,
-  lightweightMode: boolean
+  frameRate: BattleFrameRate
 ) =>
-  !lightweightMode ||
-  Math.max(0, elapsedMs) + Number.EPSILON >= LIGHTWEIGHT_GAUGE_FRAME_MS;
+  Math.max(0, elapsedMs) + 0.5 >= BATTLE_GAUGE_FRAME_MS[frameRate];
 
 /**
  * Skills read as a short chain of deliberate beats instead of one crowded
@@ -178,7 +178,7 @@ export const SKILL_CINEMATIC_TIMING = {
   totalMs: 1_750,
 } as const;
 
-export const LIGHTWEIGHT_SKILL_CINEMATIC_TIMING = {
+export const REDUCED_MOTION_SKILL_CINEMATIC_TIMING = {
   nameMs: 210,
   castMs: 220,
   hitStopMs: 42,
@@ -194,9 +194,9 @@ export type SkillCinematicStage =
   | 'impact'
   | 'resolve';
 
-export const getSkillCinematicTiming = (compact = false) =>
-  compact
-    ? LIGHTWEIGHT_SKILL_CINEMATIC_TIMING
+export const getSkillCinematicTiming = (reducedMotion = false) =>
+  reducedMotion
+    ? REDUCED_MOTION_SKILL_CINEMATIC_TIMING
     : SKILL_CINEMATIC_TIMING;
 
 export const getNextBattleSkillId = (
@@ -241,16 +241,18 @@ export const resolveBattleSkillSelection = (
  * not use these stages as additional chances to mutate battle state.
  */
 export const TERMINAL_CINEMATIC_TIMING = {
-  anticipationMs: 1_100,
-  hitStopMs: 100,
-  impactMs: 650,
-  resolutionMs: 1_050,
-  totalMs: 2_900,
-  reducedMotionAnticipationMs: 140,
-  reducedMotionHitStopMs: 40,
-  reducedMotionImpactMs: 120,
-  reducedMotionResolutionMs: 520,
-  reducedMotionTotalMs: 820,
+  anticipationMs: 1_250,
+  hitStopMs: 120,
+  impactMs: 720,
+  fanfareLeadMs: 320,
+  resolutionMs: 1_200,
+  totalMs: 3_610,
+  reducedMotionAnticipationMs: 180,
+  reducedMotionHitStopMs: 50,
+  reducedMotionImpactMs: 180,
+  reducedMotionFanfareLeadMs: 100,
+  reducedMotionResolutionMs: 620,
+  reducedMotionTotalMs: 1_130,
 } as const;
 
 export type TerminalCinematicStage =
@@ -297,6 +299,9 @@ export const getTerminalCinematicPresentation = (
       : TERMINAL_CINEMATIC_TIMING.impactMs);
   const resolutionEnd =
     impactEnd +
+    (reducedMotion
+      ? TERMINAL_CINEMATIC_TIMING.reducedMotionFanfareLeadMs
+      : TERMINAL_CINEMATIC_TIMING.fanfareLeadMs) +
     (reducedMotion
       ? TERMINAL_CINEMATIC_TIMING.reducedMotionResolutionMs
       : TERMINAL_CINEMATIC_TIMING.resolutionMs);
@@ -456,10 +461,9 @@ export const canConfirmBattleResult = ({
 
 export const getVictoryConfettiParticleCount = (
   viewportWidth: number,
-  reducedMotion: boolean,
-  lightweightMode = false
+  reducedMotion: boolean
 ) => {
-  if (reducedMotion || lightweightMode) return 0;
+  if (reducedMotion) return 0;
   // Canvas confetti can force an iPad WebContent reload when it overlaps the
   // terminal field animations. Compact/tablet finishes use the CSS resolution
   // beat only; the richer particle finish remains on desktop.

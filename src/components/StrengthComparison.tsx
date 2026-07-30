@@ -20,7 +20,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
   const trainingPresentation = {
     advantage: {
       label: '余力あり',
-      advice: '現在の動員見込みなら、基本の投入操作を試しながら討滅を狙えます。',
+      advice: '現在の動員見込みなら、基本の投入操作を試しながら訓練成功を狙えます。',
     },
     even: {
       label: '挑戦圏',
@@ -184,7 +184,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
           <small className="strength-comparison__note">
             {isTraining
               ? '追加行動なしの固定耐久です。訓練中の出資・離反・LB増減は保存されません。'
-              : `現金＋離反リスクを織り込んだ最良の支援（${result.supportRoute}）＋一交渉1回の協力・アビリティで比較。風と押し込み速度は等級に含みません。`}
+              : `現金＋離反リスクを織り込んだ最良の支援（${result.supportRoute}）＋1争奪戦につき1回の協力・アビリティで比較。風と押し込み速度は等級に含みません。`}
           </small>
         </>
       )}

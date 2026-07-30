@@ -122,6 +122,7 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
             src={FANKIT_ART.battleBackdrop}
             alt=""
             aria-hidden="true"
+            decoding="async"
             className="absolute inset-0 h-full w-full object-cover opacity-25"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-cyan-950/55" />
@@ -135,7 +136,7 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
                 className="mt-1 flex items-center gap-2 text-2xl font-black text-white sm:text-3xl"
               >
                 <Swords className="h-7 w-7 text-amber-300" />
-                商戦木人討滅戦
+                商戦木人訓練
               </h2>
               <p
                 id="training-dummy-description"
@@ -143,14 +144,14 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
               >
                 現在の資金・支援元・装備で、LEVEL別の木人へ何度でも挑戦できます。
                 木人は開幕の耐久資本から追加防衛を行いません。
-                訓練中も通常の毎秒収益とオフライン収益は商会資金へ加算されます。
+                訓練中も通常の毎秒収益とオフライン収益は自社資金へ加算されます。
               </p>
             </div>
             <button
               ref={closeButtonRef}
               type="button"
               onClick={onClose}
-              aria-label="商戦木人討滅戦を閉じる"
+              aria-label="商戦木人訓練を閉じる"
               className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-600 bg-slate-950/80 text-slate-300 transition-colors hover:border-cyan-300 hover:text-white"
             >
               <X className="h-5 w-5" />
