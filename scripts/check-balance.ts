@@ -118,6 +118,10 @@ import {
   isGroupSynergyUnlocked,
 } from '../src/utils/synergy';
 import {
+  getSkillUnlockExplanation,
+  getSynergyUnlockExplanation,
+} from '../src/utils/unlockExplanation';
+import {
   calculateAllianceSupport,
   shouldBreakAllianceForTarget,
 } from '../src/utils/alliance';
@@ -1515,6 +1519,26 @@ const grandCompanyEorzea = progressionBattleSynergies[2];
 const uldahLuxuryMarket = INITIAL_GROUP_SYNERGIES.find(
   (synergy) => synergy.id === 'ULDAH_LUXURY_MARKET'
 )!;
+const unlockFastHorseSkill = INITIAL_SKILLS.find(
+  (skill) => skill.id === 'skill_fast_horse'
+)!;
+const fastHorseExplanation = getSkillUnlockExplanation(unlockFastHorseSkill);
+assert.equal(fastHorseExplanation.key, 'skill:skill_fast_horse');
+assert.match(fastHorseExplanation.detail, /15秒間/);
+assert.match(fastHorseExplanation.operation, /アビリティ装備/);
+const forestSynergyExplanation = getSynergyUnlockExplanation(
+  INITIAL_GROUP_SYNERGIES[0]
+);
+assert.equal(
+  forestSynergyExplanation.key,
+  'synergy:GRIDANIA_FOREST_ECONOMY'
+);
+assert.match(forestSynergyExplanation.detail, /25%上昇/);
+assert.match(forestSynergyExplanation.operation, /SYNERGY枠/);
+const lightOfHopeExplanation = getSynergyUnlockExplanation(lightOfHope);
+assert.match(lightOfHopeExplanation.detail, /16秒/);
+assert.match(lightOfHopeExplanation.detail, /1.62倍/);
+assert.match(lightOfHopeExplanation.operation, /手動発動/);
 assert.equal(crystalBraves.battleEffect?.capitalPressureMultiplier, 1.16);
 assert.equal(crystalBraves.battleEffect?.durationMs, 8_000);
 assert.equal(crystalBraves.battleEffect?.ownershipPush, 2);
