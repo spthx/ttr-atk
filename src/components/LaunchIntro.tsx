@@ -120,13 +120,13 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
         : undefined}
     >
       <img
-        src={FANKIT_ART.titleHero}
+        src={step === 0 ? FANKIT_ART.titleHero : step === 2 ? FANKIT_ART.launchWallpaperMobile : FANKIT_ART.battleBackdrop}
         alt=""
         aria-hidden="true"
         loading="eager"
         decoding="async"
         fetchPriority="high"
-        className="fixed inset-0 h-[100dvh] w-full object-cover object-center"
+        className={`fixed inset-0 h-[100dvh] w-full object-cover ${step === 2 ? 'object-[62%_center]' : 'object-center'}`}
       />
       <div className="fixed inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-slate-950/35" />
       <div className="fixed inset-0 bg-[radial-gradient(circle_at_75%_25%,rgba(251,191,36,.18),transparent_40%)]" />

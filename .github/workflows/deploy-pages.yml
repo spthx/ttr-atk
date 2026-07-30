@@ -25,6 +25,12 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Verify types, balance, simulations, and visual budgets
+        run: |
+          pnpm run lint
+          pnpm run check:balance
+          pnpm run check:simulations
+          pnpm run check:visuals
       - name: Build game for project Pages path
         env:
           VITE_PUBLIC_BASE: /ttr-atk/
