@@ -41,6 +41,7 @@ import {
   resolveBattleSkillSelection,
   getTerminalCinematicPresentation,
   getBattleCinematicLayer,
+  getBossEnemyPartySize,
   getCapitalVisualBundleCount,
   getCapitalVisualBundleCountForAmount,
   getCapitalVisualSpriteCount,
@@ -1490,6 +1491,30 @@ assert.equal(new Set(raidMemberIds).size, raidMemberIds.length);
 assert.deepEqual([...raidMemberIds].sort(), [...normalCampaignIds].sort());
 
 const synergyIds = new Set(INITIAL_GROUP_SYNERGIES.map((synergy) => synergy.id));
+assert.equal(
+  getBossEnemyPartySize({ bossAbilityTier: 'none' }),
+  1,
+  'ordinary enemies remain a single actor'
+);
+assert.equal(
+  getBossEnemyPartySize({ bossAbilityTier: 'cover' }),
+  2,
+  'early and mid-city bosses show a two-actor formation'
+);
+assert.equal(
+  getBossEnemyPartySize({ bossAbilityTier: 'enhanced_cover' }),
+  3,
+  'late bosses show a three-actor formation'
+);
+assert.equal(
+  getBossEnemyPartySize({
+    bossAbilityTier: 'invincible',
+    isUltimate: true,
+    lightweightMode: true,
+  }),
+  2,
+  'lightweight mode caps the decorative boss formation at two actors'
+);
 const progressionBattleSynergies = INITIAL_GROUP_SYNERGIES.filter(
   (synergy) => synergy.battleOnly
 );

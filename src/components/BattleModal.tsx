@@ -36,6 +36,7 @@ import {
   FANKIT_ART,
   getFankitCommerceIcon,
   getFankitJobArt,
+  getFankitJobPartyArt,
   getFankitTrainingDummyArt,
 } from '../data/fankitAssets';
 import {
@@ -64,6 +65,7 @@ import {
   canConfirmBattleResult,
   enqueueBattleStatusMessage,
   getBattleHitStopTiming,
+  getBossEnemyPartySize,
   getBattleCinematicLayer,
   getBattleCapitalVisualBundleCount,
   getCapitalFormationPieceCount,
@@ -1524,11 +1526,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const trainingDummyDefinition = isTraining
     ? getTrainingDummyDefinition(targetProperty.id)
     : null;
+  const opponentArtSeed = `${targetProperty.id}-${targetProperty.community}-${targetProperty.industry}-${targetProperty.ownerName}`;
   const opponentCharacterArt = trainingDummyDefinition
     ? getFankitTrainingDummyArt(trainingDummyDefinition.level)
-    : getFankitJobArt(
-        `${targetProperty.id}-${targetProperty.community}-${targetProperty.industry}-${targetProperty.ownerName}`
-      );
+    : getFankitJobArt(opponentArtSeed);
+  const bossEnemyPartySize = getBossEnemyPartySize({
+    bossAbilityTier,
+    isSavage,
+    isUltimate,
+    lightweightMode,
+  });
+  const bossEnemyPartyArts = trainingDummyDefinition
+    ? [opponentCharacterArt]
+    : getFankitJobPartyArt(opponentArtSeed, bossEnemyPartySize);
   const autoSkillIds = useMemo(
     () =>
       new Set(
@@ -5821,11 +5831,39 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     </span>
                   </div>
                 )}
-                <div className="ownership-fighter ownership-fighter--enemy">
+                <div
+                  className={`ownership-fighter ownership-fighter--enemy ${
+                    bossEnemyPartyArts.length > 1
+                      ? 'ownership-fighter--boss-party'
+                      : ''
+                  }`}
+                  data-party-size={bossEnemyPartyArts.length}
+                  role={bossEnemyPartyArts.length > 1 ? 'group' : undefined}
+                  aria-label={
+                    bossEnemyPartyArts.length > 1
+                      ? `競合ボス ${bossEnemyPartyArts.length}人編成`
+                      : undefined
+                  }
+                >
+                  {bossEnemyPartyArts.slice(1).map((art, index) => (
+                    <img
+                      key={art}
+                      className={`boss-enemy-party__member boss-enemy-party__member--${index + 1}`}
+                      src={art}
+                      alt=""
+                      aria-hidden="true"
+                    />
+                  ))}
                   <img
                     className={`ownership-avatar ownership-avatar--enemy ${motion === 'enemy' ? 'avatar-act' : motion === 'player' ? 'avatar-hurt' : ''}`}
                     src={opponentCharacterArt}
-                    alt={isTraining ? '商戦訓練用サボテンダー' : '競合代表'}
+                    alt={
+                      bossEnemyPartyArts.length > 1
+                        ? ''
+                        : isTraining
+                          ? '商戦訓練用サボテンダー'
+                          : '競合代表'
+                    }
                   />
                   <div className="battle-status-rail battle-status-rail--enemy" aria-label={isTraining ? '商戦木人への継続効果' : '競合の継続効果'}>
                     {enemyMarketWindActive && (
