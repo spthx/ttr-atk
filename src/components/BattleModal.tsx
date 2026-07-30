@@ -137,6 +137,7 @@ import {
   getEnemySupportSkillProfile,
   getBattleCashRecoveryWindMultipliers,
   getBattleTerminalWinner,
+  getCoverGuardDisplayPercent,
   getEraWindGaugePushPerSecond,
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
@@ -254,8 +255,8 @@ type LogCategory = 'system' | 'player' | 'enemy' | 'funds' | 'skill' | 'result';
 type BattleAnnouncement = 'start' | 'limit';
 type CoverKnightPhase = 'absent' | 'active' | 'breaking' | 'leaving';
 const COVER_KNIGHT_MIN_ACTIVE_MS = 1_200;
-const COVER_KNIGHT_BREAK_MS = 420;
-const COVER_KNIGHT_EXIT_MS = 1_000;
+const COVER_KNIGHT_BREAK_MS = 340;
+const COVER_KNIGHT_EXIT_MS = 780;
 type EnemySupportSkillId = 'cure' | 'mug' | 'drill' | 'divination';
 type EnemySupportStage =
   | 'telegraph'
@@ -861,6 +862,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [fastHorseRemaining, setFastHorseRemaining] = useState(0);
   const [playerCoverRemaining, setPlayerCoverRemaining] = useState(0);
   const [enemyCoverRemaining, setEnemyCoverRemaining] = useState(0);
+  const [playerCoverCapacity, setPlayerCoverCapacity] = useState(0);
+  const [enemyCoverCapacity, setEnemyCoverCapacity] = useState(0);
   const [playerCoverKnightPhase, setPlayerCoverKnightPhase] =
     useState<CoverKnightPhase>('absent');
   const [enemyCoverKnightPhase, setEnemyCoverKnightPhase] =
@@ -1829,6 +1832,24 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     presentationLocked ||
     decisiveLocked ||
     !!impactStop;
+  const playerCoverGuardPercent = getCoverGuardDisplayPercent({
+    remainingGaugeCapacity: playerCoverCapacity,
+    maximumGaugeCapacity: TACTICAL_SKILL_BALANCE.cover.gaugeCapacity,
+    remainingMs: playerCoverRemaining,
+    durationMs: TACTICAL_SKILL_BALANCE.cover.durationMs,
+  });
+  const enemyCoverBalance =
+    bossAbilityTier === 'invincible'
+      ? BOSS_COVER_BALANCE.invincible
+      : bossAbilityTier === 'enhanced_cover'
+        ? BOSS_COVER_BALANCE.enhancedCover
+        : BOSS_COVER_BALANCE.cover;
+  const enemyCoverGuardPercent = getCoverGuardDisplayPercent({
+    remainingGaugeCapacity: enemyCoverCapacity,
+    maximumGaugeCapacity: enemyCoverBalance.gaugeCapacity,
+    remainingMs: enemyCoverRemaining,
+    durationMs: enemyCoverBalance.durationMs,
+  });
   const footerInteractionBlocked =
     panel !== 'capital' ||
     showHelp ||
@@ -2522,17 +2543,30 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       : setEnemyCoverKnightPhase;
     if (isPlayer) {
       playerCoverRemainingRef.current = 0;
+      playerCoverCapacityRef.current = 0;
       setPlayerCoverRemaining(0);
+      setPlayerCoverCapacity(0);
     } else {
       enemyCoverRemainingRef.current = 0;
+      enemyCoverCapacityRef.current = 0;
       setEnemyCoverRemaining(0);
+      setEnemyCoverCapacity(0);
     }
     if (announce) {
       const text = isPlayer
-        ? 'ナイトは援護を終え、戦線を離脱した'
-        : '競合側のナイトは防衛任務を終えた';
+        ? 'かばうの防御ゲージが尽きた――ナイトが吹き飛ばされた！'
+        : '競合側の防御ゲージを破壊――ナイトを吹き飛ばした！';
       setStatusText(text);
       addLog(text, 'skill');
+      showFloater(
+        'GUARD BREAK',
+        side,
+        side === 'player' ? 'negative' : 'positive'
+      );
+      soundFx.playCapitalImpact(
+        side === 'player' ? 'opponent' : 'player',
+        0.72
+      );
     }
     const beginGuardBreak = () => {
       setKnightPhase('breaking');
@@ -2572,6 +2606,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       TACTICAL_SKILL_BALANCE.cover.gaugeCapacity;
     playerCoverActivatedAtRef.current = performance.now();
     setPlayerCoverRemaining(TACTICAL_SKILL_BALANCE.cover.durationMs);
+    setPlayerCoverCapacity(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity);
     setPlayerCoverKnightPhase('active');
   };
 
@@ -2601,6 +2636,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     enemyCoverCapacityRef.current = balance.gaugeCapacity;
     enemyCoverActivatedAtRef.current = performance.now();
     setEnemyCoverRemaining(balance.durationMs);
+    setEnemyCoverCapacity(balance.gaugeCapacity);
     setEnemyCoverKnightPhase('active');
     const abilityName =
       bossAbilityTier === 'invincible'
@@ -2809,8 +2845,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setFloaters([]);
     playerCoverRemainingRef.current = 0;
     enemyCoverRemainingRef.current = 0;
+    playerCoverCapacityRef.current = 0;
+    enemyCoverCapacityRef.current = 0;
     setPlayerCoverRemaining(0);
     setEnemyCoverRemaining(0);
+    setPlayerCoverCapacity(0);
+    setEnemyCoverCapacity(0);
     if (playerCoverKnightPhase !== 'absent') {
       releaseCoverKnight('player', false);
     }
@@ -2924,6 +2964,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       nextGauge = covered.nextGauge;
       absorbedGauge = covered.absorbedGauge;
       playerCoverCapacityRef.current = covered.remainingGaugeCapacity;
+      setPlayerCoverCapacity(covered.remainingGaugeCapacity);
       if (covered.absorbedGauge >= 1) {
         showFloater(
           `かばう -${(covered.absorbedGauge / 2).toFixed(1)}pt`,
@@ -2960,6 +3001,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         nextGauge = covered.nextGauge;
         absorbedGauge = covered.absorbedGauge;
         enemyCoverCapacityRef.current = covered.remainingGaugeCapacity;
+        setEnemyCoverCapacity(covered.remainingGaugeCapacity);
         if (covered.absorbedGauge >= 1) {
           showFloater(
             `${bossAbilityTier === 'invincible' ? '無効' : 'かばう'} -${(
@@ -5615,10 +5657,20 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     }
                   >
                     <img src={FANKIT_ART.paladin} alt="" aria-hidden="true" />
-                    <span>
+                    <span className="cover-knight__label">
                       {playerCoverKnightPhase === 'breaking'
-                        ? '防御解除'
+                        ? 'GUARD BREAK'
                         : 'かばう'}
+                    </span>
+                    <span
+                      className="cover-knight__guard"
+                      role="progressbar"
+                      aria-label={`ナイトの防御ゲージ ${playerCoverGuardPercent}%`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={playerCoverGuardPercent}
+                    >
+                      <i style={{ width: `${playerCoverGuardPercent}%` }} />
                     </span>
                   </div>
                 )}
@@ -5748,7 +5800,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     }
                   >
                     <img src={FANKIT_ART.paladin} alt="" aria-hidden="true" />
-                    <span>
+                    <span className="cover-knight__label">
                       {enemyCoverKnightPhase === 'breaking'
                         ? 'GUARD BREAK'
                         : bossAbilityTier === 'invincible'
@@ -5756,6 +5808,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                         : bossAbilityTier === 'enhanced_cover'
                           ? '強化かばう'
                           : 'かばう'}
+                    </span>
+                    <span
+                      className="cover-knight__guard"
+                      role="progressbar"
+                      aria-label={`競合ナイトの防御ゲージ ${enemyCoverGuardPercent}%`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={enemyCoverGuardPercent}
+                    >
+                      <i style={{ width: `${enemyCoverGuardPercent}%` }} />
                     </span>
                   </div>
                 )}
