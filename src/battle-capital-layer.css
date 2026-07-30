@@ -3397,3 +3397,61 @@
     top: 4.15rem;
   }
 }
+
+/*
+ * Permanent premium casino field.
+ *
+ * This is shared by 30fps and 60fps. Frame-rate selection must never swap the
+ * battlefield artwork or fall back to the former blue/red patterned panels.
+ * Ownership remains visible as a restrained live tint over the neutral felt.
+ */
+.buyout-screen .integrated-battlefield {
+  background:
+    #03100c
+    url("./assets/battle/battlefield-casino-wide.webp")
+    center / cover no-repeat;
+}
+
+.buyout-screen .integrated-battlefield .battlefield-pressure-lane {
+  background: transparent;
+}
+
+.buyout-screen
+  .integrated-battlefield
+  .battlefield-pressure-lane__player {
+  background: rgba(20, 96, 148, .2);
+}
+
+.buyout-screen
+  .integrated-battlefield
+  .battlefield-pressure-lane__enemy {
+  background: rgba(137, 34, 62, .22);
+}
+
+.buyout-screen .integrated-battlefield .capital-arena__side,
+.buyout-screen
+  .integrated-battlefield
+  .capital-arena__side:last-of-type {
+  overflow: visible;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.buyout-screen
+  .integrated-battlefield--push-player
+  .capital-arena__side:first-child,
+.buyout-screen
+  .integrated-battlefield--push-enemy
+  .capital-arena__side:last-child {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+@media (max-width: 639px) {
+  .buyout-screen .integrated-battlefield {
+    background-image:
+      url("./assets/battle/battlefield-casino-mobile.webp");
+  }
+}
