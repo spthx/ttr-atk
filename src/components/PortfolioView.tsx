@@ -142,7 +142,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
         <div className="space-y-1">
           <strong className="font-bold text-indigo-300">独立した事業の精算</strong>
           <p className="leading-relaxed text-indigo-200/80">
-            独立すると収益・支援元を失います。基準評価額は商会資金へ戻ります。
+            独立すると収益・支援元を失います。基準評価額は自社資金へ戻ります。
           </p>
           <details className="pt-1 text-[11px] text-indigo-300/75">
             <summary className="flex min-h-11 cursor-pointer items-center font-semibold">上級者向け：清算を利用する場合</summary>

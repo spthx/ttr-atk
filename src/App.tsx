@@ -106,7 +106,9 @@ import {
 
 export { PASSIVE_REVENUE_MULTIPLIER };
 
-const LIGHTWEIGHT_MODE_STORAGE_KEY = 'ttr-lightweight-mode';
+const BATTLE_FRAME_RATE_STORAGE_KEY = 'ttr-battle-frame-rate';
+const LEGACY_LIGHTWEIGHT_MODE_STORAGE_KEY = 'ttr-lightweight-mode';
+type BattleFrameRate = 30 | 60;
 
 type FeatureUnlockId =
   | 'market_wind'
@@ -146,14 +148,14 @@ const FEATURE_UNLOCKS: Record<
   subsidiary_support: {
     kicker: 'TRADE PARTY',
     title: '保有事業・契約の支援 解放',
-    dialogue: '買収戦の「資金源」から、取得した事業や契約先へ一件ずつ支援を頼めるでっす。',
+    dialogue: '商戦の「資金源」から、取得した事業や契約先へ一件ずつ支援を頼めるでっす。',
     detail: '支援は自動ではありません。毎回支援元を選び、独立危険度と引き換えにギルを積みます。契約先そのものを所有・傘下化する意味ではありません。',
   },
   light_party_limit_break: {
     kicker: 'LIGHT PARTY',
     title: 'LIMIT BREAK I 解放',
-    dialogue: '自社1枠と支援元3件がそろって、交易ライトパーティ結成でっす！ LBゲージ1本が解放されますぞ。',
-    detail: 'ゲージは資金投入と敵の防衛の大きさで蓄積。発動すると0に戻り、使わなかった分は次の買収戦へ持ち越せます。',
+    dialogue: '自社1枠と支援元3件がそろって、交易ライトパーティ結成でっす！ LBゲージ1本が解放されるでっす。',
+    detail: 'ゲージは資金投入と敵の防衛の大きさで蓄積。発動すると0に戻り、使わなかった分は次の商戦へ持ち越せます。',
   },
   guild_synergy: {
     kicker: 'BUSINESS SYNERGY',
@@ -165,7 +167,7 @@ const FEATURE_UNLOCKS: Record<
     kicker: 'DARK KNIGHT ACTION',
     title: 'リビングデッド 解放',
     dialogue: '総資産100万ギル達成で、敗北寸前から立て直す暗黒騎士のかけひきが使えるでっす。',
-    detail: 'かけひき画面で装備してください。使用後10秒以内に所有率0%へ落ちると1%で踏みとどまり、さらに10秒以内に30%まで戻せば生存します。1交渉1回です。',
+    detail: '「アビリティ」画面で装備してください。使用後10秒以内に所有率0%へ落ちると1%で踏みとどまり、さらに10秒以内に30%まで戻せば生存します。1争奪戦につき1回です。',
   },
   full_party: {
     kicker: 'FULL PARTY',
@@ -176,20 +178,20 @@ const FEATURE_UNLOCKS: Record<
   trade_alliance: {
     kicker: 'ENTERPRISE ALLIANCE',
     title: '企業連合・協力 解放',
-    dialogue: 'ウルダハでの実績が認められましたな。ここからは複数組織が組む企業連合へ挑めるでっす！',
-    detail: '段階式の企業連合戦、外部企業との協力協定、グランドカンパニーへの公的後援申請が開放されます。',
+    dialogue: 'ウルダハでの実績が認められたでっす。ここからは複数組織が組む企業連合へ挑めるでっす！',
+    detail: '段階式の企業連合戦、外部企業との協力協定、グランドカンパニーへの公的後援申請が解放されます。',
   },
   opening_auto: {
-    kicker: 'AUTO ABILITY I',
-    title: '開幕AUTO 解放',
-    dialogue: 'クガネまでの商戦で、開幕の段取りも身についたでっす！ 最初に使うアビリティを一つ、戦う前に決めておけますぞ。',
-    detail: '装備中のアビリティ一つを開幕AUTOへ設定できます。設定したアビリティは手動選択から外れ、開始演出の後に一度だけ自動発動します。',
+    kicker: 'OPENING ABILITY',
+    title: '開幕アビリティ 解放',
+    dialogue: 'クガネまでの商戦で、開幕の段取りも身についたでっす！ 最初に使うアビリティを一つ、戦う前に決めておけるでっす。',
+    detail: '装備中のアビリティ一つを開幕アビリティへ設定できます。設定したアビリティは手動選択から外れ、開始演出の後に一度だけ自動発動します。',
   },
   critical_auto: {
-    kicker: 'AUTO ABILITY II',
-    title: '窮地AUTO 解放',
-    dialogue: 'クリスタリウムまで進んだ今なら、苦しい時の切り札も先に決めておけるでっす！',
-    detail: '装備中のアビリティ一つを窮地AUTOへ設定できます。設定した技は手動選択から外れ、所有率が危険域へ入った時に一度だけ自動発動します。',
+    kicker: 'CRITICAL ABILITY',
+    title: '窮地アビリティ 解放',
+    dialogue: 'オールド・シャーレアンまで進んだ今なら、苦しい時の切り札も先に決めておけるでっす！',
+    detail: '装備中のアビリティ一つを窮地アビリティへ設定できます。設定した技は手動選択から外れ、所有率が危険域へ入った時に一度だけ自動発動します。',
   },
 };
 
@@ -304,11 +306,27 @@ export default function App() {
     pendingBattleSession ? 0 : 1
   );
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [lightweightMode, setLightweightMode] = useState<boolean>(() => {
+  const [battleFrameRate, setBattleFrameRate] = useState<BattleFrameRate>(() => {
     try {
-      return window.localStorage.getItem(LIGHTWEIGHT_MODE_STORAGE_KEY) !== 'off';
+      const stored = window.localStorage.getItem(
+        BATTLE_FRAME_RATE_STORAGE_KEY
+      );
+      if (stored === '30' || stored === '60') {
+        return Number(stored) as BattleFrameRate;
+      }
+      const legacySetting = window.localStorage.getItem(
+        LEGACY_LIGHTWEIGHT_MODE_STORAGE_KEY
+      );
+      const migratedRate: BattleFrameRate =
+        legacySetting === 'off' ? 60 : 30;
+      window.localStorage.setItem(
+        BATTLE_FRAME_RATE_STORAGE_KEY,
+        String(migratedRate)
+      );
+      window.localStorage.removeItem(LEGACY_LIGHTWEIGHT_MODE_STORAGE_KEY);
+      return migratedRate;
     } catch {
-      return true;
+      return 30;
     }
   });
   const [logs, setLogs] = useState<GameLog[]>([]);
@@ -333,6 +351,8 @@ export default function App() {
     community: CommunityType | 'ALL';
   } | null>(null);
   const deferredBattleIncomeRef = useRef(0);
+  const highEndViewRef = useRef<HTMLDivElement | null>(null);
+  const highEndBattlePlaceholderHeightRef = useRef(0);
 
   useEffect(() => {
     const unlockAudio = () => soundFx.unlock();
@@ -421,7 +441,7 @@ export default function App() {
   )?.conquered;
   const openingAutoUnlocked = conqueredCommunityIdSet.has('クガネ');
   const criticalAutoUnlocked =
-    conqueredCommunityIdSet.has('クリスタリウム');
+    conqueredCommunityIdSet.has('オールド・シャーレアン');
   const normalCampaignComplete =
     conqueredCommunityCount === COMMUNITY_CAMPAIGN_ORDER.length;
   const savageUnlocked = normalCampaignComplete || normalEndingSeen;
@@ -1022,6 +1042,8 @@ export default function App() {
     if (!savageUnlocked || !savageUnlockedIds.has(property.id)) return;
     if (!hasBattleBrokerageFunds(property)) return;
     soundFx.playCoin();
+    highEndBattlePlaceholderHeightRef.current =
+      highEndViewRef.current?.getBoundingClientRect().height ?? 0;
     persistGameState();
     persistPendingBattleSession('savage', property);
     setBattleTimeScale(0);
@@ -1033,6 +1055,8 @@ export default function App() {
     if (!ultimateUnlocked) return;
     if (!hasBattleBrokerageFunds(property)) return;
     soundFx.playCoin();
+    highEndBattlePlaceholderHeightRef.current =
+      highEndViewRef.current?.getBoundingClientRect().height ?? 0;
     persistGameState();
     persistPendingBattleSession('ultimate', property);
     setBattleTimeScale(0);
@@ -1085,7 +1109,7 @@ export default function App() {
       clearPendingBattleSession();
       addGameLog(
         winner === 'player'
-          ? `【木人討滅成功】${targetProperty.name}を討滅しました。訓練用の出資・LB増減・勝敗は保存されません。`
+          ? `【木人訓練成功】${targetProperty.name}の訓練を完了しました。訓練用の出資・LB増減・勝敗は保存されません。`
           : `【木人訓練終了】${targetProperty.name}との練習を終了しました。資金・保有事業・独立危険度は変化しません。`,
         winner === 'player' ? 'success' : 'info'
       );
@@ -1261,7 +1285,7 @@ export default function App() {
       } else {
         setMarketNavigationRequest((previous) => ({
           id: (previous?.id || 0) + 1,
-          mode: 'targets',
+          mode: 'map',
           community: targetProperty.community,
         }));
       }
@@ -1295,7 +1319,7 @@ export default function App() {
       );
       setMarketNavigationRequest((previous) => ({
         id: (previous?.id || 0) + 1,
-        mode: 'targets',
+        mode: 'map',
         community: targetProperty.community,
       }));
       setActiveTab('market');
@@ -1311,7 +1335,7 @@ export default function App() {
         addGameLog(
           `【独立発生・強制清算】${rebel.name} の不満が高まり独立離脱しました。現在評価額 ${formatCurrency(
             rebel.marketPrice
-          )} を強制清算金として商会資金へ入金しました。`,
+          )} を強制清算金として自社資金へ入金しました。`,
           'warning'
         );
       });
@@ -1510,6 +1534,9 @@ export default function App() {
   ): BattleReadinessResult => {
     const isHighEndRaid = mode === 'savage' || mode === 'ultimate';
     const isTraining = mode === 'training';
+    const isTargetCityBoss =
+      mode === 'normal' &&
+      isNormalCityBoss(properties, targetProperty);
     const ignoresCampaignInfluence = isHighEndRaid || isTraining;
     const isTutorial =
       mode === 'normal' &&
@@ -1537,12 +1564,14 @@ export default function App() {
           isTutorial,
           isSavage: mode === 'savage',
           isUltimate: mode === 'ultimate',
+          isCityBoss: isTargetCityBoss,
         });
     const enemyDifficultyLevel = getEnemyDifficultyLevel(
       targetProperty,
       isTutorial,
       mode === 'savage',
-      mode === 'ultimate'
+      mode === 'ultimate',
+      isTargetCityBoss
     );
     const brokerageFee = isTraining
       ? 0
@@ -1647,23 +1676,37 @@ export default function App() {
         )}
 
         {activeTab === 'savage' && savageUnlocked && (
-          <HighEndRaidView
-            savageProperties={savageProperties}
-            savageClearedIds={savageClearedSet}
-            savageUnlockedIds={savageUnlockedIds}
-            groupSynergies={groupSynergies}
-            totalFunds={totalFunds}
-            ultimateProperty={ultimateProperty}
-            ultimateUnlocked={ultimateUnlocked}
-            ultimateCleared={ultimateCleared}
-            getStrengthComparison={getBattleReadinessForTarget}
-            onStartSavage={handleStartSavageBuyout}
-            onStartUltimate={handleStartUltimateBuyout}
-            onReplayEnding={() => {
-              setEndingNotice('true');
-              soundFx.playVictory();
-            }}
-          />
+          activeBattleProperty &&
+          (activeBattleMode === 'savage' || activeBattleMode === 'ultimate') ? (
+            <div
+              aria-hidden="true"
+              style={{
+                height: highEndBattlePlaceholderHeightRef.current
+                  ? `${highEndBattlePlaceholderHeightRef.current}px`
+                  : undefined,
+              }}
+            />
+          ) : (
+            <div ref={highEndViewRef}>
+              <HighEndRaidView
+                savageProperties={savageProperties}
+                savageClearedIds={savageClearedSet}
+                savageUnlockedIds={savageUnlockedIds}
+                groupSynergies={groupSynergies}
+                totalFunds={totalFunds}
+                ultimateProperty={ultimateProperty}
+                ultimateUnlocked={ultimateUnlocked}
+                ultimateCleared={ultimateCleared}
+                getStrengthComparison={getBattleReadinessForTarget}
+                onStartSavage={handleStartSavageBuyout}
+                onStartUltimate={handleStartUltimateBuyout}
+                onReplayEnding={() => {
+                  setEndingNotice('true');
+                  soundFx.playVictory();
+                }}
+              />
+            </div>
+          )
         )}
 
         {activeTab === 'portfolio' && (
@@ -1716,45 +1759,55 @@ export default function App() {
           />
         )}
 
-        <button
-          type="button"
-          className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left shadow-lg transition-colors ${
-            lightweightMode
-              ? 'border-cyan-400/35 bg-cyan-950/35 text-cyan-50'
-              : 'border-slate-700 bg-slate-900/80 text-slate-300'
-          }`}
-          aria-pressed={lightweightMode}
-          onClick={() => {
-            setLightweightMode((current) => {
-              const next = !current;
-              try {
-                window.localStorage.setItem(
-                  LIGHTWEIGHT_MODE_STORAGE_KEY,
-                  next ? 'on' : 'off'
-                );
-              } catch {
-                // The preference remains valid for this session.
-              }
-              return next;
-            });
-          }}
-        >
-          <span className="min-w-0">
-            <span className="block text-xs font-black tracking-[.08em]">軽量モード</span>
-            <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">
-              演出・メニュー中は周囲を停止（技効果は着弾時）／商戦ゲージ30fps
+        <section className="rounded-xl border border-cyan-400/25 bg-gradient-to-r from-slate-950 via-cyan-950/25 to-slate-950 px-4 py-3 shadow-lg">
+          <div>
+            <span className="block text-xs font-black tracking-[.08em] text-cyan-50">
+              動作フレームレート
             </span>
-          </span>
-          <span
-            className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${
-              lightweightMode
-                ? 'bg-cyan-300 text-slate-950'
-                : 'bg-slate-700 text-slate-300'
-            }`}
+            <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">
+              演出・背景・コイン量は共通。30fpsは発熱を抑え、60fpsは商戦ゲージを滑らかにします。
+            </span>
+          </div>
+          <div
+            className="mt-2 grid grid-cols-2 gap-1 rounded-lg border border-slate-700/80 bg-slate-950/85 p-1"
+            role="group"
+            aria-label="動作フレームレート"
           >
-            {lightweightMode ? 'ON' : 'OFF'}
-          </span>
-        </button>
+            {([30, 60] as const).map((frameRate) => {
+              const selected = battleFrameRate === frameRate;
+              return (
+                <button
+                  key={frameRate}
+                  type="button"
+                  className={`min-h-11 rounded-md px-3 py-1.5 text-center transition-colors ${
+                    selected
+                      ? 'border border-cyan-300/65 bg-cyan-300 text-slate-950 shadow-[0_0_16px_rgba(103,232,249,.2)]'
+                      : 'border border-transparent bg-slate-900 text-slate-400'
+                  }`}
+                  aria-pressed={selected}
+                  onClick={() => {
+                    setBattleFrameRate(frameRate);
+                    try {
+                      window.localStorage.setItem(
+                        BATTLE_FRAME_RATE_STORAGE_KEY,
+                        String(frameRate)
+                      );
+                    } catch {
+                      // The preference remains valid for this session.
+                    }
+                  }}
+                >
+                  <strong className="block text-sm font-black">
+                    {frameRate} FPS
+                  </strong>
+                  <small className="block text-[10px] font-bold">
+                    {frameRate === 30 ? '省電力' : 'なめらか'}
+                  </small>
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
         {/* Global activity stays closed until the player asks for it. */}
         {logs.length > 0 && (
@@ -1825,6 +1878,7 @@ export default function App() {
               src={FANKIT_ART.marketBackdrop}
               alt=""
               aria-hidden="true"
+              decoding="async"
               className="absolute inset-0 h-full w-full object-cover opacity-20"
             />
             <span className="relative z-10 flex items-end gap-4">
@@ -1866,7 +1920,7 @@ export default function App() {
             >
               {unlockExplanationQueue.length > 1
                 ? '次の解放を見る'
-                : 'かけひき画面で確認'}
+                : 'アビリティを確認'}
             </span>
           </span>
         </button>
@@ -1880,7 +1934,7 @@ export default function App() {
           aria-label={`${featureUnlockNotice.title}の説明を閉じる`}
         >
           <span className="city-unlock__card relative block w-full max-w-2xl overflow-hidden rounded-2xl border border-cyan-300/60 bg-slate-900 p-5 shadow-2xl sm:p-7">
-            <img src={FANKIT_ART.marketBackdrop} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover opacity-20" />
+            <img src={FANKIT_ART.marketBackdrop} alt="" aria-hidden="true" decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-20" />
             <span className="relative z-10 flex items-end gap-4">
               <img src={FANKIT_ART.tataru.dressUp} alt="タタル" className="h-28 w-24 shrink-0 object-contain object-bottom drop-shadow-[0_0_16px_rgba(103,232,249,.5)] sm:h-36 sm:w-32" />
               <span className="min-w-0 pb-1">
@@ -1898,13 +1952,13 @@ export default function App() {
       {unlockNotice && (
         <button type="button" onClick={() => setUnlockNotice(null)} className="city-unlock fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/90 p-4 text-left">
           <span className="city-unlock__card relative block w-full max-w-2xl overflow-hidden rounded-2xl border border-amber-300/60 bg-slate-900 p-5 shadow-2xl sm:p-7">
-            <img src={FANKIT_ART.marketBackdrop} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover opacity-25" />
+            <img src={FANKIT_ART.marketBackdrop} alt="" aria-hidden="true" decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-25" />
             <span className="relative z-10 flex items-end gap-4">
               <img src={FANKIT_ART.tataru.windUp} alt="タタル" className="h-28 w-24 shrink-0 object-contain object-bottom sm:h-36 sm:w-32" />
               <span className="min-w-0 pb-1">
                 <span className="block text-[10px] font-black tracking-[.3em] text-cyan-300">NEW TRADE ROUTE</span>
                 <span className="mt-1 flex items-center gap-2 text-2xl font-black text-white sm:text-3xl"><MapPinned className="h-7 w-7 shrink-0 text-amber-300" /> {unlockNotice}</span>
-                <span className="mt-3 block rounded-xl border border-amber-200/25 bg-slate-950/75 p-3 text-sm font-bold leading-relaxed text-amber-50">「前の都市での商いが実を結び、新しい航路が開きましたな。次の市場へ進むでっす！」</span>
+                <span className="mt-3 block rounded-xl border border-amber-200/25 bg-slate-950/75 p-3 text-sm font-bold leading-relaxed text-amber-50">「前の都市での商いが実を結び、新しい航路が開いたでっす。次の市場へ進むでっす！」</span>
               </span>
             </span>
             <span className="relative z-10 mt-4 inline-block rounded-lg bg-amber-400 px-4 py-2 text-xs font-black text-slate-950">都市マップへ進む</span>
@@ -1963,7 +2017,7 @@ export default function App() {
           limitBreakCharge={activeBattleMode === 'training' ? trainingLimitBreakCharge : limitBreakCharge}
           onLimitBreakChargeChange={activeBattleMode === 'training' ? setTrainingLimitBreakCharge : setLimitBreakCharge}
           onTimeScaleChange={setBattleTimeScale}
-          lightweightMode={lightweightMode}
+          battleFrameRate={battleFrameRate}
           nextCommunity={(() => {
             if (activeBattleMode !== 'normal') return null;
             const wouldConquer = getCampaignProperties(properties, activeBattleProperty.community)

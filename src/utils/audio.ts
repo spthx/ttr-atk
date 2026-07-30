@@ -111,15 +111,21 @@ class SoundEffects {
           gain.gain.setValueAtTime(volume, ctx.currentTime);
           source.connect(gain);
           gain.connect(ctx.destination);
+          source.onended = () => {
+            try {
+              source.disconnect();
+              gain.disconnect();
+            } catch {
+              // An interrupted iOS audio context may already be disconnected.
+            }
+            if (this.cinematicSource === source) {
+              this.cinematicSource = null;
+              this.cinematicGain = null;
+            }
+          };
           if (channel === 'cinematic') {
             this.cinematicSource = source;
             this.cinematicGain = gain;
-            source.onended = () => {
-              if (this.cinematicSource === source) {
-                this.cinematicSource = null;
-                this.cinematicGain = null;
-              }
-            };
           }
           source.start();
         })
@@ -404,6 +410,14 @@ class SoundEffects {
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {
+          // An interrupted iOS audio context may already be disconnected.
+        }
+      };
 
       osc.start(now);
       osc.stop(now + 0.03);
@@ -450,6 +464,17 @@ class SoundEffects {
       coinGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
       coin.connect(coinGain);
       coinGain.connect(gain);
+      throb.onended = () => {
+        try {
+          throb.disconnect();
+          coin.disconnect();
+          coinGain.disconnect();
+          gain.disconnect();
+          panner?.disconnect();
+        } catch {
+          // An interrupted iOS audio context may already be disconnected.
+        }
+      };
       coin.start(now + 0.025);
       coin.stop(now + 0.1);
     } catch {
@@ -477,6 +502,14 @@ class SoundEffects {
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {
+          // An interrupted iOS audio context may already be disconnected.
+        }
+      };
 
       osc.start(now);
       osc.stop(now + 0.35);
@@ -638,7 +671,10 @@ class SoundEffects {
    * bounded voices become one, two or three cuts so higher tiers sound
    * stronger without loading or decoding another asset.
    */
-  playLimitBreakImpact(tier: number = 1) {
+  playLimitBreakImpact(
+    tier: number = 1,
+    side: 'player' | 'opponent' = 'player'
+  ) {
     if (!this.enabled) return;
     try {
       const ctx = this.initCtx();
@@ -719,14 +755,14 @@ class SoundEffects {
       this.limitImpactTimer = window.setTimeout(() => {
         this.limitImpactTimer = null;
         this.playCapitalImpact(
-          'player',
+          side,
           resolvedTier === 1 ? 0.55 : resolvedTier === 2 ? 0.78 : 1
         );
       }, Math.round((finalSlashDelay + 0.11) * 1_000));
     } catch {
       const resolvedTier = Math.max(1, Math.min(3, Math.floor(tier)));
       this.playCapitalImpact(
-        'player',
+        side,
         resolvedTier === 1 ? 0.55 : resolvedTier === 2 ? 0.78 : 1
       );
     }

@@ -78,6 +78,7 @@ export const EndingModal: React.FC<EndingModalProps> = ({
         src={finalRoute ? FANKIT_ART.battleBackdrop : FANKIT_ART.marketBackdrop}
         alt=""
         aria-hidden="true"
+        decoding="async"
         className="ending-modal__backdrop"
       />
       <div className="ending-modal__shade" />

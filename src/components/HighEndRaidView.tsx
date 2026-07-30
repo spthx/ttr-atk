@@ -73,6 +73,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
           src={FANKIT_ART.battleBackdrop}
           alt=""
           aria-hidden="true"
+          decoding="async"
           className="high-end-raids__backdrop"
         />
         <div className="high-end-raids__party" aria-hidden="true">
