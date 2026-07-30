@@ -197,7 +197,11 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
                   <p key={synergy.id}>
                     <b>{synergy.name}</b>
                     <small>
-                      {cleared
+                      {synergy.battleOnly
+                        ? cleared
+                          ? `強化済み：資本圧力 +0.02（零式強化 ${synergy.savageRank ?? 0}/3）`
+                          : '手動SYNERGYの資本圧力 +0.02'
+                        : cleared
                         ? `強化済み：収益倍率 +${SAVAGE_YIELD_BONUS_PER_RANK.toFixed(2)}／戦闘支援 ×${synergy.battleGroupMultiplier?.toFixed(2)}`
                         : `収益倍率 +${SAVAGE_YIELD_BONUS_PER_RANK.toFixed(2)}／戦闘支援 ×${((synergy.battleGroupMultiplier ?? SAVAGE_GROUP_MULTIPLIER_BASE) + SAVAGE_GROUP_MULTIPLIER_BONUS_PER_RANK).toFixed(2)}へ`}
                     </small>

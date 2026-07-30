@@ -42,11 +42,11 @@ import {
   clearGameSave,
   loadGameSave,
   loadLegacyCompanyName,
+  normalizeAutoSkillLoadout,
   restoreProperties,
   saveGame,
 } from './utils/saveData';
 import {
-  BATTLE_LOYALTY_BALANCE,
   calculateEnemyBudget,
   calculateTotalAssetValue,
   getCampaignProperties,
@@ -91,6 +91,13 @@ import {
   SAVAGE_RAID_DEFINITIONS,
   ULTIMATE_RAID_DEFINITION,
 } from './utils/savage';
+import {
+  getBattleOnlySynergyMultiplier,
+  getGroupSynergySelectionPriority,
+  getLatestProgressionBattleSynergy,
+  GRAND_COMPANY_EORZEA_ID,
+  isGroupSynergyUnlocked,
+} from './utils/synergy';
 
 export { PASSIVE_REVENUE_MULTIPLIER };
 
@@ -105,7 +112,9 @@ type FeatureUnlockId =
   | 'guild_synergy'
   | 'living_dead_skill'
   | 'full_party'
-  | 'trade_alliance';
+  | 'trade_alliance'
+  | 'opening_auto'
+  | 'critical_auto';
 
 const FEATURE_UNLOCKS: Record<
   FeatureUnlockId,
@@ -165,6 +174,18 @@ const FEATURE_UNLOCKS: Record<
     dialogue: 'ウルダハでの実績が認められましたな。ここからは複数組織が組む企業連合へ挑めるでっす！',
     detail: '段階式の企業連合戦、外部企業との協力協定、グランドカンパニーへの公的後援申請が開放されます。',
   },
+  opening_auto: {
+    kicker: 'AUTO ABILITY I',
+    title: '開幕AUTO 解放',
+    dialogue: 'クガネまでの商戦で、開幕の段取りも身についたでっす！ 最初に使うアビリティを一つ、戦う前に決めておけますぞ。',
+    detail: '装備中のアビリティ一つを開幕AUTOへ設定できます。設定したアビリティは手動選択から外れ、開始演出の後に一度だけ自動発動します。',
+  },
+  critical_auto: {
+    kicker: 'AUTO ABILITY II',
+    title: '窮地AUTO 解放',
+    dialogue: 'クリスタリウムまで進んだ今なら、苦しい時の切り札も先に決めておけるでっす！',
+    detail: '装備中のアビリティ一つを窮地AUTOへ設定できます。設定した技は手動選択から外れ、所有率が危険域へ入った時に一度だけ自動発動します。',
+  },
 };
 
 export default function App() {
@@ -203,6 +224,17 @@ export default function App() {
   const [equippedSkillIds, setEquippedSkillIds] = useState<string[]>(
     initialSave?.equippedSkillIds ?? []
   );
+  const initialAutoSkillLoadout = normalizeAutoSkillLoadout({
+    equippedSkillIds: initialSave?.equippedSkillIds ?? [],
+    openingAutoSkillId: initialSave?.openingAutoSkillId,
+    criticalAutoSkillId: initialSave?.criticalAutoSkillId,
+  });
+  const [openingAutoSkillId, setOpeningAutoSkillId] = useState<string | null>(
+    initialAutoSkillLoadout.openingAutoSkillId
+  );
+  const [criticalAutoSkillId, setCriticalAutoSkillId] = useState<string | null>(
+    initialAutoSkillLoadout.criticalAutoSkillId
+  );
   const [cartels, setCartels] = useState<Cartel[]>(INITIAL_CARTELS);
   const [alliance, setAlliance] = useState<AllianceState>(
     initialSave?.alliance ?? {
@@ -236,6 +268,13 @@ export default function App() {
   const [selectedBattleSynergyId, setSelectedBattleSynergyId] = useState<string | null>(
     initialSave?.selectedBattleSynergyId ?? null
   );
+  const [grandCompanyEorzeaIntegrated, setGrandCompanyEorzeaIntegrated] =
+    useState(
+      initialSave?.grandCompanyEorzeaIntegrated === true ||
+        restoreProperties(initialSave).every(
+          (property) => property.owner === 'player'
+        )
+    );
 
   // UI States
   const [activeTab, setActiveTab] = useState<AppTab>(
@@ -374,6 +413,9 @@ export default function App() {
   const tradeAllianceUnlocked = !!communityProgress.find(
     (community) => community.id === 'ウルダハ'
   )?.conquered;
+  const openingAutoUnlocked = conqueredCommunityIdSet.has('クガネ');
+  const criticalAutoUnlocked =
+    conqueredCommunityIdSet.has('クリスタリウム');
   const normalCampaignComplete =
     conqueredCommunityCount === COMMUNITY_CAMPAIGN_ORDER.length;
   const savageUnlocked = normalCampaignComplete || normalEndingSeen;
@@ -393,8 +435,25 @@ export default function App() {
     [savageClearedSet]
   );
   const groupSynergies = useMemo(
-    () => applySavageSynergyUpgrades(INITIAL_GROUP_SYNERGIES, savageClearedSet),
-    [savageClearedSet]
+    () =>
+      applySavageSynergyUpgrades(
+        INITIAL_GROUP_SYNERGIES,
+        savageClearedSet
+      ).map((synergy) =>
+        synergy.id === GRAND_COMPANY_EORZEA_ID && synergy.battleEffect
+          ? {
+              ...synergy,
+              battleEffect: {
+                ...synergy.battleEffect,
+                capitalPressureMultiplier: getBattleOnlySynergyMultiplier(
+                  synergy,
+                  grandCompanyEorzeaIntegrated
+                ),
+              },
+            }
+          : synergy
+      ),
+    [grandCompanyEorzeaIntegrated, savageClearedSet]
   );
   const ultimateUnlocked = savageComplete;
   const ultimateProperty = useMemo(
@@ -475,17 +534,37 @@ export default function App() {
   // Active Synergies Count & Bonus Multiplier
   const { activeGroupSynergies, activeSynergiesCount, bonusMultiplier } = useMemo(() => {
     const active = groupSynergies.filter((syn) =>
-      syn.requiredPropertyIds.every((id) => ownedPropertyIds.has(id))
+      isGroupSynergyUnlocked({
+        synergy: syn,
+        ownedPropertyIds,
+        conqueredCommunityIds: conqueredCommunityIdSet,
+      })
     );
     return {
       activeGroupSynergies: active,
       activeSynergiesCount: active.length,
-      bonusMultiplier: active.reduce((multiplier, syn) => multiplier * syn.bonusYieldMultiplier, 1),
+      bonusMultiplier: active.reduce(
+        (multiplier, syn) =>
+          syn.battleOnly
+            ? multiplier
+            : multiplier * syn.bonusYieldMultiplier,
+        1
+      ),
     };
-  }, [groupSynergies, ownedPropertyIds]);
+  }, [conqueredCommunityIdSet, groupSynergies, ownedPropertyIds]);
 
+  const latestProgressionBattleSynergy =
+    getLatestProgressionBattleSynergy(activeGroupSynergies);
+  const selectableActiveGroupSynergies = activeGroupSynergies.filter(
+    (synergy) =>
+      !synergy.battleOnly ||
+      synergy.id === latestProgressionBattleSynergy?.id
+  );
   const selectedBattleSynergy =
-    activeGroupSynergies.find((synergy) => synergy.id === selectedBattleSynergyId) ??
+    selectableActiveGroupSynergies.find(
+      (synergy) => synergy.id === selectedBattleSynergyId
+    ) ??
+    latestProgressionBattleSynergy ??
     null;
   const previousActiveSynergyIdsRef = useRef<Set<string> | null>(null);
 
@@ -495,31 +574,64 @@ export default function App() {
     const newlyLearned = previousIds
       ? activeGroupSynergies.filter((synergy) => !previousIds.has(synergy.id))
       : [];
+    const bestNewlyLearned = newlyLearned.reduce<GroupSynergy | null>(
+      (best, synergy) =>
+        !best ||
+        getGroupSynergySelectionPriority(synergy) >
+          getGroupSynergySelectionPriority(best)
+          ? synergy
+          : best,
+      null
+    );
+    const selectedActiveSynergy = selectableActiveGroupSynergies.find(
+      (synergy) => synergy.id === selectedBattleSynergyId
+    );
+    const shouldAutoEquipNew =
+      !!bestNewlyLearned &&
+      (
+        !selectedActiveSynergy ||
+        getGroupSynergySelectionPriority(bestNewlyLearned) >
+          getGroupSynergySelectionPriority(selectedActiveSynergy)
+      );
 
     setSelectedBattleSynergyId((current) => {
-      if (newlyLearned.length > 0) {
-        return newlyLearned[newlyLearned.length - 1].id;
+      const currentActiveSynergy = selectableActiveGroupSynergies.find(
+        (synergy) => synergy.id === current
+      );
+      if (
+        bestNewlyLearned &&
+        (
+          !currentActiveSynergy ||
+          getGroupSynergySelectionPriority(bestNewlyLearned) >
+            getGroupSynergySelectionPriority(currentActiveSynergy)
+        )
+      ) {
+        return bestNewlyLearned.id;
       }
-      if (current && activeIds.has(current)) return current;
-      return activeGroupSynergies.reduce<GroupSynergy | null>(
+      // A saved progression synergy may still be unlocked but already
+      // superseded. Normalize it to the currently selectable generation so
+      // the setup screen and the battle resolve the same manual synergy.
+      if (currentActiveSynergy) return current;
+      return selectableActiveGroupSynergies.reduce<GroupSynergy | null>(
         (best, synergy) =>
-          !best || synergy.bonusYieldMultiplier >= best.bonusYieldMultiplier
+          !best ||
+          getGroupSynergySelectionPriority(synergy) >=
+            getGroupSynergySelectionPriority(best)
             ? synergy
             : best,
         null
       )?.id ?? null;
     });
 
-    if (previousIds && newlyLearned.length > 0) {
-      const learned = newlyLearned[newlyLearned.length - 1];
+    if (previousIds && bestNewlyLearned && shouldAutoEquipNew) {
       addGameLog(
-        `【戦闘連携更新】${learned.name}を修得。バトル用SYNERGY 1枠へ自動装備しました。`,
+        `【戦闘連携更新】${bestNewlyLearned.name}を修得。バトル用SYNERGY 1枠へ自動装備しました。`,
         'success'
       );
       soundFx.playFeatureUnlocked();
     }
     previousActiveSynergyIdsRef.current = activeIds;
-  }, [activeGroupSynergies]);
+  }, [activeGroupSynergies, selectedBattleSynergyId]);
 
   const reachedFeatureUnlockIds = useMemo(() => {
     const reached: FeatureUnlockId[] = [];
@@ -534,9 +646,13 @@ export default function App() {
     if (windProgressionStage >= 3) reached.push('turbulent_wind');
     if (ownedProperties.length + 1 >= 8) reached.push('full_party');
     if (tradeAllianceUnlocked) reached.push('trade_alliance');
+    if (openingAutoUnlocked) reached.push('opening_auto');
+    if (criticalAutoUnlocked) reached.push('critical_auto');
     return reached;
   }, [
     activeSynergiesCount,
+    criticalAutoUnlocked,
+    openingAutoUnlocked,
     ownedProperties.length,
     totalAssetValue,
     tradeAllianceUnlocked,
@@ -637,6 +753,49 @@ export default function App() {
     [activeSynergiesCount, ownedProperties, skills, totalFunds]
   );
 
+  const effectiveAutoSkillLoadout = useMemo(
+    () =>
+      normalizeAutoSkillLoadout({
+        equippedSkillIds,
+        openingAutoSkillId: openingAutoUnlocked
+          ? openingAutoSkillId
+          : null,
+        criticalAutoSkillId: criticalAutoUnlocked
+          ? criticalAutoSkillId
+          : null,
+        validSkillIds: unlockedSkillIds,
+      }),
+    [
+      criticalAutoSkillId,
+      criticalAutoUnlocked,
+      equippedSkillIds,
+      openingAutoSkillId,
+      openingAutoUnlocked,
+      unlockedSkillIds,
+    ]
+  );
+
+  useEffect(() => {
+    if (
+      effectiveAutoSkillLoadout.openingAutoSkillId !== openingAutoSkillId
+    ) {
+      setOpeningAutoSkillId(
+        effectiveAutoSkillLoadout.openingAutoSkillId
+      );
+    }
+    if (
+      effectiveAutoSkillLoadout.criticalAutoSkillId !== criticalAutoSkillId
+    ) {
+      setCriticalAutoSkillId(
+        effectiveAutoSkillLoadout.criticalAutoSkillId
+      );
+    }
+  }, [
+    criticalAutoSkillId,
+    effectiveAutoSkillLoadout,
+    openingAutoSkillId,
+  ]);
+
   // Total Passive Revenue Yield per second (I_net)
   const passiveRevenue = useMemo(() => {
     const base = ownedProperties.reduce(
@@ -656,6 +815,8 @@ export default function App() {
       totalFunds,
       properties,
       equippedSkillIds,
+      openingAutoSkillId: effectiveAutoSkillLoadout.openingAutoSkillId,
+      criticalAutoSkillId: effectiveAutoSkillLoadout.criticalAutoSkillId,
       alliance,
       seenUnlockIds,
       limitBreakCharge,
@@ -667,6 +828,7 @@ export default function App() {
       ultimateCleared,
       trueEndingSeen,
       selectedBattleSynergyId,
+      grandCompanyEorzeaIntegrated,
       passiveIncomePaused: false,
       ...overrides,
     });
@@ -684,9 +846,13 @@ export default function App() {
     if (income <= 0) return;
     setTotalFunds((current) => current + income);
     setOfflineIncomeNotice(income);
+  }, [initialSave, passiveRevenue]);
+
+  useEffect(() => {
+    if (offlineIncomeNotice <= 0) return;
     const timer = window.setTimeout(() => setOfflineIncomeNotice(0), 4600);
     return () => window.clearTimeout(timer);
-  }, [initialSave, passiveRevenue]);
+  }, [offlineIncomeNotice]);
 
   // IDLE CASH HARVEST ENGINE (1 Second Ticker)
   useEffect(() => {
@@ -724,15 +890,18 @@ export default function App() {
     activeBattleProperty,
     activeBattleMode,
     companyName,
+    criticalAutoSkillId,
     equippedSkillIds,
     limitBreakCharge,
     normalEndingSeen,
+    openingAutoSkillId,
     conqueredCommunityIds,
     properties,
     savageClearedPropertyIds,
     savageEndingSeen,
     seenUnlockIds,
     selectedBattleSynergyId,
+    grandCompanyEorzeaIntegrated,
     showLaunchIntro,
     totalFunds,
     trueEndingSeen,
@@ -819,6 +988,7 @@ export default function App() {
     battleCashDelta,
     victoryReward,
     celebrationGiftCost,
+    celebrationGiftRate,
     rebelledProperties,
     survivingRiskUpdates,
   }: BattleResult) => {
@@ -913,6 +1083,9 @@ export default function App() {
     const projectedUltimateCleared =
       ultimateCleared ||
       (activeBattleMode === 'ultimate' && winner === 'player');
+    const projectedGrandCompanyEorzeaIntegrated =
+      grandCompanyEorzeaIntegrated ||
+      projectedProperties.every((property) => property.owner === 'player');
 
     // Save the complete, deterministic result before mutating React state or
     // deleting the recovery marker. A denied Storage write leaves the result
@@ -924,12 +1097,24 @@ export default function App() {
       conqueredCommunityIds: projectedConqueredCommunityIds,
       savageClearedPropertyIds: projectedSavageClearedPropertyIds,
       ultimateCleared: projectedUltimateCleared,
+      grandCompanyEorzeaIntegrated:
+        projectedGrandCompanyEorzeaIntegrated,
     })) {
       return false;
     }
     clearPendingBattleSession();
     deferredBattleIncomeRef.current = 0;
     setTotalFunds(settledTotalFunds);
+    if (
+      projectedGrandCompanyEorzeaIntegrated &&
+      !grandCompanyEorzeaIntegrated
+    ) {
+      setGrandCompanyEorzeaIntegrated(true);
+      addGameLog(
+        '【全企業統合】グランドカンパニー・エオルゼアの資本圧力が+0.07強化されました。',
+        'success'
+      );
+    }
     if (newlyConquered) {
       setConqueredCommunityIds(projectedConqueredCommunityIds);
     }
@@ -1059,9 +1244,9 @@ export default function App() {
       addGameLog(
         `【勝利のご祝儀】${formatCurrency(
           celebrationGiftCost
-        )}を支援元へ配り、残った全支援元の独立危険度を -${
-          BATTLE_LOYALTY_BALANCE.celebrationRiskReduction
-        } 抑えました。`,
+        )}（報酬の${Math.round(
+          celebrationGiftRate * 100
+        )}%）を支援元へ配り、今回の離反確率を抑えました。独立危険度そのものは変わりません。`,
         'success'
       );
     }
@@ -1126,6 +1311,14 @@ export default function App() {
 
   // Toggle skill equip
   const handleToggleEquipSkill = (skillId: string) => {
+    if (equippedSkillIds.includes(skillId)) {
+      setOpeningAutoSkillId((current) =>
+        current === skillId ? null : current
+      );
+      setCriticalAutoSkillId((current) =>
+        current === skillId ? null : current
+      );
+    }
     setEquippedSkillIds((prev) => {
       if (prev.includes(skillId)) {
         return prev.filter((id) => id !== skillId);
@@ -1134,6 +1327,40 @@ export default function App() {
         return [...prev, skillId];
       }
     });
+  };
+
+  const handleSetSkillActivationMode = (
+    skillId: string,
+    mode: 'manual' | 'opening_auto' | 'critical_auto'
+  ) => {
+    if (
+      !equippedSkillIds.includes(skillId) ||
+      !unlockedSkillIds.has(skillId)
+    ) {
+      return;
+    }
+    if (mode === 'manual') {
+      setOpeningAutoSkillId((current) =>
+        current === skillId ? null : current
+      );
+      setCriticalAutoSkillId((current) =>
+        current === skillId ? null : current
+      );
+      return;
+    }
+    if (mode === 'opening_auto') {
+      if (!openingAutoUnlocked) return;
+      setOpeningAutoSkillId(skillId);
+      setCriticalAutoSkillId((current) =>
+        current === skillId ? null : current
+      );
+      return;
+    }
+    if (!criticalAutoUnlocked) return;
+    setCriticalAutoSkillId(skillId);
+    setOpeningAutoSkillId((current) =>
+      current === skillId ? null : current
+    );
   };
 
   // Trade-party cooperation management
@@ -1380,10 +1607,20 @@ export default function App() {
             equippedSkillIds={equippedSkillIds}
             groupSynergies={groupSynergies}
             ownedProperties={ownedProperties}
+            conqueredCommunityIds={conqueredCommunityIdSet}
             totalFunds={totalFunds}
             activeSynergyCount={activeSynergiesCount}
+            openingAutoUnlocked={openingAutoUnlocked}
+            criticalAutoUnlocked={criticalAutoUnlocked}
+            openingAutoSkillId={
+              effectiveAutoSkillLoadout.openingAutoSkillId
+            }
+            criticalAutoSkillId={
+              effectiveAutoSkillLoadout.criticalAutoSkillId
+            }
             selectedBattleSynergyId={selectedBattleSynergyId}
             onToggleEquipSkill={handleToggleEquipSkill}
+            onSetSkillActivationMode={handleSetSkillActivationMode}
             onSelectBattleSynergy={setSelectedBattleSynergyId}
           />
         )}
@@ -1429,7 +1666,7 @@ export default function App() {
           <span className="min-w-0">
             <span className="block text-xs font-black tracking-[.08em]">軽量モード</span>
             <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">
-              演出・選択中は進行を停止／商戦ゲージは30fps
+              演出・メニュー中は周囲を停止（技効果は着弾時）／商戦ゲージ30fps
             </span>
           </span>
           <span
@@ -1551,6 +1788,12 @@ export default function App() {
           ownedProperties={ownedProperties}
           equippedSkills={equippedSkills}
           availableSkills={availableSkills}
+          openingAutoSkillId={
+            effectiveAutoSkillLoadout.openingAutoSkillId
+          }
+          criticalAutoSkillId={
+            effectiveAutoSkillLoadout.criticalAutoSkillId
+          }
           alliance={alliance}
           activeSynergies={activeGroupSynergies}
           selectedBattleSynergy={selectedBattleSynergy}

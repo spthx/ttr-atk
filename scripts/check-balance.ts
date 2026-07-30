@@ -15,13 +15,16 @@ import {
 import { calculateBattleReadiness } from '../src/utils/battleReadiness';
 import {
   applyNormalBattlePropertyUpdates,
+  calculateAtLeastOneDepartureProbability,
   calculateBattleSettlementSummary,
   calculateLiquidationCashback,
+  normalizeDepartureProbabilityMultiplier,
   resolvePostVictoryLoyalty,
 } from '../src/utils/battleSettlement';
 import {
   BATTLE_CINEMATIC_TIMING,
   BATTLE_GAUGE_VISUAL_COMMIT_MS,
+  BATTLE_CAPITAL_VISUAL_STAGE_COUNT,
   BATTLE_STATE_UPDATE_INTERVAL_MS,
   BATTLE_HIT_STOP_TIMING,
   BATTLE_STATUS_MESSAGE_DURATION_MS,
@@ -30,6 +33,10 @@ import {
   getBattleCapitalVisualBundleCount,
   getCapitalCommitTiming,
   getCapitalDropParticleCount,
+  getCapitalFormationPieceCount,
+  getCapitalHoardBandCount,
+  getCapitalHoardFillRatios,
+  getCapitalStageSequence,
   getNextBattleSkillId,
   resolveBattleSkillSelection,
   getTerminalCinematicPresentation,
@@ -46,6 +53,7 @@ import {
   LIGHTWEIGHT_GAUGE_FRAME_MS,
   LIGHTWEIGHT_SKILL_CINEMATIC_TIMING,
   MAX_CAPITAL_DROP_PARTICLE_COUNT,
+  MAX_BATTLE_CAPITAL_VISUAL_STAGE,
   normalizeBattleStatusMessageText,
   RESULT_CONFIRM_ARM_DELAY_MS,
   selectBattleStatusMessage,
@@ -74,6 +82,7 @@ import {
   loadLegacyCompanyName,
   loadGameSave,
   normalizeAllianceState,
+  normalizeAutoSkillLoadout,
   normalizeLimitBreakCharge,
   restoreProperties,
   saveGame,
@@ -93,6 +102,7 @@ import {
   getSavageTargetIds,
   getUnlockedSavageRaidIds,
   normalizeSavageClearedRaidIds,
+  SAVAGE_BATTLE_ONLY_CAPITAL_BONUS_PER_RANK,
   SAVAGE_GROUP_MULTIPLIER_BASE,
   SAVAGE_GROUP_MULTIPLIER_BONUS_PER_RANK,
   SAVAGE_PROPERTY_YIELD_BONUS,
@@ -101,6 +111,12 @@ import {
   SAVAGE_YIELD_BONUS_PER_RANK,
   ULTIMATE_RAID_DEFINITION,
 } from '../src/utils/savage';
+import {
+  GRAND_COMPANY_EORZEA_ID,
+  getBattleOnlySynergyMultiplier,
+  getLatestProgressionBattleSynergy,
+  isGroupSynergyUnlocked,
+} from '../src/utils/synergy';
 import {
   calculateAllianceSupport,
   shouldBreakAllianceForTarget,
@@ -122,6 +138,7 @@ import {
   BATTLE_GAUGE_SPEED_FACTOR,
   BATTLE_LOYALTY_BALANCE,
   BATTLE_SUPPORT_BALANCE,
+  CELEBRATION_GIFT_OPTIONS,
   calculateDirectInvestmentGaugeImpact,
   calculateEnemyDrillReserveCost,
   calculateSubsidiarySupportAmount,
@@ -146,6 +163,7 @@ import {
   countsTowardCityConquest,
   getCampaignProperties,
   getBossAbilityTier,
+  HIGH_DIFFICULTY_SUPPORT_MULTIPLIER,
   getBattleCashRecoveryWindMultipliers,
   getCompanyStrengthLevel,
   getEnemyMinimumCommitment,
@@ -519,11 +537,11 @@ assert.deepEqual(
     null
   ),
   {
-    poolIds: ['skill_era_wind', 'skill_demoralize'],
-    selectedSkillId: 'skill_era_wind',
-    usingFallback: true,
+    poolIds: [],
+    selectedSkillId: null,
+    usingFallback: false,
   },
-  'the temporary fallback pool preserves the available-skill display order'
+  'an empty equipped pool never grants an unequipped ability'
 );
 assert.deepEqual(
   resolveBattleSkillSelection(
@@ -728,24 +746,25 @@ assert.equal(getBattleCapitalVisualBundleCount(0, 100_000), 0);
 assert.equal(getBattleCapitalVisualBundleCount(2_000, 100_000), 1);
 assert.equal(
   getBattleCapitalVisualBundleCount(10_000, 100_000),
-  1,
-  'the default first offer starts with one visible bundle'
+  2,
+  'the default first offer reveals two small, separate capital beats'
 );
-assert.equal(getBattleCapitalVisualBundleCount(20_000, 100_000), 2);
+assert.equal(getBattleCapitalVisualBundleCount(20_000, 100_000), 4);
 assert.deepEqual(
   [0.1, 0.2, 0.3, 0.4].map((ratio) =>
     getBattleCapitalVisualBundleCount(ratio * 100_000, 100_000)
   ),
-  [1, 2, 3, 4],
-  'repeated default offers reveal the first four capital steps one by one'
+  [2, 4, 6, 8],
+  'repeated default offers climb through five-percent capital beats'
 );
 assert.equal(
   getBattleCapitalVisualBundleCount(50_000, 100_000),
-  4,
+  10,
   'a typical opening defence stays a modest pile'
 );
-assert.equal(getBattleCapitalVisualBundleCount(100_000, 100_000), 6);
-assert.equal(getBattleCapitalVisualBundleCount(2_000_000, 100_000), 13);
+assert.equal(getBattleCapitalVisualBundleCount(100_000, 100_000), 20);
+assert.equal(getBattleCapitalVisualBundleCount(368_000, 100_000), 55);
+assert.equal(getBattleCapitalVisualBundleCount(2_000_000, 100_000), 59);
 assert.equal(
   getBattleCapitalVisualBundleCount(20_000, 1_000_000),
   1,
@@ -753,7 +772,7 @@ assert.equal(
 );
 assert.equal(
   getBattleCapitalVisualBundleCount(100_000_000, 1_000_000_000),
-  1,
+  2,
   'a first 10% offer stays sparse even in the final chapter'
 );
 assert.equal(
@@ -764,14 +783,103 @@ assert.equal(
 assert.equal(getCapitalVisualStageForBundleCount(0), 0);
 assert.equal(getCapitalVisualStageForBundleCount(4), 4);
 assert.equal(getCapitalVisualStageForBundleCount(11), 11);
-assert.equal(getCapitalVisualStageForBundleCount(13), 11);
-assert.equal(getCapitalVisualStageForBundleCount(99), 11);
+assert.equal(getCapitalVisualStageForBundleCount(13), 13);
+assert.equal(getCapitalVisualStageForBundleCount(99), 59);
 assert.equal(getCapitalVisualSpriteCount(0), 0);
-assert.equal(getCapitalVisualSpriteCount(3), 3);
+assert.equal(getCapitalVisualSpriteCount(3), 0);
 assert.equal(
   getCapitalVisualSpriteCount(13),
-  5,
+  1,
   'field-filling hoards keep a bounded foreground sprite count'
+);
+assert.equal(getCapitalVisualSpriteCount(59), 5);
+assert.deepEqual(
+  [0, 9, 19, 29, 39, 49, 59].map(getCapitalFormationPieceCount),
+  [0, 1, 2, 3, 4, 5, 6],
+  'fixed formation slots reveal gradually without amount-proportional DOM'
+);
+assert.deepEqual(
+  [0, 1, 2, 3, 5, 6, 59].map(getCapitalHoardBandCount),
+  [0, 1, 1, 2, 2, 3, 3],
+  'three fixed background bands provide bounded late-stage density'
+);
+assert.deepEqual(getCapitalHoardFillRatios(0), { near: 0, mid: 0, far: 0 });
+assert.deepEqual(getCapitalHoardFillRatios(24), {
+  near: 0.5,
+  mid: 0.4,
+  far: 4 / 15,
+});
+assert.deepEqual(getCapitalHoardFillRatios(48), {
+  near: 1,
+  mid: 0.8,
+  far: 8 / 15,
+});
+assert.deepEqual(getCapitalHoardFillRatios(59), { near: 1, mid: 1, far: 1 });
+const liveCapitalPresentationStages = Array.from(
+  { length: BATTLE_CAPITAL_VISUAL_STAGE_COUNT },
+  (_, stage) => stage
+);
+assert.ok(
+  liveCapitalPresentationStages.every(
+    (stage) =>
+      getCapitalVisualSpriteCount(stage) <= 5 &&
+      getCapitalFormationPieceCount(stage) <= 6 &&
+      getCapitalHoardBandCount(stage) <= 3
+  ),
+  'all sixty logical pile stages preserve fixed DOM caps'
+);
+assert.ok(
+  liveCapitalPresentationStages.every(
+    (stage, index) =>
+      index === 0 ||
+      (
+        getCapitalVisualSpriteCount(stage) >=
+          getCapitalVisualSpriteCount(stage - 1) &&
+        getCapitalFormationPieceCount(stage) >=
+          getCapitalFormationPieceCount(stage - 1) &&
+        getCapitalHoardBandCount(stage) >=
+          getCapitalHoardBandCount(stage - 1)
+      )
+  ),
+  'all fixed pile layers reveal monotonically'
+);
+assert.ok(
+  liveCapitalPresentationStages.every((stage, index) => {
+    if (index === 0) return true;
+    const previousFill = getCapitalHoardFillRatios(stage - 1);
+    const currentFill = getCapitalHoardFillRatios(stage);
+    return (['near', 'mid', 'far'] as const).every(
+      (band) => currentFill[band] >= previousFill[band]
+    );
+  }),
+  'all three hoard band widths grow monotonically across stages 0-59'
+);
+assert.ok(
+  liveCapitalPresentationStages.slice(1).every((stage) => {
+    const previousFill = getCapitalHoardFillRatios(stage - 1);
+    const currentFill = getCapitalHoardFillRatios(stage);
+    return (['near', 'mid', 'far'] as const).filter(
+      (band) => currentFill[band] > previousFill[band]
+    ).length === 1;
+  }),
+  'each non-empty hoard stage advances exactly one painted band'
+);
+assert.ok(
+  liveCapitalPresentationStages.every((stage) => {
+    const fill = getCapitalHoardFillRatios(stage);
+    return Math.round(fill.near * 24 + fill.mid * 20 + fill.far * 15) === stage;
+  }),
+  'every logical stage adds exactly one painted bundle slot'
+);
+assert.deepEqual(
+  getCapitalStageSequence(1, MAX_BATTLE_CAPITAL_VISUAL_STAGE, 6),
+  [11, 20, 30, 40, 49, 59],
+  'heavy investments retain six readable stacking beats'
+);
+assert.deepEqual(
+  getCapitalStageSequence(4, 12, 2),
+  [8, 12],
+  'lightweight mode keeps the destination while reducing paint work'
 );
 assert.deepEqual(
   [1, 2, 3, 4, 5].map(getInvestmentStakeVisualPieceCount),
@@ -1373,6 +1481,117 @@ assert.equal(new Set(raidMemberIds).size, raidMemberIds.length);
 assert.deepEqual([...raidMemberIds].sort(), [...normalCampaignIds].sort());
 
 const synergyIds = new Set(INITIAL_GROUP_SYNERGIES.map((synergy) => synergy.id));
+const progressionBattleSynergies = INITIAL_GROUP_SYNERGIES.filter(
+  (synergy) => synergy.battleOnly
+);
+assert.deepEqual(
+  progressionBattleSynergies.map((synergy) => synergy.id),
+  ['CRYSTAL_BRAVES', 'LIGHT_OF_HOPE', GRAND_COMPANY_EORZEA_ID],
+  'the three manual progression synergies keep their narrative order'
+);
+assert.equal(
+  progressionBattleSynergies.every(
+    (synergy) => synergy.bonusYieldMultiplier === 1
+  ),
+  true,
+  'manual progression synergies never leak into passive revenue'
+);
+const conqueredThrough = (community: (typeof COMMUNITY_CAMPAIGN_ORDER)[number]) =>
+  new Set(
+    COMMUNITY_CAMPAIGN_ORDER.slice(
+      0,
+      COMMUNITY_CAMPAIGN_ORDER.indexOf(community) + 1
+    )
+  );
+const noOwnedPropertyIds = new Set<string>();
+const crystalBraves = progressionBattleSynergies[0];
+const lightOfHope = progressionBattleSynergies[1];
+const grandCompanyEorzea = progressionBattleSynergies[2];
+const uldahLuxuryMarket = INITIAL_GROUP_SYNERGIES.find(
+  (synergy) => synergy.id === 'ULDAH_LUXURY_MARKET'
+)!;
+assert.equal(crystalBraves.battleEffect?.capitalPressureMultiplier, 1.16);
+assert.equal(crystalBraves.battleEffect?.durationMs, 8_000);
+assert.equal(crystalBraves.battleEffect?.ownershipPush, 2);
+assert.ok(
+  (lightOfHope.battleEffect?.capitalPressureMultiplier ?? 0) >
+    uldahLuxuryMarket.bonusYieldMultiplier,
+  'Light of Hope is explicitly stronger than the Ul dah synergy'
+);
+assert.equal(lightOfHope.battleEffect?.ownershipPush, 8);
+assert.ok(
+  (grandCompanyEorzea.battleEffect?.capitalPressureMultiplier ?? 0) >
+    (lightOfHope.battleEffect?.capitalPressureMultiplier ?? 0),
+  'Grand Company Eorzea is the strongest progression battle synergy'
+);
+assert.equal(grandCompanyEorzea.battleEffect?.ownershipPush, 12);
+assert.equal(
+  isGroupSynergyUnlocked({
+    synergy: crystalBraves,
+    ownedPropertyIds: noOwnedPropertyIds,
+    conqueredCommunityIds: conqueredThrough('リムサ・ロミンサ'),
+  }),
+  false
+);
+assert.equal(
+  isGroupSynergyUnlocked({
+    synergy: crystalBraves,
+    ownedPropertyIds: noOwnedPropertyIds,
+    conqueredCommunityIds: conqueredThrough('ウルダハ'),
+  }),
+  true,
+  'Crystal Braves unlocks after Ul dah'
+);
+assert.equal(
+  isGroupSynergyUnlocked({
+    synergy: lightOfHope,
+    ownedPropertyIds: noOwnedPropertyIds,
+    conqueredCommunityIds: conqueredThrough('イシュガルド'),
+  }),
+  true,
+  'Light of Hope replaces the prototype after Ishgard'
+);
+assert.equal(
+  isGroupSynergyUnlocked({
+    synergy: grandCompanyEorzea,
+    ownedPropertyIds: noOwnedPropertyIds,
+    conqueredCommunityIds: conqueredThrough('オールド・シャーレアン'),
+  }),
+  false
+);
+assert.equal(
+  isGroupSynergyUnlocked({
+    synergy: grandCompanyEorzea,
+    ownedPropertyIds: noOwnedPropertyIds,
+    conqueredCommunityIds: conqueredThrough('ラザハン'),
+  }),
+  false
+);
+assert.equal(
+  isGroupSynergyUnlocked({
+    synergy: grandCompanyEorzea,
+    ownedPropertyIds: noOwnedPropertyIds,
+    conqueredCommunityIds: conqueredThrough('トライヨラ'),
+  }),
+  false
+);
+assert.equal(
+  isGroupSynergyUnlocked({
+    synergy: grandCompanyEorzea,
+    ownedPropertyIds: noOwnedPropertyIds,
+    conqueredCommunityIds: conqueredThrough('ソリューション・ナイン'),
+  }),
+  true,
+  'Grand Company Eorzea unlocks only after the normal campaign'
+);
+assert.equal(
+  getLatestProgressionBattleSynergy([
+    crystalBraves,
+    lightOfHope,
+  ])?.id,
+  'LIGHT_OF_HOPE',
+  'only the highest unlocked generation remains selectable'
+);
 SAVAGE_RAID_DEFINITIONS.forEach((raid) => {
   assert.ok(
     INITIAL_PROPERTIES.some((property) => property.id === raid.battlePropertyId),
@@ -1388,10 +1607,18 @@ SAVAGE_RAID_DEFINITIONS.forEach((raid) => {
     assert.ok(synergyIds.has(id), `Savage reward synergy exists: ${id}`);
   });
 });
+const savageUpgradeableSynergyIds = new Set(
+  INITIAL_GROUP_SYNERGIES
+    .filter(
+      (synergy) =>
+        !synergy.battleOnly || synergy.id === GRAND_COMPANY_EORZEA_ID
+    )
+    .map((synergy) => synergy.id)
+);
 assert.deepEqual(
   new Set(SAVAGE_RAID_DEFINITIONS.flatMap((raid) => raid.rewardSynergyIds)),
-  synergyIds,
-  'all existing synergies have a Savage upgrade route'
+  savageUpgradeableSynergyIds,
+  'passive synergies and Grand Company Eorzea have Savage upgrade routes'
 );
 assert.deepEqual(
   SAVAGE_RAID_DEFINITIONS.slice(0, 4).map((raid) => raid.id),
@@ -1468,6 +1695,7 @@ assert.deepEqual(
   Array.from(getSavageSynergyRanks(migratedLegacyLayerOne).entries()).sort(),
   [
     ['EORZEA_FOOD_ROUTE', 1],
+    ['GRAND_COMPANY_EORZEA', 1],
     ['GRIDANIA_FOREST_ECONOMY', 1],
     ['ULDAH_LUXURY_MARKET', 1],
   ],
@@ -1494,6 +1722,20 @@ const upgradedSynergies = applySavageSynergyUpgrades(
 upgradedSynergies.forEach((synergy) => {
   const rank = savageRanks.get(synergy.id) ?? 0;
   const base = INITIAL_GROUP_SYNERGIES.find((item) => item.id === synergy.id)!;
+  if (synergy.battleOnly) {
+    assert.equal(synergy.bonusYieldMultiplier, base.bonusYieldMultiplier);
+    assert.equal(synergy.battleGroupMultiplier, base.battleGroupMultiplier);
+    assert.equal(
+      synergy.battleEffect?.capitalPressureMultiplier,
+      Number(
+        (
+          (base.battleEffect?.capitalPressureMultiplier ?? 1) +
+          rank * SAVAGE_BATTLE_ONLY_CAPITAL_BONUS_PER_RANK
+        ).toFixed(2)
+      )
+    );
+    return;
+  }
   assert.equal(
     synergy.bonusYieldMultiplier,
     Number((base.bonusYieldMultiplier + rank * SAVAGE_YIELD_BONUS_PER_RANK).toFixed(2))
@@ -1833,6 +2075,19 @@ SAVAGE_RAID_DEFINITIONS.forEach((raid, index) => {
     raid.layer >= 3 ? 6 : 5
   );
 });
+const fullyUpgradedGrandCompanyEorzea = upgradedSynergies.find(
+  (synergy) => synergy.id === GRAND_COMPANY_EORZEA_ID
+)!;
+assert.equal(
+  fullyUpgradedGrandCompanyEorzea.battleEffect?.capitalPressureMultiplier,
+  1.84,
+  'three Savage layer-four clears add 0.02 each'
+);
+assert.equal(
+  getBattleOnlySynergyMultiplier(fullyUpgradedGrandCompanyEorzea, true),
+  1.91,
+  'all-business integration adds the permanent final 0.07'
+);
 const absoluteSavageBudgets = savageProperties.map((targetProperty) =>
   calculateEnemyBudget({
     targetProperty,
@@ -1975,15 +2230,16 @@ assert.match(disruptionSkill.description, /中断分は追加防衛枠から消�
 assert.equal(coverSkill.id, 'skill_demoralize', 'legacy equipped ability id remains valid');
 assert.equal(coverSkill.effectType, 'COVER');
 assert.equal(coverSkill.oncePerBattle, true);
-assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 10_000);
-assert.equal(TACTICAL_SKILL_BALANCE.cover.absorbRatio, 0.6);
-assert.equal(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity, 24);
-assert.equal(BOSS_COVER_BALANCE.cover.durationMs, 10_000);
-assert.equal(BOSS_COVER_BALANCE.enhancedCover.durationMs, 12_000);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 18_000);
+assert.equal(HIGH_DIFFICULTY_SUPPORT_MULTIPLIER, 1.5);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.absorbRatio, 0.72);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity, 36);
+assert.equal(BOSS_COVER_BALANCE.cover.durationMs, 16_000);
+assert.equal(BOSS_COVER_BALANCE.enhancedCover.durationMs, 18_000);
 assert.equal(BOSS_COVER_BALANCE.invincible.durationMs, 8_000);
-assert.equal(BOSS_COVER_BALANCE.cover.gaugeCapacity, 24);
-assert.equal(BOSS_COVER_BALANCE.enhancedCover.gaugeCapacity, 36);
-assert.match(coverSkill.description, /10秒間/);
+assert.equal(BOSS_COVER_BALANCE.cover.gaugeCapacity, 40);
+assert.equal(BOSS_COVER_BALANCE.enhancedCover.gaugeCapacity, 56);
+assert.match(coverSkill.description, /18秒間/);
 assert.deepEqual(
   applyCoverToGaugeDelta({
     currentGauge: 0,
@@ -2032,7 +2288,7 @@ assert.equal(
 );
 assert.equal(
   terminalLimitBreakCovered.absorbedGauge,
-  14.3,
+  15.84,
   'Cover absorbs the movement from the pre-LB gauge, not the 99% preview'
 );
 assert.equal(TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio, 0.4);
@@ -2047,7 +2303,7 @@ assert.equal(TACTICAL_SKILL_BALANCE.livingDead.recoveryOwnership, 30);
 assert.equal(calculateEraWindCost(1_000_000, 0), 100_000);
 assert.equal(calculateEraWindCost(100_000_000, 0), 2_000_000);
 assert.equal(calculateEraWindCost(100_000_000, 1), 2_000_000);
-assert.equal(TACTICAL_SKILL_BALANCE.eraWind.durationMs, 16_000);
+assert.equal(TACTICAL_SKILL_BALANCE.eraWind.durationMs, 12_000);
 assert.equal(TACTICAL_SKILL_BALANCE.eraWind.maxUsesPerBattle, 1);
 assert.equal(getEraWindGaugePushPerSecond(0), 1.55);
 assert.equal(getEraWindGaugePushPerSecond(2), 1.55);
@@ -2059,11 +2315,11 @@ assert.equal(
       2
     ).toFixed(1)
   ),
-  12.4,
-  'one full Era Wind pushes displayed ownership by about 12.4 points'
+  9.3,
+  'one full Era Wind pushes displayed ownership by about 9.3 points'
 );
 assert.equal(eraWindSkill.oncePerBattle, true);
-assert.match(eraWindSkill.description, /16秒間/);
+assert.match(eraWindSkill.description, /12秒間/);
 assert.match(eraWindSkill.description, /1交渉につき1回/);
 assert.match(livingDeadSkill.description, /1交渉につき1回/);
 assert.equal(calculateOwnershipFromGauge(98), 1);
@@ -2077,15 +2333,15 @@ assert.equal(resolveLivingDeadOutcome('recovery', 29.99, 0), 'failed');
 assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.durationMs, 14_000);
 assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.pushMultiplier, 1.8);
 assert.deepEqual(BATTLE_SUPPORT_BALANCE, {
-  subsidiaryMarketRatio: 0.52,
-  subsidiaryImpactBase: 1.2,
-  subsidiaryImpactPerMarketRatio: 9,
-  subsidiaryImpactCap: 7.5,
-  synergyMemberMarketRatio: 0.46,
+  subsidiaryMarketRatio: 0.75,
+  subsidiaryImpactBase: 2.5,
+  subsidiaryImpactPerMarketRatio: 13,
+  subsidiaryImpactCap: 12,
+  synergyMemberMarketRatio: 0.65,
   synergyDefaultMultiplier: 1.45,
-  synergyImpactBase: 3,
-  synergyImpactPerMarketRatio: 9,
-  synergyImpactCap: 16,
+  synergyImpactBase: 5,
+  synergyImpactPerMarketRatio: 13,
+  synergyImpactCap: 22,
 });
 assert.deepEqual(BATTLE_LOYALTY_BALANCE, {
   individualRiskIncrease: 12,
@@ -2097,6 +2353,23 @@ assert.deepEqual(BATTLE_LOYALTY_BALANCE, {
   reacquisitionRiskReductionPerLevel: 2,
   maxReacquisitionLevel: 2,
 });
+assert.deepEqual(CELEBRATION_GIFT_OPTIONS, [
+  {
+    id: 'keep',
+    rate: 0,
+    departureProbabilityMultiplier: 1,
+  },
+  {
+    id: 'gift10',
+    rate: 0.1,
+    departureProbabilityMultiplier: 0.75,
+  },
+  {
+    id: 'gift20',
+    rate: 0.2,
+    departureProbabilityMultiplier: 0.5,
+  },
+]);
 const returningSubsidiary = {
   ...readinessProperty,
   reacquisitionLevel: 1,
@@ -2140,7 +2413,17 @@ assert.equal(
 assert.equal(
   calculateCelebrationGiftCost(
     [{ ...readinessProperty, marketPrice: 100_000 }],
-    10_000
+    10_000,
+    CELEBRATION_GIFT_OPTIONS[0].rate
+  ),
+  0,
+  'keeping the full reward has no celebration cost'
+);
+assert.equal(
+  calculateCelebrationGiftCost(
+    [{ ...readinessProperty, marketPrice: 100_000 }],
+    10_000,
+    CELEBRATION_GIFT_OPTIONS[1].rate
   ),
   1_000,
   'the victory gift uses 10% of the earned victory reward'
@@ -2148,7 +2431,17 @@ assert.equal(
 assert.equal(
   calculateCelebrationGiftCost(
     [{ ...readinessProperty, marketPrice: 100_000 }],
-    300
+    10_000,
+    CELEBRATION_GIFT_OPTIONS[2].rate
+  ),
+  2_000,
+  'the generous victory gift uses 20% of the earned victory reward'
+);
+assert.equal(
+  calculateCelebrationGiftCost(
+    [{ ...readinessProperty, marketPrice: 100_000 }],
+    300,
+    CELEBRATION_GIFT_OPTIONS[1].rate
   ),
   30,
   'the victory gift scales with small victory rewards'
@@ -2157,6 +2450,33 @@ assert.equal(
   calculateCelebrationGiftCost([], 10_000),
   0,
   'there is no gift choice without subsidiaries'
+);
+assert.equal(
+  calculateCelebrationGiftCost(
+    [{ ...readinessProperty, marketPrice: 100_000 }],
+    10_000,
+    -0.1
+  ),
+  0,
+  'a negative gift rate cannot create a credit'
+);
+assert.equal(
+  calculateCelebrationGiftCost(
+    [{ ...readinessProperty, marketPrice: 100_000 }],
+    10_000,
+    Number.NaN
+  ),
+  0,
+  'a non-finite gift rate cannot charge the player'
+);
+assert.equal(
+  calculateCelebrationGiftCost(
+    [{ ...readinessProperty, marketPrice: 100_000 }],
+    10_000,
+    2
+  ),
+  10_000,
+  'gift cost is capped at the earned reward'
 );
 assert.equal(calculateRebellionProbability(30), 0);
 assert.ok(
@@ -2188,23 +2508,117 @@ const highRiskSettlementProperty = {
   id: 'loyalty_high_risk',
   loyaltyRisk: 50,
 };
+const highRiskDepartureProbability = calculateRebellionProbability(
+  highRiskSettlementProperty.loyaltyRisk
+);
 const noGiftLoyaltySettlement = resolvePostVictoryLoyalty(
   [highRiskSettlementProperty],
-  false,
-  () => 0.05
+  CELEBRATION_GIFT_OPTIONS[0].departureProbabilityMultiplier,
+  () => 0.06
 );
 assert.equal(noGiftLoyaltySettlement.leaving.length, 1);
-const giftLoyaltySettlement = resolvePostVictoryLoyalty(
+const tenPercentGiftLoyaltySettlement = resolvePostVictoryLoyalty(
   [highRiskSettlementProperty],
-  true,
-  () => 0.05
+  CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier,
+  () => 0.06
 );
 assert.equal(
-  giftLoyaltySettlement.leaving.length,
+  tenPercentGiftLoyaltySettlement.leaving.length,
   0,
-  'the gift reduces risk before the single post-victory departure roll'
+  'the 10% gift reduces only this settlement departure probability'
 );
-assert.equal(giftLoyaltySettlement.survivors[0].loyaltyRisk, 30);
+assert.equal(
+  tenPercentGiftLoyaltySettlement.survivors[0].loyaltyRisk,
+  highRiskSettlementProperty.loyaltyRisk,
+  'the 10% gift never reduces saved loyalty risk'
+);
+const tenPercentBoundarySettlement = resolvePostVictoryLoyalty(
+  [highRiskSettlementProperty],
+  CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier,
+  () => 0.04
+);
+const twentyPercentBoundarySettlement = resolvePostVictoryLoyalty(
+  [highRiskSettlementProperty],
+  CELEBRATION_GIFT_OPTIONS[2].departureProbabilityMultiplier,
+  () => 0.04
+);
+assert.equal(tenPercentBoundarySettlement.leaving.length, 1);
+assert.equal(
+  twentyPercentBoundarySettlement.leaving.length,
+  0,
+  'the 20% gift provides a distinct stronger probability reduction'
+);
+assert.equal(
+  twentyPercentBoundarySettlement.survivors[0].loyaltyRisk,
+  highRiskSettlementProperty.loyaltyRisk,
+  'the 20% gift also leaves saved loyalty risk unchanged'
+);
+assert.equal(
+  highRiskSettlementProperty.loyaltyRisk,
+  50,
+  'settlement never mutates its input property'
+);
+assert.equal(
+  normalizeDepartureProbabilityMultiplier(false),
+  CELEBRATION_GIFT_OPTIONS[0].departureProbabilityMultiplier
+);
+assert.equal(
+  normalizeDepartureProbabilityMultiplier(true),
+  CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier,
+  'the temporary boolean compatibility path maps true to the 10% gift'
+);
+assert.equal(normalizeDepartureProbabilityMultiplier(-1), 0);
+assert.equal(normalizeDepartureProbabilityMultiplier(2), 1);
+assert.equal(normalizeDepartureProbabilityMultiplier(Number.NaN), 1);
+assert.equal(
+  calculateAtLeastOneDepartureProbability([], 1),
+  0,
+  'no subsidiaries means no departure probability'
+);
+assert.equal(
+  calculateAtLeastOneDepartureProbability(
+    [{ ...highRiskSettlementProperty, loyaltyRisk: 30 }],
+    1
+  ),
+  0,
+  'risk 30 remains inside the safe boundary'
+);
+assert.ok(
+  Math.abs(
+    calculateAtLeastOneDepartureProbability(
+      [highRiskSettlementProperty],
+      CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier
+    ) -
+      highRiskDepartureProbability *
+        CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier
+  ) < Number.EPSILON * 4,
+  'one-subsidiary aggregate probability matches its adjusted individual probability'
+);
+const twoMaximumRiskSubsidiaries = [
+  { ...highRiskSettlementProperty, id: 'risk-max-a', loyaltyRisk: 100 },
+  { ...highRiskSettlementProperty, id: 'risk-max-b', loyaltyRisk: 100 },
+];
+assert.ok(
+  Math.abs(
+    calculateAtLeastOneDepartureProbability(
+      twoMaximumRiskSubsidiaries,
+      CELEBRATION_GIFT_OPTIONS[0].departureProbabilityMultiplier
+    ) -
+      0.99
+  ) < 1e-12,
+  'at-least-one probability is 1 minus the product of every survival chance'
+);
+assert.ok(
+  calculateAtLeastOneDepartureProbability(
+    twoMaximumRiskSubsidiaries,
+    CELEBRATION_GIFT_OPTIONS[2].departureProbabilityMultiplier
+  ) <
+    calculateAtLeastOneDepartureProbability(
+      twoMaximumRiskSubsidiaries,
+      CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier
+    ),
+  '20% gift lowers aggregate departure probability more than 10%'
+);
 assert.deepEqual(
   resolvePostVictoryLoyalty([], true, () => 0),
   { survivors: [], leaving: [] },
@@ -2363,12 +2777,13 @@ assert.ok(
 assert.equal(BATTLE_GAUGE_SPEED_FACTOR, 4);
 assert.equal(TRAINING_GAUGE_SPEED_MULTIPLIER, 0.1);
 assert.equal(TRAINING_MIN_OWNERSHIP_PERCENT, 1);
-assert.equal(
-  calculateDirectInvestmentGaugeImpact({
-    investmentAmount: 100,
-    marketPrice: 1_000,
-  }),
-  3.2,
+assert.ok(
+  Math.abs(
+    calculateDirectInvestmentGaugeImpact({
+      investmentAmount: 100,
+      marketPrice: 1_000,
+    }) - 4.8
+  ) < 1e-9,
   'normal direct investment keeps the campaign-wide impact curve'
 );
 assert.ok(
@@ -2389,6 +2804,16 @@ assert.equal(
   }),
   40,
   'level-one training amplification remains capped'
+);
+assert.ok(
+  Math.abs(
+    calculateDirectInvestmentGaugeImpact({
+      investmentAmount: 100,
+      marketPrice: 1_000,
+      trainingLevel: 2,
+    }) - 9.6
+  ) < 1e-9,
+  'advanced training keeps a shorter dedicated practice curve'
 );
 assert.equal(applyTrainingGaugeSpeed(12, false), 12);
 assert.ok(Math.abs(applyTrainingGaugeSpeed(12, true) - 1.2) < 1e-9);
@@ -2969,6 +3394,22 @@ assert.deepEqual(
   COMMUNITY_CAMPAIGN_ORDER.slice(0, 2),
   'legacy feature tutorials recover the minimum previously cleared route depth'
 );
+assert.deepEqual(
+  normalizeConqueredCommunityIds({
+    properties: rebelledFirstCityProperties,
+    seenUnlockIds: ['opening_auto'],
+  }),
+  COMMUNITY_CAMPAIGN_ORDER.slice(0, 5),
+  'the opening AUTO tutorial preserves progress through Kugane'
+);
+assert.deepEqual(
+  normalizeConqueredCommunityIds({
+    properties: rebelledFirstCityProperties,
+    seenUnlockIds: ['critical_auto'],
+  }),
+  COMMUNITY_CAMPAIGN_ORDER.slice(0, 6),
+  'the critical AUTO tutorial preserves progress through the Crystarium'
+);
 assert.equal(
   normalizeConqueredCommunityIds({
     properties: conqueredFirstCityProperties,
@@ -3015,6 +3456,42 @@ const legacySchemaThreePayload = {
   alliance: { allyId: '', allyName: '', active: false },
   lastSavedAt: 1,
 };
+assert.deepEqual(
+  normalizeAutoSkillLoadout({
+    equippedSkillIds: ['skill_fast_horse', 'skill_demoralize'],
+    openingAutoSkillId: 'skill_fast_horse',
+    criticalAutoSkillId: 'skill_demoralize',
+  }),
+  {
+    openingAutoSkillId: 'skill_fast_horse',
+    criticalAutoSkillId: 'skill_demoralize',
+  },
+  'AUTO assignments use skills from the existing equipped slots'
+);
+assert.deepEqual(
+  normalizeAutoSkillLoadout({
+    equippedSkillIds: ['skill_fast_horse'],
+    openingAutoSkillId: 'skill_fast_horse',
+    criticalAutoSkillId: 'skill_fast_horse',
+  }),
+  {
+    openingAutoSkillId: 'skill_fast_horse',
+    criticalAutoSkillId: null,
+  },
+  'one equipped ability cannot occupy both AUTO slots'
+);
+assert.deepEqual(
+  normalizeAutoSkillLoadout({
+    equippedSkillIds: ['unknown_skill'],
+    openingAutoSkillId: 'unknown_skill',
+    criticalAutoSkillId: 42,
+  }),
+  {
+    openingAutoSkillId: null,
+    criticalAutoSkillId: null,
+  },
+  'unknown, unequipped and malformed AUTO assignments normalize to null'
+);
 savedPayload = JSON.stringify(legacySchemaThreePayload);
 const restoredLegacySave = loadGameSave();
 assert.ok(restoredLegacySave);
@@ -3029,6 +3506,9 @@ assert.equal(restoredLegacySave.savageEndingSeen, false);
 assert.equal(restoredLegacySave.ultimateCleared, false);
 assert.equal(restoredLegacySave.trueEndingSeen, false);
 assert.equal(restoredLegacySave.selectedBattleSynergyId, null);
+assert.equal(restoredLegacySave.openingAutoSkillId, null);
+assert.equal(restoredLegacySave.criticalAutoSkillId, null);
+assert.equal(restoredLegacySave.grandCompanyEorzeaIntegrated, false);
 assert.equal(restoredLegacySave.savageProgressVersion, undefined);
 assert.deepEqual(restoredLegacySave.conqueredCommunityIds, []);
 savedPayload = JSON.stringify({
@@ -3070,6 +3550,30 @@ assert.equal(
   )?.owner,
   'player',
   'victory ownership and permanent route progress are durable in the same save'
+);
+assert.equal(
+  saveGame({
+    ...durableTestSave,
+    equippedSkillIds: ['skill_fast_horse', 'skill_demoralize'],
+    openingAutoSkillId: 'skill_fast_horse',
+    criticalAutoSkillId: 'skill_demoralize',
+  }),
+  true
+);
+const restoredAutoLoadout = loadGameSave();
+assert.equal(restoredAutoLoadout?.openingAutoSkillId, 'skill_fast_horse');
+assert.equal(restoredAutoLoadout?.criticalAutoSkillId, 'skill_demoralize');
+assert.equal(
+  saveGame({
+    ...durableTestSave,
+    grandCompanyEorzeaIntegrated: true,
+  }),
+  true
+);
+assert.equal(
+  loadGameSave()?.grandCompanyEorzeaIntegrated,
+  true,
+  'the all-business integration milestone survives a save round trip'
 );
 failLegacyWrite = true;
 assert.equal(

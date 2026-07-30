@@ -251,6 +251,140 @@ class SoundEffects {
     }
   }
 
+  /**
+   * One bounded metallic beat for a painted capital-pile stage.
+   * `index` is zero-based; the caller owns the visual cadence and cancellation.
+   * The last beat adds one low body tone so the completed pile has weight
+   * without loading an asset or opening another AudioContext.
+   */
+  playCapitalStackStep(
+    side: 'player' | 'opponent',
+    index: number,
+    total: number,
+    includeFinalWeight = true
+  ) {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const resolvedTotal = Math.max(1, Math.floor(total));
+      const resolvedIndex = Math.max(
+        0,
+        Math.min(resolvedTotal - 1, Math.floor(index))
+      );
+      const progress =
+        resolvedTotal <= 1 ? 1 : resolvedIndex / (resolvedTotal - 1);
+      const isFinal = resolvedIndex === resolvedTotal - 1;
+      const now = ctx.currentTime;
+      const panner =
+        typeof ctx.createStereoPanner === 'function'
+          ? ctx.createStereoPanner()
+          : null;
+      if (panner) {
+        panner.pan.setValueAtTime(side === 'player' ? -0.24 : 0.24, now);
+        panner.connect(ctx.destination);
+      }
+
+      let activeVoices = 0;
+      let schedulingFinished = false;
+      let outputDisconnected = false;
+      const disconnectNode = (node: AudioNode) => {
+        try {
+          node.disconnect();
+        } catch {
+          // An interrupted context may already have released the node.
+        }
+      };
+      const releaseOutput = () => {
+        if (
+          outputDisconnected ||
+          !schedulingFinished ||
+          activeVoices > 0
+        ) {
+          return;
+        }
+        outputDisconnected = true;
+        if (panner) disconnectNode(panner);
+      };
+      const scheduleVoice = (
+        type: OscillatorType,
+        start: number,
+        duration: number,
+        startFrequency: number,
+        endFrequency: number,
+        volume: number
+      ) => {
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        let cleaned = false;
+        const cleanup = () => {
+          if (cleaned) return;
+          cleaned = true;
+          disconnectNode(oscillator);
+          disconnectNode(gain);
+          activeVoices = Math.max(0, activeVoices - 1);
+          releaseOutput();
+        };
+
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(startFrequency, start);
+        oscillator.frequency.exponentialRampToValueAtTime(
+          endFrequency,
+          start + duration
+        );
+        gain.gain.setValueAtTime(volume, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+        oscillator.connect(gain);
+        if (panner) {
+          gain.connect(panner);
+        } else {
+          gain.connect(ctx.destination);
+        }
+        oscillator.onended = cleanup;
+        activeVoices += 1;
+        try {
+          oscillator.start(start);
+          oscillator.stop(start + duration + 0.01);
+        } catch (error) {
+          try {
+            oscillator.stop();
+          } catch {
+            // A voice that failed before starting has nothing left to stop.
+          }
+          cleanup();
+          throw error;
+        }
+      };
+
+      try {
+        const alternatePitch = resolvedIndex % 2 === 0 ? 1 : 0.88;
+        scheduleVoice(
+          'triangle',
+          now,
+          isFinal ? 0.07 : 0.045,
+          (1_480 - progress * 460) * alternatePitch,
+          430 - progress * 95,
+          0.035 + progress * 0.012
+        );
+        if (isFinal && includeFinalWeight) {
+          scheduleVoice(
+            'sine',
+            now + 0.008,
+            0.56,
+            side === 'player' ? 72 : 66,
+            29,
+            0.058
+          );
+        }
+      } finally {
+        schedulingFinished = true;
+        releaseOutput();
+      }
+    } catch {
+      // Audio fallback
+    }
+  }
+
   // Gauge Shift Tick
   playGaugeTick(pitch: number = 1.0) {
     if (!this.enabled) return;
