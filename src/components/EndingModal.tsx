@@ -75,7 +75,7 @@ export const EndingModal: React.FC<EndingModalProps> = ({
       tabIndex={-1}
     >
       <img
-        src={FANKIT_ART.titleHero}
+        src={finalRoute ? FANKIT_ART.battleBackdrop : FANKIT_ART.marketBackdrop}
         alt=""
         aria-hidden="true"
         decoding="async"
