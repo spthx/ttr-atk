@@ -98,6 +98,11 @@ import {
   GRAND_COMPANY_EORZEA_ID,
   isGroupSynergyUnlocked,
 } from './utils/synergy';
+import {
+  getSkillUnlockExplanation,
+  getSynergyUnlockExplanation,
+  type UnlockExplanation,
+} from './utils/unlockExplanation';
 
 export { PASSIVE_REVENUE_MULTIPLIER };
 
@@ -315,12 +320,13 @@ export default function App() {
   );
   const [offlineIncomeNotice, setOfflineIncomeNotice] = useState(0);
   const [unlockNotice, setUnlockNotice] = useState<CommunityType | null>(null);
-  const [seenUnlockIds, setSeenUnlockIds] = useState<FeatureUnlockId[]>(
-    () => (initialSave?.seenUnlockIds || []).filter(
-      (id): id is FeatureUnlockId => Object.prototype.hasOwnProperty.call(FEATURE_UNLOCKS, id)
-    )
+  const [seenUnlockIds, setSeenUnlockIds] = useState<string[]>(
+    () => initialSave?.seenUnlockIds || []
   );
   const [featureUnlockNoticeId, setFeatureUnlockNoticeId] = useState<FeatureUnlockId | null>(null);
+  const [unlockExplanationQueue, setUnlockExplanationQueue] = useState<
+    UnlockExplanation[]
+  >([]);
   const [marketNavigationRequest, setMarketNavigationRequest] = useState<{
     id: number;
     mode: 'map' | 'targets';
@@ -628,21 +634,29 @@ export default function App() {
         `【戦闘連携更新】${bestNewlyLearned.name}を修得。バトル用SYNERGY 1枠へ自動装備しました。`,
         'success'
       );
-      soundFx.playFeatureUnlocked();
+    }
+    if (previousIds && newlyLearned.length > 0) {
+      setUnlockExplanationQueue((current) => {
+        const queuedKeys = new Set(current.map((notice) => notice.key));
+        const additions = newlyLearned
+          .map(getSynergyUnlockExplanation)
+          .filter(
+            (notice) =>
+              !seenUnlockIds.includes(notice.key) &&
+              !queuedKeys.has(notice.key)
+          );
+        return additions.length > 0 ? [...current, ...additions] : current;
+      });
     }
     previousActiveSynergyIdsRef.current = activeIds;
-  }, [activeGroupSynergies, selectedBattleSynergyId]);
+  }, [activeGroupSynergies, seenUnlockIds, selectedBattleSynergyId]);
 
   const reachedFeatureUnlockIds = useMemo(() => {
     const reached: FeatureUnlockId[] = [];
     if (ownedProperties.length >= 1) reached.push('subsidiary_support');
     if (windProgressionStage >= 1) reached.push('market_wind');
     if (ownedProperties.length + 1 >= 4) reached.push('light_party_limit_break');
-    if (activeSynergiesCount > 0) reached.push('guild_synergy');
     if (windProgressionStage >= 2) reached.push('rival_wind');
-    if (totalAssetValue >= TACTICAL_SKILL_BALANCE.livingDead.requiredAssetValue) {
-      reached.push('living_dead_skill');
-    }
     if (windProgressionStage >= 3) reached.push('turbulent_wind');
     if (ownedProperties.length + 1 >= 8) reached.push('full_party');
     if (tradeAllianceUnlocked) reached.push('trade_alliance');
@@ -650,7 +664,6 @@ export default function App() {
     if (criticalAutoUnlocked) reached.push('critical_auto');
     return reached;
   }, [
-    activeSynergiesCount,
     criticalAutoUnlocked,
     openingAutoUnlocked,
     ownedProperties.length,
@@ -665,7 +678,8 @@ export default function App() {
       showTrainingSelector ||
       activeBattleProperty ||
       unlockNotice ||
-      featureUnlockNoticeId
+      featureUnlockNoticeId ||
+      unlockExplanationQueue.length > 0
     ) return;
     const nextUnlock = reachedFeatureUnlockIds.find((id) => !seenUnlockIds.includes(id));
     if (!nextUnlock) return;
@@ -679,6 +693,7 @@ export default function App() {
     showLaunchIntro,
     showTrainingSelector,
     unlockNotice,
+    unlockExplanationQueue.length,
   ]);
 
   const acknowledgeFeatureUnlock = () => {
@@ -701,6 +716,7 @@ export default function App() {
       activeBattleProperty ||
       unlockNotice ||
       featureUnlockNoticeId ||
+      unlockExplanationQueue.length > 0 ||
       endingNotice
     ) return;
     if (normalCampaignComplete && !normalEndingSeen) {
@@ -720,7 +736,7 @@ export default function App() {
   }, [
     activeBattleProperty, endingNotice, featureUnlockNoticeId, normalCampaignComplete,
     normalEndingSeen, savageComplete, savageEndingSeen, showLaunchIntro, showTrainingSelector,
-    trueEndingSeen, ultimateCleared, unlockNotice,
+    trueEndingSeen, ultimateCleared, unlockNotice, unlockExplanationQueue.length,
   ]);
 
   const acknowledgeEnding = () => {
@@ -752,6 +768,66 @@ export default function App() {
       ),
     [activeSynergiesCount, ownedProperties, skills, totalFunds]
   );
+  const previousUnlockedSkillIdsRef = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    const previousIds = previousUnlockedSkillIdsRef.current;
+    if (previousIds) {
+      const newlyLearned = skills.filter(
+        (skill) =>
+          unlockedSkillIds.has(skill.id) && !previousIds.has(skill.id)
+      );
+      if (newlyLearned.length > 0) {
+        setUnlockExplanationQueue((current) => {
+          const queuedKeys = new Set(current.map((notice) => notice.key));
+          const additions = newlyLearned
+            .map(getSkillUnlockExplanation)
+            .filter(
+              (notice) =>
+                !seenUnlockIds.includes(notice.key) &&
+                !queuedKeys.has(notice.key)
+            );
+          return additions.length > 0 ? [...current, ...additions] : current;
+        });
+      }
+    }
+    previousUnlockedSkillIdsRef.current = new Set(unlockedSkillIds);
+  }, [seenUnlockIds, skills, unlockedSkillIds]);
+
+  const unlockExplanationNotice = unlockExplanationQueue[0] ?? null;
+  const unlockExplanationVisible =
+    !!unlockExplanationNotice &&
+    !showLaunchIntro &&
+    !showTrainingSelector &&
+    !activeBattleProperty &&
+    !endingNotice &&
+    !featureUnlockNoticeId &&
+    !unlockNotice;
+  const announcedUnlockExplanationKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (
+      !unlockExplanationVisible ||
+      !unlockExplanationNotice ||
+      announcedUnlockExplanationKeyRef.current === unlockExplanationNotice.key
+    ) {
+      return;
+    }
+    announcedUnlockExplanationKeyRef.current = unlockExplanationNotice.key;
+    soundFx.playFeatureUnlocked();
+  }, [unlockExplanationNotice, unlockExplanationVisible]);
+
+  const acknowledgeUnlockExplanation = () => {
+    if (!unlockExplanationNotice) return;
+    setSeenUnlockIds((current) =>
+      current.includes(unlockExplanationNotice.key)
+        ? current
+        : [...current, unlockExplanationNotice.key]
+    );
+    setUnlockExplanationQueue((current) => current.slice(1));
+    if (unlockExplanationQueue.length === 1) setActiveTab('skills');
+    soundFx.playCoin();
+  };
 
   const effectiveAutoSkillLoadout = useMemo(
     () =>
@@ -1729,6 +1805,71 @@ export default function App() {
           onStart={handleStartTraining}
           onClose={() => setShowTrainingSelector(false)}
         />
+      )}
+
+      {unlockExplanationVisible && unlockExplanationNotice && (
+        <button
+          type="button"
+          onClick={acknowledgeUnlockExplanation}
+          className="city-unlock fixed inset-0 z-[188] flex items-center justify-center bg-slate-950/92 p-4 text-left"
+          aria-label={`${unlockExplanationNotice.title}の説明を確認する`}
+        >
+          <span
+            className={`city-unlock__card relative block w-full max-w-2xl overflow-hidden rounded-2xl border bg-slate-900 p-5 shadow-2xl sm:p-7 ${
+              unlockExplanationNotice.kind === 'synergy'
+                ? 'border-violet-300/70'
+                : 'border-amber-300/70'
+            }`}
+          >
+            <img
+              src={FANKIT_ART.marketBackdrop}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 h-full w-full object-cover opacity-20"
+            />
+            <span className="relative z-10 flex items-end gap-4">
+              <img
+                src={FANKIT_ART.tataru.dressUp}
+                alt="タタル"
+                className="h-28 w-24 shrink-0 object-contain object-bottom drop-shadow-[0_0_16px_rgba(251,191,36,.45)] sm:h-36 sm:w-32"
+              />
+              <span className="min-w-0 pb-1">
+                <span
+                  className={`block text-[10px] font-black tracking-[.28em] ${
+                    unlockExplanationNotice.kind === 'synergy'
+                      ? 'text-violet-300'
+                      : 'text-amber-300'
+                  }`}
+                >
+                  {unlockExplanationNotice.kicker} UNLOCKED
+                </span>
+                <span className="mt-1 block text-xl font-black text-white sm:text-3xl">
+                  {unlockExplanationNotice.title}
+                </span>
+                <span className="mt-3 block rounded-xl border border-white/15 bg-slate-950/80 p-3 text-sm font-bold leading-relaxed text-slate-50">
+                  「{unlockExplanationNotice.dialogue}」
+                </span>
+              </span>
+            </span>
+            <span className="relative z-10 mt-3 block text-xs font-semibold leading-relaxed text-slate-200 sm:text-sm">
+              {unlockExplanationNotice.detail}
+            </span>
+            <span className="relative z-10 mt-3 block rounded-lg border border-cyan-200/20 bg-cyan-950/45 px-3 py-2 text-xs font-bold leading-relaxed text-cyan-50 sm:text-sm">
+              使い方：{unlockExplanationNotice.operation}
+            </span>
+            <span
+              className={`relative z-10 mt-4 inline-block rounded-lg px-4 py-2 text-xs font-black text-slate-950 ${
+                unlockExplanationNotice.kind === 'synergy'
+                  ? 'bg-violet-300'
+                  : 'bg-amber-300'
+              }`}
+            >
+              {unlockExplanationQueue.length > 1
+                ? '次の解放を見る'
+                : 'かけひき画面で確認'}
+            </span>
+          </span>
+        </button>
       )}
 
       {featureUnlockNotice && (
