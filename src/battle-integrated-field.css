@@ -4753,9 +4753,19 @@
 }
 
 .buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__front i,
+.buyout-screen--lightweight .integrated-battlefield .battle-commerce-flow > i,
+.buyout-screen--lightweight .integrated-battlefield .ownership-track__tension,
 .buyout-screen--lightweight .integrated-battlefield .ownership-track__marker,
 .buyout-screen--lightweight .integrated-battlefield .ownership-track__marker > i,
 .buyout-screen--lightweight .integrated-battlefield .capital-clash i {
+  animation: none !important;
+  will-change: auto;
+}
+
+.buyout-screen--lightweight .integrated-battlefield .ownership-track__player::after,
+.buyout-screen--lightweight .integrated-battlefield .ownership-track__enemy-flow::after,
+.buyout-screen--lightweight .integrated-battlefield .capital-clash::before,
+.buyout-screen--lightweight .integrated-battlefield .capital-clash::after {
   animation: none !important;
 }
 

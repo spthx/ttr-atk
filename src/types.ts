@@ -95,6 +95,22 @@ export interface GroupSynergy {
   /** Effective group-support multiplier used by the single battle synergy slot. */
   battleGroupMultiplier?: number;
   skillId?: string;
+  /**
+   * Progression synergies are manual battle buffs. They never contribute to
+   * passive revenue and unlock from permanent city-clear progress instead of
+   * current subsidiary ownership.
+   */
+  battleOnly?: boolean;
+  unlockAfterCommunity?: CommunityType;
+  selectionPriority?: number;
+  battleEffect?: {
+    kind: 'timed_capital_buff';
+    durationMs: number;
+    capitalPressureMultiplier: number;
+    /** Immediate ownership rally when the manual order lands. */
+    ownershipPush?: number;
+    oncePerBattle: boolean;
+  };
 }
 
 export interface Cartel {
@@ -174,6 +190,7 @@ export interface BattleResult {
   battleCashDelta: number;
   victoryReward: number;
   celebrationGiftCost: number;
+  celebrationGiftRate: number;
   rebelledProperties: Property[];
   survivingRiskUpdates: Array<{
     id: string;

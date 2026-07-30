@@ -1,5 +1,10 @@
 import React from 'react';
-import { TacticalSkill, GroupSynergy, Property } from '../types';
+import {
+  TacticalSkill,
+  GroupSynergy,
+  Property,
+  CommunityType,
+} from '../types';
 import { soundFx } from '../utils/audio';
 import { Zap, Check, Lock, Sparkles, Layers, Swords } from 'lucide-react';
 import { HelpTip } from './HelpTip';
@@ -9,16 +14,32 @@ import {
   isSkillUnlocked,
 } from '../utils/gameBalance';
 import { INITIAL_PROPERTIES } from '../data/initialData';
+import {
+  GRAND_COMPANY_EORZEA_ID,
+  getLatestProgressionBattleSynergy,
+  isGroupSynergyUnlocked,
+} from '../utils/synergy';
+
+type SkillActivationMode = 'manual' | 'opening_auto' | 'critical_auto';
 
 interface SkillsSynergyViewProps {
   skills: TacticalSkill[];
   equippedSkillIds: string[];
   groupSynergies: GroupSynergy[];
+  conqueredCommunityIds: ReadonlySet<CommunityType>;
   ownedProperties: Property[];
   totalFunds: number;
   activeSynergyCount: number;
+  openingAutoUnlocked: boolean;
+  criticalAutoUnlocked: boolean;
+  openingAutoSkillId: string | null;
+  criticalAutoSkillId: string | null;
   selectedBattleSynergyId: string | null;
   onToggleEquipSkill: (skillId: string) => void;
+  onSetSkillActivationMode: (
+    skillId: string,
+    mode: SkillActivationMode
+  ) => void;
   onSelectBattleSynergy: (synergyId: string) => void;
 }
 
@@ -26,28 +47,67 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
   skills,
   equippedSkillIds,
   groupSynergies,
+  conqueredCommunityIds,
   ownedProperties,
   onToggleEquipSkill,
   totalFunds,
   activeSynergyCount,
+  openingAutoUnlocked,
+  criticalAutoUnlocked,
+  openingAutoSkillId,
+  criticalAutoSkillId,
   selectedBattleSynergyId,
+  onSetSkillActivationMode,
   onSelectBattleSynergy,
 }) => {
   const ownedPropertyIds = new Set(ownedProperties.map((p) => p.id));
   const propertyNames = new Map(
     INITIAL_PROPERTIES.map((property) => [property.id, property.name])
   );
-  const selectedBattleSynergy = groupSynergies.find(
-    (synergy) =>
-      synergy.id === selectedBattleSynergyId &&
-      synergy.requiredPropertyIds.every((id) => ownedPropertyIds.has(id))
+  const latestProgressionSynergy = getLatestProgressionBattleSynergy(
+    groupSynergies.filter(
+      (synergy) =>
+        synergy.battleOnly &&
+        isGroupSynergyUnlocked({
+          synergy,
+          ownedPropertyIds,
+          conqueredCommunityIds,
+      })
+    )
   );
+  const selectedBattleSynergy =
+    groupSynergies.find(
+      (synergy) =>
+        synergy.id === selectedBattleSynergyId &&
+        (
+          !synergy.battleOnly ||
+          synergy.id === latestProgressionSynergy?.id
+        ) &&
+        isGroupSynergyUnlocked({
+          synergy,
+          ownedPropertyIds,
+          conqueredCommunityIds,
+        })
+    ) ??
+    latestProgressionSynergy ??
+    null;
+  const resolvedSelectedBattleSynergyId =
+    selectedBattleSynergy?.id ?? null;
 
   const handleToggle = (skill: TacticalSkill) => {
     const isEquipped = equippedSkillIds.includes(skill.id);
     if (!isEquipped && equippedSkillIds.length >= 8) return;
     soundFx.playSkillSpark();
     onToggleEquipSkill(skill.id);
+  };
+
+  const handleActivationMode = (
+    skill: TacticalSkill,
+    mode: SkillActivationMode
+  ) => {
+    if (!equippedSkillIds.includes(skill.id)) return;
+    soundFx.playGaugeTick(mode === 'manual' ? 0.94 : 1.04);
+    onSetSkillActivationMode(skill.id, mode);
   };
 
   return (
@@ -62,6 +122,13 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
               <HelpTip term="アビリティ" description="買収交渉中に使える特殊コマンドです。修得済みのアビリティを最大8個まで装備できます。" />
             </h2>
             <p className="mt-1 text-xs text-slate-400">事業・契約や業界の条件を満たすと修得できます。使用後は再使用時間が必要です。</p>
+            {openingAutoUnlocked && (
+              <p className="mt-1 text-xs text-amber-200/80">
+                装備中の技は、手動または開幕AUTO
+                {criticalAutoUnlocked ? '・窮地AUTO' : ''}
+                に設定できます。AUTOへ設定した技は商戦中の手動選択から外れます。
+              </p>
+            )}
             <p className="mt-1 text-xs text-cyan-300/80">主な名称はFFXIVのアクションをモチーフにし、交易戦での効果は本作独自にアレンジしています。</p>
           </div>
 
@@ -78,6 +145,18 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
           {skills.map((skill) => {
             const unlocked = isSkillUnlocked({ skill, ownedProperties, totalFunds, activeSynergyCount });
             const isEquipped = equippedSkillIds.includes(skill.id);
+            const activationMode: SkillActivationMode =
+              openingAutoSkillId === skill.id
+                ? 'opening_auto'
+                : criticalAutoSkillId === skill.id
+                  ? 'critical_auto'
+                  : 'manual';
+            const activationModeLabel =
+              activationMode === 'opening_auto'
+                ? '開幕AUTO'
+                : activationMode === 'critical_auto'
+                  ? '窮地AUTO'
+                  : '手動';
 
             return (
               <div
@@ -92,6 +171,17 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
               >
                 <div>
                   <div className="flex items-center justify-end gap-2 mb-2">
+                    {isEquipped && openingAutoUnlocked && (
+                      <span className={`rounded border px-2 py-0.5 text-[10px] font-black ${
+                        activationMode === 'manual'
+                          ? 'border-slate-600 bg-slate-800 text-slate-300'
+                          : activationMode === 'opening_auto'
+                            ? 'border-cyan-400/50 bg-cyan-950/60 text-cyan-200'
+                            : 'border-rose-400/50 bg-rose-950/60 text-rose-200'
+                      }`}>
+                        {activationModeLabel}
+                      </span>
+                    )}
                     <span className="text-xs text-slate-400">
                       {skill.oncePerBattle ? '使用制限: 1交渉1回' : `再使用: ${(skill.cooldownMs / 1000).toFixed(1)}秒`}
                     </span>
@@ -120,24 +210,75 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-slate-800/80">
-                  {unlocked ? (
+                  {unlocked && isEquipped ? (
+                    <div className="space-y-2">
+                      {openingAutoUnlocked && (
+                        <fieldset>
+                          <legend className="mb-1.5 text-[11px] font-bold text-slate-400">
+                            発動方法
+                          </legend>
+                          <div className={`grid gap-1.5 ${
+                            criticalAutoUnlocked
+                              ? 'grid-cols-3'
+                              : 'grid-cols-2'
+                          }`}>
+                            {([
+                              ['manual', '手動'],
+                              ['opening_auto', '開幕AUTO'],
+                              ...(criticalAutoUnlocked
+                                ? [['critical_auto', '窮地AUTO']]
+                                : []),
+                            ] as Array<[SkillActivationMode, string]>).map(
+                              ([mode, label]) => {
+                                const selected = activationMode === mode;
+                                return (
+                                  <button
+                                    key={mode}
+                                    type="button"
+                                    onClick={() =>
+                                      handleActivationMode(skill, mode)
+                                    }
+                                    aria-pressed={selected}
+                                    className={`min-h-11 rounded-lg border px-1.5 py-2 text-[11px] font-black transition-colors ${
+                                      selected
+                                        ? mode === 'opening_auto'
+                                          ? 'border-cyan-300/60 bg-cyan-500/20 text-cyan-100'
+                                          : mode === 'critical_auto'
+                                            ? 'border-rose-300/60 bg-rose-500/20 text-rose-100'
+                                            : 'border-amber-300/60 bg-amber-500/20 text-amber-100'
+                                        : 'border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-500 hover:text-slate-200'
+                                    }`}
+                                  >
+                                    {label}
+                                  </button>
+                                );
+                              }
+                            )}
+                          </div>
+                        </fieldset>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleToggle(skill)}
+                        className="min-h-11 w-full rounded-lg border border-amber-500/40 bg-amber-500/20 px-3 py-2 text-xs font-bold text-amber-300 transition-colors hover:bg-amber-500/30"
+                      >
+                        <span className="flex items-center justify-center gap-2">
+                          <Check className="h-4 w-4 text-amber-400" />
+                          装備中（外す）
+                        </span>
+                      </button>
+                    </div>
+                  ) : unlocked ? (
                     <button
                       onClick={() => handleToggle(skill)}
-                      disabled={!isEquipped && equippedSkillIds.length >= 8}
+                      disabled={equippedSkillIds.length >= 8}
                       className={`min-h-11 w-full py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                        isEquipped
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 cursor-pointer'
-                          : equippedSkillIds.length >= 8
+                        equippedSkillIds.length >= 8
                           ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
                           : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer'
                       }`}
                     >
-                      {isEquipped ? (
-                        <>
-                          <Check className="w-4 h-4 text-amber-400" />
-                          <span>装備中（外す）</span>
-                        </>
-                      ) : equippedSkillIds.length >= 8 ? (
+                      {equippedSkillIds.length >= 8 ? (
                         <span>装備枠が満杯（8/8）</span>
                       ) : (
                         <span>装備する</span>
@@ -174,6 +315,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
           </h2>
           <p className="text-xs text-slate-400 mt-1">
             原料・加工・輸送・販売など、つながりのある事業・契約をすべて保有すると毎秒収益倍率が自動で発動します。
+            都市進行で修得する戦闘専用SYNERGYは毎秒収益へ掛かりません。
             <span className="ml-1 inline-flex"><HelpTip term="バリューチェーン" description={HELP_TEXT.valueChain} /></span>
           </p>
           <div className="mt-4 flex flex-col gap-3 rounded-xl border border-indigo-400/30 bg-indigo-950/30 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -187,7 +329,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
               </strong>
             </div>
             <p className="max-w-xl text-xs leading-relaxed text-indigo-200/80">
-              バトルで押せる事業連携は1つだけです。新しい連携を修得すると自動で置き換わり、成立済みカードからいつでも選び直せます。毎秒収益は成立中の全連携が有効です。
+              バトルで押せる事業連携は1つだけです。より上位の連携を修得すると自動で置き換わり、成立・修得済みカードからいつでも選び直せます。毎秒収益は戦闘専用を除く成立中の全連携が有効です。
             </p>
           </div>
         </div>
@@ -199,7 +341,16 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
               ownedPropertyIds.has(id)
             ).length;
 
-            const isActive = ownedCount === totalRequired;
+            const isActive = isGroupSynergyUnlocked({
+              synergy,
+              ownedPropertyIds,
+              conqueredCommunityIds,
+            });
+            const isSupersededProgression =
+              synergy.battleOnly === true &&
+              isActive &&
+              !!latestProgressionSynergy &&
+              latestProgressionSynergy.id !== synergy.id;
 
             return (
               <div
@@ -216,7 +367,11 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                       <span>{synergy.name}</span>
                       {isActive && (
                         <span className="text-[10px] bg-indigo-600 text-white font-black px-2 py-0.5 rounded animate-pulse">
-                          成立
+                          {isSupersededProgression
+                            ? '更新済み'
+                            : synergy.battleOnly
+                              ? '修得'
+                              : '成立'}
                         </span>
                       )}
                       {!!synergy.savageRank && synergy.savageRank > 0 && (
@@ -235,7 +390,11 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                         isActive ? 'text-indigo-400' : 'text-slate-400'
                       }`}
                     >
-                      {ownedCount} / {totalRequired}
+                      {synergy.battleOnly
+                        ? isActive
+                          ? '修得'
+                          : '未修得'
+                        : `${ownedCount} / ${totalRequired}`}
                     </span>
                   </div>
                 </div>
@@ -243,9 +402,21 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                 {/* Properties Checklist */}
                 <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-1.5">
                   <span className="text-[11px] text-slate-400 font-semibold block">
-                    必要な事業・契約:
+                    {synergy.battleOnly ? '修得条件:' : '必要な事業・契約:'}
                   </span>
                   <div className="flex flex-wrap gap-2">
+                    {synergy.battleOnly && synergy.unlockAfterCommunity && (
+                      <span
+                        className={`text-xs px-2.5 py-1 rounded-md border flex items-center gap-1 font-medium ${
+                          isActive
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : 'bg-slate-900 text-slate-500 border-slate-800'
+                        }`}
+                      >
+                        {isActive ? <Check className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                        {synergy.unlockAfterCommunity}制覇
+                      </span>
+                    )}
                     {synergy.requiredPropertyIds.map((propId) => {
                       const isOwned = ownedPropertyIds.has(propId);
 
@@ -269,18 +440,34 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                 <div className="grid grid-cols-2 gap-2 text-center text-xs">
                   <div className="bg-slate-950 p-2 rounded border border-slate-800">
                     <span className="text-xs text-slate-400 block">毎秒収益</span>
-                    <strong className="text-emerald-400 font-bold">×{synergy.bonusYieldMultiplier.toFixed(2)}</strong>
+                    <strong className="text-emerald-400 font-bold">
+                      {synergy.battleOnly
+                        ? '戦闘専用'
+                        : `×${synergy.bonusYieldMultiplier.toFixed(2)}`}
+                    </strong>
                   </div>
                   <div className="bg-slate-950 p-2 rounded border border-slate-800">
-                    <span className="text-xs text-slate-400 block">戦闘連携の調達倍率</span>
-                    <strong className="text-amber-300 font-bold">×{(
-                      synergy.battleGroupMultiplier ??
-                      BATTLE_SUPPORT_BALANCE.synergyDefaultMultiplier
-                    ).toFixed(2)}</strong>
+                    <span className="text-xs text-slate-400 block">
+                      {synergy.battleOnly ? '手動バフ' : '戦闘連携の調達倍率'}
+                    </span>
+                    <strong className="text-amber-300 font-bold">
+                      {synergy.battleOnly && synergy.battleEffect
+                        ? `所有率+${(synergy.battleEffect.ownershipPush ?? 0).toFixed(1)}pt・資本圧力×${synergy.battleEffect.capitalPressureMultiplier.toFixed(2)}・${Math.round(synergy.battleEffect.durationMs / 1000)}秒`
+                        : `×${(
+                            synergy.battleGroupMultiplier ??
+                            BATTLE_SUPPORT_BALANCE.synergyDefaultMultiplier
+                          ).toFixed(2)}`}
+                    </strong>
                   </div>
                 </div>
 
-                {isActive && (
+                {synergy.id === GRAND_COMPANY_EORZEA_ID && (
+                  <p className="rounded-lg border border-amber-400/20 bg-amber-950/20 px-3 py-2 text-[11px] leading-relaxed text-amber-100/80">
+                    全26事業の統合で資本圧力+0.07。各零式編の第4層クリアごとにさらに+0.02され、上の倍率表示へ反映されます。
+                  </p>
+                )}
+
+                {isActive && !isSupersededProgression && (
                   <button
                     type="button"
                     onClick={() => {
@@ -288,15 +475,20 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                       onSelectBattleSynergy(synergy.id);
                     }}
                     className={`min-h-11 w-full rounded-lg border px-3 py-2 text-xs font-black ${
-                      selectedBattleSynergyId === synergy.id
+                      resolvedSelectedBattleSynergyId === synergy.id
                         ? 'border-indigo-300/50 bg-indigo-500/25 text-indigo-100'
                         : 'border-slate-700 bg-slate-800 text-slate-200 hover:border-indigo-400/50 hover:bg-indigo-950/40'
                     }`}
                   >
-                    {selectedBattleSynergyId === synergy.id
+                    {resolvedSelectedBattleSynergyId === synergy.id
                       ? '戦闘連携に装備中'
                       : '戦闘連携へ装備'}
                   </button>
+                )}
+                {isSupersededProgression && (
+                  <div className="min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-center text-xs font-black text-slate-500">
+                    {latestProgressionSynergy?.name}へ更新済み
+                  </div>
                 )}
               </div>
             );

@@ -8,6 +8,8 @@ const legacyFeatureConquestDepth: Readonly<Record<string, number>> = {
   rival_wind: 2,
   turbulent_wind: 3,
   trade_alliance: 3,
+  opening_auto: 5,
+  critical_auto: 6,
 };
 
 export const getCurrentlyControlledCommunityIds = (

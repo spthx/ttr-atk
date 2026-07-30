@@ -1,6 +1,7 @@
 import type { Property } from '../types';
 import {
   BATTLE_LOYALTY_BALANCE,
+  CELEBRATION_GIFT_OPTIONS,
   getReacquisitionLevel,
 } from './gameBalance';
 import { calculateRebellionProbability } from './formatter';
@@ -79,28 +80,62 @@ export interface PostVictoryLoyaltySettlement {
   leaving: Property[];
 }
 
+export type DepartureProbabilityMultiplier = number | boolean;
+
+/**
+ * The boolean branch temporarily keeps the existing result UI source
+ * compatible while it migrates to the explicit 0/10/20 percent options.
+ * `true` represents the former 10 percent gift.
+ */
+export const normalizeDepartureProbabilityMultiplier = (
+  multiplier: DepartureProbabilityMultiplier
+) => {
+  if (typeof multiplier === 'boolean') {
+    return multiplier
+      ? CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier
+      : CELEBRATION_GIFT_OPTIONS[0].departureProbabilityMultiplier;
+  }
+  return Number.isFinite(multiplier)
+    ? Math.max(0, Math.min(1, multiplier))
+    : 1;
+};
+
+export const calculateAtLeastOneDepartureProbability = (
+  subsidiaries: Property[],
+  probabilityMultiplier: DepartureProbabilityMultiplier = 1
+) => {
+  const normalizedMultiplier =
+    normalizeDepartureProbabilityMultiplier(probabilityMultiplier);
+  const noDepartureProbability = subsidiaries.reduce(
+    (probability, property) =>
+      probability *
+      (
+        1 -
+        calculateRebellionProbability(property.loyaltyRisk) *
+          normalizedMultiplier
+      ),
+    1
+  );
+  return Math.max(0, Math.min(1, 1 - noDepartureProbability));
+};
+
 export const resolvePostVictoryLoyalty = (
   subsidiaries: Property[],
-  distributeGift: boolean,
+  probabilityMultiplier: DepartureProbabilityMultiplier = 1,
   random: () => number = Math.random
 ): PostVictoryLoyaltySettlement => {
-  const adjustedSubsidiaries = subsidiaries.map((property) => ({
-    ...property,
-    loyaltyRisk: distributeGift
-      ? Math.max(
-          0,
-          property.loyaltyRisk -
-            BATTLE_LOYALTY_BALANCE.celebrationRiskReduction
-        )
-      : property.loyaltyRisk,
-  }));
+  const normalizedMultiplier =
+    normalizeDepartureProbabilityMultiplier(probabilityMultiplier);
 
-  return adjustedSubsidiaries.reduce<PostVictoryLoyaltySettlement>(
+  return subsidiaries.reduce<PostVictoryLoyaltySettlement>(
     (result, property) => {
-      if (random() < calculateRebellionProbability(property.loyaltyRisk)) {
-        result.leaving.push({ ...property, loyaltyRisk: 100 });
+      const departureProbability =
+        calculateRebellionProbability(property.loyaltyRisk) *
+        normalizedMultiplier;
+      if (random() < departureProbability) {
+        result.leaving.push({ ...property });
       } else {
-        result.survivors.push(property);
+        result.survivors.push({ ...property });
       }
       return result;
     },

@@ -28,6 +28,7 @@ export const SAVAGE_YIELD_BONUS_PER_RANK = 0.05;
 export const SAVAGE_PROPERTY_YIELD_BONUS = 0.1;
 export const SAVAGE_GROUP_MULTIPLIER_BASE = 1.45;
 export const SAVAGE_GROUP_MULTIPLIER_BONUS_PER_RANK = 0.04;
+export const SAVAGE_BATTLE_ONLY_CAPITAL_BONUS_PER_RANK = 0.02;
 
 export const SAVAGE_SERIES_DEFINITIONS = [
   {
@@ -118,7 +119,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
       'prop_casino_grand',
     ],
     communities: ['ウルダハ'],
-    rewardSynergyIds: ['ULDAH_LUXURY_MARKET'],
+    rewardSynergyIds: ['ULDAH_LUXURY_MARKET', 'GRAND_COMPANY_EORZEA'],
     marketPrice: 860_000_000,
     description:
       '三都市編の締めとなる無敵防衛戦。全押し込み経路を見極めて突破する総力戦です。',
@@ -174,7 +175,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     battlePropertyId: 'prop_info_broker',
     memberPropertyIds: ['prop_info_broker'],
     communities: ['クガネ'],
-    rewardSynergyIds: ['KUGANE_TRADE_GATEWAY'],
+    rewardSynergyIds: ['KUGANE_TRADE_GATEWAY', 'GRAND_COMPANY_EORZEA'],
     marketPrice: 1_580_000_000,
     description:
       '東方交易の全経路を閉ざす第4層。無敵時間を越えて決定打を通す連続戦です。',
@@ -230,7 +231,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     battlePropertyId: 'prop_abyss_mine',
     memberPropertyIds: ['prop_abyss_heavy', 'prop_abyss_mine'],
     communities: ['トライヨラ', 'ソリューション・ナイン'],
-    rewardSynergyIds: [],
+    rewardSynergyIds: ['GRAND_COMPANY_EORZEA'],
     marketPrice: 2_880_000_000,
     description:
       '資源調達から販売網までを束ねた最終層。無敵防衛を含む全システムの総力戦です。',
@@ -467,6 +468,24 @@ export const applySavageSynergyUpgrades = (
   const ranks = getSavageSynergyRanks(clearedPropertyIds);
   return synergies.map((synergy) => {
     const savageRank = ranks.get(synergy.id) ?? 0;
+    if (synergy.battleOnly) {
+      return {
+        ...synergy,
+        savageRank,
+        bonusYieldMultiplier: 1,
+        battleEffect: synergy.battleEffect
+          ? {
+              ...synergy.battleEffect,
+              capitalPressureMultiplier: Number(
+                (
+                  synergy.battleEffect.capitalPressureMultiplier +
+                  savageRank * SAVAGE_BATTLE_ONLY_CAPITAL_BONUS_PER_RANK
+                ).toFixed(2)
+              ),
+            }
+          : undefined,
+      };
+    }
     return {
       ...synergy,
       savageRank,

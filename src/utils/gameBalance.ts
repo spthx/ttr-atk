@@ -30,11 +30,13 @@ export const holdTrainingGaugeAboveDefeat = (
   : gauge;
 
 export const DIRECT_INVESTMENT_BALANCE = {
-  baseGaugeImpact: 1.2,
-  gaugeImpactPerMarketRatio: 20,
-  standardImpactCap: 14,
+  baseGaugeImpact: 1.9,
+  gaugeImpactPerMarketRatio: 29,
+  standardImpactCap: 19,
   levelOneTrainingMultiplier: 12.5,
   levelOneTrainingImpactCap: 40,
+  advancedTrainingMultiplier: 2,
+  advancedTrainingImpactCap: 24,
 } as const;
 
 /**
@@ -47,11 +49,13 @@ export const calculateDirectInvestmentGaugeImpact = ({
   marketPrice,
   windMultiplier = 1,
   levelOneTraining = false,
+  trainingLevel,
 }: {
   investmentAmount: number;
   marketPrice: number;
   windMultiplier?: number;
   levelOneTraining?: boolean;
+  trainingLevel?: number;
 }) => {
   const baseImpact =
     (
@@ -64,12 +68,20 @@ export const calculateDirectInvestmentGaugeImpact = ({
     ) *
     Math.max(0, windMultiplier);
 
-  return levelOneTraining
+  const resolvedTrainingLevel = levelOneTraining ? 1 : trainingLevel;
+
+  return resolvedTrainingLevel === 1
     ? Math.min(
         DIRECT_INVESTMENT_BALANCE.levelOneTrainingImpactCap,
         baseImpact *
           DIRECT_INVESTMENT_BALANCE.levelOneTrainingMultiplier
       )
+    : resolvedTrainingLevel && resolvedTrainingLevel >= 2
+      ? Math.min(
+          DIRECT_INVESTMENT_BALANCE.advancedTrainingImpactCap,
+          baseImpact *
+            DIRECT_INVESTMENT_BALANCE.advancedTrainingMultiplier
+        )
     : Math.min(
         DIRECT_INVESTMENT_BALANCE.standardImpactCap,
         baseImpact
@@ -417,9 +429,9 @@ export const TACTICAL_SKILL_BALANCE = {
     collapseMarketRatio: 0.14,
   },
   cover: {
-    durationMs: 10_000,
-    absorbRatio: 0.6,
-    gaugeCapacity: 24,
+    durationMs: 18_000,
+    absorbRatio: 0.72,
+    gaugeCapacity: 36,
   },
   capitalBoost: {
     marketRatio: 0.4,
@@ -436,7 +448,7 @@ export const TACTICAL_SKILL_BALANCE = {
     pushMultiplier: 1.8,
   },
   eraWind: {
-    durationMs: 16_000,
+    durationMs: 12_000,
     cooldownMs: 0,
     minimumCost: 100_000,
     marketCostRatio: 0.02,
@@ -569,27 +581,55 @@ export const ENEMY_BALANCE_FACTOR = {
 } as const;
 
 export const BATTLE_SUPPORT_BALANCE = {
-  subsidiaryMarketRatio: 0.52,
-  subsidiaryImpactBase: 1.2,
-  subsidiaryImpactPerMarketRatio: 9,
-  subsidiaryImpactCap: 7.5,
-  synergyMemberMarketRatio: 0.46,
+  subsidiaryMarketRatio: 0.75,
+  subsidiaryImpactBase: 2.5,
+  subsidiaryImpactPerMarketRatio: 13,
+  subsidiaryImpactCap: 12,
+  synergyMemberMarketRatio: 0.65,
   synergyDefaultMultiplier: 1.45,
-  synergyImpactBase: 3,
-  synergyImpactPerMarketRatio: 9,
-  synergyImpactCap: 16,
+  synergyImpactBase: 5,
+  synergyImpactPerMarketRatio: 13,
+  synergyImpactCap: 22,
 } as const;
 
 export const BATTLE_LOYALTY_BALANCE = {
   individualRiskIncrease: 12,
   limitBreakRiskIncrease: 8,
   synergyRiskIncrease: 10,
+  // Kept temporarily while the result UI migrates from the former two-choice
+  // gift. Post-victory settlement no longer reduces saved loyalty risk.
   celebrationRiskReduction: 20,
   celebrationRewardRatio: 0.1,
   reacquisitionSupportBonusPerLevel: 0.1,
   reacquisitionRiskReductionPerLevel: 2,
   maxReacquisitionLevel: 2,
 } as const;
+
+/** Endgame duties are fought by the whole acquired network, not petty cash. */
+export const HIGH_DIFFICULTY_SUPPORT_MULTIPLIER = 1.5;
+
+export const CELEBRATION_GIFT_OPTIONS = [
+  {
+    id: 'keep',
+    rate: 0,
+    departureProbabilityMultiplier: 1,
+  },
+  {
+    id: 'gift10',
+    rate: 0.1,
+    departureProbabilityMultiplier: 0.75,
+  },
+  {
+    id: 'gift20',
+    rate: 0.2,
+    departureProbabilityMultiplier: 0.5,
+  },
+] as const;
+
+export type CelebrationGiftOption =
+  (typeof CELEBRATION_GIFT_OPTIONS)[number];
+export type CelebrationGiftOptionId = CelebrationGiftOption['id'];
+export type CelebrationGiftRate = CelebrationGiftOption['rate'];
 
 export const getReacquisitionLevel = (property: Property) =>
   Math.max(
@@ -634,14 +674,22 @@ export const getSubsidiaryRiskIncrease = (
 
 export const calculateCelebrationGiftCost = (
   subsidiaries: Property[],
-  victoryReward: number
+  victoryReward: number,
+  rate: number = BATTLE_LOYALTY_BALANCE.celebrationRewardRatio
 ) => {
-  if (subsidiaries.length === 0 || victoryReward <= 0) return 0;
+  const normalizedRate = Number.isFinite(rate)
+    ? Math.max(0, Math.min(1, rate))
+    : 0;
+  if (
+    subsidiaries.length === 0 ||
+    victoryReward <= 0 ||
+    normalizedRate <= 0
+  ) {
+    return 0;
+  }
   return Math.max(
     1,
-    Math.round(
-      victoryReward * BATTLE_LOYALTY_BALANCE.celebrationRewardRatio
-    )
+    Math.round(victoryReward * normalizedRate)
   );
 };
 
@@ -820,14 +868,14 @@ export const getBossAbilityTier = ({
 export const BOSS_COVER_BALANCE = {
   triggerPlayerOwnership: 60,
   cover: {
-    durationMs: 10_000,
-    absorbRatio: 0.65,
-    gaugeCapacity: 24,
+    durationMs: 16_000,
+    absorbRatio: 0.72,
+    gaugeCapacity: 40,
   },
   enhancedCover: {
-    durationMs: 12_000,
-    absorbRatio: 0.8,
-    gaugeCapacity: 36,
+    durationMs: 18_000,
+    absorbRatio: 0.85,
+    gaugeCapacity: 56,
   },
   invincible: {
     durationMs: 8_000,
