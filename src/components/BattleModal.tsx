@@ -5749,7 +5749,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     >
       <img
         className="buyout-backdrop"
-        src={FANKIT_ART.battleBackdrop}
+        src={FANKIT_ART.titleHero}
         alt=""
         aria-hidden="true"
         decoding="async"
