@@ -70,7 +70,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
     <div className="high-end-raids">
       <section className="high-end-raids__hero">
         <img
-          src={FANKIT_ART.battleBackdrop}
+          src={FANKIT_ART.titleHero}
           alt=""
           aria-hidden="true"
           decoding="async"
