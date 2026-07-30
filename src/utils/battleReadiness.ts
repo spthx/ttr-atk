@@ -155,7 +155,7 @@ const getBestSupportRoute = ({
     });
   }
 
-  if (selectedBattleSynergy) {
+  if (selectedBattleSynergy && !selectedBattleSynergy.battleOnly) {
     const memberIds = new Set(selectedBattleSynergy.requiredPropertyIds);
     const members = subsidiaries.filter((property) =>
       memberIds.has(property.id)

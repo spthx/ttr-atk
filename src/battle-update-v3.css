@@ -237,6 +237,7 @@
   background: rgba(2, 20, 20, .94);
   box-shadow: 0 .7rem 2rem rgba(0, 0, 0, .42), 0 0 1rem rgba(16, 185, 129, .15);
   animation: offline-income-in .35s ease-out both;
+  pointer-events: none;
 }
 
 .offline-income-toast small {

@@ -1,4 +1,4 @@
-import { INITIAL_PROPERTIES } from '../data/initialData';
+import { INITIAL_PROPERTIES, INITIAL_SKILLS } from '../data/initialData';
 import type { AllianceState, CommunityType, Property } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
 import { LIMIT_BREAK_MAX_CHARGE } from './gameBalance';
@@ -23,6 +23,9 @@ export interface GameSaveData {
   totalFunds: number;
   properties: SavedPropertyState[];
   equippedSkillIds: string[];
+  /** Optional schema-v3 additions. AUTO skills still consume the existing eight equipment slots. */
+  openingAutoSkillId?: string | null;
+  criticalAutoSkillId?: string | null;
   alliance: AllianceState;
   /** Optional so schema v3 saves created before staged unlocks stay compatible. */
   seenUnlockIds?: string[];
@@ -41,6 +44,8 @@ export interface GameSaveData {
   trueEndingSeen?: boolean;
   /** One manual battle-synergy slot. Missing/unknown values fall back in App. */
   selectedBattleSynergyId?: string | null;
+  /** Permanent reward for having held all normal businesses at once. */
+  grandCompanyEorzeaIntegrated?: boolean;
   /**
    * Legacy schema-v3 field. Training no longer pauses passive income.
    * Kept optional so older saves load, then normalized to false.
@@ -48,6 +53,41 @@ export interface GameSaveData {
   passiveIncomePaused?: boolean;
   lastSavedAt: number;
 }
+
+const knownSkillIds = new Set(INITIAL_SKILLS.map((skill) => skill.id));
+
+export const normalizeAutoSkillLoadout = ({
+  equippedSkillIds,
+  openingAutoSkillId,
+  criticalAutoSkillId,
+  validSkillIds = knownSkillIds,
+}: {
+  equippedSkillIds: readonly string[];
+  openingAutoSkillId: unknown;
+  criticalAutoSkillId: unknown;
+  validSkillIds?: ReadonlySet<string>;
+}) => {
+  const equippedIds = new Set(equippedSkillIds);
+  const isValidEquippedSkill = (value: unknown): value is string =>
+    typeof value === 'string' &&
+    equippedIds.has(value) &&
+    validSkillIds.has(value);
+  const normalizedOpeningAutoSkillId = isValidEquippedSkill(
+    openingAutoSkillId
+  )
+    ? openingAutoSkillId
+    : null;
+  const normalizedCriticalAutoSkillId =
+    isValidEquippedSkill(criticalAutoSkillId) &&
+    criticalAutoSkillId !== normalizedOpeningAutoSkillId
+      ? criticalAutoSkillId
+      : null;
+
+  return {
+    openingAutoSkillId: normalizedOpeningAutoSkillId,
+    criticalAutoSkillId: normalizedCriticalAutoSkillId,
+  };
+};
 
 export const normalizeLimitBreakCharge = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value)
@@ -124,12 +164,19 @@ export const loadGameSave = (): GameSaveData | null => {
       return null;
     }
 
+    const autoSkillLoadout = normalizeAutoSkillLoadout({
+      equippedSkillIds: parsed.equippedSkillIds,
+      openingAutoSkillId: parsed.openingAutoSkillId,
+      criticalAutoSkillId: parsed.criticalAutoSkillId,
+    });
+
     return {
       schemaVersion: SAVE_SCHEMA_VERSION,
       companyName: parsed.companyName.trim(),
       totalFunds: Math.max(0, parsed.totalFunds),
       properties: parsed.properties,
       equippedSkillIds: parsed.equippedSkillIds,
+      ...autoSkillLoadout,
       alliance: normalizeAllianceState(parsed.alliance),
       seenUnlockIds: Array.isArray(parsed.seenUnlockIds)
         ? parsed.seenUnlockIds.filter((id): id is string => typeof id === 'string')
@@ -161,6 +208,8 @@ export const loadGameSave = (): GameSaveData | null => {
         typeof parsed.selectedBattleSynergyId === 'string'
           ? parsed.selectedBattleSynergyId
           : null,
+      grandCompanyEorzeaIntegrated:
+        parsed.grandCompanyEorzeaIntegrated === true,
       passiveIncomePaused: false,
       lastSavedAt: parsed.lastSavedAt,
     };
