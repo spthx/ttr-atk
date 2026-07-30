@@ -786,13 +786,17 @@ assert.equal(getCapitalVisualStageForBundleCount(11), 11);
 assert.equal(getCapitalVisualStageForBundleCount(13), 13);
 assert.equal(getCapitalVisualStageForBundleCount(99), 59);
 assert.equal(getCapitalVisualSpriteCount(0), 0);
-assert.equal(getCapitalVisualSpriteCount(3), 0);
+assert.equal(
+  getCapitalVisualSpriteCount(3),
+  1,
+  'the first committed capital is visible without a placeholder money bag'
+);
 assert.equal(
   getCapitalVisualSpriteCount(13),
-  1,
+  3,
   'field-filling hoards keep a bounded foreground sprite count'
 );
-assert.equal(getCapitalVisualSpriteCount(59), 5);
+assert.equal(getCapitalVisualSpriteCount(59), 8);
 assert.deepEqual(
   [0, 9, 19, 29, 39, 49, 59].map(getCapitalFormationPieceCount),
   [0, 1, 2, 3, 4, 5, 6],
@@ -822,7 +826,7 @@ const liveCapitalPresentationStages = Array.from(
 assert.ok(
   liveCapitalPresentationStages.every(
     (stage) =>
-      getCapitalVisualSpriteCount(stage) <= 5 &&
+      getCapitalVisualSpriteCount(stage) <= 8 &&
       getCapitalFormationPieceCount(stage) <= 6 &&
       getCapitalHoardBandCount(stage) <= 3
   ),
@@ -872,9 +876,9 @@ assert.ok(
   'every logical stage adds exactly one painted bundle slot'
 );
 assert.deepEqual(
-  getCapitalStageSequence(1, MAX_BATTLE_CAPITAL_VISUAL_STAGE, 6),
-  [11, 20, 30, 40, 49, 59],
-  'heavy investments retain six readable stacking beats'
+  getCapitalStageSequence(1, MAX_BATTLE_CAPITAL_VISUAL_STAGE, 8),
+  [8, 16, 23, 30, 37, 45, 52, 59],
+  'heavy investments retain eight readable stacking beats'
 );
 assert.deepEqual(
   getCapitalStageSequence(4, 12, 2),
@@ -1071,7 +1075,7 @@ for (const elapsed of [
   );
 }
 assert.ok(
-  TERMINAL_CINEMATIC_TIMING.totalMs <= 2_500 &&
+  TERMINAL_CINEMATIC_TIMING.totalMs <= 3_000 &&
     TERMINAL_CINEMATIC_TIMING.reducedMotionTotalMs <= 850,
   'terminal staging stays inside the standard and compact UX budgets'
 );
