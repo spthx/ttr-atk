@@ -5254,3 +5254,81 @@
     animation: none;
   }
 }
+
+/*
+ * Boss formations are decorative only. Two or three tiny fan-kit job images
+ * share the existing enemy actor layer; there is no extra AI, timer, physics
+ * or idle animation. The leader remains full-size while the rear line reads
+ * as a compact party without covering the capital total.
+ */
+.integrated-battlefield
+  .capital-visual-row
+  .ownership-fighter--enemy.ownership-fighter--boss-party {
+  right: -.35rem;
+  width: min(9.4rem, 46vw) !important;
+}
+
+.integrated-battlefield
+  .ownership-fighter--boss-party
+  .ownership-avatar--enemy {
+  z-index: 2;
+  left: 50%;
+  width: 70%;
+  height: 100%;
+}
+
+.boss-enemy-party__member {
+  position: absolute;
+  z-index: 1;
+  bottom: .16rem;
+  width: 58%;
+  height: 82%;
+  pointer-events: none;
+  object-fit: contain;
+  object-position: center bottom;
+  opacity: .78;
+}
+
+.ownership-fighter--boss-party[data-party-size="2"]
+  .boss-enemy-party__member--1 {
+  left: -.02rem;
+}
+
+.ownership-fighter--boss-party[data-party-size="2"]
+  .ownership-avatar--enemy {
+  left: 64%;
+}
+
+.ownership-fighter--boss-party[data-party-size="3"]
+  .boss-enemy-party__member--1 {
+  left: -.28rem;
+}
+
+.ownership-fighter--boss-party[data-party-size="3"]
+  .boss-enemy-party__member--2 {
+  right: -.28rem;
+}
+
+@media (max-width: 639px) {
+  .integrated-battlefield
+    .capital-visual-row
+    .ownership-fighter--enemy.ownership-fighter--boss-party {
+    width: min(8.6rem, 46vw) !important;
+  }
+}
+
+@media (max-height: 700px) {
+  .integrated-battlefield
+    .capital-visual-row
+    .ownership-fighter--enemy.ownership-fighter--boss-party {
+    width: min(7.4rem, 45vw) !important;
+  }
+}
+
+@media (min-width: 900px) {
+  .integrated-battlefield
+    .capital-visual-row
+    .ownership-fighter--enemy.ownership-fighter--boss-party {
+    width: 8.4rem !important;
+  }
+}
