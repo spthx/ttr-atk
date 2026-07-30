@@ -321,10 +321,10 @@
   transform: scaleX(-1);
 }
 
-.cover-knight span {
+.cover-knight__label {
   position: absolute;
   right: 50%;
-  bottom: -.18rem;
+  bottom: .08rem;
   translate: 50% 0;
   padding: .12rem .36rem;
   border: 1px solid rgba(255, 255, 255, .74);
@@ -338,14 +338,14 @@
   white-space: nowrap;
 }
 
-.cover-knight--enemy span {
+.cover-knight--enemy .cover-knight__label {
   color: #ffe4e6;
   border-color: rgba(253, 164, 175, .82);
   background: rgba(58, 8, 27, .94);
   box-shadow: 0 0 .6rem rgba(244, 63, 94, .5);
 }
 
-.cover-knight--invincible span {
+.cover-knight--invincible .cover-knight__label {
   color: #f3e8ff;
   border-color: rgba(216, 180, 254, .9);
   background: rgba(46, 16, 101, .94);
@@ -361,19 +361,54 @@
 }
 
 .cover-knight--leaving.cover-knight--player {
-  animation: cover-knight-leave-player 1s ease-in both;
+  animation: cover-knight-leave-player .78s cubic-bezier(.2, .78, .28, 1) both;
 }
 
 .cover-knight--leaving.cover-knight--enemy {
-  animation: cover-knight-leave-enemy 1s ease-in both;
+  animation: cover-knight-leave-enemy .78s cubic-bezier(.2, .78, .28, 1) both;
 }
 
 .cover-knight--breaking.cover-knight--player {
-  animation: cover-knight-break-player .42s ease-out both;
+  animation: cover-knight-break-player .34s steps(2, end) both;
 }
 
 .cover-knight--breaking.cover-knight--enemy {
-  animation: cover-knight-break-enemy .42s ease-out both;
+  animation: cover-knight-break-enemy .34s steps(2, end) both;
+}
+
+.cover-knight__guard {
+  position: absolute;
+  right: 50%;
+  bottom: -.48rem;
+  width: 4.7rem;
+  height: .36rem;
+  translate: 50% 0;
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, .86);
+  border-radius: 999px;
+  background: rgba(2, 6, 23, .92);
+  box-shadow: 0 0 .45rem rgba(96, 165, 250, .42);
+}
+
+.cover-knight__guard > i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #dbeafe);
+  transition: width .16s steps(1, end);
+}
+
+.cover-knight--enemy .cover-knight__guard {
+  border-color: rgba(253, 164, 175, .9);
+  box-shadow: 0 0 .48rem rgba(244, 63, 94, .44);
+}
+
+.cover-knight--enemy .cover-knight__guard > i {
+  background: linear-gradient(90deg, #fb7185, #ffe4e6);
+}
+
+.cover-knight--invincible .cover-knight__guard > i {
+  background: linear-gradient(90deg, #a855f7, #f3e8ff);
 }
 
 .integrated-battlefield--skill-cover .capital-arena__side:first-child::after,
@@ -407,27 +442,27 @@
 }
 
 @keyframes cover-knight-leave-player {
-  from { opacity: 1; translate: 0 0; }
-  to { opacity: 0; translate: -7rem .5rem; }
+  0% { opacity: 1; translate: 0 0; rotate: 0deg; }
+  20% { opacity: 1; translate: -1rem -.35rem; rotate: -3deg; }
+  100% { opacity: 0; translate: -12rem -2.4rem; rotate: -16deg; }
 }
 
 @keyframes cover-knight-leave-enemy {
-  from { opacity: 1; translate: 0 0; }
-  to { opacity: 0; translate: 7rem .5rem; }
+  0% { opacity: 1; translate: 0 0; rotate: 0deg; }
+  20% { opacity: 1; translate: 1rem -.35rem; rotate: 3deg; }
+  100% { opacity: 0; translate: 12rem -2.4rem; rotate: 16deg; }
 }
 
 @keyframes cover-knight-break-player {
-  0%, 22% { opacity: 1; translate: 0 0; }
-  42% { translate: -.18rem .04rem; }
-  62% { translate: .12rem 0; }
-  100% { opacity: .78; translate: 0 .08rem; }
+  0% { opacity: 1; translate: 0 0; }
+  45% { translate: .24rem 0; }
+  100% { opacity: 1; translate: -.62rem -.08rem; }
 }
 
 @keyframes cover-knight-break-enemy {
-  0%, 22% { opacity: 1; translate: 0 0; }
-  42% { translate: .18rem .04rem; }
-  62% { translate: -.12rem 0; }
-  100% { opacity: .78; translate: 0 .08rem; }
+  0% { opacity: 1; translate: 0 0; }
+  45% { translate: -.24rem 0; }
+  100% { opacity: 1; translate: .62rem -.08rem; }
 }
 
 @keyframes cover-shield-seal {
@@ -451,7 +486,7 @@
     right: 3.15rem;
   }
 
-  .cover-knight span {
+  .cover-knight__label {
     font-size: .52rem;
   }
 }
