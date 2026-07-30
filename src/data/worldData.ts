@@ -7,7 +7,7 @@ export interface TradeCommunity {
 }
 
 export const GAME_WORLD = {
-  title: 'タタルの大繁盛店',
+  title: 'タタルの大繁盛商店',
   companyName: 'タタルの大繁盛商店',
   playerRole: '交易実務担当',
   advisorName: 'タタル',

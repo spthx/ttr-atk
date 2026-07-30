@@ -17,7 +17,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     metadataBase: baseUrl,
-    title: "タタルの大繁盛店",
+    title: "タタルの大繁盛商店",
     description: "自社と傘下企業のギルを積み、競合の防衛資金と所有率を押し切って都市を制覇する金融ゲーム。",
     manifest: "/manifest.webmanifest",
     icons: {
@@ -47,13 +47,13 @@ export async function generateMetadata(): Promise<Metadata> {
       title: "タタル商店",
     },
     openGraph: {
-      title: "タタルの大繁盛店",
+      title: "タタルの大繁盛商店",
       description: "ギルを積み、風を読み、事業や交易契約を獲得。仲間と世界の交易路を広げよう。",
       images: [new URL("/title-hero-v1.png", baseUrl).toString()],
     },
     twitter: {
       card: "summary_large_image",
-      title: "タタルの大繁盛店",
+      title: "タタルの大繁盛商店",
       description: "ギルを積み、風を読み、事業や交易契約を獲得。仲間と世界の交易路を広げよう。",
       images: [new URL("/title-hero-v1.png", baseUrl).toString()],
     },

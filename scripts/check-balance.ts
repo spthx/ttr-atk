@@ -51,8 +51,8 @@ import {
   getBattleHitStopTiming,
   getSkillCinematicTiming,
   getVictoryConfettiParticleCount,
-  LIGHTWEIGHT_GAUGE_FRAME_MS,
-  LIGHTWEIGHT_SKILL_CINEMATIC_TIMING,
+  BATTLE_GAUGE_FRAME_MS,
+  REDUCED_MOTION_SKILL_CINEMATIC_TIMING,
   MAX_CAPITAL_DROP_PARTICLE_COUNT,
   MAX_BATTLE_CAPITAL_VISUAL_STAGE,
   normalizeBattleStatusMessageText,
@@ -199,6 +199,8 @@ import {
   getEnemyDivinationDurationMs,
   getEnemyDrillImpact,
   getEnemyDrillOwnershipPush,
+  getOpeningBossAbilityTier,
+  getEnemySupportAutoProfile,
   getEnemySupportSkillProfile,
   getNormalEnemyCampaignMultiplier,
   getSavageLayerBudgetMultiplier,
@@ -206,6 +208,7 @@ import {
   getEraWindGaugePushPerSecond,
   canEnemyAffordDrill,
   ENEMY_SUPPORT_SKILL_BALANCE,
+  ULTIMATE_ENEMY_AUTO_PATTERNS,
   getEnemyCureRecoveryRatio,
   shouldEnemyUseCure,
 } from '../src/utils/gameBalance';
@@ -383,23 +386,29 @@ assert.equal(
   'battle countdowns share a 10Hz state tick instead of rerendering at 20Hz'
 );
 assert.ok(
-  Math.abs(LIGHTWEIGHT_GAUGE_FRAME_MS - (1_000 / 30)) < 0.001,
-  'lightweight mode targets 30 gauge calculations per second'
+  Math.abs(BATTLE_GAUGE_FRAME_MS[30] - (1_000 / 30)) < 0.001 &&
+    Math.abs(BATTLE_GAUGE_FRAME_MS[60] - (1_000 / 60)) < 0.001,
+  'the battle gauge is explicitly capped at either 30 or 60 updates per second'
 );
 assert.equal(
-  shouldProcessGaugeFrame(16, true),
+  shouldProcessGaugeFrame(16, 30),
   false,
-  'lightweight mode skips sub-frame gauge calculations'
+  '30fps mode skips sub-frame gauge calculations'
 );
 assert.equal(
-  shouldProcessGaugeFrame(34, true),
+  shouldProcessGaugeFrame(34, 30),
   true,
-  'lightweight mode processes the accumulated 30fps gauge frame'
+  '30fps mode processes the accumulated gauge frame'
 );
 assert.equal(
-  shouldProcessGaugeFrame(16, false),
+  shouldProcessGaugeFrame(8, 60),
+  false,
+  '60fps mode still caps work on high-refresh displays'
+);
+assert.equal(
+  shouldProcessGaugeFrame(17, 60),
   true,
-  'standard mode retains display-refresh gauge calculations'
+  '60fps mode processes one bounded gauge frame'
 );
 assert.equal(
   SKILL_CINEMATIC_TIMING.nameMs +
@@ -411,13 +420,13 @@ assert.equal(
   'skill name, cast, hit-stop, impact and result form one sequential timeline'
 );
 assert.equal(
-  LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.nameMs +
-    LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.castMs +
-    LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.hitStopMs +
-    LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.impactMs +
-    LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.resolveMs,
-  LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.totalMs,
-  'lightweight skill beats remain complete instead of truncating standard CSS'
+  REDUCED_MOTION_SKILL_CINEMATIC_TIMING.nameMs +
+    REDUCED_MOTION_SKILL_CINEMATIC_TIMING.castMs +
+    REDUCED_MOTION_SKILL_CINEMATIC_TIMING.hitStopMs +
+    REDUCED_MOTION_SKILL_CINEMATIC_TIMING.impactMs +
+    REDUCED_MOTION_SKILL_CINEMATIC_TIMING.resolveMs,
+  REDUCED_MOTION_SKILL_CINEMATIC_TIMING.totalMs,
+  'reduced-motion skill beats remain complete instead of truncating the sequence'
 );
 assert.equal(
   getSkillCinematicTiming(false),
@@ -426,13 +435,13 @@ assert.equal(
 );
 assert.equal(
   getSkillCinematicTiming(true),
-  LIGHTWEIGHT_SKILL_CINEMATIC_TIMING,
-  'lightweight mode owns a bounded compact skill timeline'
+  REDUCED_MOTION_SKILL_CINEMATIC_TIMING,
+  'the operating-system reduced-motion preference owns a bounded timeline'
 );
 assert.ok(
-  LIGHTWEIGHT_SKILL_CINEMATIC_TIMING.totalMs <=
+  REDUCED_MOTION_SKILL_CINEMATIC_TIMING.totalMs <=
     SKILL_CINEMATIC_TIMING.totalMs,
-  'lightweight skill staging never lasts longer than standard staging'
+  'reduced-motion staging never lasts longer than standard staging'
 );
 assert.deepEqual(
   getBattleHitStopTiming(false, false),
@@ -445,14 +454,14 @@ assert.deepEqual(
 assert.deepEqual(
   getBattleHitStopTiming(true, true),
   {
-    hitStopMs: BATTLE_HIT_STOP_TIMING.lightweightHeavyMs,
-    releaseMs: BATTLE_HIT_STOP_TIMING.lightweightReleaseMs,
+    hitStopMs: BATTLE_HIT_STOP_TIMING.reducedMotionHeavyMs,
+    releaseMs: BATTLE_HIT_STOP_TIMING.reducedMotionReleaseMs,
   },
-  'lightweight heavy impacts preserve the beat with less animated time'
+  'reduced-motion heavy impacts preserve the beat with less animated time'
 );
 assert.ok(
   BATTLE_HIT_STOP_TIMING.heavyMs <= 80 &&
-    BATTLE_HIT_STOP_TIMING.lightweightHeavyMs <=
+    BATTLE_HIT_STOP_TIMING.reducedMotionHeavyMs <=
       BATTLE_HIT_STOP_TIMING.heavyMs &&
     BATTLE_HIT_STOP_TIMING.releaseMs <= 230,
   'routine impact staging stays below the input-latency and animation budget'
@@ -609,11 +618,6 @@ assert.equal(
   'tablet-sized victory effects avoid a second canvas animation'
 );
 assert.equal(getVictoryConfettiParticleCount(1440, false), 110);
-assert.equal(
-  getVictoryConfettiParticleCount(1440, false, true),
-  0,
-  'lightweight mode never starts the extra canvas confetti layer'
-);
 assert.equal(getVictoryConfettiParticleCount(402, true), 0);
 
 const pendingBattleNow = 1_800_000_000_000;
@@ -1053,6 +1057,7 @@ assert.equal(
   TERMINAL_CINEMATIC_TIMING.anticipationMs +
     TERMINAL_CINEMATIC_TIMING.hitStopMs +
     TERMINAL_CINEMATIC_TIMING.impactMs +
+    TERMINAL_CINEMATIC_TIMING.fanfareLeadMs +
     TERMINAL_CINEMATIC_TIMING.resolutionMs,
   TERMINAL_CINEMATIC_TIMING.totalMs,
   'the final offer, hit-stop, knockdown and WIN reveal form one sequential timeline'
@@ -1061,6 +1066,7 @@ assert.equal(
   TERMINAL_CINEMATIC_TIMING.reducedMotionAnticipationMs +
     TERMINAL_CINEMATIC_TIMING.reducedMotionHitStopMs +
     TERMINAL_CINEMATIC_TIMING.reducedMotionImpactMs +
+    TERMINAL_CINEMATIC_TIMING.reducedMotionFanfareLeadMs +
     TERMINAL_CINEMATIC_TIMING.reducedMotionResolutionMs,
   TERMINAL_CINEMATIC_TIMING.reducedMotionTotalMs,
   'compact terminal staging keeps every semantic beat'
@@ -1081,9 +1087,9 @@ for (const elapsed of [
   );
 }
 assert.ok(
-  TERMINAL_CINEMATIC_TIMING.totalMs <= 3_000 &&
-    TERMINAL_CINEMATIC_TIMING.reducedMotionTotalMs <= 850,
-  'terminal staging stays inside the standard and compact UX budgets'
+  TERMINAL_CINEMATIC_TIMING.totalMs <= 3_800 &&
+    TERMINAL_CINEMATIC_TIMING.reducedMotionTotalMs <= 1_200,
+  'terminal staging keeps the readable afterglow inside bounded UX budgets'
 );
 assert.equal(
   normalizeBattleStatusMessageText(
@@ -1430,11 +1436,49 @@ assert.deepEqual(
     })
   ),
   [
-    ['cure'], ['mug'], ['mug', 'drill'], ['divination'],
-    ['cure'], ['mug'], ['mug', 'drill'], ['divination'],
-    ['cure'], ['mug'], ['mug', 'drill'], ['divination'],
+    ['cure', 'mug'], ['mug', 'divination'], ['mug', 'drill'], ['cure', 'mug', 'drill', 'divination'],
+    ['cure', 'mug'], ['mug', 'divination'], ['mug', 'drill'], ['cure', 'mug', 'drill', 'divination'],
+    ['cure', 'mug'], ['mug', 'divination'], ['mug', 'drill'], ['cure', 'mug', 'drill', 'divination'],
   ],
   'all three Savage series repeat the authored four-layer support pattern'
+);
+assert.deepEqual(
+  savageProperties.map((property) =>
+    getEnemySupportAutoProfile({
+      targetProperty: property,
+      isCityBoss: false,
+      isSavage: true,
+    })
+  ),
+  [
+    { opening: null, critical: null },
+    { opening: null, critical: null },
+    { opening: null, critical: null },
+    { opening: 'mug', critical: 'drill' },
+    { opening: null, critical: null },
+    { opening: null, critical: null },
+    { opening: null, critical: null },
+    { opening: 'divination', critical: 'cure' },
+    { opening: null, critical: null },
+    { opening: null, critical: null },
+    { opening: null, critical: null },
+    { opening: 'divination', critical: 'drill' },
+  ],
+  'each Savage layer-four boss reserves both its opening and critical ability'
+);
+assert.deepEqual(
+  savageProperties.map((property) =>
+    getOpeningBossAbilityTier({
+      targetProperty: property,
+      isSavage: true,
+    })
+  ),
+  [
+    'none', 'cover', 'none', 'none',
+    'none', 'cover', 'none', 'none',
+    'none', 'cover', 'none', 'none',
+  ],
+  'only every Savage layer-two boss opens with guaranteed normal Cover'
 );
 SAVAGE_SERIES_DEFINITIONS.forEach((series) => {
   assert.deepEqual(
@@ -1445,11 +1489,16 @@ SAVAGE_SERIES_DEFINITIONS.forEach((series) => {
     `Savage series ${series.series} owns exactly layers 1 through 4`
   );
 });
-assert.deepEqual(
-  SAVAGE_RAID_DEFINITIONS.map((raid) => raid.marketPrice),
-  [...SAVAGE_RAID_DEFINITIONS].map((raid) => raid.marketPrice).sort((a, b) => a - b),
-  'Savage prices rise through all twelve chapters'
-);
+SAVAGE_SERIES_DEFINITIONS.forEach((series) => {
+  const prices = SAVAGE_RAID_DEFINITIONS
+    .filter((raid) => raid.series === series.series)
+    .map((raid) => raid.marketPrice);
+  assert.deepEqual(
+    prices,
+    [...prices].sort((left, right) => left - right),
+    `Savage series ${series.series} prices rise through layers one to four`
+  );
+});
 savageProperties.forEach((property) => {
   assert.match(property.name, /商戦 零式：第[1-4]層$/);
   assert.equal(property.annualRevenue, 0);
@@ -1510,10 +1559,9 @@ assert.equal(
   getBossEnemyPartySize({
     bossAbilityTier: 'invincible',
     isUltimate: true,
-    lightweightMode: true,
   }),
-  2,
-  'lightweight mode caps the decorative boss formation at two actors'
+  3,
+  'ultimate encounters keep the complete boss formation at either frame rate'
 );
 const progressionBattleSynergies = INITIAL_GROUP_SYNERGIES.filter(
   (synergy) => synergy.battleOnly
@@ -1541,6 +1589,12 @@ const noOwnedPropertyIds = new Set<string>();
 const crystalBraves = progressionBattleSynergies[0];
 const lightOfHope = progressionBattleSynergies[1];
 const grandCompanyEorzea = progressionBattleSynergies[2];
+assert.equal(
+  grandCompanyEorzea.unlockAfterCommunity,
+  'ラザハン',
+  'Grand Company Eorzea is formed by the Radz-at-Han clear event'
+);
+assert.match(grandCompanyEorzea.description, /ラザハン/);
 const uldahLuxuryMarket = INITIAL_GROUP_SYNERGIES.find(
   (synergy) => synergy.id === 'ULDAH_LUXURY_MARKET'
 )!;
@@ -1619,7 +1673,8 @@ assert.equal(
     ownedPropertyIds: noOwnedPropertyIds,
     conqueredCommunityIds: conqueredThrough('ラザハン'),
   }),
-  false
+  true,
+  'Grand Company Eorzea unlocks after Radz-at-Han'
 );
 assert.equal(
   isGroupSynergyUnlocked({
@@ -1627,7 +1682,7 @@ assert.equal(
     ownedPropertyIds: noOwnedPropertyIds,
     conqueredCommunityIds: conqueredThrough('トライヨラ'),
   }),
-  false
+  true
 );
 assert.equal(
   isGroupSynergyUnlocked({
@@ -1636,7 +1691,7 @@ assert.equal(
     conqueredCommunityIds: conqueredThrough('ソリューション・ナイン'),
   }),
   true,
-  'Grand Company Eorzea unlocks only after the normal campaign'
+  'Grand Company Eorzea remains unlocked through the normal finale'
 );
 assert.equal(
   getLatestProgressionBattleSynergy([
@@ -1821,6 +1876,42 @@ assert.deepEqual(
   ['cure', 'mug', 'drill', 'divination'],
   'Ultimate exposes the complete sequential enemy support kit'
 );
+assert.deepEqual(
+  getEnemySupportAutoProfile({
+    targetProperty: ultimateProperty,
+    isCityBoss: false,
+    isUltimate: true,
+  }),
+  { opening: 'mug', critical: 'drill' },
+  'Ultimate reserves both an opening and a critical automatic ability'
+);
+assert.equal(ULTIMATE_ENEMY_AUTO_PATTERNS.length, 6);
+assert.ok(
+  ULTIMATE_ENEMY_AUTO_PATTERNS.some(
+    (pattern) => pattern.opening === 'rapid_assault'
+  ),
+  'Ultimate can open with the enemy equivalent of Fast Action'
+);
+assert.ok(
+  ULTIMATE_ENEMY_AUTO_PATTERNS.some(
+    (pattern) => pattern.opening === 'limit_break_3'
+  ) &&
+    ULTIMATE_ENEMY_AUTO_PATTERNS.some(
+      (pattern) => pattern.critical === 'limit_break_3'
+    ),
+  'Ultimate LB3 can be selected either as the opening shock or the critical surprise'
+);
+ULTIMATE_ENEMY_AUTO_PATTERNS.forEach((pattern, index) => {
+  assert.deepEqual(
+    getEnemySupportAutoProfile({
+      targetProperty: ultimateProperty,
+      isCityBoss: false,
+      isUltimate: true,
+      ultimatePatternIndex: index,
+    }),
+    { opening: pattern.opening, critical: pattern.critical }
+  );
+});
 assert.ok(
   ultimateProperty.marketPrice > savageProperties[savageProperties.length - 1].marketPrice
 );
@@ -2046,7 +2137,7 @@ assert.ok(Math.abs(enemyBudgetRatio('prop_land_transport') - 0.6331) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_casino_grand') - 1.1228) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_coffee_aurora') - 1.2202) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_heavy') - 1.5624) < 0.001);
-assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_hq') - 2.268) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_hq') - 2.3976) < 0.001);
 const savageBudgetTarget = savageProperties[0];
 const savageBudget = calculateEnemyBudget({
   targetProperty: savageBudgetTarget,
@@ -2074,7 +2165,7 @@ assert.equal(
       getSavageLayerBudgetMultiplier(savageBudgetTarget)
   )
 );
-assert.equal(getEnemyDifficultyLevel(savageBudgetTarget, false, true), 5);
+assert.equal(getEnemyDifficultyLevel(savageBudgetTarget, false, true), 6);
 const savageLayerBudgets = savageProperties.map((targetProperty) => {
   const normalBudget = calculateEnemyBudget({
     targetProperty,
@@ -2123,10 +2214,10 @@ assert.deepEqual(
   ),
   'each Savage series repeats the layer 1 through layer 4 budget rhythm'
 );
-SAVAGE_RAID_DEFINITIONS.forEach((raid, index) => {
+SAVAGE_RAID_DEFINITIONS.forEach((_raid, index) => {
   assert.equal(
     getEnemyDifficultyLevel(savageProperties[index], false, true),
-    raid.layer >= 3 ? 6 : 5
+    6
   );
 });
 const fullyUpgradedGrandCompanyEorzea = upgradedSynergies.find(
@@ -2151,11 +2242,14 @@ const absoluteSavageBudgets = savageProperties.map((targetProperty) =>
     isSavage: true,
   })
 );
-for (let index = 1; index < absoluteSavageBudgets.length; index += 1) {
-  assert.ok(
-    absoluteSavageBudgets[index] > absoluteSavageBudgets[index - 1],
-    `Savage absolute budget rises at chapter ${index + 1}`
-  );
+for (let seriesStart = 0; seriesStart < absoluteSavageBudgets.length; seriesStart += 4) {
+  for (let layer = 1; layer < 4; layer += 1) {
+    assert.ok(
+      absoluteSavageBudgets[seriesStart + layer] >
+        absoluteSavageBudgets[seriesStart + layer - 1],
+      `Savage series ${seriesStart / 4 + 1} budget rises from layer ${layer} to ${layer + 1}`
+    );
+  }
 }
 const ultimateBudget = calculateEnemyBudget({
   targetProperty: ultimateProperty,
@@ -2284,16 +2378,21 @@ assert.match(disruptionSkill.description, /中断分は追加防衛枠から消�
 assert.equal(coverSkill.id, 'skill_demoralize', 'legacy equipped ability id remains valid');
 assert.equal(coverSkill.effectType, 'COVER');
 assert.equal(coverSkill.oncePerBattle, true);
-assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 18_000);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 20_000);
 assert.equal(HIGH_DIFFICULTY_SUPPORT_MULTIPLIER, 1.5);
-assert.equal(TACTICAL_SKILL_BALANCE.cover.absorbRatio, 0.72);
-assert.equal(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity, 36);
-assert.equal(BOSS_COVER_BALANCE.cover.durationMs, 16_000);
-assert.equal(BOSS_COVER_BALANCE.enhancedCover.durationMs, 18_000);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.absorbRatio, 0.78);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity, 48);
+assert.deepEqual(
+  BOSS_COVER_BALANCE.cover,
+  TACTICAL_SKILL_BALANCE.cover,
+  'standard enemy and player Cover use the same duration, reduction and guard capacity'
+);
+assert.equal(BOSS_COVER_BALANCE.cover.durationMs, 20_000);
+assert.equal(BOSS_COVER_BALANCE.enhancedCover.durationMs, 22_000);
 assert.equal(BOSS_COVER_BALANCE.invincible.durationMs, 8_000);
-assert.equal(BOSS_COVER_BALANCE.cover.gaugeCapacity, 40);
-assert.equal(BOSS_COVER_BALANCE.enhancedCover.gaugeCapacity, 56);
-assert.match(coverSkill.description, /18秒間/);
+assert.equal(BOSS_COVER_BALANCE.cover.gaugeCapacity, 48);
+assert.equal(BOSS_COVER_BALANCE.enhancedCover.gaugeCapacity, 68);
+assert.match(coverSkill.description, /20秒間/);
 assert.deepEqual(
   applyCoverToGaugeDelta({
     currentGauge: 0,
@@ -2324,20 +2423,20 @@ assert.deepEqual(
 );
 assert.equal(
   getCoverGuardDisplayPercent({
-    remainingGaugeCapacity: 36,
-    maximumGaugeCapacity: 36,
-    remainingMs: 18_000,
-    durationMs: 18_000,
+    remainingGaugeCapacity: 48,
+    maximumGaugeCapacity: 48,
+    remainingMs: 20_000,
+    durationMs: 20_000,
   }),
   100,
   'a fresh Cover guard starts with a full display gauge'
 );
 assert.equal(
   getCoverGuardDisplayPercent({
-    remainingGaugeCapacity: 17,
-    maximumGaugeCapacity: 36,
-    remainingMs: 12_000,
-    durationMs: 18_000,
+    remainingGaugeCapacity: 24,
+    maximumGaugeCapacity: 48,
+    remainingMs: 14_000,
+    durationMs: 20_000,
   }),
   50,
   'the display gauge follows the lower of absorption capacity and duration'
@@ -2355,9 +2454,9 @@ assert.equal(
 assert.equal(
   getCoverGuardDisplayPercent({
     remainingGaugeCapacity: 0,
-    maximumGaugeCapacity: 36,
-    remainingMs: 12_000,
-    durationMs: 18_000,
+    maximumGaugeCapacity: 48,
+    remainingMs: 14_000,
+    durationMs: 20_000,
   }),
   0,
   'a depleted guard reaches zero before the knight is blown away'
@@ -2382,8 +2481,35 @@ assert.equal(
 );
 assert.equal(
   terminalLimitBreakCovered.absorbedGauge,
-  15.84,
+  17.16,
   'Cover absorbs the movement from the pre-LB gauge, not the 99% preview'
+);
+assert.equal(
+  ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.durationMs,
+  TACTICAL_SKILL_BALANCE.fastAction.durationMs,
+  'Ultimate Rapid Assault lasts exactly as long as player Fast Action'
+);
+assert.equal(
+  ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.actionProgressMultiplier,
+  TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick /
+    TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick,
+  'Ultimate Rapid Assault uses the same action-speed ratio as the player skill'
+);
+assert.equal(
+  ENEMY_SUPPORT_SKILL_BALANCE.limitBreak3.ownershipPush,
+  LIMIT_BREAK_OWNERSHIP_CAPS[3],
+  'enemy LB3 has the same maximum ownership push as player LB3'
+);
+const enemyLimitBreakCovered = applyCoverToGaugeDelta({
+  currentGauge: 0,
+  nextGauge: ENEMY_SUPPORT_SKILL_BALANCE.limitBreak3.gaugeDelta,
+  protects: 'player',
+  absorbRatio: TACTICAL_SKILL_BALANCE.cover.absorbRatio,
+  remainingGaugeCapacity: TACTICAL_SKILL_BALANCE.cover.gaugeCapacity,
+});
+assert.ok(
+  Math.abs(enemyLimitBreakCovered.nextGauge - 13.2) < 0.0001,
+  'a prepared player Cover reduces enemy LB3 from 30 ownership points to 6.6'
 );
 assert.equal(TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio, 0.4);
 assert.equal(livingDeadSkill.id, 'skill_sns_blitz', 'legacy save-compatible skill id');
@@ -2414,8 +2540,8 @@ assert.equal(
 );
 assert.equal(eraWindSkill.oncePerBattle, true);
 assert.match(eraWindSkill.description, /12秒間/);
-assert.match(eraWindSkill.description, /1交渉につき1回/);
-assert.match(livingDeadSkill.description, /1交渉につき1回/);
+assert.match(eraWindSkill.description, /1争奪戦につき1回/);
+assert.match(livingDeadSkill.description, /1争奪戦につき1回/);
 assert.equal(calculateOwnershipFromGauge(98), 1);
 assert.equal(calculateOwnershipFromGauge(40), 30);
 assert.equal(resolveLivingDeadOutcome('waiting', 50, 1), 'none');
@@ -3501,8 +3627,8 @@ assert.deepEqual(
     properties: rebelledFirstCityProperties,
     seenUnlockIds: ['critical_auto'],
   }),
-  COMMUNITY_CAMPAIGN_ORDER.slice(0, 6),
-  'the critical AUTO tutorial preserves progress through the Crystarium'
+  COMMUNITY_CAMPAIGN_ORDER.slice(0, 7),
+  'the critical ability tutorial preserves progress through Old Sharlayan'
 );
 assert.equal(
   normalizeConqueredCommunityIds({
