@@ -51,10 +51,10 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
   const capitalRatio = Math.max(result.ratio, 0.01);
   const balanceLabel =
     capitalRatio >= 1.08
-      ? `資本は自社が約${capitalRatio.toFixed(1)}倍`
+      ? `戦力換算は自社が約${capitalRatio.toFixed(1)}倍`
       : capitalRatio <= 0.92
-        ? `資本は競合が約${(1 / capitalRatio).toFixed(1)}倍`
-        : '資本量はほぼ互角';
+        ? `戦力換算は競合が約${(1 / capitalRatio).toFixed(1)}倍`
+        : '戦力換算はほぼ互角';
   const enemyPace =
     result.enemyBaseReactionSeconds >= 3.2
       ? '緩やか'
@@ -88,7 +88,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
       </header>
       <div className="strength-comparison__values">
         <span>
-          <small>自社・動員見込み</small>
+          <small>自社・戦力換算</small>
           <b>{formatCurrency(result.playerExpectedCapital)}</b>
         </span>
         <i>VS</i>
@@ -117,7 +117,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
       {!summaryOnly && (
         <>
           <div className="strength-comparison__meta">
-            <span>判定用資本比 {Math.floor(result.assessmentRatio * 100)}%</span>
+            <span>判定用戦力比 {Math.floor(result.assessmentRatio * 100)}%</span>
             <span>{isTraining
               ? '木人は追加行動なし'
               : `AI Lv${result.enemyDifficultyLevel}・基準反応 約${result.enemyBaseReactionSeconds.toFixed(1)}秒`}</span>
@@ -139,8 +139,15 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
               </span>
             )}
           </div>
-          <div className="strength-comparison__components" aria-label="動員見込みの内訳">
-            <small>採用内訳</small>
+          {result.mechanicCheckRequired && result.mechanicWarning && (
+            <div className="strength-comparison__meta strength-comparison__meta--critical">
+              <span className="strength-comparison__risk">
+                <ShieldAlert />{result.mechanicWarning}
+              </span>
+            </div>
+          )}
+          <div className="strength-comparison__components" aria-label="戦力換算の内訳">
+            <small>戦力換算内訳</small>
             {compact ? (
               <span className="strength-comparison__components-summary">
                 {result.capitalComponents.map((component) => component.label).join('・')}
@@ -184,7 +191,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
           <small className="strength-comparison__note">
             {isTraining
               ? '追加行動なしの固定耐久です。訓練中の出資・離反・LB増減は保存されません。'
-              : `現金＋離反リスクを織り込んだ最良の支援（${result.supportRoute}）＋1争奪戦につき1回の協力・アビリティで比較。風と押し込み速度は等級に含みません。`}
+              : `現金＋最良の支援（${result.supportRoute}）＋1争奪戦につき1回の協力・資金アビリティ・選択中の手動SYNERGYを戦力換算。風と通常の押し込み速度は等級に含みません。`}
           </small>
         </>
       )}
