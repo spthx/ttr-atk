@@ -2172,61 +2172,8 @@
   animation: capital-cue-afterglow var(--capital-afterglow-duration, 320ms) ease-out both;
 }
 
-.integrated-battlefield--capital-commit
-  :is(
-    .investment-stake-preview,
-    .ownership-avatar--player
-  ) {
+.integrated-battlefield--capital-commit .ownership-avatar--player {
   will-change: transform, opacity;
-}
-
-.integrated-battlefield--capital-prepare
-  .investment-stake-preview--stage-prepare {
-  animation:
-    capital-stake-prepare
-    var(--capital-prepare-duration, 150ms)
-    cubic-bezier(.2, .72, .24, 1)
-    both;
-}
-
-.integrated-battlefield--capital-travel
-  .investment-stake-preview--stage-travel {
-  animation:
-    capital-stake-travel
-    var(--capital-travel-duration, 170ms)
-    cubic-bezier(.18, .76, .2, 1)
-    both;
-}
-
-.integrated-battlefield--capital-impact
-  .investment-stake-preview--stage-impact {
-  animation:
-    capital-stake-impact
-    var(--capital-impact-duration, 475ms)
-    ease-out
-    both;
-}
-
-.integrated-battlefield--capital-afterglow
-  .investment-stake-preview--stage-afterglow {
-  opacity: 0;
-  translate: -38% 6%;
-  animation: none;
-}
-
-.buyout-screen .integrated-battlefield
-  .investment-stake-preview--cargo-bundle {
-  right: .3rem;
-  bottom: .42rem;
-  width: min(4.4rem, 32%);
-  height: 3.2rem;
-}
-
-.buyout-screen .integrated-battlefield
-  .investment-stake-preview--cargo-bundle > img {
-  right: .25rem;
-  bottom: 0;
-  height: 2.2rem;
 }
 
 .buyout-screen--capital-commit:not(.buyout-screen--terminal-cinematic)
@@ -2638,37 +2585,6 @@
   animation-duration: .68s;
 }
 
-@keyframes capital-stake-prepare {
-  0% { opacity: .82; translate: 0 .12rem; }
-  58% { opacity: 1; translate: 0 -.14rem; }
-  100% { opacity: 1; translate: 0 0; }
-}
-
-@keyframes capital-stake-travel {
-  0% { opacity: 1; translate: 0 0; }
-  72% { opacity: 1; translate: -28% -13%; }
-  100% { opacity: 1; translate: -36% -12%; }
-}
-
-@keyframes capital-stake-impact {
-  0%, 12% {
-    opacity: 1;
-    translate: -36% -12%;
-  }
-  30% {
-    opacity: 1;
-    translate: -36% 2%;
-  }
-  42% {
-    opacity: .48;
-    translate: -37% 4%;
-  }
-  100% {
-    opacity: 0;
-    translate: -38% 6%;
-  }
-}
-
 @keyframes capital-tataru-prepare {
   0% { transform: scaleX(-1); }
   70% { transform: translate3d(-.22rem, .08rem, 0) scaleX(-1); }
@@ -2751,22 +2667,8 @@
 }
 
 @media (max-width: 639px) {
-  .buyout-screen .integrated-battlefield
-    .investment-stake-preview--cargo-bundle {
-    right: .12rem;
-    bottom: .34rem;
-    width: min(3.7rem, 31%);
-    height: 2.85rem;
-  }
-
   .integrated-battlefield .battlefield-capital-deluge > i {
     --deluge-fall-distance: 8.5rem;
-  }
-
-  .buyout-screen .integrated-battlefield
-    .investment-stake-preview--cargo-bundle > img {
-    right: .22rem;
-    height: 1.95rem;
   }
 
   .buyout-screen .integrated-battlefield .ownership-capital-readout {
@@ -2879,7 +2781,6 @@
 @media (prefers-reduced-motion: reduce) {
   .buyout-screen--capital-commit
     :is(
-      .investment-stake-preview,
       .ownership-avatar--player,
       .player-capital-stack .gil-tower__chips,
       .player-capital-stack .gil-tower__hoard,
@@ -3499,9 +3400,13 @@
 
 @media (max-width: 430px) {
   .integrated-battlefield .gil-column-field {
-    --coin-column-width: clamp(.42rem, 2.05vw, .52rem);
-    --coin-layer-step: clamp(.1rem, .44vw, .125rem);
-    --coin-cap-height: clamp(.27rem, 1.05vw, .34rem);
+    --coin-column-width: clamp(.54rem, 2.65vw, .68rem);
+    --coin-layer-step: clamp(.125rem, .56vw, .16rem);
+    --coin-cap-height: clamp(.34rem, 1.35vw, .42rem);
+  }
+
+  .integrated-battlefield .capital-fixed-column {
+    left: var(--column-phone-x);
   }
 
   .integrated-battlefield .capital-overflow-stamp > i {
