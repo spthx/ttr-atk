@@ -540,6 +540,210 @@ export const BATTLE_CAPITAL_VISUAL_STAGE_COUNT = 60;
 export const MAX_BATTLE_CAPITAL_VISUAL_STAGE =
   BATTLE_CAPITAL_VISUAL_STAGE_COUNT - 1;
 
+export const BATTLE_CAPITAL_COLUMN_COUNT = 22;
+export const MAX_BATTLE_CAPITAL_COLUMN_LAYERS = 28;
+export const MAX_BATTLE_CAPITAL_VISIBLE_UNITS =
+  BATTLE_CAPITAL_COLUMN_COUNT * MAX_BATTLE_CAPITAL_COLUMN_LAYERS;
+
+const CAPITAL_COLUMN_FILL_ORDER = [
+  11, 12, 6, 7, 16, 17, 20, 21, 10, 13, 5,
+  8, 15, 18, 1, 2, 9, 14, 4, 19, 0, 3,
+] as const;
+
+/**
+ * Converts capital into the fixed twenty-two-column display used by the live field.
+ * The asking price chooses the campaign-scale height once for both sides, while
+ * the square-root curve keeps small offers readable and prevents late-game
+ * capital from requiring amount-proportional DOM nodes.
+ */
+export const getBattleCapitalVisibleUnits = (
+  amount: number,
+  marketPrice: number
+) => {
+  const normalizedAmount = Math.max(0, amount);
+  if (normalizedAmount <= 0) return 0;
+
+  const normalizedPrice = Math.max(1_000, marketPrice);
+  const priceMagnitude = Math.log10(normalizedPrice);
+  const layersAtTarget = Math.max(
+    6,
+    Math.min(
+      MAX_BATTLE_CAPITAL_COLUMN_LAYERS,
+      Math.round(6 + (priceMagnitude - 3) * 4)
+    )
+  );
+  const ratio = normalizedAmount / normalizedPrice;
+  return Math.max(
+    1,
+    Math.min(
+      MAX_BATTLE_CAPITAL_VISIBLE_UNITS,
+      Math.round(
+        BATTLE_CAPITAL_COLUMN_COUNT * layersAtTarget * Math.sqrt(ratio)
+      )
+    )
+  );
+};
+
+/** Same amount always produces the same almost-level twenty-two-column silhouette. */
+export const getCapitalColumnHeights = (visibleUnits: number) => {
+  const normalizedUnits = Math.max(
+    0,
+    Math.min(MAX_BATTLE_CAPITAL_VISIBLE_UNITS, Math.round(visibleUnits))
+  );
+  const baseHeight = Math.floor(normalizedUnits / BATTLE_CAPITAL_COLUMN_COUNT);
+  const remainder = normalizedUnits % BATTLE_CAPITAL_COLUMN_COUNT;
+  const heights = Array<number>(BATTLE_CAPITAL_COLUMN_COUNT).fill(baseHeight);
+  for (let index = 0; index < remainder; index += 1) {
+    heights[CAPITAL_COLUMN_FILL_ORDER[index]] += 1;
+  }
+  return heights;
+};
+
+export interface MechanicalCapitalColumnFrame {
+  visibleUnits: number;
+  columnHeights: number[];
+  activeColumnIndices: number[];
+}
+
+/**
+ * Deals capital into the fixed rack in small deterministic groups. Each frame
+ * changes only a handful of columns, like an automatic mahjong table, before
+ * returning to the next group and raising the rack again. The amount changes
+ * frame count and height, never the number of DOM nodes.
+ */
+export const getMechanicalCapitalColumnFrames = (
+  previousUnits: number,
+  targetUnits: number,
+  maxFrames: number,
+  columnsPerBeat = 5
+): MechanicalCapitalColumnFrame[] => {
+  const from = Math.max(
+    0,
+    Math.min(MAX_BATTLE_CAPITAL_VISIBLE_UNITS, Math.round(previousUnits))
+  );
+  const to = Math.max(
+    0,
+    Math.min(MAX_BATTLE_CAPITAL_VISIBLE_UNITS, Math.round(targetUnits))
+  );
+  const current = getCapitalColumnHeights(from);
+  const target = getCapitalColumnHeights(to);
+  if (from === to) {
+    return [{
+      visibleUnits: to,
+      columnHeights: target,
+      activeColumnIndices: [],
+    }];
+  }
+
+  const totalDistance = Math.abs(to - from);
+  const frameCount = Math.max(
+    1,
+    Math.min(30, Math.floor(maxFrames), totalDistance)
+  );
+  const groupSize = Math.max(
+    1,
+    Math.min(BATTLE_CAPITAL_COLUMN_COUNT, Math.floor(columnsPerBeat))
+  );
+  const direction = to > from ? 1 : -1;
+  const order = direction > 0
+    ? [...CAPITAL_COLUMN_FILL_ORDER]
+    : [...CAPITAL_COLUMN_FILL_ORDER].reverse();
+  const frames: MechanicalCapitalColumnFrame[] = [];
+  let cursor = 0;
+
+  for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+    const framesRemaining = frameCount - frameIndex;
+    const unitsRemaining = current.reduce(
+      (sum, height, index) => sum + Math.abs(target[index] - height),
+      0
+    );
+    let budget = Math.max(1, Math.ceil(unitsRemaining / framesRemaining));
+    const active = new Set<number>();
+    let groupSearches = 0;
+
+    while (budget > 0 && groupSearches < BATTLE_CAPITAL_COLUMN_COUNT * 2) {
+      const group = Array.from({ length: groupSize }, (_, offset) =>
+        order[(cursor + offset) % order.length]
+      );
+      cursor = (cursor + groupSize) % order.length;
+      groupSearches += groupSize;
+      let groupChanged = false;
+
+      while (budget > 0) {
+        let roundChanged = false;
+        group.forEach((columnIndex) => {
+          if (budget <= 0) return;
+          if (current[columnIndex] === target[columnIndex]) return;
+          current[columnIndex] += direction;
+          budget -= 1;
+          groupChanged = true;
+          roundChanged = true;
+          active.add(columnIndex);
+        });
+        if (!roundChanged) break;
+      }
+      if (groupChanged) break;
+    }
+
+    if (frameIndex === frameCount - 1) {
+      target.forEach((height, index) => {
+        if (current[index] !== height) active.add(index);
+        current[index] = height;
+      });
+    }
+    frames.push({
+      visibleUnits: current.reduce((sum, height) => sum + height, 0),
+      columnHeights: [...current],
+      activeColumnIndices: [...active],
+    });
+  }
+  return frames;
+};
+
+/** Fixed visual grades for capital beyond the drawable twenty-two-column rack. */
+export const getBattleCapitalOverflowTier = (
+  amount: number,
+  marketPrice: number
+) => {
+  const ratio = Math.max(0, amount) / Math.max(1, marketPrice);
+  if (ratio < 1.5) return 0;
+  if (ratio < 3) return 1;
+  if (ratio < 6) return 2;
+  return 3;
+};
+
+/**
+ * Bounded deterministic paint sequence. It changes only presentation state;
+ * battle capital remains committed exactly once by the caller.
+ */
+export const getCapitalVisibleUnitSequence = (
+  previousUnits: number,
+  targetUnits: number,
+  maxFrames: number
+) => {
+  const from = Math.max(
+    0,
+    Math.min(MAX_BATTLE_CAPITAL_VISIBLE_UNITS, Math.round(previousUnits))
+  );
+  const to = Math.max(
+    0,
+    Math.min(MAX_BATTLE_CAPITAL_VISIBLE_UNITS, Math.round(targetUnits))
+  );
+  if (from === to) return [to];
+  const frameCount = Math.max(1, Math.min(30, Math.floor(maxFrames)));
+  const distance = Math.abs(to - from);
+  const direction = to > from ? 1 : -1;
+  const steps = Math.min(distance, frameCount);
+  const sequence: number[] = [];
+  for (let index = 1; index <= steps; index += 1) {
+    const next = index === steps
+      ? to
+      : from + direction * Math.max(1, Math.round(distance * index / steps));
+    if (sequence.at(-1) !== next) sequence.push(next);
+  }
+  return sequence;
+};
+
 const BATTLE_CAPITAL_RATIO_THRESHOLDS = [
   ...Array.from(
     { length: 50 },
