@@ -915,6 +915,11 @@ assert.ok(
   'the same relative offer becomes a taller treasury in later chapters'
 );
 assert.equal(
+  MAX_BATTLE_CAPITAL_VISIBLE_UNITS,
+  792,
+  'twenty-two fixed columns may now reach thirty-six layers without adding DOM'
+);
+assert.equal(
   getBattleCapitalVisibleUnits(60_000_000_000, 6_000_000_000),
   MAX_BATTLE_CAPITAL_VISIBLE_UNITS,
   'ultimate overcapital stops at the fixed twenty-two-column height cap'

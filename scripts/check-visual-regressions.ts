@@ -138,8 +138,28 @@ assert.match(
 );
 assert.match(
   capitalCss,
-  /@media \(max-width: 430px\)[\s\S]*--coin-column-width: clamp\(\.54rem, 2\.65vw, \.68rem\)[\s\S]*left: var\(--column-phone-x\)/,
-  'portrait phones must use the wider, denser fixed capital formation'
+  /@media \(max-width: 430px\)[\s\S]*--coin-column-width: clamp\(\.7rem, 3\.25vw, \.84rem\)[\s\S]*--coin-layer-step: clamp\(\.17rem, \.88vw, \.22rem\)[\s\S]*left: var\(--column-phone-x\)/,
+  'portrait phones must use the oversized, taller fixed capital formation'
+);
+assert.match(
+  capitalCss,
+  /@media \(max-width: 639px\) and \(min-height: 701px\)[\s\S]*gil-tower--player \.gil-tower__chips[\s\S]*top: -3rem;[\s\S]*right: -10%;[\s\S]*left: 20%;/,
+  'tall portrait phones must spend their free vertical area on the coin mountain'
+);
+assert.doesNotMatch(
+  capitalCss,
+  /capital-fixed-column\[data-machine-active="true"\][^{]*\{[^}]*z-index/,
+  'a stacking column must not jump ahead of nearer rows while it moves'
+);
+assert.match(
+  capitalCss,
+  /gil-tower__chips[\s\S]*isolation: isolate;[\s\S]*capital-overflow-stamp[\s\S]*z-index: 12;/,
+  'coin depth and finite overflow pieces must remain inside an isolated layer below actors and readouts'
+);
+assert.match(
+  battleModal,
+  /Math\.min\(16, 8 \+ frame\.overflowTier \* 2\)[\s\S]*index % 8/,
+  'overcapital may use up to sixteen bounded pieces across eight lanes'
 );
 assert.match(
   integratedCss,
@@ -185,6 +205,11 @@ assert.match(
   battlePresentation,
   /MAX_BATTLE_CAPITAL_VISIBLE_UNITS =\s*BATTLE_CAPITAL_COLUMN_COUNT \* MAX_BATTLE_CAPITAL_COLUMN_LAYERS/,
   'campaign coin height must remain bounded by the fixed column pool'
+);
+assert.match(
+  battlePresentation,
+  /MAX_BATTLE_CAPITAL_COLUMN_LAYERS = 36/,
+  'inflation-era columns must retain the taller thirty-six-layer cap'
 );
 assert.match(
   battlePresentation,
