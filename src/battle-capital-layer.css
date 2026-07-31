@@ -17,6 +17,7 @@
   width: auto;
   max-width: none;
   overflow: visible;
+  isolation: isolate;
 }
 
 .integrated-battlefield .capital-visual-row .ownership-fighter {
@@ -3303,14 +3304,13 @@
 
 .integrated-battlefield
   .capital-fixed-column[data-machine-active="true"] {
-  z-index: calc(8 + var(--column-depth));
   will-change: height, translate, filter;
   animation: capital-column-machine-seat 132ms steps(4, end) both;
 }
 
 .integrated-battlefield .capital-overflow-stamp {
   position: absolute;
-  z-index: 18;
+  z-index: 12;
   inset: 0;
   display: block;
   overflow: visible;
@@ -3378,17 +3378,17 @@
 
 @media (max-width: 639px) and (min-height: 701px) {
   .integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips {
-    top: -.85rem;
-    right: -7%;
+    top: -3rem;
+    right: -10%;
     bottom: .48rem;
-    left: 30%;
+    left: 20%;
   }
 
   .integrated-battlefield .capital-visual-row .gil-tower--enemy .gil-tower__chips {
-    top: -.85rem;
-    right: 30%;
+    top: -3rem;
+    right: 20%;
     bottom: .48rem;
-    left: -7%;
+    left: -10%;
   }
 
   .integrated-battlefield .gil-column-field {
@@ -3400,9 +3400,9 @@
 
 @media (max-width: 430px) {
   .integrated-battlefield .gil-column-field {
-    --coin-column-width: clamp(.54rem, 2.65vw, .68rem);
-    --coin-layer-step: clamp(.125rem, .56vw, .16rem);
-    --coin-cap-height: clamp(.34rem, 1.35vw, .42rem);
+    --coin-column-width: clamp(.7rem, 3.25vw, .84rem);
+    --coin-layer-step: clamp(.17rem, .88vw, .22rem);
+    --coin-cap-height: clamp(.46rem, 1.8vw, .56rem);
   }
 
   .integrated-battlefield .capital-fixed-column {
@@ -3414,15 +3414,15 @@
   }
 
   .integrated-battlefield .gil-column-field[data-overflow-tier="1"] {
-    --capital-rack-sink: .18rem;
+    --capital-rack-sink: .32rem;
   }
 
   .integrated-battlefield .gil-column-field[data-overflow-tier="2"] {
-    --capital-rack-sink: .3rem;
+    --capital-rack-sink: .58rem;
   }
 
   .integrated-battlefield .gil-column-field[data-overflow-tier="3"] {
-    --capital-rack-sink: .42rem;
+    --capital-rack-sink: .84rem;
   }
 }
 
@@ -3847,16 +3847,16 @@
 
 @media (max-width: 639px) and (min-height: 701px) {
   .integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips {
-    top: -.85rem;
-    right: -7%;
+    top: -3rem;
+    right: -10%;
     bottom: .48rem;
-    left: 30%;
+    left: 20%;
   }
 
   .integrated-battlefield .capital-visual-row .gil-tower--enemy .gil-tower__chips {
-    top: -.85rem;
-    right: 30%;
+    top: -3rem;
+    right: 20%;
     bottom: .48rem;
-    left: -7%;
+    left: -10%;
   }
 }

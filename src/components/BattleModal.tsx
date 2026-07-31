@@ -618,18 +618,18 @@ const riskPresentation = (risk: number) => {
 };
 
 const CAPITAL_COLUMN_SLOTS = [
-  { x: 42.5, phoneX: 39.1, bottom: 30, depth: 0 }, { x: 47.5, phoneX: 46.4, bottom: 32, depth: 0 },
-  { x: 52.5, phoneX: 53.6, bottom: 32, depth: 0 }, { x: 57.5, phoneX: 60.9, bottom: 30, depth: 0 },
-  { x: 40, phoneX: 35.5, bottom: 20, depth: 1 }, { x: 45, phoneX: 42.8, bottom: 22, depth: 1 },
-  { x: 50, phoneX: 50, bottom: 23, depth: 1 }, { x: 55, phoneX: 57.3, bottom: 22, depth: 1 },
-  { x: 60, phoneX: 64.5, bottom: 20, depth: 1 },
-  { x: 37.5, phoneX: 31.9, bottom: 10, depth: 2 }, { x: 42.5, phoneX: 39.1, bottom: 12, depth: 2 },
-  { x: 47.5, phoneX: 46.4, bottom: 13, depth: 2 }, { x: 52.5, phoneX: 53.6, bottom: 13, depth: 2 },
-  { x: 57.5, phoneX: 60.9, bottom: 12, depth: 2 }, { x: 62.5, phoneX: 68.1, bottom: 10, depth: 2 },
-  { x: 40, phoneX: 35.5, bottom: 0, depth: 3 }, { x: 45, phoneX: 42.8, bottom: 2, depth: 3 },
-  { x: 50, phoneX: 50, bottom: 3, depth: 3 }, { x: 55, phoneX: 57.3, bottom: 2, depth: 3 },
-  { x: 60, phoneX: 64.5, bottom: 0, depth: 3 },
-  { x: 35, phoneX: 28.3, bottom: 9, depth: 2 }, { x: 65, phoneX: 71.8, bottom: 9, depth: 2 },
+  { x: 42.5, phoneX: 34.6, bottom: 30, depth: 0 }, { x: 47.5, phoneX: 44.9, bottom: 32, depth: 0 },
+  { x: 52.5, phoneX: 55.1, bottom: 32, depth: 0 }, { x: 57.5, phoneX: 65.4, bottom: 30, depth: 0 },
+  { x: 40, phoneX: 29.5, bottom: 20, depth: 1 }, { x: 45, phoneX: 39.8, bottom: 22, depth: 1 },
+  { x: 50, phoneX: 50, bottom: 23, depth: 1 }, { x: 55, phoneX: 60.3, bottom: 22, depth: 1 },
+  { x: 60, phoneX: 70.5, bottom: 20, depth: 1 },
+  { x: 37.5, phoneX: 24.4, bottom: 10, depth: 2 }, { x: 42.5, phoneX: 34.6, bottom: 12, depth: 2 },
+  { x: 47.5, phoneX: 44.9, bottom: 13, depth: 2 }, { x: 52.5, phoneX: 55.1, bottom: 13, depth: 2 },
+  { x: 57.5, phoneX: 65.4, bottom: 12, depth: 2 }, { x: 62.5, phoneX: 75.6, bottom: 10, depth: 2 },
+  { x: 40, phoneX: 29.5, bottom: 0, depth: 3 }, { x: 45, phoneX: 39.8, bottom: 2, depth: 3 },
+  { x: 50, phoneX: 50, bottom: 3, depth: 3 }, { x: 55, phoneX: 60.3, bottom: 2, depth: 3 },
+  { x: 60, phoneX: 70.5, bottom: 0, depth: 3 },
+  { x: 35, phoneX: 19.3, bottom: 9, depth: 2 }, { x: 65, phoneX: 80.8, bottom: 9, depth: 2 },
 ] as const;
 
 const GilPileVisual = React.memo(function GilPileVisual({
@@ -642,7 +642,7 @@ const GilPileVisual = React.memo(function GilPileVisual({
   const activeColumns = new Set(frame.activeColumnIndices);
   const overflowPieceCount =
     frame.overflowTier > 0 && frame.presentationSerial > 0
-      ? Math.min(12, 6 + frame.overflowTier * 2)
+      ? Math.min(16, 8 + frame.overflowTier * 2)
       : 0;
 
   return (
@@ -678,7 +678,7 @@ const GilPileVisual = React.memo(function GilPileVisual({
               key={index}
               style={{
                 '--overflow-index': index,
-                '--overflow-lane': index % 6,
+                '--overflow-lane': index % 8,
               } as React.CSSProperties}
             />
           ))}
