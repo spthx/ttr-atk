@@ -1,8 +1,9 @@
-import type { GroupSynergy, Property } from '../types';
+import type { BattleMode, GroupSynergy, Property } from '../types';
 import { calculateRebellionProbability } from './formatter';
 import {
   BATTLE_LOYALTY_BALANCE,
   BATTLE_SUPPORT_BALANCE,
+  DIRECT_INVESTMENT_BALANCE,
   LIMIT_BREAK_MULTIPLIERS,
   getChargedLimitBreakTier,
   getLimitBreakChargeCapacity,
@@ -26,7 +27,14 @@ export type BattleReadinessSupportRoute =
   | '支援なし';
 
 export interface BattleReadinessCapitalComponent {
-  key: 'cash' | 'subsidiaries' | 'synergy' | 'limit_break' | 'alliance' | 'capital_boost';
+  key:
+    | 'cash'
+    | 'subsidiaries'
+    | 'synergy'
+    | 'limit_break'
+    | 'alliance'
+    | 'capital_boost'
+    | 'battle_synergy';
   label: string;
   amount: number;
 }
@@ -44,6 +52,7 @@ export interface BattleReadinessInput {
   enemyBaseReactionSeconds: number;
   playerPushBonus: number;
   cashCapRatio?: number | null;
+  battleMode?: BattleMode;
 }
 
 export interface BattleReadinessResult {
@@ -75,6 +84,8 @@ export interface BattleReadinessResult {
   enemyBaseReactionSeconds: number;
   playerPushBonus: number;
   battleCashLimit: number;
+  mechanicCheckRequired: boolean;
+  mechanicWarning: string | null;
 }
 
 interface SupportRoute {
@@ -262,6 +273,41 @@ const getGradeForRatio = (ratio: number) => {
   } as const;
 };
 
+export const calculateBattleSynergyReadinessEquivalent = ({
+  targetMarketPrice,
+  synergy,
+  followUpCapital,
+}: {
+  targetMarketPrice: number;
+  synergy?: GroupSynergy | null;
+  followUpCapital: number;
+}) => {
+  const effect = synergy?.battleOnly ? synergy.battleEffect : null;
+  if (!effect) return 0;
+
+  const rallyGaugeMovement = Math.max(0, effect.ownershipPush ?? 0) * 2;
+  const rallyMarketRatio = Math.max(
+    0,
+    (
+      rallyGaugeMovement -
+      DIRECT_INVESTMENT_BALANCE.baseGaugeImpact
+    ) / DIRECT_INVESTMENT_BALANCE.gaugeImpactPerMarketRatio
+  );
+  const rallyEquivalent =
+    Math.max(0, targetMarketPrice) * rallyMarketRatio;
+  const durationWeight = Math.min(
+    1,
+    Math.max(0, effect.durationMs) /
+      TACTICAL_SKILL_BALANCE.battleLitany.durationMs
+  );
+  const pressureEquivalent =
+    Math.max(0, followUpCapital) *
+    Math.max(0, effect.capitalPressureMultiplier - 1) *
+    durationWeight;
+
+  return Math.round(rallyEquivalent + pressureEquivalent);
+};
+
 export const calculateBattleReadiness = ({
   targetMarketPrice,
   availableCash,
@@ -275,6 +321,7 @@ export const calculateBattleReadiness = ({
   enemyBaseReactionSeconds,
   playerPushBonus,
   cashCapRatio = PLAYER_BATTLE_CASH_CAP_RATIO,
+  battleMode = 'normal',
 }: BattleReadinessInput): BattleReadinessResult => {
   const minimumInvestment = Math.max(
     10,
@@ -311,13 +358,24 @@ export const calculateBattleReadiness = ({
           TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio
       )
     : 0;
+  const battleSynergyEquivalent =
+    calculateBattleSynergyReadinessEquivalent({
+      targetMarketPrice,
+      synergy: selectedBattleSynergy,
+      followUpCapital: Math.max(
+        supportRoute.amount,
+        Math.min(deployableCash, Math.max(0, targetMarketPrice) * 0.25)
+      ),
+    });
   const rawPlayerCapital =
     deployableCash +
     supportRoute.amount +
     Math.max(0, allianceSupport) +
-    capitalBoost;
-  // 押し込み補正は同額資本が所有率を動かす速度であり、動員できる資本そのものではない。
-  // 強さ表示では資本差を逆転させないよう、金額には乗算せず別情報として扱う。
+    capitalBoost +
+    battleSynergyEquivalent;
+  // 恒常的な押し込み補正は速度であり、動員資本そのものではないため
+  // 金額へ乗算しない。一方、1戦1回の手動SYNERGYは即時ラリーと
+  // 続く一手の実効値を直接変えるため、上で限定的に戦力換算する。
   const playerExpectedCapital = Math.round(rawPlayerCapital);
   const normalizedEnemyBudget = Math.max(1, Math.round(enemyBudget));
   const ratio = playerExpectedCapital / normalizedEnemyBudget;
@@ -378,6 +436,21 @@ export const calculateBattleReadiness = ({
       amount: capitalBoost,
     });
   }
+  if (battleSynergyEquivalent > 0 && selectedBattleSynergy) {
+    capitalComponents.push({
+      key: 'battle_synergy',
+      label: `${selectedBattleSynergy.name}（号令＋次の一手）`,
+      amount: battleSynergyEquivalent,
+    });
+  }
+  const mechanicCheckRequired =
+    battleMode === 'savage' || battleMode === 'ultimate';
+  const mechanicWarning =
+    battleMode === 'ultimate'
+      ? '絶は開幕・窮地アビリティを決着前に必ず解決します。戦力が足りても、構えへの対応を誤ると敗北します。'
+      : battleMode === 'savage'
+        ? '零式は層ごとの開幕・窮地・防御ギミックを含みます。戦力比だけでは勝利を保証しません。'
+        : null;
 
   return {
     grade: gradePresentation.grade,
@@ -411,5 +484,7 @@ export const calculateBattleReadiness = ({
     enemyBaseReactionSeconds,
     playerPushBonus,
     battleCashLimit,
+    mechanicCheckRequired,
+    mechanicWarning,
   };
 };

@@ -174,8 +174,11 @@ export const SKILL_CINEMATIC_TIMING = {
   castMs: 460,
   hitStopMs: 90,
   impactMs: 360,
-  resolveMs: 420,
-  totalMs: 1_750,
+  // Keep the resolved effect card on screen long enough to read its value and
+  // duration. Simulation remains paused, so this adds clarity without changing
+  // the strength or effective lifetime of the skill.
+  resolveMs: 900,
+  totalMs: 2_230,
 } as const;
 
 export const REDUCED_MOTION_SKILL_CINEMATIC_TIMING = {
@@ -183,8 +186,9 @@ export const REDUCED_MOTION_SKILL_CINEMATIC_TIMING = {
   castMs: 220,
   hitStopMs: 42,
   impactMs: 180,
-  resolveMs: 260,
-  totalMs: 912,
+  // Reduced motion shortens movement, not the time needed to read the result.
+  resolveMs: 600,
+  totalMs: 1_252,
 } as const;
 
 export type SkillCinematicStage =

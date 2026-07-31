@@ -12,7 +12,10 @@ import {
   getEnemyBaseWaitMs,
   type EnemyDecisionContext,
 } from '../src/utils/enemyAi';
-import { calculateBattleReadiness } from '../src/utils/battleReadiness';
+import {
+  calculateBattleReadiness,
+  calculateBattleSynergyReadinessEquivalent,
+} from '../src/utils/battleReadiness';
 import {
   applyNormalBattlePropertyUpdates,
   calculateAtLeastOneDepartureProbability,
@@ -207,6 +210,7 @@ import {
   calculateEraWindCost,
   getEraWindGaugePushPerSecond,
   canEnemyAffordDrill,
+  shouldForceUltimateCriticalBeforeVictory,
   ENEMY_SUPPORT_SKILL_BALANCE,
   ULTIMATE_ENEMY_AUTO_PATTERNS,
   getEnemyCureRecoveryRatio,
@@ -1633,6 +1637,41 @@ assert.ok(
   'Grand Company Eorzea is the strongest progression battle synergy'
 );
 assert.equal(grandCompanyEorzea.battleEffect?.ownershipPush, 12);
+const grandCompanyReadinessEquivalent =
+  calculateBattleSynergyReadinessEquivalent({
+    targetMarketPrice: 6_000_000_000,
+    synergy: grandCompanyEorzea,
+    followUpCapital: 1_000_000_000,
+  });
+assert.ok(
+  grandCompanyReadinessEquivalent > 0,
+  'readiness values the selected manual progression synergy instead of omitting it'
+);
+const ultimateReadinessWithGrandCompany = calculateBattleReadiness({
+  targetMarketPrice: 6_000_000_000,
+  availableCash: 6_000_000_000,
+  subsidiaries: [],
+  selectedBattleSynergy: grandCompanyEorzea,
+  limitBreakCharge: 0,
+  allianceSupport: 0,
+  hasCapitalBoost: false,
+  enemyBudget: 16_500_000_000,
+  enemyDifficultyLevel: 6,
+  enemyBaseReactionSeconds: 1.5,
+  playerPushBonus: 0,
+  battleMode: 'ultimate',
+});
+assert.ok(
+  ultimateReadinessWithGrandCompany.capitalComponents.some(
+    (component) => component.key === 'battle_synergy'
+  ),
+  'the pre-battle breakdown names the selected manual synergy contribution'
+);
+assert.equal(ultimateReadinessWithGrandCompany.mechanicCheckRequired, true);
+assert.match(
+  ultimateReadinessWithGrandCompany.mechanicWarning ?? '',
+  /開幕・窮地/
+);
 assert.equal(
   isGroupSynergyUnlocked({
     synergy: crystalBraves,
@@ -1912,6 +1951,45 @@ ULTIMATE_ENEMY_AUTO_PATTERNS.forEach((pattern, index) => {
     { opening: pattern.opening, critical: pattern.critical }
   );
 });
+assert.equal(
+  shouldForceUltimateCriticalBeforeVictory({
+    isUltimate: true,
+    terminalWinner: 'player',
+    criticalSkillId: 'limit_break_3',
+    criticalSkillUsed: false,
+    gateConsumed: false,
+    enemyReserve: 0,
+    enemyBudget: 1,
+  }),
+  true,
+  'Ultimate resolves its critical action before accepting player victory'
+);
+assert.equal(
+  shouldForceUltimateCriticalBeforeVictory({
+    isUltimate: false,
+    terminalWinner: 'player',
+    criticalSkillId: 'limit_break_3',
+    criticalSkillUsed: false,
+    gateConsumed: false,
+    enemyReserve: 0,
+    enemyBudget: 1,
+  }),
+  false,
+  'the critical victory gate never leaks into normal or Savage battles'
+);
+assert.equal(
+  shouldForceUltimateCriticalBeforeVictory({
+    isUltimate: true,
+    terminalWinner: 'player',
+    criticalSkillId: 'drill',
+    criticalSkillUsed: false,
+    gateConsumed: false,
+    enemyReserve: 0,
+    enemyBudget: 10_000,
+  }),
+  false,
+  'draining the Drill reserve remains a valid Ultimate counterplay'
+);
 assert.ok(
   ultimateProperty.marketPrice > savageProperties[savageProperties.length - 1].marketPrice
 );
