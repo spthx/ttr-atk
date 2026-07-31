@@ -22,6 +22,20 @@ import {
 
 type SkillActivationMode = 'manual' | 'opening_auto' | 'critical_auto';
 
+const SKILL_PROGRESSION_ORDER = [
+  'skill_synergy_push',
+  'skill_fast_horse',
+  'skill_nemawashi',
+  'skill_capital_boost',
+  'skill_sns_blitz',
+  'skill_demoralize',
+  'skill_sabotage',
+  'skill_era_wind',
+] as const;
+const SKILL_PROGRESSION_RANK = new Map<string, number>(
+  SKILL_PROGRESSION_ORDER.map((skillId, index) => [skillId, index])
+);
+
 interface SkillsSynergyViewProps {
   skills: TacticalSkill[];
   equippedSkillIds: string[];
@@ -93,7 +107,12 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
     null;
   const resolvedSelectedBattleSynergyId =
     selectedBattleSynergy?.id ?? null;
-  const equippedSkills = skills.filter((skill) =>
+  const orderedSkills = [...skills].sort(
+    (left, right) =>
+      (SKILL_PROGRESSION_RANK.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+      (SKILL_PROGRESSION_RANK.get(right.id) ?? Number.MAX_SAFE_INTEGER)
+  );
+  const equippedSkills = orderedSkills.filter((skill) =>
     equippedSkillIds.includes(skill.id)
   );
 
@@ -143,7 +162,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
             {openingAutoUnlocked && (
               <p className="mt-1 text-xs text-amber-200/80">
                 装備中の技は、手動または開幕アビリティ
-                {criticalAutoUnlocked ? '・窮地アビリティ' : ''}
+                {criticalAutoUnlocked ? '・土壇場アビリティ' : ''}
                 に設定できます。自動枠へ設定した技は商戦中の手動選択から外れます。
               </p>
             )}
@@ -163,7 +182,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
             className={`grid gap-3 rounded-xl border border-slate-700 bg-slate-950/80 p-4 ${
               criticalAutoUnlocked ? 'md:grid-cols-2' : ''
             }`}
-            aria-label="開幕・窮地アビリティ設定"
+            aria-label="開幕・土壇場アビリティ設定"
           >
             <label className="grid gap-2 rounded-lg border border-cyan-500/35 bg-cyan-950/25 p-3">
               <span>
@@ -196,7 +215,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
             {criticalAutoUnlocked && (
               <label className="grid gap-2 rounded-lg border border-rose-500/35 bg-rose-950/25 p-3">
                 <span>
-                  <b className="block text-sm text-rose-100">窮地アビリティ</b>
+                  <b className="block text-sm text-rose-100">土壇場アビリティ</b>
                   <small className="text-[11px] leading-relaxed text-rose-200/70">
                     所有率25%以下へ入る時に一度だけ割り込み。設定した技は手動一覧から外れます。
                   </small>
@@ -211,7 +230,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                     )
                   }
                   className="min-h-11 w-full rounded-lg border border-rose-400/45 bg-slate-900 px-3 text-sm font-bold text-rose-50"
-                  aria-label="窮地アビリティへ設定するアビリティ"
+                  aria-label="土壇場アビリティへ設定するアビリティ"
                 >
                   <option value="">設定なし</option>
                   {equippedSkills.map((skill) => (
@@ -227,7 +246,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
 
         {/* Skills Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {skills.map((skill) => {
+          {orderedSkills.map((skill) => {
             const unlocked = isSkillUnlocked({ skill, ownedProperties, totalFunds, activeSynergyCount });
             const isEquipped = equippedSkillIds.includes(skill.id);
             const activationMode: SkillActivationMode =
@@ -240,7 +259,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
               activationMode === 'opening_auto'
                 ? '開幕アビリティ'
                 : activationMode === 'critical_auto'
-                  ? '窮地アビリティ'
+                  ? '土壇場アビリティ'
                   : '手動';
 
             return (

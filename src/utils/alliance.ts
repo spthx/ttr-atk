@@ -1,6 +1,6 @@
 import type { AllianceState, Property } from '../types';
 
-export const ALLIANCE_SUPPORT_MARKET_RATIO = 0.32;
+export const ALLIANCE_SUPPORT_MARKET_RATIO = 0.42;
 
 export const getAllianceKind = (alliance: AllianceState) =>
   alliance.allyKind ?? 'company';
