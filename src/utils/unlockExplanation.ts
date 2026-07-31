@@ -32,7 +32,7 @@ export const getSkillUnlockExplanation = (
     dialogue: `${skill.name}を修得したでっす！ 商戦前に装備して、ここぞという場面で使うでっす。`,
     detail: `${skill.description} ${usageLimit}`,
     operation:
-      '「アビリティ」画面でアビリティ装備を設定します。開幕アビリティ・窮地アビリティに設定した技は、手動発動の一覧から外れます。',
+      '「アビリティ」画面でアビリティ装備を設定します。開幕アビリティ・土壇場アビリティに設定した技は、手動発動の一覧から外れます。',
   };
 };
 
