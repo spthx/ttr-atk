@@ -96,6 +96,46 @@ assert.match(
   /BATTLE_CAPITAL_VISUAL_STAGE_COUNT = 60/,
   'the fine-grained coin pile must retain sixty logical paint stages'
 );
+assert.match(
+  battlePresentation,
+  /resolveMs: 900,[\s\S]*totalMs: 2_230/,
+  'skill effects must retain a readable result beat'
+);
+assert.match(
+  battleModal,
+  /integrated-battlefield--settled-\$\{winner\}/,
+  'terminal actor positions must remain latched through the result handoff'
+);
+assert.match(
+  battleModal,
+  /shouldForceUltimateCriticalBeforeVictory[\s\S]*setUltimateCriticalGatePending\(true\)[\s\S]*updateGauge\(-98, true\)/,
+  'Ultimate must resolve its authored critical action before accepting victory'
+);
+assert.match(
+  battleModal,
+  /ultimateCriticalGatePending[\s\S]*startEnemySupportSkill\(criticalSkillId\)/,
+  'the Ultimate victory hold must hand off to the critical action presentation'
+);
+assert.match(
+  battleModal,
+  /simulationPausedRef\.current = presentationPauseActive[\s\S]*simulationPausedRef\.current \|\|[\s\S]*timeScale <= 0/,
+  'presentation pauses must synchronously block queued enemy actions'
+);
+assert.match(
+  battleModal,
+  /if \(terminalRef\.current \|\| simulationPausedRef\.current\) return;[\s\S]*setAiProgress/,
+  'enemy action progress must remain frozen throughout presentation beats'
+);
+assert.match(
+  battleModal,
+  /actionsLocked && primarySkillStateText === '発動可'[\s\S]*'演出待ち'/,
+  'a locked ready ability must explain that it is waiting for the presentation'
+);
+assert.match(
+  capitalCss,
+  /boss-party-final-knock-away[\s\S]*integrated-battlefield--settled-player[\s\S]*boss-enemy-party__member/,
+  'boss party members must leave with their leader and remain offstage'
+);
 
 const assertCompactWebp = (path: string, maximumBytes: number) => {
   const absolutePath = resolve(repositoryRoot, path);

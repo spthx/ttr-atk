@@ -155,6 +155,7 @@ import {
   holdTrainingGaugeAboveDefeat,
   resolveLivingDeadOutcome,
   shouldEnemyUseCure,
+  shouldForceUltimateCriticalBeforeVictory,
   sortSubsidiariesBySupport,
   TACTICAL_SKILL_BALANCE,
   ULTIMATE_ENEMY_AUTO_PATTERNS,
@@ -1104,6 +1105,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [openingAutoPending, setOpeningAutoPending] = useState(false);
   const [criticalAutoPending, setCriticalAutoPending] =
     useState<PendingCriticalGaugeCandidate | null>(null);
+  const [ultimateCriticalGatePending, setUltimateCriticalGatePending] =
+    useState(false);
   const [decisionGraceActive, setDecisionGraceActive] = useState(false);
   const [companyGrowthRevealed, setCompanyGrowthRevealed] = useState(false);
   const revealCompanyGrowth = useCallback(
@@ -1173,6 +1176,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const enemySupportUsedRef = useRef<Set<EnemySupportSkillId>>(new Set());
   const enemySupportMarkActiveRef = useRef(false);
   const enemySupportCastBlockedRef = useRef(false);
+  const simulationPausedRef = useRef(true);
   const playerCoverExitTimerRef = useRef<number | null>(null);
   const enemyCoverExitTimerRef = useRef<number | null>(null);
   const floaterTimersRef = useRef<Set<number>>(new Set());
@@ -1187,6 +1191,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const criticalAutoTriggeredRef = useRef(false);
   const criticalAutoPendingRef =
     useRef<PendingCriticalGaugeCandidate | null>(null);
+  const ultimateCriticalGateConsumedRef = useRef(false);
+  const ultimateCriticalGatePendingRef = useRef(false);
   const lastAnnouncedWindRef = useRef<WindCondition['type']>('CALM');
   const lastTelegraphedWindRef = useRef<WindCondition['type'] | null>(null);
   const livingDeadPhaseRef = useRef<LivingDeadPhase>('inactive');
@@ -2008,6 +2014,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ) / 1000,
       playerPushBonus: influenceBonus,
       cashCapRatio: isTraining ? null : undefined,
+      battleMode: isTraining
+        ? 'training'
+        : isUltimate
+          ? 'ultimate'
+          : isSavage
+            ? 'savage'
+            : 'normal',
     })
   );
   const commandProgressPerTick = fastHorse
@@ -2026,6 +2039,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     !!capitalCommit ||
     openingAutoPending ||
     !!criticalAutoPending ||
+    ultimateCriticalGatePending ||
     enemyOpeningCoverPending ||
     enemySupportPresentationLocked;
   const decisiveLocked = !!terminalRef.current || !!decisiveBlow;
@@ -2037,6 +2051,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     !!impactStop ||
     showHelp ||
     showLog;
+  const displayedPrimarySkillStateText =
+    actionsLocked && primarySkillStateText === '発動可'
+      ? '演出待ち'
+      : primarySkillStateText;
   const backgroundInert =
     panel !== 'capital' ||
     showHelp ||
@@ -2083,11 +2101,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     !!enemySupportCinematic ||
     openingAutoPending ||
     !!criticalAutoPending ||
+    ultimateCriticalGatePending ||
     presentationLocked ||
     decisiveLocked ||
     showHelp ||
     showLog ||
     panel !== 'capital';
+  simulationPausedRef.current = presentationPauseActive;
   const timeScale = presentationPauseActive
     ? 0
     : decisionGraceActive
@@ -2116,6 +2136,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     !!capitalCommit ||
     openingAutoPending ||
     !!criticalAutoPending ||
+    ultimateCriticalGatePending ||
     !!impactStop ||
     limitImpactActive ||
     !!terminalCinematicStage ||
@@ -2189,7 +2210,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return;
     }
     const timer = window.setInterval(() => {
-      if (terminalRef.current) return;
+      if (terminalRef.current || simulationPausedRef.current) return;
       setBattleWindState((current) =>
         advanceBattleWind(
           current,
@@ -2392,6 +2413,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     heavy = false
   ) => {
     if (endedRef.current || terminalRef.current) return;
+    simulationPausedRef.current = true;
     clearImpactStop();
     impactStopSerialRef.current += 1;
     const serial = impactStopSerialRef.current;
@@ -2438,6 +2460,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   const announceBattle = (announcement: BattleAnnouncement, duration = 2000) => {
     if (announcementTimerRef.current) window.clearTimeout(announcementTimerRef.current);
+    simulationPausedRef.current = true;
     enemySupportCastBlockedRef.current = true;
     setBattleAnnouncement(announcement);
     announcementTimerRef.current = window.setTimeout(() => setBattleAnnouncement(null), duration);
@@ -2445,6 +2468,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   const announceCondition = (announcement: BattleConditionAnnouncement) => {
     if (terminalRef.current || endedRef.current) return;
+    simulationPausedRef.current = true;
     setConditionAnnouncementQueue((current) =>
       enqueueBattleStatusMessage(
         current,
@@ -2579,7 +2603,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (battlePhaseRef.current !== 'briefing' || endedRef.current) return;
     criticalAutoTriggeredRef.current = false;
     criticalAutoPendingRef.current = null;
+    ultimateCriticalGateConsumedRef.current = false;
+    ultimateCriticalGatePendingRef.current = false;
     setCriticalAutoPending(null);
+    setUltimateCriticalGatePending(false);
     const openingLog = {
       id: `open-${Date.now()}`,
       category: 'system' as LogCategory,
@@ -3026,7 +3053,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     resolvedDefeatReason: DefeatReason = 'CAPITAL_COLLAPSE',
     cause: TerminalCause = result === 'player' ? lastPressureCauseRef.current : 'enemy'
   ) => {
-    if (endedRef.current || terminalRef.current) return false;
+    if (
+      endedRef.current ||
+      terminalRef.current ||
+      ultimateCriticalGatePendingRef.current
+    ) {
+      return false;
+    }
     terminalRef.current = {
       winner: result,
       method,
@@ -3289,7 +3322,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     commitVisual = true,
     coverAlreadyResolved = false
   ) => {
-    if (endedRef.current || terminalRef.current) return false;
+    if (
+      endedRef.current ||
+      terminalRef.current ||
+      ultimateCriticalGatePendingRef.current
+    ) {
+      return false;
+    }
     if (cause !== 'enemy') {
       lastPressureCauseRef.current = cause;
     }
@@ -3347,6 +3386,38 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return false;
     }
     const terminalWinner = getBattleTerminalWinner(nextGauge);
+    const ultimateCriticalSkillId = enemySupportAutoProfile.critical;
+    if (
+      shouldForceUltimateCriticalBeforeVictory({
+        isUltimate,
+        terminalWinner,
+        criticalSkillId: ultimateCriticalSkillId,
+        criticalSkillUsed:
+          !!ultimateCriticalSkillId &&
+          enemySupportUsedRef.current.has(ultimateCriticalSkillId),
+        gateConsumed: ultimateCriticalGateConsumedRef.current,
+        enemyReserve: enemyReserveRef.current,
+        enemyBudget,
+      })
+    ) {
+      const criticalActionName =
+        ultimateCriticalSkillId
+          ? ENEMY_SUPPORT_PRESENTATION[ultimateCriticalSkillId].actionName
+          : '窮地アビリティ';
+      ultimateCriticalGateConsumedRef.current = true;
+      ultimateCriticalGatePendingRef.current = true;
+      setUltimateCriticalGatePending(true);
+      setGaugeSpeed(0);
+      updateGauge(-98, true);
+      setStatusText(
+        `絶・窮地アビリティ――${criticalActionName}を先に解決`
+      );
+      addLog(
+        `絶商戦の窮地ギミックが割り込み。${criticalActionName}の解決まで決着を保留。`,
+        'enemy'
+      );
+      return false;
+    }
     if (terminalWinner === 'player') {
       return finishBattle(
         'player',
@@ -3699,6 +3770,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return false;
     }
 
+    simulationPausedRef.current = true;
     clearEnemySupportTimers();
     const serial = enemySupportSerialRef.current;
     const presentation = ENEMY_SUPPORT_PRESENTATION[skillId];
@@ -3803,8 +3875,60 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   useEffect(() => {
+    if (!ultimateCriticalGatePending) return;
+    const criticalSkillId = enemySupportAutoProfile.critical;
+    if (!criticalSkillId) {
+      ultimateCriticalGatePendingRef.current = false;
+      setUltimateCriticalGatePending(false);
+      return;
+    }
+    if (
+      enemySupportActiveRef.current ||
+      battlePhase !== 'active' ||
+      winner ||
+      terminalRef.current ||
+      openingSlowActive ||
+      battleAnnouncement ||
+      conditionAnnouncement ||
+      conditionAnnouncementQueue.length > 0 ||
+      skillCinematic ||
+      capitalCommit ||
+      impactStop ||
+      limitImpactActive ||
+      showHelp ||
+      showLog ||
+      panel !== 'capital' ||
+      enemyCoverKnightPhase !== 'absent'
+    ) {
+      return;
+    }
+    if (startEnemySupportSkill(criticalSkillId)) {
+      ultimateCriticalGatePendingRef.current = false;
+      setUltimateCriticalGatePending(false);
+    }
+  }, [
+    battleAnnouncement,
+    battlePhase,
+    capitalCommit,
+    conditionAnnouncement,
+    conditionAnnouncementQueue.length,
+    enemyCoverKnightPhase,
+    enemySupportAutoProfile,
+    impactStop,
+    limitImpactActive,
+    openingSlowActive,
+    panel,
+    showHelp,
+    showLog,
+    skillCinematic,
+    ultimateCriticalGatePending,
+    winner,
+  ]);
+
+  useEffect(() => {
     if (
       enemySupportProfile.length === 0 ||
+      ultimateCriticalGatePending ||
       enemySupportActiveRef.current ||
       resolvingAiActionRef.current ||
       aiProgress >= 100 ||
@@ -3939,7 +4063,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       terminalRef.current
     ) return;
     const interval = window.setInterval(() => {
-      if (terminalRef.current) return;
+      if (terminalRef.current || simulationPausedRef.current) return;
       const elapsed = BATTLE_STATE_UPDATE_INTERVAL_MS * timeScale;
       const tickScale = BATTLE_STATE_UPDATE_INTERVAL_MS / 50;
       const commandProgressPerTick = fastHorse
@@ -4057,7 +4181,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       terminalRef.current
     ) return;
     const interval = window.setInterval(() => {
-      if (terminalRef.current) return;
+      if (terminalRef.current || simulationPausedRef.current) return;
       const playerRecovery = advanceBattleCashRecovery({
         baselineFunds: initialBattleCashRef.current,
         availableFunds: cashRef.current,
@@ -4126,7 +4250,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       timeScale *
       enemyActionProgressMultiplier;
     const interval = window.setInterval(() => {
-      if (terminalRef.current) return;
+      if (terminalRef.current || simulationPausedRef.current) return;
       setAiProgress((value) => Math.min(100, value + step));
     }, 100);
     return () => window.clearInterval(interval);
@@ -4154,6 +4278,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return;
     }
     if (
+      simulationPausedRef.current ||
       timeScale <= 0 ||
       winner ||
       battlePhase !== 'active' ||
@@ -4215,9 +4340,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return;
     }
     const tick = (now: number) => {
-      if (terminalRef.current) {
+      if (terminalRef.current || simulationPausedRef.current) {
         setGaugeSpeed(0);
         lastTickRef.current = now;
+        if (!terminalRef.current) {
+          animationRef.current = requestAnimationFrame(tick);
+        }
         return;
       }
       const elapsedMs = now - lastTickRef.current;
@@ -4280,6 +4408,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   ) => {
     clearCapitalPilePreview('player');
     clearCapitalCommitTimers();
+    simulationPausedRef.current = true;
     const serial = capitalCommitSerialRef.current;
     const timing = getCapitalCommitTiming(snapshot.level, snapshot.compact);
     const previousStage = getCapitalVisualStageForBundleCount(
@@ -4808,6 +4937,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       ) * currentWind.playerMultiplier * progressionSynergyMultiplier
     );
     enemySupportCastBlockedRef.current = true;
+    simulationPausedRef.current = true;
     clearSkillCinematicTimers();
     const baseCinematic: Omit<SkillCinematic, 'stage'> = {
       skillId: `group-${name}`,
@@ -4912,6 +5042,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setLastPlayerAction('SYNERGY');
     lastPressureCauseRef.current = 'synergy';
     enemySupportCastBlockedRef.current = true;
+    simulationPausedRef.current = true;
     setUsedProgressionSynergyIds((current) =>
       new Set(current).add(synergy.id)
     );
@@ -5177,6 +5308,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
     setPanel('capital');
     enemySupportCastBlockedRef.current = true;
+    simulationPausedRef.current = true;
     setSkillCooldowns((current) => ({ ...current, [skill.id]: skill.cooldownMs }));
     if (skill.oncePerBattle) {
       setUsedSkillIds((current) => new Set(current).add(skill.id));
@@ -5831,7 +5963,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
       <main className="buyout-main">
         <section
-          className={`battle-stage integrated-battlefield integrated-battlefield--push-${battleDirection} integrated-battlefield--motion-${motion} ${conditionAnnouncement ? 'integrated-battlefield--condition-active' : ''} ${impactStop ? `integrated-battlefield--impact-${impactStop.phase} integrated-battlefield--impact-${impactStop.side} ${impactStop.heavy ? 'integrated-battlefield--impact-heavy' : ''}` : ''} ${capitalPresentationStage && activeCapitalTiming ? `integrated-battlefield--capital-commit integrated-battlefield--capital-${capitalPresentationStage} integrated-battlefield--capital-${activeCapitalTiming.tier}` : ''} ${skillCinematic ? `integrated-battlefield--skill-cinematic integrated-battlefield--skill-stage-${skillCinematic.stage} integrated-battlefield--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${windVisible && eraWindActive ? `integrated-battlefield--era-wind integrated-battlefield--era-wind-${Math.min(3, eraWindUses)}` : ''} ${windVisible && windTelegraphVisible ? 'integrated-battlefield--wind-telegraph' : ''} ${decisiveBlow?.winner === 'player' && terminalUsesDirectFinisher ? 'integrated-battlefield--finisher-player integrated-battlefield--finisher-direct' : decisiveBlow?.winner === 'player' ? 'integrated-battlefield--finisher-collapse' : decisiveBlow?.winner === 'opponent' ? 'integrated-battlefield--finisher-enemy' : ''} ${decisiveBlow?.impacted ? 'integrated-battlefield--finisher-impact' : ''} ${terminalCinematicStage ? `integrated-battlefield--terminal-${terminalCinematicStage} integrated-battlefield--terminal-winner-${terminalRef.current?.winner ?? 'player'} ${terminalUsesSelfCollapse ? 'integrated-battlefield--terminal-self-collapse' : 'integrated-battlefield--terminal-direct'}` : ''} ${winner ? 'integrated-battlefield--settled' : ''} ownership-board--wind-${windSide} ${isSavage ? 'integrated-battlefield--savage' : ''} ${isUltimate ? 'integrated-battlefield--ultimate' : ''}`}
+          className={`battle-stage integrated-battlefield integrated-battlefield--push-${battleDirection} integrated-battlefield--motion-${motion} ${conditionAnnouncement ? 'integrated-battlefield--condition-active' : ''} ${impactStop ? `integrated-battlefield--impact-${impactStop.phase} integrated-battlefield--impact-${impactStop.side} ${impactStop.heavy ? 'integrated-battlefield--impact-heavy' : ''}` : ''} ${capitalPresentationStage && activeCapitalTiming ? `integrated-battlefield--capital-commit integrated-battlefield--capital-${capitalPresentationStage} integrated-battlefield--capital-${activeCapitalTiming.tier}` : ''} ${skillCinematic ? `integrated-battlefield--skill-cinematic integrated-battlefield--skill-stage-${skillCinematic.stage} integrated-battlefield--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${windVisible && eraWindActive ? `integrated-battlefield--era-wind integrated-battlefield--era-wind-${Math.min(3, eraWindUses)}` : ''} ${windVisible && windTelegraphVisible ? 'integrated-battlefield--wind-telegraph' : ''} ${decisiveBlow?.winner === 'player' && terminalUsesDirectFinisher ? 'integrated-battlefield--finisher-player integrated-battlefield--finisher-direct' : decisiveBlow?.winner === 'player' ? 'integrated-battlefield--finisher-collapse' : decisiveBlow?.winner === 'opponent' ? 'integrated-battlefield--finisher-enemy' : ''} ${decisiveBlow?.impacted ? 'integrated-battlefield--finisher-impact' : ''} ${terminalCinematicStage ? `integrated-battlefield--terminal-${terminalCinematicStage} integrated-battlefield--terminal-winner-${terminalRef.current?.winner ?? 'player'} ${terminalUsesSelfCollapse ? 'integrated-battlefield--terminal-self-collapse' : 'integrated-battlefield--terminal-direct'}` : ''} ${winner ? `integrated-battlefield--settled integrated-battlefield--settled-${winner} ${terminalUsesDirectFinisher ? 'integrated-battlefield--settled-direct' : 'integrated-battlefield--settled-collapse'}` : ''} ownership-board--wind-${windSide} ${isSavage ? 'integrated-battlefield--savage' : ''} ${isUltimate ? 'integrated-battlefield--ultimate' : ''}`}
           aria-label="所有率、両陣営、投入資金、行動予兆の統合商戦フィールド"
           inert={backgroundInert && !conditionAnnouncement}
           data-company-invested={companyInvested}
@@ -6414,7 +6546,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           {limitBreakCapacityTier > 0 && (
             <button
               type="button"
-              className={`battle-action-strip__action battle-action-strip__action--lb ${limitBreakGaugeFull ? 'is-overflowing' : ''} ${limitBreakTier > 0 && commandReady ? 'is-ready' : 'is-waiting'}`}
+              className={`battle-action-strip__action battle-action-strip__action--lb ${limitBreakGaugeFull ? 'is-overflowing' : ''} ${limitBreakTier > 0 && commandReady && !actionsLocked ? 'is-ready' : 'is-waiting'}`}
               onClick={demandFromAllies}
               disabled={!commandReady || limitBreakTier === 0 || actionsLocked}
               aria-label={`LIMIT BREAK ${limitBreakTier > 0 ? `${limitBreakTier}発動可能` : '蓄積中'}。ゲージ${Math.floor(visibleLimitBreakCharge)}／${limitBreakChargeCapacity}。発動時は全消費`}
@@ -6432,7 +6564,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <span>
                 <b>{limitBreakTier > 0 ? `LB ${limitBreakTier}` : 'LB'}</b>
                 <small>{limitBreakTier > 0
-                  ? commandReady ? `最大+${limitBreakOwnershipCap}pt` : '準備中'
+                  ? actionsLocked
+                    ? '演出待ち'
+                    : commandReady
+                      ? `最大+${limitBreakOwnershipCap}pt`
+                      : '準備中'
                   : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`}</small>
               </span>
               <span
@@ -6456,7 +6592,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           {selectedBattleSynergy && (
             <button
               type="button"
-              className={`battle-action-strip__action battle-action-strip__action--synergy ${battleSynergyReady && commandReady && !usedProgressionSynergyIds.has(selectedBattleSynergy.id) ? 'is-ready' : 'is-waiting'}`}
+              className={`battle-action-strip__action battle-action-strip__action--synergy ${battleSynergyReady && commandReady && !actionsLocked && !usedProgressionSynergyIds.has(selectedBattleSynergy.id) ? 'is-ready' : 'is-waiting'}`}
               onClick={() =>
                 selectedBattleSynergy.battleOnly
                   ? activateProgressionBattleSynergy(selectedBattleSynergy)
@@ -6494,7 +6630,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 ? '使用済み'
                 : !battleSynergyReady
                 ? '連携崩壊'
-                : commandReady
+                : actionsLocked
+                  ? '演出待ち'
+                  : commandReady
                   ? '発動可'
                   : '準備中'}</em>
             </button>
@@ -6543,10 +6681,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           {primarySkill && (
             <button
               type="button"
-              className={`battle-action-strip__action battle-action-strip__action--skill-execute ${primarySkill.effectType === 'LIVING_DEAD' ? 'is-living-dead' : ''} ${primarySkillExecutionBlocked ? 'is-unavailable' : 'is-ready'}`}
+              className={`battle-action-strip__action battle-action-strip__action--skill-execute ${primarySkill.effectType === 'LIVING_DEAD' ? 'is-living-dead' : ''} ${primarySkillExecutionBlocked || actionsLocked ? 'is-unavailable' : 'is-ready'}`}
               onClick={() => useSkill(primarySkill)}
               disabled={primarySkillExecutionBlocked || actionsLocked}
-              aria-label={`選択中のアビリティを発動するボタン。${primarySkill.name}。${primarySkillStateText}${usingSkillFallback ? '。今回だけ臨時使用' : ''}`}
+              aria-label={`選択中のアビリティを発動するボタン。${primarySkill.name}。${displayedPrimarySkillStateText}${usingSkillFallback ? '。今回だけ臨時使用' : ''}`}
               title={`選択中の${primarySkill.name}を発動／${getQuickSkillSummary(primarySkill, isTraining)}`}
             >
               {primarySkill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
@@ -6554,7 +6692,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <b>② アビリティ発動</b>
                 <small><MarqueeText text={primarySkill.name} /></small>
               </span>
-              <em>{primarySkillStateText}</em>
+              <em>{displayedPrimarySkillStateText}</em>
             </button>
           )}
 

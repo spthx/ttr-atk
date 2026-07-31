@@ -1602,6 +1602,7 @@ export default function App() {
         : targetIndustryInfluence.playerBonus +
           targetRegionalInfluence.playerBonus +
           tradeNetworkBonus,
+      battleMode: mode,
     });
   };
 
