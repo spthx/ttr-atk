@@ -2844,6 +2844,38 @@
   }
 }
 
+/* Keep the fixed column centres clear of the outer-edge actors. This final
+ * override intentionally wins over legacy pile geometry above. */
+.integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips {
+  top: -1.35rem;
+  right: -4%;
+  bottom: .38rem;
+  left: 28%;
+}
+
+.integrated-battlefield .capital-visual-row .gil-tower--enemy .gil-tower__chips {
+  top: -1.35rem;
+  right: 28%;
+  bottom: .38rem;
+  left: -4%;
+}
+
+@media (max-width: 639px) and (min-height: 701px) {
+  .integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips {
+    top: -.85rem;
+    right: -7%;
+    bottom: .48rem;
+    left: 30%;
+  }
+
+  .integrated-battlefield .capital-visual-row .gil-tower--enemy .gil-tower__chips {
+    top: -.85rem;
+    right: 30%;
+    bottom: .48rem;
+    left: -7%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .buyout-screen--capital-commit
     :is(
@@ -3177,6 +3209,14 @@
   animation-timing-function: cubic-bezier(.2, .72, .24, 1);
 }
 
+/* Funding is the primary reward beat. Keep its exact amount above the pile,
+ * where it remains visible while the lower command strip is locked. */
+.battle-flying-texts .gil-floater--support {
+  top: auto;
+  bottom: calc(46% + var(--floater-index, 0) * 1.25rem);
+  z-index: 2;
+}
+
 @keyframes battle-float-negative-up {
   0% { opacity: 0; transform: translateY(.65rem); }
   12%, 76% { opacity: 1; transform: translateY(0); }
@@ -3215,6 +3255,290 @@
 .integrated-battlefield .gil-chip-image--falling {
   animation-duration: .78s;
   animation-timing-function: cubic-bezier(.16, .76, .22, 1);
+}
+
+/*
+ * Fixed twenty-two-column capital field.
+ *
+ * The portrait-phone composition is the source of truth: the actor owns the
+ * outside edge while the centre of each independent column group sits toward
+ * the middle lane. Capital only changes column height. X/Y slots, depth and
+ * node count never change, and there is no amount-proportional DOM creation.
+ */
+.integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips {
+  top: -1.35rem;
+  right: -4%;
+  bottom: .38rem;
+  left: 28%;
+}
+
+.integrated-battlefield .capital-visual-row .gil-tower--enemy .gil-tower__chips {
+  top: -1.35rem;
+  right: 28%;
+  bottom: .38rem;
+  left: -4%;
+}
+
+.integrated-battlefield .gil-column-field {
+  --coin-column-width: clamp(.54rem, 2.6vw, .82rem);
+  --coin-layer-step: clamp(.13rem, .55vw, .2rem);
+  --coin-cap-height: clamp(.34rem, 1.45vw, .48rem);
+  --coin-light: #fff4ad;
+  --coin-mid: #e6a90b;
+  --coin-dark: #704006;
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+  contain: layout style;
+  translate: 0 var(--capital-rack-sink, 0);
+  transition: translate 160ms steps(4, end);
+}
+
+.integrated-battlefield .gil-column-field--enemy {
+  --coin-light: #ffe6d0;
+  --coin-mid: #d9784c;
+  --coin-dark: #6f1d2c;
+}
+
+.integrated-battlefield .gil-column-field[data-overflow-tier="1"] {
+  --capital-rack-sink: .24rem;
+}
+
+.integrated-battlefield .gil-column-field[data-overflow-tier="2"] {
+  --capital-rack-sink: .42rem;
+}
+
+.integrated-battlefield .gil-column-field[data-overflow-tier="3"] {
+  --capital-rack-sink: .6rem;
+}
+
+.integrated-battlefield .capital-fixed-column {
+  position: absolute;
+  z-index: calc(2 + var(--column-depth));
+  bottom: var(--column-bottom);
+  left: var(--column-x);
+  display: block;
+  width: var(--coin-column-width);
+  height: calc(
+    var(--coin-cap-height) +
+    var(--column-layers) * var(--coin-layer-step)
+  );
+  min-height: var(--coin-cap-height);
+  border: 1px solid color-mix(in srgb, var(--coin-light), var(--coin-dark) 32%);
+  border-radius: .22rem .22rem .08rem .08rem;
+  opacity: 1;
+  background:
+    linear-gradient(
+      90deg,
+      var(--coin-dark),
+      var(--coin-mid) 24%,
+      var(--coin-light) 47%,
+      var(--coin-mid) 68%,
+      var(--coin-dark)
+    ),
+    repeating-linear-gradient(
+      180deg,
+      transparent 0 calc(var(--coin-layer-step) * .62),
+      color-mix(in srgb, var(--coin-dark), transparent 12%) calc(var(--coin-layer-step) * .64) calc(var(--coin-layer-step) * .82),
+      color-mix(in srgb, var(--coin-light), transparent 18%) calc(var(--coin-layer-step) * .84) var(--coin-layer-step)
+    );
+  background-blend-mode: multiply;
+  box-shadow:
+    inset .06rem 0 .08rem rgba(255, 255, 255, .28),
+    inset -.08rem 0 .1rem rgba(45, 20, 0, .38),
+    0 .15rem .18rem rgba(0, 0, 0, .48);
+  filter: brightness(1);
+  transform: translateX(-50%);
+  transform-origin: center bottom;
+  transition:
+    height 30ms steps(1, end),
+    opacity 30ms linear;
+  will-change: auto;
+}
+
+.integrated-battlefield .capital-fixed-column[data-depth="0"] { filter: brightness(.84); }
+.integrated-battlefield .capital-fixed-column[data-depth="1"] { filter: brightness(.9); }
+.integrated-battlefield .capital-fixed-column[data-depth="2"] { filter: brightness(.96); }
+
+.integrated-battlefield .capital-fixed-column::after {
+  position: absolute;
+  top: calc(var(--coin-cap-height) * -.34);
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: calc(100% + 2px);
+  height: var(--coin-cap-height);
+  border: 1px solid color-mix(in srgb, var(--coin-light), var(--coin-dark) 26%);
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--coin-dark), #311706 24%);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: calc(var(--coin-column-width) * .42);
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1;
+  content: "G";
+  background:
+    radial-gradient(circle at 42% 30%, var(--coin-light), transparent 18%),
+    radial-gradient(ellipse at center, var(--coin-light), var(--coin-mid) 58%, var(--coin-dark));
+  box-shadow:
+    inset 0 .06rem .08rem rgba(255, 255, 255, .55),
+    0 .06rem .06rem rgba(0, 0, 0, .35);
+  translate: -50% 0;
+}
+
+.integrated-battlefield .capital-fixed-column[data-empty="true"] {
+  height: 0;
+  min-height: 0;
+  border-width: 0;
+  opacity: 0;
+}
+
+.integrated-battlefield .capital-fixed-column[data-empty="true"]::after {
+  display: none;
+}
+
+.integrated-battlefield
+  .capital-fixed-column[data-machine-active="true"] {
+  z-index: calc(8 + var(--column-depth));
+  will-change: height, translate, filter;
+  animation: capital-column-machine-seat 132ms steps(4, end) both;
+}
+
+.integrated-battlefield .capital-overflow-stamp {
+  position: absolute;
+  z-index: 18;
+  inset: 0;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+  contain: layout style;
+}
+
+.integrated-battlefield .capital-overflow-stamp > i {
+  --overflow-index: 0;
+  --overflow-lane: 0;
+  position: absolute;
+  top: -12%;
+  left: calc(35% + var(--overflow-lane) * 6%);
+  display: block;
+  width: calc(var(--coin-column-width) * .82);
+  height: calc(var(--coin-cap-height) * .42);
+  border: 1px solid color-mix(in srgb, var(--coin-light), var(--coin-dark) 28%);
+  border-radius: 50%;
+  opacity: 0;
+  background: radial-gradient(ellipse at 45% 35%, var(--coin-light), var(--coin-mid) 62%, var(--coin-dark));
+  box-shadow: 0 .08rem .12rem rgba(0, 0, 0, .4);
+  animation: capital-overflow-machine-drop 660ms steps(6, end) both;
+  animation-delay: calc(var(--overflow-index) * 28ms);
+}
+
+.integrated-battlefield
+  .capital-overflow-stamp[data-overflow-tier="2"] > i {
+  animation-duration: 720ms;
+}
+
+.integrated-battlefield
+  .capital-overflow-stamp[data-overflow-tier="3"] > i {
+  animation-duration: 780ms;
+}
+
+.integrated-battlefield .gil-tower--overflow-impact .gil-tower__chips {
+  will-change: translate, filter;
+  animation: capital-overflow-rack-jolt 520ms steps(5, end) both;
+}
+
+@keyframes capital-column-machine-seat {
+  0% { filter: brightness(.78); translate: 0 -.14rem; }
+  50% { filter: brightness(1.42); translate: 0 .04rem; }
+  100% { filter: brightness(1); translate: 0 0; }
+}
+
+@keyframes capital-overflow-machine-drop {
+  0% { opacity: 0; translate: 0 -.35rem; }
+  16% { opacity: 1; }
+  68% { opacity: .96; translate: 0 3.35rem; }
+  82% { opacity: .62; translate: 0 3.5rem; }
+  100% { opacity: 0; translate: 0 3.5rem; }
+}
+
+@keyframes capital-overflow-rack-jolt {
+  0%, 100% { filter: brightness(1); translate: 0 0; }
+  25% { filter: brightness(1.32); translate: 0 .08rem; }
+  45% { filter: brightness(1.1); translate: -.05rem .03rem; }
+  65% { filter: brightness(1.18); translate: .04rem .02rem; }
+}
+
+.integrated-battlefield .gil-tower--impact .capital-fixed-column {
+  translate: 0 .06rem;
+}
+
+@media (max-width: 639px) and (min-height: 701px) {
+  .integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips {
+    top: -.85rem;
+    right: -7%;
+    bottom: .48rem;
+    left: 30%;
+  }
+
+  .integrated-battlefield .capital-visual-row .gil-tower--enemy .gil-tower__chips {
+    top: -.85rem;
+    right: 30%;
+    bottom: .48rem;
+    left: -7%;
+  }
+
+  .integrated-battlefield .gil-column-field {
+    --coin-column-width: clamp(.48rem, 2.2vw, .62rem);
+    --coin-layer-step: clamp(.115rem, .48vw, .15rem);
+    --coin-cap-height: clamp(.3rem, 1.2vw, .4rem);
+  }
+}
+
+@media (max-width: 430px) {
+  .integrated-battlefield .gil-column-field {
+    --coin-column-width: clamp(.42rem, 2.05vw, .52rem);
+    --coin-layer-step: clamp(.1rem, .44vw, .125rem);
+    --coin-cap-height: clamp(.27rem, 1.05vw, .34rem);
+  }
+
+  .integrated-battlefield .capital-overflow-stamp > i {
+    animation-name: capital-overflow-machine-drop-phone;
+  }
+
+  .integrated-battlefield .gil-column-field[data-overflow-tier="1"] {
+    --capital-rack-sink: .18rem;
+  }
+
+  .integrated-battlefield .gil-column-field[data-overflow-tier="2"] {
+    --capital-rack-sink: .3rem;
+  }
+
+  .integrated-battlefield .gil-column-field[data-overflow-tier="3"] {
+    --capital-rack-sink: .42rem;
+  }
+}
+
+@keyframes capital-overflow-machine-drop-phone {
+  0% { opacity: 0; translate: 0 -.25rem; }
+  16% { opacity: 1; }
+  68% { opacity: .96; translate: 0 2.65rem; }
+  82% { opacity: .58; translate: 0 2.78rem; }
+  100% { opacity: 0; translate: 0 2.78rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .integrated-battlefield .capital-fixed-column {
+    transition-duration: 1ms;
+    will-change: auto;
+  }
+
+  .integrated-battlefield .capital-overflow-stamp > i,
+  .integrated-battlefield .gil-tower--overflow-impact .gil-tower__chips {
+    animation-duration: 1ms;
+  }
 }
 
 .integrated-battlefield .gil-tower--impact .gil-tower__chips {
@@ -3597,5 +3921,37 @@
 
   .buyout-footer:not(.buyout-footer--settled) button {
     min-height: 2.75rem;
+  }
+}
+
+/* Final mobile-first pile placement: actors stay on the outer edge and each
+ * independent twenty-two-column field keeps its centre visible toward mid-screen. */
+.integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips {
+  top: -1.35rem;
+  right: -4%;
+  bottom: .38rem;
+  left: 28%;
+}
+
+.integrated-battlefield .capital-visual-row .gil-tower--enemy .gil-tower__chips {
+  top: -1.35rem;
+  right: 28%;
+  bottom: .38rem;
+  left: -4%;
+}
+
+@media (max-width: 639px) and (min-height: 701px) {
+  .integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips {
+    top: -.85rem;
+    right: -7%;
+    bottom: .48rem;
+    left: 30%;
+  }
+
+  .integrated-battlefield .capital-visual-row .gil-tower--enemy .gil-tower__chips {
+    top: -.85rem;
+    right: 30%;
+    bottom: .48rem;
+    left: -7%;
   }
 }

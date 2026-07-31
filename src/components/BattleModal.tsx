@@ -67,13 +67,10 @@ import {
   getBattleHitStopTiming,
   getBossEnemyPartySize,
   getBattleCinematicLayer,
-  getBattleCapitalVisualBundleCount,
-  getCapitalFormationPieceCount,
-  getCapitalHoardBandCount,
-  getCapitalHoardFillRatios,
-  getCapitalStageSequence,
-  getCapitalVisualSpriteCount,
-  getCapitalVisualStageForBundleCount,
+  getBattleCapitalOverflowTier,
+  getBattleCapitalVisibleUnits,
+  getCapitalColumnHeights,
+  getMechanicalCapitalColumnFrames,
   getCapitalCommitTiming,
   getCapitalDropParticleCount,
   getNextBattleSkillId,
@@ -87,6 +84,7 @@ import {
   TERMINAL_CINEMATIC_TIMING,
   type BattleStatusMessageTone,
   type CapitalCommitStage,
+  type MechanicalCapitalColumnFrame,
   type SkillCinematicStage,
   type TerminalCinematicStage,
 } from '../utils/battlePresentation';
@@ -257,6 +255,10 @@ interface CapitalCommitSnapshot {
 interface CapitalCommitSequence extends CapitalCommitSnapshot {
   stage: CapitalCommitStage;
   serial: number;
+}
+interface CapitalPilePresentationFrame extends MechanicalCapitalColumnFrame {
+  overflowTier: number;
+  presentationSerial: number;
 }
 type LogCategory = 'system' | 'player' | 'enemy' | 'funds' | 'skill' | 'result';
 type BattleAnnouncement = 'start' | 'limit';
@@ -577,6 +579,7 @@ interface FloatingGil {
   side: 'player' | 'enemy' | 'center';
   text: string;
   tone: 'positive' | 'negative' | 'notice';
+  kind: 'normal' | 'support';
 }
 
 const FINISH_LABELS: Record<FinishMethod, string> = {
@@ -615,86 +618,73 @@ const riskPresentation = (risk: number) => {
   return { label: '独立寸前', className: 'risk-red' };
 };
 
-const getCapitalFormation = (stage: number) => {
-  if (stage <= 14) return 'stacks';
-  if (stage <= 24) return 'terrace';
-  if (stage <= 34) return 'wall';
-  if (stage <= 44) return 'vault';
-  return 'flood';
-};
-
-const CAPITAL_STAGE_NUDGES = [
-  { x: '0rem', y: '0rem' },
-  { x: '-.08rem', y: '.025rem' },
-  { x: '.065rem', y: '-.02rem' },
-  { x: '-.035rem', y: '.012rem' },
+const CAPITAL_COLUMN_SLOTS = [
+  { x: 42.5, bottom: 30, depth: 0 }, { x: 47.5, bottom: 32, depth: 0 },
+  { x: 52.5, bottom: 32, depth: 0 }, { x: 57.5, bottom: 30, depth: 0 },
+  { x: 40, bottom: 20, depth: 1 }, { x: 45, bottom: 22, depth: 1 },
+  { x: 50, bottom: 23, depth: 1 }, { x: 55, bottom: 22, depth: 1 },
+  { x: 60, bottom: 20, depth: 1 },
+  { x: 37.5, bottom: 10, depth: 2 }, { x: 42.5, bottom: 12, depth: 2 },
+  { x: 47.5, bottom: 13, depth: 2 }, { x: 52.5, bottom: 13, depth: 2 },
+  { x: 57.5, bottom: 12, depth: 2 }, { x: 62.5, bottom: 10, depth: 2 },
+  { x: 40, bottom: 0, depth: 3 }, { x: 45, bottom: 2, depth: 3 },
+  { x: 50, bottom: 3, depth: 3 }, { x: 55, bottom: 2, depth: 3 },
+  { x: 60, bottom: 0, depth: 3 },
+  { x: 35, bottom: 9, depth: 2 }, { x: 65, bottom: 9, depth: 2 },
 ] as const;
 
 const GilPileVisual = React.memo(function GilPileVisual({
-  visualStage,
-  bundleCount,
+  frame,
   side,
-  motion,
 }: {
-  visualStage: number;
-  bundleCount: number;
+  frame: CapitalPilePresentationFrame;
   side: 'player' | 'enemy';
-  motion: BattleMotion;
 }) {
-  const spriteCount = getCapitalVisualSpriteCount(visualStage);
-  const formationPieceCount = getCapitalFormationPieceCount(visualStage);
-  const hoardBandCount = getCapitalHoardBandCount(visualStage);
-  const formation = getCapitalFormation(visualStage);
+  const activeColumns = new Set(frame.activeColumnIndices);
+  const overflowPieceCount =
+    frame.overflowTier > 0 && frame.presentationSerial > 0
+      ? Math.min(12, 6 + frame.overflowTier * 2)
+      : 0;
 
   return (
-    <>
-      <span className="gil-tower__empty" aria-hidden="true"><i /></span>
-      {hoardBandCount > 0 && (
-        <span className="gil-tower__hoard" aria-hidden="true">
-          <i
-            className="gil-tower__hoard-band gil-tower__hoard-band--far"
-            hidden={hoardBandCount < 3}
-          />
-          <i
-            className="gil-tower__hoard-band gil-tower__hoard-band--mid"
-            hidden={hoardBandCount < 2}
-          />
-          <i className="gil-tower__hoard-band gil-tower__hoard-band--near" />
-        </span>
-      )}
-      {formationPieceCount > 0 && (
+    <span
+      className={`gil-column-field gil-column-field--${side}`}
+      data-overflow-tier={frame.overflowTier}
+      aria-hidden="true"
+    >
+      {CAPITAL_COLUMN_SLOTS.map((slot, index) => (
+        <i
+          key={`${side}-${index}`}
+          className="capital-fixed-column"
+          data-depth={slot.depth}
+          data-empty={frame.columnHeights[index] <= 0}
+          data-machine-active={activeColumns.has(index)}
+          style={{
+            '--column-x': `${slot.x}%`,
+            '--column-bottom': `${slot.bottom}%`,
+            '--column-depth': slot.depth,
+            '--column-layers': frame.columnHeights[index],
+          } as React.CSSProperties}
+        />
+      ))}
+      {overflowPieceCount > 0 && (
         <span
-          className={`gil-tower__formation gil-tower__formation--${formation}`}
-          aria-hidden="true"
+          key={`${frame.presentationSerial}-${frame.overflowTier}`}
+          className="capital-overflow-stamp"
+          data-overflow-tier={frame.overflowTier}
         >
-          {Array.from({ length: 6 }, (_, index) => (
-            <img
+          {Array.from({ length: overflowPieceCount }, (_, index) => (
+            <i
               key={index}
-              src={gilChipPlayer}
-              alt=""
-              aria-hidden="true"
-              decoding="async"
-              hidden={index >= formationPieceCount}
+              style={{
+                '--overflow-index': index,
+                '--overflow-lane': index % 6,
+              } as React.CSSProperties}
             />
           ))}
         </span>
       )}
-      {Array.from({ length: spriteCount }).map((_, index) => (
-        <img
-          key={`${side}-${index}`}
-          src={gilChipPlayer}
-          alt=""
-          aria-hidden="true"
-          decoding="async"
-          className={`gil-chip-image gil-chip-image--stack${index === 0 ? ' gil-chip-image--starter' : ''}${motion === side && index === Math.max(0, spriteCount - 1) ? ' gil-chip-image--falling' : ''}`}
-          style={{
-            '--chip-index': index,
-            '--chip-count': bundleCount,
-            '--chip-angle': '0deg',
-          } as React.CSSProperties}
-        />
-      ))}
-    </>
+    </span>
   );
 });
 
@@ -704,53 +694,37 @@ const GilTower: React.FC<{
   marketPrice: number;
   side: 'player' | 'enemy';
   motion: BattleMotion;
-  visualStageOverride?: number | null;
+  visualFrameOverride?: CapitalPilePresentationFrame | null;
 }> = ({
   amount,
   reserveAmount = 0,
   marketPrice,
   side,
   motion,
-  visualStageOverride = null,
+  visualFrameOverride = null,
 }) => {
   const committedCapital = Math.max(0, amount);
-  const bundleCount = getBattleCapitalVisualBundleCount(
+  const visibleUnits = getBattleCapitalVisibleUnits(
     committedCapital,
     marketPrice
   );
-  const visualStage = visualStageOverride === null
-    ? getCapitalVisualStageForBundleCount(bundleCount)
-    : getCapitalVisualStageForBundleCount(visualStageOverride);
-  const chipAsset = gilChipPlayer;
+  const visualFrame: CapitalPilePresentationFrame = visualFrameOverride ?? {
+    visibleUnits,
+    columnHeights: getCapitalColumnHeights(visibleUnits),
+    activeColumnIndices: [],
+    // Exceptional totals keep the fixed rack seated lower after the brief
+    // stacking burst. The additional falling pieces remain preview-only.
+    overflowTier: getBattleCapitalOverflowTier(committedCapital, marketPrice),
+    presentationSerial: 0,
+  };
   const capitalRatio = committedCapital / Math.max(marketPrice, 1);
-  const formation = getCapitalFormation(visualStage);
-  const hoardFill = getCapitalHoardFillRatios(visualStage);
-  const stageNudge =
-    CAPITAL_STAGE_NUDGES[visualStage % CAPITAL_STAGE_NUDGES.length];
 
   return (
     <div
-      className={`gil-tower gil-tower--${side} ${motion === side ? 'gil-tower--impact' : ''}`}
-      data-capital-stage={visualStage}
-      data-capital-bundles={bundleCount}
+      className={`gil-tower gil-tower--${side} ${motion === side ? 'gil-tower--impact' : ''} ${visualFrame.overflowTier > 0 && visualFrame.presentationSerial > 0 ? 'gil-tower--overflow-impact' : ''}`}
+      data-capital-stage={visualFrame.visibleUnits}
+      data-capital-units={visibleUnits}
       data-capital-ratio={Math.max(0, Math.round(capitalRatio * 100))}
-      data-capital-formation={formation}
-      style={{
-        '--capital-stack-image': `url("${chipAsset}")`,
-        '--capital-stage': visualStage,
-        '--capital-stage-nudge-x': stageNudge.x,
-        '--capital-stage-nudge-y': stageNudge.y,
-        '--hoard-opacity':
-          visualStage === 0
-            ? 0
-            : Math.min(1, 0.82 + (visualStage / 59) * 0.18),
-        '--hoard-near-width': `${(hoardFill.near * 92).toFixed(3)}%`,
-        '--hoard-mid-width': `${(hoardFill.mid * 88).toFixed(3)}%`,
-        '--hoard-far-width': `${(hoardFill.far * 84).toFixed(3)}%`,
-        '--hoard-near-x': '50%',
-        '--hoard-mid-x': '50%',
-        '--hoard-far-x': '50%',
-      } as React.CSSProperties}
     >
       <div
         className="gil-tower__chips"
@@ -761,10 +735,8 @@ const GilTower: React.FC<{
         }
       >
         <GilPileVisual
-          visualStage={visualStage}
-          bundleCount={bundleCount}
+          frame={visualFrame}
           side={side}
-          motion={motion}
         />
       </div>
     </div>
@@ -1063,11 +1035,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [capitalCommit, setCapitalCommit] =
     useState<CapitalCommitSequence | null>(null);
   const [capitalPreviewStage, setCapitalPreviewStage] =
-    useState<number | null>(null);
+    useState<CapitalPilePresentationFrame | null>(null);
   const [playerCapitalPilePreviewStage, setPlayerCapitalPilePreviewStage] =
-    useState<number | null>(null);
+    useState<CapitalPilePresentationFrame | null>(null);
   const [enemyCapitalPilePreviewStage, setEnemyCapitalPilePreviewStage] =
-    useState<number | null>(null);
+    useState<CapitalPilePresentationFrame | null>(null);
   const [terminalCapitalSnapshot, setTerminalCapitalSnapshot] =
     useState<CapitalCommitSnapshot | null>(null);
   const [impactStop, setImpactStop] = useState<ImpactStop | null>(null);
@@ -1304,22 +1276,23 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ??
         false;
       const compact = reducedMotion;
-      const previousStage = getCapitalVisualStageForBundleCount(
-        getBattleCapitalVisualBundleCount(
-          previousCapital,
-          targetProperty.marketPrice
-        )
+      const previousStage = getBattleCapitalVisibleUnits(
+        previousCapital,
+        targetProperty.marketPrice
       );
-      const targetStage = getCapitalVisualStageForBundleCount(
-        getBattleCapitalVisualBundleCount(
-          nextCapital,
-          targetProperty.marketPrice
-        )
+      const targetStage = getBattleCapitalVisibleUnits(
+        nextCapital,
+        targetProperty.marketPrice
       );
-      const stageSequence = getCapitalStageSequence(
+      const columnFrames = getMechanicalCapitalColumnFrames(
         previousStage,
         targetStage,
-        compact ? 3 : heavy ? 8 : 6
+        compact ? 4 : heavy ? 22 : 16,
+        heavy ? 5 : 4
+      );
+      const overflowTier = getBattleCapitalOverflowTier(
+        nextCapital,
+        targetProperty.marketPrice
       );
       const setPreviewStage =
         side === 'player'
@@ -1329,8 +1302,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const settleLeadMs = compact ? 25 : heavy ? 30 : 45;
       const isStacking = nextCapital >= previousCapital;
 
-      setPreviewStage(previousStage);
-      const stageTimers = stageSequence.map((stage, index) =>
+      setPreviewStage({
+        visibleUnits: previousStage,
+        columnHeights: getCapitalColumnHeights(previousStage),
+        activeColumnIndices: [],
+        overflowTier: 0,
+        presentationSerial: serial,
+      });
+      const stageTimers = columnFrames.map((frame, index) =>
         window.setTimeout(() => {
           if (
             capitalPilePreviewSerialRef.current[side] !== serial ||
@@ -1339,19 +1318,30 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           ) {
             return;
           }
-          setPreviewStage(stage);
+          const isFinalFrame = index === columnFrames.length - 1;
+          setPreviewStage({
+            ...frame,
+            overflowTier: isFinalFrame ? overflowTier : 0,
+            presentationSerial: serial,
+          });
           if (isStacking) {
             soundFx.playCapitalStackStep(
               side === 'player' ? 'player' : 'opponent',
               index,
-              stageSequence.length,
+              columnFrames.length,
               includeFinalWeight
             );
+            if (isFinalFrame && overflowTier > 0) {
+              soundFx.playCapitalImpact(
+                side === 'player' ? 'player' : 'opponent',
+                Math.min(1, 0.68 + overflowTier * 0.1)
+              );
+            }
           }
         }, settleLeadMs +
           Math.round(
             timing.settleMs *
-              ((index + 1) / Math.max(1, stageSequence.length))
+              ((index + 1) / Math.max(1, columnFrames.length))
           ))
       );
       const clearTimer = window.setTimeout(() => {
@@ -1989,6 +1979,28 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const limitBreakOwnershipCap = limitBreakTier > 0
     ? LIMIT_BREAK_OWNERSHIP_CAPS[limitBreakTier]
     : 0;
+  const limitBreakApproximateAmount = limitBreakTier > 0
+    ? calculateLimitBreakAmount(
+        targetProperty.marketPrice,
+        battleSubs,
+        limitBreakTier
+      )
+    : 0;
+  const selectedBattleSynergyEffectLabel = selectedBattleSynergy?.battleOnly &&
+    selectedBattleSynergy.battleEffect
+      ? `圧力+${Math.round(
+          (selectedBattleSynergy.battleEffect.capitalPressureMultiplier - 1) * 100
+        )}%・${
+          progressionSynergyRemaining > 0
+            ? `残${Math.ceil(progressionSynergyRemaining / 1000)}秒`
+            : `${Math.round(selectedBattleSynergy.battleEffect.durationMs / 1000)}秒`
+        }`
+      : selectedBattleSynergy
+        ? `一斉支援×${(
+            selectedBattleSynergy.battleGroupMultiplier ??
+            BATTLE_SUPPORT_BALANCE.synergyDefaultMultiplier
+          ).toFixed(2)}`
+        : '';
   const alliancePublicPatronage = isPublicPatronage(alliance);
   const allianceSupport = alliance.active && !allianceUsed
     ? calculateAllianceSupport(targetProperty.marketPrice)
@@ -2032,11 +2044,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const enemyOpeningCoverPending =
     openingBossAbilityTier !== 'none' &&
     !enemyOpeningCoverUsedRef.current;
+  const capitalPilePresentationLocked =
+    playerCapitalPilePreviewStage !== null ||
+    enemyCapitalPilePreviewStage !== null;
   const presentationLocked =
     !!battleAnnouncement ||
     !!conditionAnnouncement ||
     !!skillCinematic ||
     !!capitalCommit ||
+    capitalPilePresentationLocked ||
     openingAutoPending ||
     !!criticalAutoPending ||
     ultimateCriticalGatePending ||
@@ -2049,6 +2065,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     presentationLocked ||
     decisiveLocked ||
     !!impactStop ||
+    showHelp ||
+    showLog;
+  const skillSelectionLocked =
+    battleSkillPool.length <= 1 ||
+    !!winner ||
+    decisiveLocked ||
     showHelp ||
     showLog;
   const displayedPrimarySkillStateText =
@@ -2384,12 +2406,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const showFloater = (
     text: string,
     side: FloatingGil['side'],
-    tone: FloatingGil['tone'] = 'positive'
+    tone: FloatingGil['tone'] = 'positive',
+    kind: FloatingGil['kind'] = 'normal'
   ) => {
     const id = Date.now() + Math.random();
     setFloaters((current) => [
       ...current.slice(-2),
-      { id, text, side, tone },
+      { id, text, side, tone, kind },
     ]);
     const timer = window.setTimeout(() => {
       floaterTimersRef.current.delete(timer);
@@ -4411,25 +4434,32 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     simulationPausedRef.current = true;
     const serial = capitalCommitSerialRef.current;
     const timing = getCapitalCommitTiming(snapshot.level, snapshot.compact);
-    const previousStage = getCapitalVisualStageForBundleCount(
-      getBattleCapitalVisualBundleCount(
-        snapshot.previousCapital,
-        targetProperty.marketPrice
-      )
+    const previousStage = getBattleCapitalVisibleUnits(
+      snapshot.previousCapital,
+      targetProperty.marketPrice
     );
-    const targetStage = getCapitalVisualStageForBundleCount(
-      getBattleCapitalVisualBundleCount(
-        snapshot.previousCapital + snapshot.amount,
-        targetProperty.marketPrice
-      )
+    const targetStage = getBattleCapitalVisibleUnits(
+      snapshot.previousCapital + snapshot.amount,
+      targetProperty.marketPrice
     );
-    const stageSequence = getCapitalStageSequence(
+    const columnFrames = getMechanicalCapitalColumnFrames(
       previousStage,
       targetStage,
-      snapshot.compact ? 2 : 6
+      snapshot.compact ? 4 : 22,
+      5
+    );
+    const overflowTier = getBattleCapitalOverflowTier(
+      snapshot.previousCapital + snapshot.amount,
+      targetProperty.marketPrice
     );
     capitalCommitActiveRef.current = true;
-    setCapitalPreviewStage(previousStage);
+    setCapitalPreviewStage({
+      visibleUnits: previousStage,
+      columnHeights: getCapitalColumnHeights(previousStage),
+      activeColumnIndices: [],
+      overflowTier: 0,
+      presentationSerial: serial,
+    });
     setCapitalCommit({
       ...snapshot,
       serial,
@@ -4483,7 +4513,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       soundFx.playCapitalImpact('player', snapshot.level / 5);
     }, impactAt);
 
-    const stageTimers = stageSequence.map((stage, index) =>
+    const stageTimers = columnFrames.map((frame, index) =>
       window.setTimeout(() => {
         if (
           capitalCommitSerialRef.current !== serial ||
@@ -4492,17 +4522,28 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ) {
           return;
         }
-        setCapitalPreviewStage(stage);
+        const isFinalFrame = index === columnFrames.length - 1;
+        setCapitalPreviewStage({
+          ...frame,
+          overflowTier: isFinalFrame ? overflowTier : 0,
+          presentationSerial: serial,
+        });
         soundFx.playCapitalStackStep(
           'player',
           index,
-          stageSequence.length,
-          false
+          columnFrames.length,
+          isFinalFrame
         );
+        if (isFinalFrame && overflowTier > 0) {
+          soundFx.playCapitalImpact(
+            'player',
+            Math.min(1, 0.68 + overflowTier * 0.1)
+          );
+        }
       }, impactAt +
         timing.hitStopMs +
         Math.round(
-          timing.settleMs * ((index + 1) / Math.max(1, stageSequence.length))
+          timing.settleMs * ((index + 1) / Math.max(1, columnFrames.length))
         ))
     );
 
@@ -4521,7 +4562,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           ? { ...current, stage: 'afterglow' }
           : current
       );
-      setCapitalPreviewStage(targetStage);
+      setCapitalPreviewStage({
+        visibleUnits: targetStage,
+        columnHeights: getCapitalColumnHeights(targetStage),
+        activeColumnIndices: [],
+        overflowTier,
+        presentationSerial: serial,
+      });
       setMotion('idle');
       setStatusText(
         `資本が積み上がった――所有率 +${ownershipGain.toFixed(1)}pt`
@@ -4629,7 +4676,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     );
     if (affordableLevels.length === 0) {
       soundFx.playWarning();
-      setStatusText('自社資金不足。商流回復か資金源からの支援を待ってください');
+      setStatusText('自社資金不足。商流回復か人脈からの支援を待ってください');
       return;
     }
     const currentIndex = affordableLevels.findIndex(
@@ -4691,7 +4738,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     );
     showFloater(
       `支援 +${formatCurrency(amount)} / +${(impact / 2).toFixed(1)}pt`,
-      'player'
+      'player',
+      'positive',
+      'support'
     );
     playMotion('player');
     triggerImpactStop(
@@ -4763,7 +4812,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         committedCapital.previous,
         committedCapital.next,
         true,
-        false
+        true
       );
       setLimitImpactActive(true);
       if (limitImpactTimerRef.current) window.clearTimeout(limitImpactTimerRef.current);
@@ -4979,7 +5028,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         committedCapital.previous,
         committedCapital.next,
         true,
-        false
+        true
       );
       chargeLimitBreak(amount * currentWind.playerMultiplier);
       soundFx.playSkillImpact('SYNERGY_PUSH', 'player');
@@ -4994,9 +5043,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         )}を一斉調達――所有率+${(groupImpact / 2).toFixed(1)}pt`
       );
       showFloater(
-        `SYNERGY +${(groupImpact / 2).toFixed(1)}pt`,
+        `SYNERGY +${formatCurrency(amount)} / +${(groupImpact / 2).toFixed(1)}pt`,
         'player',
-        'positive'
+        'positive',
+        'support'
       );
       addLog(
         `${name}の支援元${members.length}件から${formatCurrency(
@@ -5136,16 +5186,22 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       'player',
       committedCapital.previous,
       committedCapital.next,
-      amount / Math.max(targetProperty.marketPrice, 1) >= 0.14
+      true,
+      true
     );
     chargeLimitBreak(amount * currentWind.playerMultiplier);
     setAllianceUsed(true);
     setStatusText(alliancePublicPatronage
       ? `${alliance.allyName}へ通商支援を要請――後援支援 +${formatCurrency(amount)}相当`
       : `${alliance.allyName}から${formatCurrency(amount)}の協力支援`);
-    showFloater(alliancePublicPatronage
-      ? `後援支援 +${formatCurrency(amount)}`
-      : `協力支援 +${formatCurrency(amount)}`, 'player');
+    showFloater(
+      alliancePublicPatronage
+        ? `後援支援 +${formatCurrency(amount)}`
+        : `協力支援 +${formatCurrency(amount)}`,
+      'player',
+      'positive',
+      'support'
+    );
     playMotion('player');
     addLog(alliancePublicPatronage
       ? `${alliance.allyName}へ通商支援を要請。許認可・調達・輸送を含む${formatCurrency(amount)}相当の後援支援。`
@@ -5153,7 +5209,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const selectSkill = (skill: TacticalSkill) => {
-    if (actionsLocked || skillCinematic) return;
+    if (skillSelectionLocked) return;
     setSelectedSkillId(skill.id);
     setPanel('capital');
     soundFx.playGaugeTick(0.96);
@@ -5163,7 +5219,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const cycleSkillSelection = () => {
-    if (actionsLocked || skillCinematic || battleSkillPool.length === 0) return;
+    if (skillSelectionLocked || battleSkillPool.length === 0) return;
     const nextId = getNextBattleSkillId(
       battleSkillPool.map((skill) => skill.id),
       primarySkill?.id ?? null
@@ -5216,11 +5272,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         committedCapital.previous,
         committedCapital.next,
         true,
-        false
+        true
       );
       chargeLimitBreak(amount * currentWind.playerMultiplier);
       setStatusText(`意気衝天――無料支援資金${formatCurrency(amount)}を即時投入`);
-      showFloater(`+${formatCurrency(amount)}`, 'player');
+      showFloater(
+        `支援 +${formatCurrency(amount)}`,
+        'player',
+        'positive',
+        'support'
+      );
     } else if (skill.effectType === 'LIVING_DEAD') {
       updateLivingDeadState(
         'waiting',
@@ -6224,7 +6285,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   marketPrice={targetProperty.marketPrice}
                   side="player"
                   motion={playerCapitalMotion}
-                  visualStageOverride={
+                  visualFrameOverride={
                     capitalPreviewStage ?? playerCapitalPilePreviewStage
                   }
                 />
@@ -6345,7 +6406,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   marketPrice={targetProperty.marketPrice}
                   side="enemy"
                   motion={motion}
-                  visualStageOverride={enemyCapitalPilePreviewStage}
+                  visualFrameOverride={enemyCapitalPilePreviewStage}
                 />
                 {enemySupportCinematic && (
                   <div
@@ -6505,7 +6566,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           {floaters.map((item, index) => (
             <i
               key={item.id}
-              className={`gil-floater gil-floater--${item.side} gil-floater--${item.tone}`}
+              className={`gil-floater gil-floater--${item.side} gil-floater--${item.tone} gil-floater--${item.kind}`}
               style={{ '--floater-index': index } as React.CSSProperties}
             >
               {item.text}
@@ -6542,7 +6603,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </section>
         </section>
 
-        <section className="battle-action-strip" aria-label="LIMIT BREAK、SYNERGY、アビリティ、資金源" inert={backgroundInert}>
+        <section
+          className="battle-action-strip"
+          aria-label="LIMIT BREAK、SYNERGY、アビリティ、人脈"
+          inert={panel !== 'capital' || showHelp || showLog || decisiveLocked}
+        >
           {limitBreakCapacityTier > 0 && (
             <button
               type="button"
@@ -6550,7 +6615,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               onClick={demandFromAllies}
               disabled={!commandReady || limitBreakTier === 0 || actionsLocked}
               aria-label={`LIMIT BREAK ${limitBreakTier > 0 ? `${limitBreakTier}発動可能` : '蓄積中'}。ゲージ${Math.floor(visibleLimitBreakCharge)}／${limitBreakChargeCapacity}。発動時は全消費`}
-              title="発動すると蓄積したLBゲージをすべて消費します"
+              title={`発動すると蓄積したLBゲージをすべて消費します（所有率への押し込みは最大+${limitBreakOwnershipCap}pt）`}
             >
               {limitBreakGaugeFull && (
                 <span className="battle-action-strip__overflow" aria-hidden="true"><i /><i /><i /><i /></span>
@@ -6567,7 +6632,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   ? actionsLocked
                     ? '演出待ち'
                     : commandReady
-                      ? `最大+${limitBreakOwnershipCap}pt`
+                      ? `約${formatCurrency(limitBreakApproximateAmount)}`
                       : '準備中'
                   : `${Math.floor(visibleLimitBreakCharge)}/${limitBreakChargeCapacity}`}</small>
               </span>
@@ -6612,8 +6677,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   usedProgressionSynergyIds.has(selectedBattleSynergy.id)
                 )
               }
-              aria-label={`${selectedBattleSynergy.name}（SYNERGY）。${battleSynergyReady ? '選択中の事業連携を発動' : '必要な事業・契約が不足'}`}
-              title={`${selectedBattleSynergy.name}：選択中の事業連携を発動`}
+              aria-label={`${selectedBattleSynergy.name}（SYNERGY）。効果 ${selectedBattleSynergyEffectLabel}。${battleSynergyReady ? '選択中の事業連携を発動' : '必要な事業・契約が不足'}`}
+              title={`${selectedBattleSynergy.name}：${selectedBattleSynergyEffectLabel}`}
             >
               <img
                 className="battle-action-strip__fankit-icon"
@@ -6623,7 +6688,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               />
               <span>
                 <b><MarqueeText text={selectedBattleSynergy.name} /></b>
-                <small>SYNERGY</small>
+                <small>{selectedBattleSynergyEffectLabel}</small>
               </span>
               <em>{selectedBattleSynergy.battleOnly &&
                 usedProgressionSynergyIds.has(selectedBattleSynergy.id)
@@ -6643,7 +6708,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               type="button"
               className="battle-action-strip__action battle-action-strip__action--skill-select"
               onClick={cycleSkillSelection}
-              disabled={battleSkillPool.length <= 1 || actionsLocked}
+              disabled={skillSelectionLocked}
               aria-label={
                 battleSkillPool.length > 1
                   ? `アビリティ変更ボタン。選択中は${primarySkill.name}。押すたび次のアビリティへ変更${usingSkillFallback ? '。未装備のため今回だけ臨時選択' : ''}`
@@ -6701,12 +6766,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             className={`battle-action-strip__action battle-action-strip__action--drawer ${panel === 'funds' ? 'active' : ''}`}
             onClick={() => setPanel('funds')}
             disabled={!commandReady || actionsLocked}
-            aria-label={`資金源。${commandReady ? '支援要請可能' : '自社コマンドの準備中'}`}
+            aria-label={`人脈。${commandReady ? '仲間へ支援要請可能' : '自社コマンドの準備中'}`}
           >
             <Building2 />
             <span>
-              <b>資金源</b>
-              <small>{commandReady ? `支援元${battleSubs.length}件＋協力` : '準備中'}</small>
+              <b>人脈</b>
+              <small>{commandReady ? `仲間${battleSubs.length}件＋協力` : '準備中'}</small>
             </span>
           </button>
         </section>
@@ -6778,11 +6843,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
         {panel === 'funds' && (
           <div className="battle-drawer-shell" role="presentation">
-            <button type="button" className="battle-drawer-backdrop" onClick={() => setPanel('capital')} aria-label="資金源を閉じる" />
-            <section ref={fundsDrawerRef} className="battle-drawer" role="dialog" aria-modal="true" aria-label="資金源" tabIndex={-1}>
+            <button type="button" className="battle-drawer-backdrop" onClick={() => setPanel('capital')} aria-label="人脈を閉じる" />
+            <section ref={fundsDrawerRef} className="battle-drawer" role="dialog" aria-modal="true" aria-label="人脈" tabIndex={-1}>
               <header>
-                <span><Building2 /><b>資金源</b><small>戦術選択中 停止</small></span>
-                <button type="button" data-modal-close onClick={() => setPanel('capital')} aria-label="資金源を閉じる"><X /></button>
+                <span><Building2 /><b>人脈</b><small>仲間を選択中 停止</small></span>
+                <button type="button" data-modal-close onClick={() => setPanel('capital')} aria-label="人脈を閉じる"><X /></button>
               </header>
               {windVisible && (
                 <div className={`command-wind-context command-wind-context--${windSide}`}>
@@ -7039,12 +7104,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           <article ref={helpDialogRef} className="buyout-dialog" role="dialog" aria-modal="true" aria-label={isTraining ? '木人訓練の遊び方' : '買収交渉の遊び方'} tabIndex={-1}>
             <header><CircleHelp /><strong>{isTraining ? '木人訓練の遊び方' : '買収交渉の遊び方'}</strong><button type="button" data-modal-close onClick={() => setShowHelp(false)} aria-label="ヘルプを閉じる"><X /></button></header>
             <ol>
-              <li><b>ギルを積む</b><span>左の投資レベルボタンで金額を5段階から選び、右の投資実行ボタンで1回投入します。支援元・SYNERGYの支援は上のアイコンから使います。</span></li>
+              <li><b>ギルを積む</b><span>左の投資レベルボタンで金額を5段階から選び、右の投資実行ボタンで1回投入します。人脈・SYNERGYの支援は上のアイコンから使います。</span></li>
               {isTraining && <li><b>木人訓練</b><span>参加費・報酬・精算・清算は0。木人は初期耐久資本を全配置し、追加防衛や敵AI行動を行いません。押されても自社1%で訓練を継続でき、その間も通常の毎秒収益とオフライン収益は自社資金へ加算されます。</span></li>}
               <li>
                 <b>戦術選択</b>
                 <span>
-                  演出・資金源・ログ表示中は周囲の商戦進行を停止します。選んだ技そのものの効果は、演出の着弾時に反映されます。
+                  演出・人脈・ログ表示中は周囲の商戦進行を停止します。選んだ技そのものの効果は、演出の着弾時に反映されます。
                 </span>
               </li>
               <li><b>未投入資金</b><span>通常商戦へ持ち込める自社現金は対象相場と同額まで。超過分は商会に安全資金として残り、戦後も失われません。木人訓練は制限対象外です。</span></li>
@@ -7052,7 +7117,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <li><b>市場の風を読む</b><span>{isTraining ? '木人訓練では風は発生せず、自社・木人双方への補正もありません。' : 'グリダニアは風なし。進行後も開始から最低10秒は静穏です。その後は低頻度の市場気配、3秒の予兆を経て12～15秒だけ風が吹き、終了後は最低18秒の静穏を挟みます。'}</span></li>
               {!isTraining && <li><b>時代の風</b><span>クガネの交易網を揃えると解放。敵資金を消さず、12秒間、自社向きの強い時流を追加します。1争奪戦につき1回です。</span></li>}
               <li><b>LIMIT BREAK</b><span>攻防の資金衝突で通常比20%速く蓄積し、動員資金も20%増加。自社＋支援元が合計4/8/16枠で1/2/3本まで解放され、LB1/2の集約資金は対象相場の80%/120%が上限です。発動のたび全ゲージを0にし、同じ戦闘でも再蓄積すれば再発動できます。</span></li>
-              <li><b>特殊アクション</b><span>商戦フィールド直下のアイコンからLB・選択中のSYNERGY・主要アビリティを1タップで実行できます。未解放の枠は表示せず、全アビリティと資金源はドロワーで開きます。</span></li>
+              <li><b>特殊アクション</b><span>商戦フィールド直下のアイコンからLB・選択中のSYNERGY・主要アビリティを1タップで実行できます。未解放の枠は表示せず、人脈はドロワーで開きます。アビリティの選択だけは演出待ち中も変更できます。</span></li>
               <li><b>効果通知</b><span>味方への良い効果は青く上昇し、競合への妨害や悪い効果は赤く下降します。詳しい履歴は戦局ログで後から確認できます。</span></li>
               <li><b>リビングデッド</b><span>10秒の待機中に所有率0%へ到達すると表示上1%で耐えます。攻防の内部値は進み続け、その後10秒以内に30%以上へ戻せなければ敗北。1争奪戦につき1回です。</span></li>
               <li><b>協力協定</b><span>外部協力先から1争奪戦につき1回の支援です。LBの参加件数や投入額には含みません。</span></li>
@@ -7084,7 +7149,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             className="buyout-dialog buyout-result buyout-departure-report"
             role="dialog"
             aria-modal="true"
-            aria-label="資金源の離脱報告"
+            aria-label="人脈の離脱報告"
             tabIndex={-1}
           >
             <header>
@@ -7338,7 +7403,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <span><small>自社競り値</small><b>{formatCurrency(totalPlayerInvested)}</b></span>
                 <span><small>{isTraining ? '木人耐久資本' : '競合競り値'}</small><b>{formatCurrency(enemyInvested)}</b></span>
                 <span><small>戦中再利用</small><b>{formatCurrency(battleCashRecovered)}</b></span>
-                <span><small>{isTraining ? '一時離脱' : isHighEndRaid ? '記録戦中の一時離脱' : '資金源離脱'}</small><b>{rebelled.length}件</b></span>
+                <span><small>{isTraining ? '一時離脱' : isHighEndRaid ? '記録戦中の一時離脱' : '人脈離脱'}</small><b>{rebelled.length}件</b></span>
               </div>
               {winner === 'player' && (
                 <p className="overkill-rating">{getOverkillRating(overkill)}</p>

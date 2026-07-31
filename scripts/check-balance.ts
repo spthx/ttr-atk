@@ -34,6 +34,11 @@ import {
   canConfirmBattleResult,
   enqueueBattleStatusMessage,
   getBattleCapitalVisualBundleCount,
+  getBattleCapitalOverflowTier,
+  getBattleCapitalVisibleUnits,
+  getCapitalColumnHeights,
+  getCapitalVisibleUnitSequence,
+  getMechanicalCapitalColumnFrames,
   getCapitalCommitTiming,
   getCapitalDropParticleCount,
   getCapitalFormationPieceCount,
@@ -58,6 +63,7 @@ import {
   REDUCED_MOTION_SKILL_CINEMATIC_TIMING,
   MAX_CAPITAL_DROP_PARTICLE_COUNT,
   MAX_BATTLE_CAPITAL_VISUAL_STAGE,
+  MAX_BATTLE_CAPITAL_VISIBLE_UNITS,
   normalizeBattleStatusMessageText,
   RESULT_CONFIRM_ARM_DELAY_MS,
   selectBattleStatusMessage,
@@ -898,6 +904,80 @@ assert.deepEqual(
   getCapitalStageSequence(4, 12, 2),
   [8, 12],
   'lightweight mode keeps the destination while reducing paint work'
+);
+const earlyColumnUnits = getBattleCapitalVisibleUnits(15_000, 15_000);
+const lateColumnUnits = getBattleCapitalVisibleUnits(
+  4_200_000_000,
+  4_200_000_000
+);
+assert.ok(
+  lateColumnUnits > earlyColumnUnits,
+  'the same relative offer becomes a taller treasury in later chapters'
+);
+assert.equal(
+  getBattleCapitalVisibleUnits(60_000_000_000, 6_000_000_000),
+  MAX_BATTLE_CAPITAL_VISIBLE_UNITS,
+  'ultimate overcapital stops at the fixed twenty-two-column height cap'
+);
+[0, 1, 19, 20, 21, 279, 280, MAX_BATTLE_CAPITAL_VISIBLE_UNITS].forEach(
+  (units) => {
+    const heights = getCapitalColumnHeights(units);
+    assert.equal(heights.length, 22, 'the capital field always owns twenty-two columns');
+    assert.equal(
+      heights.reduce((total, height) => total + height, 0),
+      units,
+      'column heights preserve the visible-unit total'
+    );
+    assert.ok(
+      Math.max(...heights) - Math.min(...heights) <= 1,
+      'fixed columns grow almost level without random mounds'
+    );
+    assert.deepEqual(
+      getCapitalColumnHeights(units),
+      heights,
+      'the same amount always produces the same column silhouette'
+    );
+  }
+);
+const mechanicalColumnSequence = getCapitalVisibleUnitSequence(12, 480, 22);
+assert.equal(mechanicalColumnSequence.at(-1), 480);
+assert.ok(mechanicalColumnSequence.length <= 22);
+assert.ok(
+  mechanicalColumnSequence.every(
+    (units, index) => index === 0 || units > mechanicalColumnSequence[index - 1]
+  ),
+  'a funding wave advances the column field monotonically'
+);
+const mechanicalRackFrames = getMechanicalCapitalColumnFrames(
+  0,
+  MAX_BATTLE_CAPITAL_VISIBLE_UNITS,
+  22,
+  5
+);
+assert.equal(
+  mechanicalRackFrames.at(-1)?.visibleUnits,
+  MAX_BATTLE_CAPITAL_VISIBLE_UNITS
+);
+assert.ok(mechanicalRackFrames.length <= 22);
+assert.ok(
+  mechanicalRackFrames.every((frame, index) =>
+    index === 0 ||
+    frame.visibleUnits >= mechanicalRackFrames[index - 1].visibleUnits
+  ),
+  'the automatic rack never removes capital during a funding wave'
+);
+assert.ok(
+  mechanicalRackFrames.slice(0, -1).every(
+    (frame) => frame.activeColumnIndices.length <= 5
+  ),
+  'each mechanical beat touches at most one five-column rack group'
+);
+assert.deepEqual(
+  [1.49, 1.5, 3, 6].map((ratio) =>
+    getBattleCapitalOverflowTier(ratio * 1_000_000, 1_000_000)
+  ),
+  [0, 1, 2, 3],
+  'overcapital spectacle uses three bounded grades instead of amount-scaled DOM'
 );
 assert.deepEqual(
   [1, 2, 3, 4, 5].map(getInvestmentStakeVisualPieceCount),
