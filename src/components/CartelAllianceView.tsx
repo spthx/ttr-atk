@@ -96,14 +96,14 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
             </p>
             <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
               <div className="flex items-start gap-2"><span className="text-violet-400 font-bold">1. 通商・調達の後援:</span><span>{activeCandidate?.summary || `${alliance.allyName}から公的後援を受けます。`}</span></div>
-              <div className="flex items-start gap-2"><span className="text-violet-400 font-bold">2. 支援要請:</span><span>1争奪戦につき1回、許認可・調達・輸送を含む相場32%相当の支援価値を受けます。LBには含まれません。</span></div>
+              <div className="flex items-start gap-2"><span className="text-violet-400 font-bold">2. 支援要請:</span><span>1争奪戦につき1回、許認可・調達・輸送を含む相場42%相当の支援価値を受けます。LBには含まれません。</span></div>
               <div className="flex items-start gap-2"><span className="text-slate-400 font-bold">3. 任意返上:</span><span>後援はいつでも返上できます。通常の取得交渉では自動解除されません。</span></div>
             </div>
           </>
         ) : alliance.active ? (
           <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
             <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">1. 不可侵契約:</span><span>協力企業から{companyName}への対抗買収が一切仕掛けられなくなります。</span></div>
-            <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">2. 協力支援要請:</span><span>買収交渉ごとに1回、対象相場の32%相当を要請できます。LBには含まれません。</span></div>
+            <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">2. 協力支援要請:</span><span>買収交渉ごとに1回、対象相場の42%相当を要請できます。LBには含まれません。</span></div>
             <div className="flex items-start gap-2"><span className="text-rose-400 font-bold">3. 解除条件:</span><span>協力企業の傘下へ交渉を仕掛けると、協定は自動解除されます。再協定は可能です。</span></div>
           </div>
         ) : (

@@ -1750,7 +1750,7 @@ assert.ok(
 assert.equal(ultimateReadinessWithGrandCompany.mechanicCheckRequired, true);
 assert.match(
   ultimateReadinessWithGrandCompany.mechanicWarning ?? '',
-  /開幕・窮地/
+  /開幕・土壇場/
 );
 assert.equal(
   isGroupSynergyUnlocked({
@@ -2219,7 +2219,7 @@ assert.equal(
   shouldBreakAllianceForTarget(legacyGarlandAlliance, { ownerName: 'ガーロンド・アイアンワークス系列' }),
   true
 );
-assert.equal(calculateAllianceSupport(1_000_000), 320_000);
+assert.equal(calculateAllianceSupport(1_000_000), 420_000);
 assert.deepEqual(
   INITIAL_CARTELS.map((cartel) =>
     calculateCartelHeadquartersDefense(

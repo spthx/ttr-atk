@@ -13,6 +13,7 @@ const appPage = readSource('app/page.tsx');
 const battlePresentation = readSource('src/utils/battlePresentation.ts');
 const capitalCss = readSource('src/battle-capital-layer.css');
 const integratedCss = readSource('src/battle-integrated-field.css');
+const skillsSynergyView = readSource('src/components/SkillsSynergyView.tsx');
 
 assert.match(
   capitalCss,
@@ -50,20 +51,10 @@ assert.doesNotMatch(
   '30/60fps must not reintroduce a visual lightweight branch'
 );
 
-assert.match(
-  battleModal,
-  /gil-chip-player\.webp/,
-  'coin piles must use the compressed WebP coin bundle'
-);
-assert.match(
-  battleModal,
-  /const cargo = \{ kind: 'bundle', src: gilChipPlayer \} as const/,
-  'every investment preview must use the same small coin bundle'
-);
 assert.doesNotMatch(
-  battleModal,
-  /capital-cargo-player|cargo-bag|gil-tower__coins|className=["'`]gil-coin/,
-  'the removed bag and CSS-placeholder coin paths must not return'
+  `${battleModal}\n${capitalCss}\n${integratedCss}`,
+  /InvestmentStakePreview|investment-stake-preview|gil-chip-player|capital-cargo-player|cargo-bag|gil-tower__coins|className=["'`]gil-coin/,
+  'the fleeting investment bundle, removed bags and placeholder coin paths must not return'
 );
 [
   'src/assets/battle/capital-cargo-player.webp',
@@ -84,6 +75,11 @@ assert.equal(
   (capitalColumnSlots.match(/\{ x:/g) ?? []).length,
   22,
   'coin formation DOM must retain exactly twenty-two fixed columns per side'
+);
+assert.equal(
+  (capitalColumnSlots.match(/phoneX:/g) ?? []).length,
+  22,
+  'every fixed coin column must have a portrait-phone spread position'
 );
 assert.match(
   battleModal,
@@ -139,6 +135,36 @@ assert.match(
   capitalCss,
   /capital-overflow-stamp[\s\S]*capital-overflow-machine-drop/,
   'overcapital must use one bounded finite machine-drop beat'
+);
+assert.match(
+  capitalCss,
+  /@media \(max-width: 430px\)[\s\S]*--coin-column-width: clamp\(\.54rem, 2\.65vw, \.68rem\)[\s\S]*left: var\(--column-phone-x\)/,
+  'portrait phones must use the wider, denser fixed capital formation'
+);
+assert.match(
+  integratedCss,
+  /ownership-fighter--enemy:not\(\.ownership-fighter--boss-party\)[\s\S]*\.ownership-avatar--enemy[\s\S]*width: 68%;[\s\S]*height: 72%/,
+  'a single enemy must stay near Tataru visual size and leave its coin field readable'
+);
+assert.match(
+  integratedCss,
+  /@media \(max-width: 639px\)[\s\S]*ownership-fighter--enemy\.ownership-fighter--boss-party[\s\S]*width: min\(7\.2rem, 38vw\)/,
+  'mobile boss parties must stay inside a Tataru-sized visual envelope'
+);
+assert.match(
+  app,
+  /const openingAutoUnlocked = savageUnlocked;[\s\S]*const criticalAutoUnlocked = savageClearedSet\.has\([\s\S]*FIRST_SAVAGE_FOURTH_LAYER_ID/,
+  'opening and last-stand abilities must unlock at Savage and its first fourth floor'
+);
+assert.match(
+  skillsSynergyView,
+  /SKILL_PROGRESSION_ORDER = \[[\s\S]*skill_synergy_push[\s\S]*skill_era_wind[\s\S]*orderedSkills\.map/,
+  'the ability catalogue must follow campaign learning order'
+);
+assert.doesNotMatch(
+  `${app}\n${battleModal}\n${skillsSynergyView}`,
+  /窮地アビリティ/,
+  'the player-facing auto slot must consistently use 土壇場アビリティ'
 );
 assert.match(
   battlePresentation,

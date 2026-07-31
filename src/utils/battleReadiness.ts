@@ -447,9 +447,9 @@ export const calculateBattleReadiness = ({
     battleMode === 'savage' || battleMode === 'ultimate';
   const mechanicWarning =
     battleMode === 'ultimate'
-      ? '絶は開幕・窮地アビリティを決着前に必ず解決します。戦力が足りても、構えへの対応を誤ると敗北します。'
+      ? '絶は開幕・土壇場アビリティを決着前に必ず解決します。戦力が足りても、構えへの対応を誤ると敗北します。'
       : battleMode === 'savage'
-        ? '零式は層ごとの開幕・窮地・防御ギミックを含みます。戦力比だけでは勝利を保証しません。'
+        ? '零式は層ごとの開幕・土壇場・防御ギミックを含みます。戦力比だけでは勝利を保証しません。'
         : null;
 
   return {

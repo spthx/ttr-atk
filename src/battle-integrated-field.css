@@ -4689,124 +4689,6 @@
   }
 }
 
-.buyout-screen .integrated-battlefield .investment-stake-preview {
-  position: absolute;
-  z-index: 5;
-  right: .3rem;
-  bottom: .42rem;
-  width: min(6.8rem, 43%);
-  height: 4.4rem;
-  pointer-events: none;
-  filter:
-    drop-shadow(0 .28rem .26rem rgba(0, 0, 0, .66))
-    drop-shadow(0 0 .32rem rgba(250, 204, 21, .22));
-  transform-origin: 65% 86%;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview::after {
-  position: absolute;
-  z-index: -1;
-  right: 2%;
-  bottom: -.14rem;
-  width: 74%;
-  height: .66rem;
-  border: 1px solid rgba(250, 204, 21, .2);
-  border-radius: 50%;
-  content: "";
-  background: radial-gradient(ellipse, rgba(250, 204, 21, .16), transparent 72%);
-  box-shadow: 0 .2rem .42rem rgba(0, 0, 0, .54);
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview > img {
-  position: absolute;
-  right: .2rem;
-  bottom: 0;
-  display: block;
-  width: auto;
-  height: 3.1rem;
-  object-fit: contain;
-  object-position: center bottom;
-  transform-origin: center bottom;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview--cargo-coin > img {
-  right: .4rem;
-  height: 1.42rem;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview--cargo-bundle > img {
-  right: .25rem;
-  height: 2.35rem;
-  rotate: -3deg;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview--cargo-bag > img {
-  right: .35rem;
-  height: 3.15rem;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview--level-4 > img {
-  right: .2rem;
-  height: 3.62rem;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview--level-5 {
-  right: .08rem;
-  bottom: .24rem;
-  width: min(7rem, 44%);
-  height: 4.95rem;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview--level-5 > img {
-  right: 0;
-  bottom: 0;
-  height: 4.58rem;
-  opacity: 1;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview--level-5::after {
-  right: 0;
-  bottom: -.12rem;
-  width: 82%;
-  height: .82rem;
-  border-color: rgba(252, 211, 77, .42);
-  background:
-    linear-gradient(180deg, rgba(30, 41, 59, .42), rgba(2, 6, 23, .88)),
-    radial-gradient(ellipse, rgba(250, 204, 21, .34), transparent 68%);
-  box-shadow:
-    inset 0 .12rem .12rem rgba(255, 255, 255, .14),
-    0 .24rem .5rem rgba(0, 0, 0, .72),
-    0 0 .58rem rgba(250, 204, 21, .24);
-}
-
-@media (max-width: 639px) {
-  .buyout-screen .integrated-battlefield .investment-stake-preview {
-    right: .12rem;
-    bottom: .34rem;
-    width: min(5.7rem, 44%);
-    height: 3.75rem;
-  }
-
-  .buyout-screen .integrated-battlefield .investment-stake-preview--level-5 > img {
-    right: .05rem;
-    height: 3.95rem;
-  }
-
-  .buyout-screen .integrated-battlefield .investment-stake-preview--level-5 {
-    right: .04rem;
-    bottom: .2rem;
-    width: min(5.8rem, 44%);
-    height: 4.25rem;
-    transform-origin: right bottom;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .buyout-screen .integrated-battlefield .investment-stake-preview.is-committing {
-    animation: none;
-  }
-}
-
 /*
  * Boss formations are decorative only. Two or three tiny fan-kit job images
  * share the existing enemy actor layer; there is no extra AI, timer, physics
@@ -4827,6 +4709,17 @@
   left: 50%;
   width: 70%;
   height: 100%;
+}
+
+/* Enemy source art has much less transparent padding than Tataru's portrait.
+ * Size the visible art, not merely the shared outer box, so a single rival no
+ * longer hides its own capital columns on a portrait phone. */
+.integrated-battlefield
+  .capital-visual-row
+  .ownership-fighter--enemy:not(.ownership-fighter--boss-party)
+  .ownership-avatar--enemy {
+  width: 68%;
+  height: 72%;
 }
 
 .boss-enemy-party__member {
@@ -4865,7 +4758,21 @@
   .integrated-battlefield
     .capital-visual-row
     .ownership-fighter--enemy.ownership-fighter--boss-party {
-    width: min(8.6rem, 46vw) !important;
+    width: min(7.2rem, 38vw) !important;
+  }
+
+  .integrated-battlefield
+    .ownership-fighter--boss-party
+    .ownership-avatar--enemy {
+    width: 60%;
+    height: 82%;
+  }
+
+  .integrated-battlefield
+    .ownership-fighter--boss-party
+    .boss-enemy-party__member {
+    width: 48%;
+    height: 70%;
   }
 }
 

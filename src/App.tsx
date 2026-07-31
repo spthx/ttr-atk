@@ -109,6 +109,10 @@ export { PASSIVE_REVENUE_MULTIPLIER };
 const BATTLE_FRAME_RATE_STORAGE_KEY = 'ttr-battle-frame-rate';
 const LEGACY_LIGHTWEIGHT_MODE_STORAGE_KEY = 'ttr-lightweight-mode';
 type BattleFrameRate = 30 | 60;
+const FIRST_SAVAGE_FOURTH_LAYER_ID =
+  SAVAGE_RAID_DEFINITIONS.find(
+    (raid) => raid.series === 1 && raid.layer === 4
+  )?.id ?? 'prop_abyss_heavy';
 
 type FeatureUnlockId =
   | 'market_wind'
@@ -184,14 +188,14 @@ const FEATURE_UNLOCKS: Record<
   opening_auto: {
     kicker: 'OPENING ABILITY',
     title: '開幕アビリティ 解放',
-    dialogue: 'クガネまでの商戦で、開幕の段取りも身についたでっす！ 最初に使うアビリティを一つ、戦う前に決めておけるでっす。',
+    dialogue: '零式へ挑む準備として、開幕の段取りも整えたでっす！ 最初に使うアビリティを一つ、戦う前に決めておけるでっす。',
     detail: '装備中のアビリティ一つを開幕アビリティへ設定できます。設定したアビリティは手動選択から外れ、開始演出の後に一度だけ自動発動します。',
   },
   critical_auto: {
     kicker: 'CRITICAL ABILITY',
-    title: '窮地アビリティ 解放',
-    dialogue: 'オールド・シャーレアンまで進んだ今なら、苦しい時の切り札も先に決めておけるでっす！',
-    detail: '装備中のアビリティ一つを窮地アビリティへ設定できます。設定した技は手動選択から外れ、所有率が危険域へ入った時に一度だけ自動発動します。',
+    title: '土壇場アビリティ 解放',
+    dialogue: '最初の零式4層を越えた今なら、土壇場の切り札も先に決めておけるでっす！',
+    detail: '装備中のアビリティ一つを土壇場アビリティへ設定できます。設定した技は手動選択から外れ、所有率が危険域へ入った時に一度だけ自動発動します。',
   },
 };
 
@@ -439,15 +443,16 @@ export default function App() {
   const tradeAllianceUnlocked = !!communityProgress.find(
     (community) => community.id === 'ウルダハ'
   )?.conquered;
-  const openingAutoUnlocked = conqueredCommunityIdSet.has('クガネ');
-  const criticalAutoUnlocked =
-    conqueredCommunityIdSet.has('オールド・シャーレアン');
   const normalCampaignComplete =
     conqueredCommunityCount === COMMUNITY_CAMPAIGN_ORDER.length;
   const savageUnlocked = normalCampaignComplete || normalEndingSeen;
   const savageClearedSet = useMemo(
     () => new Set(savageClearedPropertyIds),
     [savageClearedPropertyIds]
+  );
+  const openingAutoUnlocked = savageUnlocked;
+  const criticalAutoUnlocked = savageClearedSet.has(
+    FIRST_SAVAGE_FOURTH_LAYER_ID
   );
   const savageProperties = useMemo(
     () => buildSavageProperties(INITIAL_PROPERTIES, savageClearedSet, companyName),

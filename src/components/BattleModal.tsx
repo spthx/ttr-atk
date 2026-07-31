@@ -163,7 +163,6 @@ import {
   type LivingDeadPhase,
 } from '../utils/gameBalance';
 export { ENEMY_BALANCE_FACTOR, LIMIT_BREAK_MULTIPLIERS };
-import gilChipPlayer from '../assets/battle/gil-chip-player.webp';
 import '../battle-buyout.css';
 import '../battle-balance.css';
 import '../battle-clarity.css';
@@ -619,18 +618,18 @@ const riskPresentation = (risk: number) => {
 };
 
 const CAPITAL_COLUMN_SLOTS = [
-  { x: 42.5, bottom: 30, depth: 0 }, { x: 47.5, bottom: 32, depth: 0 },
-  { x: 52.5, bottom: 32, depth: 0 }, { x: 57.5, bottom: 30, depth: 0 },
-  { x: 40, bottom: 20, depth: 1 }, { x: 45, bottom: 22, depth: 1 },
-  { x: 50, bottom: 23, depth: 1 }, { x: 55, bottom: 22, depth: 1 },
-  { x: 60, bottom: 20, depth: 1 },
-  { x: 37.5, bottom: 10, depth: 2 }, { x: 42.5, bottom: 12, depth: 2 },
-  { x: 47.5, bottom: 13, depth: 2 }, { x: 52.5, bottom: 13, depth: 2 },
-  { x: 57.5, bottom: 12, depth: 2 }, { x: 62.5, bottom: 10, depth: 2 },
-  { x: 40, bottom: 0, depth: 3 }, { x: 45, bottom: 2, depth: 3 },
-  { x: 50, bottom: 3, depth: 3 }, { x: 55, bottom: 2, depth: 3 },
-  { x: 60, bottom: 0, depth: 3 },
-  { x: 35, bottom: 9, depth: 2 }, { x: 65, bottom: 9, depth: 2 },
+  { x: 42.5, phoneX: 39.1, bottom: 30, depth: 0 }, { x: 47.5, phoneX: 46.4, bottom: 32, depth: 0 },
+  { x: 52.5, phoneX: 53.6, bottom: 32, depth: 0 }, { x: 57.5, phoneX: 60.9, bottom: 30, depth: 0 },
+  { x: 40, phoneX: 35.5, bottom: 20, depth: 1 }, { x: 45, phoneX: 42.8, bottom: 22, depth: 1 },
+  { x: 50, phoneX: 50, bottom: 23, depth: 1 }, { x: 55, phoneX: 57.3, bottom: 22, depth: 1 },
+  { x: 60, phoneX: 64.5, bottom: 20, depth: 1 },
+  { x: 37.5, phoneX: 31.9, bottom: 10, depth: 2 }, { x: 42.5, phoneX: 39.1, bottom: 12, depth: 2 },
+  { x: 47.5, phoneX: 46.4, bottom: 13, depth: 2 }, { x: 52.5, phoneX: 53.6, bottom: 13, depth: 2 },
+  { x: 57.5, phoneX: 60.9, bottom: 12, depth: 2 }, { x: 62.5, phoneX: 68.1, bottom: 10, depth: 2 },
+  { x: 40, phoneX: 35.5, bottom: 0, depth: 3 }, { x: 45, phoneX: 42.8, bottom: 2, depth: 3 },
+  { x: 50, phoneX: 50, bottom: 3, depth: 3 }, { x: 55, phoneX: 57.3, bottom: 2, depth: 3 },
+  { x: 60, phoneX: 64.5, bottom: 0, depth: 3 },
+  { x: 35, phoneX: 28.3, bottom: 9, depth: 2 }, { x: 65, phoneX: 71.8, bottom: 9, depth: 2 },
 ] as const;
 
 const GilPileVisual = React.memo(function GilPileVisual({
@@ -661,6 +660,7 @@ const GilPileVisual = React.memo(function GilPileVisual({
           data-machine-active={activeColumns.has(index)}
           style={{
             '--column-x': `${slot.x}%`,
+            '--column-phone-x': `${slot.phoneX}%`,
             '--column-bottom': `${slot.bottom}%`,
             '--column-depth': slot.depth,
             '--column-layers': frame.columnHeights[index],
@@ -742,30 +742,6 @@ const GilTower: React.FC<{
     </div>
   );
 };
-
-const InvestmentStakePreview = React.memo(function InvestmentStakePreview({
-  level,
-  stage,
-  motionSerial,
-}: {
-  level: number;
-  stage: CapitalCommitStage | null;
-  motionSerial: number;
-}) {
-  const cargo = { kind: 'bundle', src: gilChipPlayer } as const;
-
-  return (
-    <div
-      key={`${level}-${motionSerial}`}
-      className={`investment-stake-preview investment-stake-preview--level-${level} investment-stake-preview--cargo-${cargo.kind} ${stage ? `is-committing investment-stake-preview--stage-${stage}` : ''}`}
-      data-investment-level={level}
-      data-cargo-kind={cargo.kind}
-      aria-hidden="true"
-    >
-      <img src={cargo.src} alt="" decoding="async" />
-    </div>
-  );
-});
 
 const CompanyGrowthResult = React.memo(function CompanyGrowthResult({
   before,
@@ -3394,7 +3370,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         )
       );
       setStatusText(
-        `窮地アビリティ――${criticalAutoSkill.name}を割り込み予約`
+        `土壇場アビリティ――${criticalAutoSkill.name}を割り込み予約`
       );
       return false;
     }
@@ -3426,17 +3402,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const criticalActionName =
         ultimateCriticalSkillId
           ? ENEMY_SUPPORT_PRESENTATION[ultimateCriticalSkillId].actionName
-          : '窮地アビリティ';
+          : '土壇場アビリティ';
       ultimateCriticalGateConsumedRef.current = true;
       ultimateCriticalGatePendingRef.current = true;
       setUltimateCriticalGatePending(true);
       setGaugeSpeed(0);
       updateGauge(-98, true);
       setStatusText(
-        `絶・窮地アビリティ――${criticalActionName}を先に解決`
+        `絶・土壇場アビリティ――${criticalActionName}を先に解決`
       );
       addLog(
-        `絶商戦の窮地ギミックが割り込み。${criticalActionName}の解決まで決着を保留。`,
+        `絶商戦の土壇場ギミックが割り込み。${criticalActionName}の解決まで決着を保留。`,
         'enemy'
       );
       return false;
@@ -5394,7 +5370,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       source === 'opening-auto'
         ? `開幕アビリティ――${skill.name}`
         : source === 'critical-auto'
-          ? `窮地アビリティ――${skill.name}`
+          ? `土壇場アビリティ――${skill.name}`
           : `${skill.name}――発動`
     );
     soundFx.playSkillCast(skill.effectType);
@@ -6289,13 +6265,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     capitalPreviewStage ?? playerCapitalPilePreviewStage
                   }
                 />
-                {capitalPresentationStage && (
-                  <InvestmentStakePreview
-                    level={selectedLevel}
-                    stage={capitalPresentationStage}
-                    motionSerial={motionSerial}
-                  />
-                )}
                 {playerCoverKnightPhase !== 'absent' && (
                   <div
                     className={`cover-knight cover-knight--player cover-knight--${playerCoverKnightPhase}`}
