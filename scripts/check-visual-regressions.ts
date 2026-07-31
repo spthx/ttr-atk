@@ -76,10 +76,69 @@ assert.doesNotMatch(
     `${path} must remain deleted so it cannot silently return as a fallback`
   );
 });
+const capitalColumnSlots =
+  battleModal.match(
+    /const CAPITAL_COLUMN_SLOTS = \[([\s\S]*?)\] as const;/
+  )?.[1] ?? '';
+assert.equal(
+  (capitalColumnSlots.match(/\{ x:/g) ?? []).length,
+  22,
+  'coin formation DOM must retain exactly twenty-two fixed columns per side'
+);
 assert.match(
   battleModal,
-  /Array\.from\(\{ length: 6 \}/,
-  'coin formation DOM must retain its fixed six-slot pool'
+  /CAPITAL_COLUMN_SLOTS\.map\([\s\S]*className="capital-fixed-column"/,
+  'coin formation must paint the fixed columns instead of amount-scaled DOM'
+);
+assert.match(
+  battleModal,
+  /getMechanicalCapitalColumnFrames\([\s\S]*heavy \? 5 : 4/,
+  'funding waves must advance a bounded rack group instead of lifting every column together'
+);
+assert.match(
+  battleModal,
+  /overflowTier:\s*getBattleCapitalOverflowTier\(committedCapital, marketPrice\)/,
+  'exceptional committed capital must keep the fixed rack seated after the burst ends'
+);
+assert.match(
+  battleModal,
+  /frame\.overflowTier > 0 && frame\.presentationSerial > 0/,
+  'overflow pieces must remain a finite preview effect instead of permanent animation'
+);
+assert.match(
+  battleModal,
+  /約\$\{formatCurrency\(limitBreakApproximateAmount\)\}/,
+  'the LB button must explain its current contribution in player-readable gil'
+);
+assert.match(
+  battleModal,
+  /selectedBattleSynergyEffectLabel[\s\S]*圧力\+\$\{Math\.round/,
+  'the synergy button must expose its active pressure bonus and duration'
+);
+assert.match(
+  battleModal,
+  /disabled=\{skillSelectionLocked\}/,
+  'ability selection must remain independently available while action execution is locked'
+);
+assert.match(
+  battleModal,
+  /aria-label={`人脈。\$\{commandReady/,
+  'the support drawer must read as player relationships rather than an abstract fund source'
+);
+assert.match(
+  capitalCss,
+  /\.gil-floater--support[\s\S]*bottom:\s*calc\(46%/,
+  'support amounts must remain above the coin field command area'
+);
+assert.match(
+  battleModal,
+  /const requestAlliance[\s\S]*startCapitalPilePreview\([\s\S]*committedCapital\.next,[\s\S]*true,[\s\S]*true/,
+  'late-game alliance funding must always receive the heavy stacking presentation'
+);
+assert.match(
+  capitalCss,
+  /capital-overflow-stamp[\s\S]*capital-overflow-machine-drop/,
+  'overcapital must use one bounded finite machine-drop beat'
 );
 assert.match(
   battlePresentation,
@@ -95,6 +154,11 @@ assert.match(
   battlePresentation,
   /BATTLE_CAPITAL_VISUAL_STAGE_COUNT = 60/,
   'the fine-grained coin pile must retain sixty logical paint stages'
+);
+assert.match(
+  battlePresentation,
+  /MAX_BATTLE_CAPITAL_VISIBLE_UNITS =\s*BATTLE_CAPITAL_COLUMN_COUNT \* MAX_BATTLE_CAPITAL_COLUMN_LAYERS/,
+  'campaign coin height must remain bounded by the fixed column pool'
 );
 assert.match(
   battlePresentation,
