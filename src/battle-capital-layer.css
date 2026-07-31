@@ -2915,6 +2915,18 @@
   animation: enemy-final-knock-away .72s cubic-bezier(.14, .72, .2, 1) both;
 }
 
+/*
+ * A boss party is one defeated formation. Rear-line job sprites share the
+ * leader's knock-away beat instead of snapping back into formation while the
+ * result card is being read.
+ */
+.buyout-screen
+  .integrated-battlefield--terminal-winner-player.integrated-battlefield--terminal-impact
+  .ownership-fighter--boss-party
+  .boss-enemy-party__member {
+  animation: boss-party-final-knock-away .72s cubic-bezier(.14, .72, .2, 1) both;
+}
+
 .buyout-screen
   .integrated-battlefield--terminal-direct.integrated-battlefield--terminal-resolution.integrated-battlefield--terminal-winner-player
   .ownership-avatar.ownership-avatar--player {
@@ -2937,6 +2949,72 @@
   opacity: .18;
   filter: drop-shadow(0 .28rem .3rem rgba(0, 0, 0, .72));
   animation: none;
+}
+
+.buyout-screen
+  .integrated-battlefield--terminal-winner-player.integrated-battlefield--terminal-resolution
+  .ownership-fighter--boss-party
+  .boss-enemy-party__member,
+.buyout-screen
+  .integrated-battlefield--settled-player
+  .ownership-fighter--boss-party
+  .boss-enemy-party__member {
+  transform:
+    translateX(clamp(8rem, 34vw, 22rem))
+    translateY(-1.35rem)
+    rotate(62deg);
+  transform-origin: center bottom;
+  opacity: 0;
+  animation: none;
+}
+
+/*
+ * `winner` remains latched after the terminal stage is cleared. Preserve the
+ * final tableau until the result dialog replaces the battlefield; otherwise
+ * both actors visibly teleport back to their combat starting positions.
+ */
+.buyout-screen
+  .integrated-battlefield--settled-player.integrated-battlefield--settled-direct
+  .ownership-avatar.ownership-avatar--player {
+  transform:
+    translateX(
+      calc(var(--finisher-travel, clamp(9rem, 52vw, 39rem)) - .85rem)
+    )
+    scaleX(-1);
+  animation: none;
+}
+
+.buyout-screen
+  .integrated-battlefield--settled-player
+  .ownership-avatar.ownership-avatar--enemy {
+  transform:
+    translateX(clamp(8rem, 34vw, 22rem))
+    translateY(-1.2rem)
+    rotate(58deg);
+  transform-origin: center bottom;
+  opacity: 0;
+  animation: none;
+}
+
+@keyframes boss-party-final-knock-away {
+  0% {
+    transform: translateX(.35rem);
+    opacity: .78;
+  }
+  55% {
+    transform:
+      translateX(clamp(4rem, 19vw, 12rem))
+      translateY(-1.8rem)
+      rotate(30deg);
+    opacity: .48;
+  }
+  100% {
+    transform:
+      translateX(clamp(8rem, 34vw, 22rem))
+      translateY(-1.35rem)
+      rotate(62deg);
+    opacity: 0;
+  }
 }
 
 @keyframes tataru-final-contact-windup {

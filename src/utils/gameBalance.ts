@@ -383,6 +383,38 @@ export const canEnemyAffordDrill = (
   finiteNonNegative(enemyReserve) >=
     calculateEnemyDrillReserveCost(enemyBudget);
 
+/**
+ * Ultimate cannot be defeated by skipping its authored critical action with one
+ * oversized push. This is a mechanic check, not extra enemy capital: draining
+ * the reserve needed for Drill remains a valid way to deny that action.
+ */
+export const shouldForceUltimateCriticalBeforeVictory = ({
+  isUltimate,
+  terminalWinner,
+  criticalSkillId,
+  criticalSkillUsed,
+  gateConsumed,
+  enemyReserve,
+  enemyBudget,
+}: {
+  isUltimate: boolean;
+  terminalWinner: 'player' | 'opponent' | null;
+  criticalSkillId: EnemySupportSkillId | null;
+  criticalSkillUsed: boolean;
+  gateConsumed: boolean;
+  enemyReserve: number;
+  enemyBudget: number;
+}) =>
+  isUltimate &&
+  terminalWinner === 'player' &&
+  criticalSkillId !== null &&
+  !criticalSkillUsed &&
+  !gateConsumed &&
+  (
+    criticalSkillId !== 'drill' ||
+    canEnemyAffordDrill(enemyReserve, enemyBudget)
+  );
+
 export const getEnemyDrillImpact = ({
   enemyBudget,
   hasMugMark = false,
