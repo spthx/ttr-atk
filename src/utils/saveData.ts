@@ -41,6 +41,8 @@ export interface GameSaveData {
   /** Optional schema-v3 additions for the post-Savage Ultimate route. */
   savageEndingSeen?: boolean;
   ultimateCleared?: boolean;
+  /** Optional post-Ultimate challenge record. Missing values remain uncleared. */
+  cruelCleared?: boolean;
   trueEndingSeen?: boolean;
   /** One manual battle-synergy slot. Missing/unknown values fall back in App. */
   selectedBattleSynergyId?: string | null;
@@ -164,8 +166,11 @@ export const loadGameSave = (): GameSaveData | null => {
       return null;
     }
 
+    const equippedSkillIds = parsed.equippedSkillIds.filter((skillId) =>
+      knownSkillIds.has(skillId)
+    );
     const autoSkillLoadout = normalizeAutoSkillLoadout({
-      equippedSkillIds: parsed.equippedSkillIds,
+      equippedSkillIds,
       openingAutoSkillId: parsed.openingAutoSkillId,
       criticalAutoSkillId: parsed.criticalAutoSkillId,
     });
@@ -175,7 +180,7 @@ export const loadGameSave = (): GameSaveData | null => {
       companyName: parsed.companyName.trim(),
       totalFunds: Math.max(0, parsed.totalFunds),
       properties: parsed.properties,
-      equippedSkillIds: parsed.equippedSkillIds,
+      equippedSkillIds,
       ...autoSkillLoadout,
       alliance: normalizeAllianceState(parsed.alliance),
       seenUnlockIds: Array.isArray(parsed.seenUnlockIds)
@@ -202,6 +207,7 @@ export const loadGameSave = (): GameSaveData | null => {
         parsed.savageEndingSeen === true ||
         (parsed.ultimateCleared === undefined && parsed.trueEndingSeen === true),
       ultimateCleared: parsed.ultimateCleared === true,
+      cruelCleared: parsed.cruelCleared === true,
       trueEndingSeen:
         parsed.ultimateCleared === true && parsed.trueEndingSeen === true,
       selectedBattleSynergyId:

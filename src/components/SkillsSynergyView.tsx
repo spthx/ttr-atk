@@ -23,12 +23,11 @@ import {
 type SkillActivationMode = 'manual' | 'opening_auto' | 'critical_auto';
 
 const SKILL_PROGRESSION_ORDER = [
-  'skill_synergy_push',
   'skill_fast_horse',
-  'skill_nemawashi',
+  'skill_synergy_push',
+  'skill_demoralize',
   'skill_capital_boost',
   'skill_sns_blitz',
-  'skill_demoralize',
   'skill_sabotage',
   'skill_era_wind',
 ] as const;
@@ -158,7 +157,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
               アビリティ装備
               <HelpTip term="アビリティ" description="買収交渉中に使える特殊コマンドです。修得済みのアビリティを最大8個まで装備できます。" />
             </h2>
-            <p className="mt-1 text-xs text-slate-400">事業・契約や業界の条件を満たすと修得できます。使用後は再使用時間が必要です。</p>
+            <p className="mt-1 text-xs text-slate-400">事業・契約や業界の条件を満たすと修得できます。使用後はリキャストタイムが必要です。</p>
             {openingAutoUnlocked && (
               <p className="mt-1 text-xs text-amber-200/80">
                 装備中の技は、手動または開幕アビリティ
@@ -287,7 +286,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                       </span>
                     )}
                     <span className="text-xs text-slate-400">
-                      {skill.oncePerBattle ? '使用制限: 1争奪戦につき1回' : `再使用: ${(skill.cooldownMs / 1000).toFixed(1)}秒`}
+                      {skill.oncePerBattle ? '使用制限: 1争奪戦につき1回' : `リキャストタイム: ${(skill.cooldownMs / 1000).toFixed(1)}秒`}
                     </span>
                   </div>
 
@@ -531,7 +530,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                     </span>
                     <strong className="text-amber-300 font-bold">
                       {synergy.battleOnly && synergy.battleEffect
-                        ? `所有率+${(synergy.battleEffect.ownershipPush ?? 0).toFixed(1)}pt・資本圧力×${synergy.battleEffect.capitalPressureMultiplier.toFixed(2)}・${Math.round(synergy.battleEffect.durationMs / 1000)}秒`
+                        ? `所有率ゲージ+${(synergy.battleEffect.ownershipPush ?? 0).toFixed(1)}%分・資本圧力×${synergy.battleEffect.capitalPressureMultiplier.toFixed(2)}・${Math.round(synergy.battleEffect.durationMs / 1000)}秒`
                         : `×${(
                             synergy.battleGroupMultiplier ??
                             BATTLE_SUPPORT_BALANCE.synergyDefaultMultiplier

@@ -13,6 +13,8 @@ import type { BattleReadinessResult } from '../utils/battleReadiness';
 import {
   countsTowardCityConquest,
   getCampaignProperties,
+  getReacquisitionLevel,
+  isExtremeReacquisition,
   isNormalCityBoss,
 } from '../utils/gameBalance';
 import '../market-strength.css';
@@ -188,7 +190,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
       </dl>
       <footer>
         <span><WalletCards />自社資金 <b>{formatCurrency(totalFunds)}</b></span>
-        <span>支援元 <b>{ownedProperties.length}件</b></span>
+        <span>人脈 <b>{ownedProperties.length}件</b></span>
         <small>勝率ではなく、商戦へ持ち込める資本の準備目安です。</small>
       </footer>
     </section>
@@ -439,6 +441,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {visibleProperties.map((prop) => {
           const isPlayerOwned = prop.owner === 'player';
+          const isExtreme = isExtremeReacquisition(prop);
           const activePrice = prop.marketPrice;
           const fee = Math.round(activePrice * 0.03);
           const canAffordFee = totalFunds >= fee;
@@ -506,6 +509,11 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       初心者向け
                     </span>
                   )}
+                  {isExtreme && (
+                    <span className="trade-target-card__badge trade-target-card__badge--hq">
+                      極・再買収
+                    </span>
+                  )}
                   {prop.isCartelHQ && (
                     <span className="trade-target-card__badge trade-target-card__badge--hq">
                       企業連合本部
@@ -541,7 +549,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       {canAffordFee ? (
                         <>
                           <span className="trade-target-card__challenge-copy">
-                            <b>{campaignMode === 'savage' ? '零式へ挑戦' : '商戦へ挑戦'}</b>
+                            <b>{campaignMode === 'savage' ? '零式へ挑戦' : isExtreme ? '再買収・極へ挑戦' : '商戦へ挑戦'}</b>
                             <small>開始手数料 {formatCurrency(fee)}</small>
                           </span>
                           <ArrowRight className="w-4 h-4" />
@@ -571,6 +579,11 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       </p>
                     )}
                     <p>{propertyPresentation.text}</p>
+                    {isExtreme && (
+                      <small>
+                        復帰強化{getReacquisitionLevel(prop)}。現在の商店戦力を持ち込み、相手企業規模に対して資本を積み上げます。
+                      </small>
+                    )}
                     {!isPlayerOwned && <small>基準となる交渉規模：{formatCurrency(activePrice)}</small>}
                   </div>
                 </details>

@@ -16,6 +16,7 @@ interface HeaderProps {
   activeTab: AppTab;
   setActiveTab: (tab: AppTab) => void;
   onOpenMap: () => void;
+  marketReturnAttention?: boolean;
   activeAllianceName: string | null;
   activeSynergiesCount: number;
   tradeAllianceUnlocked: boolean;
@@ -42,6 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   onOpenMap,
+  marketReturnAttention = false,
   activeAllianceName,
   activeSynergiesCount,
   tradeAllianceUnlocked,
@@ -177,15 +179,19 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Desktop Main Tab Navigation */}
       <div className="hidden md:flex max-w-7xl mx-auto px-4 sm:px-6 space-x-1 border-t border-slate-800/80 overflow-x-auto scrollbar-none">
         <button
-          onClick={() => setActiveTab('market')}
+          onClick={() =>
+            marketReturnAttention ? onOpenMap() : setActiveTab('market')
+          }
           className={`py-2 px-3 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
             activeTab === 'market'
               ? 'border-amber-400 text-amber-400 bg-amber-500/5'
+              : marketReturnAttention
+                ? 'border-emerald-300 text-emerald-200 bg-emerald-500/10 font-black'
               : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
           }`}
         >
           <Building2 className="w-4 h-4" />
-          交易市場
+          {marketReturnAttention ? '次の交渉対象へ' : '交易市場'}
         </button>
 
         <button
@@ -251,12 +257,24 @@ export const Header: React.FC<HeaderProps> = ({
       <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 grid ${savageUnlocked ? 'grid-cols-5' : tradeAllianceUnlocked ? 'grid-cols-4' : 'grid-cols-3'} h-14 px-1 shadow-2xl touch-manipulation select-none pb-safe`}>
         <button
           onClick={onOpenMap}
-          className={`flex flex-col items-center justify-center py-1 transition-colors ${
-            activeTab === 'market' ? 'text-amber-400 font-extrabold' : 'text-slate-400'
+          aria-label={marketReturnAttention ? '次の交渉対象へ戻る' : '都市地図を開く'}
+          className={`relative flex flex-col items-center justify-center py-1 transition-colors ${
+            activeTab === 'market'
+              ? 'text-amber-400 font-extrabold'
+              : marketReturnAttention
+                ? 'my-1 rounded-lg border border-emerald-300/70 bg-emerald-500/15 text-emerald-200 font-extrabold shadow-[0_0_16px_rgba(52,211,153,.3)]'
+                : 'text-slate-400'
           }`}
         >
           <MapPin className="w-5 h-5 mb-0.5" />
-          <span className="text-[11px] leading-none">地図</span>
+          <span className="text-[11px] leading-none">
+            {marketReturnAttention ? '次の商戦' : '地図'}
+          </span>
+          {marketReturnAttention && (
+            <span className="absolute -top-1 right-0 rounded-full bg-emerald-300 px-1.5 py-0.5 text-[8px] font-black leading-none text-slate-950">
+              次へ
+            </span>
+          )}
         </button>
 
         <button

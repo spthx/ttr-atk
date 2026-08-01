@@ -18,6 +18,7 @@ import {
   buildTrainingDummyProperty,
   isTrainingDummyUnlocked,
   TRAINING_DUMMY_DEFINITIONS,
+  type TrainingDummyLevel,
 } from '../utils/trainingDummy';
 import { StrengthComparison } from './StrengthComparison';
 
@@ -25,6 +26,7 @@ export interface TrainingDummyViewProps {
   conqueredCommunityCount: number;
   totalFunds: number;
   getStrengthComparison: (property: Property) => BattleReadinessResult;
+  recommendedLevel?: TrainingDummyLevel | null;
   onStart: (property: Property) => void;
   onClose: () => void;
 }
@@ -33,11 +35,13 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
   conqueredCommunityCount,
   totalFunds,
   getStrengthComparison,
+  recommendedLevel = null,
   onStart,
   onClose,
 }) => {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const recommendedButtonRef = useRef<HTMLButtonElement | null>(null);
   const onCloseRef = useRef(onClose);
 
   useEffect(() => {
@@ -54,10 +58,14 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
     document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
 
-    const focusTimer = window.setTimeout(
-      () => closeButtonRef.current?.focus(),
-      0
-    );
+    const focusTimer = window.setTimeout(() => {
+      const target = recommendedButtonRef.current ?? closeButtonRef.current;
+      target?.focus({ preventScroll: true });
+      recommendedButtonRef.current?.scrollIntoView({
+        block: 'center',
+        inline: 'nearest',
+      });
+    }, 0);
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -142,7 +150,7 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
                 id="training-dummy-description"
                 className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-200"
               >
-                現在の資金・支援元・装備で、LEVEL別の木人へ何度でも挑戦できます。
+                現在の資金・人脈・装備で、LEVEL別の木人へ何度でも挑戦できます。
                 木人は開幕の耐久資本から追加防衛を行いません。
                 訓練中も通常の毎秒収益とオフライン収益は自社資金へ加算されます。
               </p>
@@ -219,12 +227,15 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
                   conqueredCommunityCount
               );
               const strengthComparison = getStrengthComparison(property);
+              const recommended = definition.level === recommendedLevel;
 
               return (
                 <article
                   key={definition.id}
                   className={`rounded-2xl border p-4 ${
-                    unlocked
+                    recommended
+                      ? 'border-amber-300/80 bg-amber-950/20 shadow-[0_0_24px_rgba(251,191,36,.16)]'
+                      : unlocked
                       ? 'border-cyan-400/35 bg-slate-950/75'
                       : 'border-slate-700 bg-slate-950/45'
                   }`}
@@ -248,13 +259,15 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
                     </div>
                     <span
                       className={`rounded-lg px-2.5 py-1 text-[11px] font-black ${
-                        unlocked
+                        recommended
+                          ? 'bg-amber-300 text-slate-950'
+                          : unlocked
                           ? 'bg-emerald-400/15 text-emerald-200'
                           : 'bg-slate-800 text-slate-400'
                       }`}
                     >
                       {unlocked ? (
-                        '挑戦可能'
+                        recommended ? '次のおすすめ' : '挑戦可能'
                       ) : (
                         <span className="flex items-center gap-1">
                           <Lock className="h-3 w-3" />
@@ -286,6 +299,7 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
                   </p>
 
                   <button
+                    ref={recommended ? recommendedButtonRef : undefined}
                     type="button"
                     disabled={!unlocked}
                     onClick={() => onStart(property)}
@@ -315,6 +329,15 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
               );
             })}
           </section>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-600 bg-slate-950 px-4 py-3 text-sm font-black text-slate-200 transition-colors hover:border-cyan-300 hover:text-white"
+          >
+            <Building2 className="h-4 w-4 text-cyan-300" />
+            訓練を終えて都市へ戻る
+          </button>
         </div>
       </div>
     </div>

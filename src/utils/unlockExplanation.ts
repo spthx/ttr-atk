@@ -22,7 +22,7 @@ export const getSkillUnlockExplanation = (
 ): UnlockExplanation => {
   const usageLimit = skill.oncePerBattle
     ? '使用回数は1争奪戦につき1回。'
-    : `再使用まで${formatDuration(skill.cooldownMs)}。`;
+    : `リキャストタイムは${formatDuration(skill.cooldownMs)}。`;
 
   return {
     key: `skill:${skill.id}`,
@@ -41,7 +41,7 @@ export const getSynergyUnlockExplanation = (
 ): UnlockExplanation => {
   if (synergy.battleOnly && synergy.battleEffect) {
     const ownershipPush = synergy.battleEffect.ownershipPush
-      ? `、発動時に所有率を${synergy.battleEffect.ownershipPush}pt押し込みます`
+      ? `、発動時に所有率ゲージを${synergy.battleEffect.ownershipPush}%分押し込みます`
       : '';
 
     return {

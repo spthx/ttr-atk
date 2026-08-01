@@ -603,7 +603,62 @@ export interface MechanicalCapitalColumnFrame {
   visibleUnits: number;
   columnHeights: number[];
   activeColumnIndices: number[];
+  /** Presentation-only rack compression; it never changes committed capital. */
+  rackCompressed?: boolean;
+  /** One-based overflow reload pass, used only to retrigger the bounded stamp. */
+  overflowPass?: number;
+  /** One-based mechanical dealing beat inside an overflow reload pass. */
+  stackBeat?: number;
 }
+
+export const CAPITAL_STACK_BEAT_MS = {
+  standard: 76,
+  heavy: 92,
+  compact: 58,
+} as const;
+
+export const CAPITAL_OVERFLOW_RESTACK_BEATS = {
+  standard: 8,
+  heavy: 12,
+  compact: 6,
+} as const;
+
+/**
+ * Converts exceptional funding into a bounded number of full-rack reloads.
+ * The amount changes the number of presentation passes, never the DOM count.
+ */
+export const getCapitalOverflowPassCount = (
+  previousCapital: number,
+  nextCapital: number,
+  marketPrice: number,
+  heavy = false
+) => {
+  const price = Math.max(1, marketPrice);
+  const previous = Math.max(0, previousCapital);
+  const next = Math.max(0, nextCapital);
+  const deltaRatio = Math.max(0, next - previous) / price;
+  if (next <= previous || next / price < 1.5) return 0;
+
+  const previousBand = Math.max(
+    0,
+    Math.floor(Math.log2(Math.max(1, previous / price)))
+  );
+  const nextBand = Math.max(
+    0,
+    Math.floor(Math.log2(Math.max(1, next / price)))
+  );
+  const crossedBands = Math.max(0, nextBand - previousBand);
+  const impactPasses = !heavy
+    ? 0
+    : deltaRatio >= 2
+      ? 3
+      : deltaRatio >= 0.75
+        ? 2
+        : deltaRatio >= 0.18
+          ? 1
+          : 0;
+  return Math.min(3, Math.max(crossedBands, impactPasses));
+};
 
 /**
  * Deals capital into the fixed rack in small deterministic groups. Each frame
@@ -615,7 +670,9 @@ export const getMechanicalCapitalColumnFrames = (
   previousUnits: number,
   targetUnits: number,
   maxFrames: number,
-  columnsPerBeat = 5
+  columnsPerBeat = 5,
+  overflowPasses = 0,
+  overflowBeats: number = CAPITAL_OVERFLOW_RESTACK_BEATS.standard
 ): MechanicalCapitalColumnFrame[] => {
   const from = Math.max(
     0,
@@ -627,7 +684,7 @@ export const getMechanicalCapitalColumnFrames = (
   );
   const current = getCapitalColumnHeights(from);
   const target = getCapitalColumnHeights(to);
-  if (from === to) {
+  if (from === to && overflowPasses <= 0) {
     return [{
       visibleUnits: to,
       columnHeights: target,
@@ -636,10 +693,12 @@ export const getMechanicalCapitalColumnFrames = (
   }
 
   const totalDistance = Math.abs(to - from);
-  const frameCount = Math.max(
+  const frameCount = from === to
+    ? 0
+    : Math.max(
     1,
     Math.min(30, Math.floor(maxFrames), totalDistance)
-  );
+    );
   const groupSize = Math.max(
     1,
     Math.min(BATTLE_CAPITAL_COLUMN_COUNT, Math.floor(columnsPerBeat))
@@ -695,6 +754,54 @@ export const getMechanicalCapitalColumnFrames = (
       visibleUnits: current.reduce((sum, height) => sum + height, 0),
       columnHeights: [...current],
       activeColumnIndices: [...active],
+    });
+  }
+
+  const boundedPasses = Math.max(0, Math.min(3, Math.floor(overflowPasses)));
+  const boundedBeats = Math.max(1, Math.min(12, Math.floor(overflowBeats)));
+  for (let passIndex = 0; passIndex < boundedPasses; passIndex += 1) {
+    const pass = passIndex + 1;
+    frames.push({
+      visibleUnits: to,
+      columnHeights: [...target],
+      activeColumnIndices: [],
+      rackCompressed: true,
+      overflowPass: pass,
+      stackBeat: 0,
+    });
+    for (let beatIndex = 0; beatIndex < boundedBeats; beatIndex += 1) {
+      const groupStart = (beatIndex * groupSize) % CAPITAL_COLUMN_FILL_ORDER.length;
+      const activeColumnIndices = Array.from(
+        { length: groupSize },
+        (_, offset) =>
+          CAPITAL_COLUMN_FILL_ORDER[
+            (groupStart + offset) % CAPITAL_COLUMN_FILL_ORDER.length
+          ]
+      );
+      frames.push({
+        visibleUnits: to,
+        columnHeights: [...target],
+        activeColumnIndices,
+        rackCompressed: true,
+        overflowPass: pass,
+        stackBeat: beatIndex + 1,
+      });
+    }
+    frames.push({
+      visibleUnits: to,
+      columnHeights: [...target],
+      activeColumnIndices: [],
+      rackCompressed: false,
+      overflowPass: pass,
+      stackBeat: boundedBeats + 1,
+    });
+  }
+
+  if (frames.length === 0) {
+    frames.push({
+      visibleUnits: to,
+      columnHeights: target,
+      activeColumnIndices: [],
     });
   }
   return frames;

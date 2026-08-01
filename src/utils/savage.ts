@@ -74,7 +74,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     rewardSynergyIds: ['GRIDANIA_FOREST_ECONOMY'],
     marketPrice: 3_000_000_000,
     description:
-      '森林資源と生活物資の連携を崩す開幕層。小口の連携と資金源管理を同時に試します。',
+      '森林資源と生活物資の連携を崩す開幕層。小口の連携と人脈管理を同時に試します。',
   },
   {
     id: 'prop_blacksmith',
@@ -263,6 +263,20 @@ export const ULTIMATE_RAID_DEFINITION = {
     '商戦 零式3編・全12章を踏破した商会だけが挑める、本作独自の単独・最終高難度交易戦。通常の所有権と収益からは独立した名誉記録です。',
 } as const;
 
+export const CRUEL_RAID_ID = 'cruel_another_trade';
+
+export const CRUEL_RAID_DEFINITION = {
+  id: CRUEL_RAID_ID,
+  name: '酷・もうひとつの商戦',
+  coalitionName: '闇タタルの大繁盛商店',
+  communities: ['ソリューション・ナイン'] as CommunityType[],
+  marketPrice: Math.round(ULTIMATE_RAID_DEFINITION.marketPrice * 1.25),
+  industry: '娯楽・商業' as IndustryType,
+  community: 'ソリューション・ナイン' as CommunityType,
+  description:
+    '絶商戦の踏破後に現れる、本作独自の超高難度・単独記録戦。闇タタルが既存の商戦術を容赦なく組み合わせます。通常事業・人脈・独立危険度は保護され、踏破報酬は称号と記録のみです。',
+} as const;
+
 const propertyById = (properties: Property[], id: string) =>
   properties.find((property) => property.id === id);
 
@@ -423,6 +437,26 @@ export const buildUltimateProperty = (
   countsTowardCityConquest: false,
   groupKeys: [],
   description: ULTIMATE_RAID_DEFINITION.description,
+});
+
+export const buildCruelProperty = (
+  cleared: boolean,
+  companyName: string
+): Property => ({
+  id: CRUEL_RAID_DEFINITION.id,
+  name: CRUEL_RAID_DEFINITION.name,
+  industry: CRUEL_RAID_DEFINITION.industry,
+  community: CRUEL_RAID_DEFINITION.community,
+  marketPrice: CRUEL_RAID_DEFINITION.marketPrice,
+  annualRevenue: 0,
+  owner: cleared ? 'player' : 'independent',
+  ownerName: cleared
+    ? `${companyName}・酷踏破`
+    : CRUEL_RAID_DEFINITION.coalitionName,
+  loyaltyRisk: 0,
+  countsTowardCityConquest: false,
+  groupKeys: [],
+  description: CRUEL_RAID_DEFINITION.description,
 });
 
 export const getUnlockedSavageRaidIds = (

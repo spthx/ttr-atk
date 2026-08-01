@@ -69,7 +69,7 @@ export const getEnemyBaseWaitMs = (
   const intellect = Math.max(0, Math.min(6, difficultyLevel));
   return isTutorial
     ? 3400
-    : Math.max(1780, 3020 - intellect * 245 - (isCartelHQ ? 140 : 0));
+    : Math.max(1680, 3020 - intellect * 245 - (isCartelHQ ? 140 : 0));
 };
 
 export const decideEnemyAction = ({
@@ -98,12 +98,19 @@ export const decideEnemyAction = ({
     lastPlayerAction === 'LARGE' ||
     lastPlayerAction === 'ALL_IN' ||
     lastPlayerAction === 'LIMIT_BREAK';
+  const reactedToNetwork =
+    intellect >= 4 &&
+    effectiveCapitalGap > marketPrice * 0.04 &&
+    (lastPlayerAction === 'FUNDS' ||
+      lastPlayerAction === 'SYNERGY' ||
+      lastPlayerAction === 'ALLIANCE');
+  const reactedToBurst = reactedToLarge || reactedToNetwork;
   const trueEmergency =
     enemyOwnership < 24 ||
     lastPlayerAction === 'ALL_IN' ||
     lastPlayerAction === 'LIMIT_BREAK' ||
     (isCartelHQ && enemyOwnership < 38);
-  const reserveFloor = 15;
+  const reserveFloor = Math.max(9, 15 - Math.max(0, intellect - 4) * 3);
   const reserveProtected = enemyReservePercent <= reserveFloor && !trueEmergency;
   const baseWait = getEnemyBaseWaitMs(
     difficultyLevel,
@@ -137,7 +144,7 @@ export const decideEnemyAction = ({
   if (
     enemyOwnership >= 57 &&
     effectiveCapitalGap <= marketPrice * 0.06 &&
-    !reactedToLarge
+    !reactedToBurst
   ) {
     return {
       intent: 'CONSERVE',
@@ -148,13 +155,24 @@ export const decideEnemyAction = ({
     };
   }
 
-  if (reactedToLarge && enemyReservePercent > 0) {
+  if (reactedToBurst && enemyReservePercent > 0) {
+    const investmentRatio =
+      lastPlayerAction === 'LIMIT_BREAK'
+        ? 0.16
+        : reactedToNetwork
+          ? 0.055
+          : 0.11;
     return {
       intent: enemyOwnership < 27 ? 'EMERGENCY_DEFENSE' : 'COUNTER_ATTACK',
       waitMs: Math.round(baseWait * (0.62 - intellect * 0.035) * slowedMultiplier),
-      investmentRatio: (lastPlayerAction === 'LIMIT_BREAK' ? 0.16 : 0.11) * responseScale,
+      investmentRatio: investmentRatio * responseScale,
       reserveProtected: false,
-      reason: lastPlayerAction === 'LIMIT_BREAK' ? 'LB後の硬直を読んだ緊急防衛' : '大口出資だけを選別して対抗',
+      reason:
+        lastPlayerAction === 'LIMIT_BREAK'
+          ? 'LB後の硬直を読んだ緊急防衛'
+          : reactedToNetwork
+            ? '人脈からの集中出資を読み、必要額だけ即応'
+            : '大口出資だけを選別して対抗',
     };
   }
 

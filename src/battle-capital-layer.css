@@ -1859,6 +1859,7 @@
 }
 
 .battle-skill-nameplate--stage-resolve {
+  pointer-events: auto;
   animation: skill-nameplate-resolve .24s cubic-bezier(.16, .8, .2, 1) both;
 }
 
@@ -1909,6 +1910,29 @@
   color: #fde68a;
   background: rgba(120, 53, 15, .38);
   font: 900 .56rem/1.2 ui-monospace, monospace;
+}
+
+.battle-skill-nameplate__continue {
+  min-width: 10.5rem;
+  min-height: 44px;
+  margin-top: .28rem;
+  padding: .42rem .8rem;
+  border: 1px solid rgba(253, 230, 138, .72);
+  border-radius: .4rem;
+  color: #0f172a;
+  background: linear-gradient(180deg, #fef3c7, #fbbf24);
+  font: 900 .72rem/1.2 sans-serif;
+  letter-spacing: .04em;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .72), 0 .22rem .5rem rgba(0, 0, 0, .38);
+  cursor: pointer;
+}
+
+.battle-skill-nameplate__continue:disabled {
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, .4);
+  background: rgba(30, 41, 59, .92);
+  box-shadow: none;
+  cursor: wait;
 }
 
 .integrated-battlefield--skill-stage-cast .ownership-fighter--player {
@@ -2779,6 +2803,217 @@
   }
 }
 
+/*
+ * Post-Ultimate CRUEL presentation. This recolours the existing fixed
+ * twenty-two-column rack; it does not add amount-proportional nodes or an idle
+ * animation. The warning card is one transient, readable decision surface.
+ */
+.integrated-battlefield--cruel {
+  box-shadow:
+    inset 0 0 0 1px rgba(192, 132, 252, .34),
+    inset 0 0 3.2rem rgba(30, 4, 48, .24),
+    0 .72rem 1.8rem rgba(0, 0, 0, .62);
+}
+
+.integrated-battlefield--cruel .ownership-avatar--enemy {
+  filter:
+    drop-shadow(0 .32rem .34rem rgba(0, 0, 0, .72))
+    drop-shadow(0 0 .48rem rgba(192, 132, 252, .54))
+    saturate(.72)
+    contrast(1.16)
+    brightness(.72)
+    hue-rotate(222deg);
+}
+
+.enemy-support-actor--dark-tataru {
+  --enemy-support-accent: #f5d0fe;
+  --enemy-support-accent-soft: rgba(192, 132, 252, .48);
+  --enemy-support-panel: rgba(23, 3, 38, .98);
+}
+
+.enemy-support-actor--dark-tataru .enemy-support-actor__portrait {
+  filter:
+    drop-shadow(0 .3rem .3rem rgba(0, 0, 0, .78))
+    drop-shadow(0 0 .6rem rgba(192, 132, 252, .62))
+    saturate(.72)
+    contrast(1.18)
+    brightness(.68)
+    hue-rotate(222deg);
+}
+
+.integrated-battlefield--omnicapitalization
+  .gil-column-field--enemy {
+  --coin-light: #f5d0fe;
+  --coin-mid: #86198f;
+  --coin-dark: #100018;
+}
+
+.integrated-battlefield--omnicapitalization
+  .enemy-capital-stack
+  .capital-overflow-stamp > i {
+  box-shadow:
+    0 .08rem .12rem rgba(0, 0, 0, .62),
+    0 0 .28rem rgba(216, 180, 254, .4);
+}
+
+.cruel-omnicapitalization-card {
+  --cruel-card-accent: #e9d5ff;
+  position: absolute;
+  z-index: 74;
+  top: clamp(6.2rem, 32%, 10rem);
+  left: 50%;
+  display: grid;
+  width: min(31rem, calc(100% - 1.4rem));
+  gap: .22rem;
+  box-sizing: border-box;
+  padding: .7rem .85rem .65rem;
+  border: 1px solid rgba(216, 180, 254, .86);
+  border-radius: .54rem;
+  color: #faf5ff;
+  background:
+    linear-gradient(135deg, rgba(8, 2, 18, .98), rgba(45, 8, 63, .98) 58%, rgba(15, 3, 28, .98));
+  box-shadow:
+    0 .7rem 1.35rem rgba(0, 0, 0, .76),
+    0 0 1.1rem rgba(168, 85, 247, .38),
+    inset 0 0 0 1px rgba(253, 224, 71, .12);
+  text-align: center;
+  text-shadow: 0 .1rem .14rem rgba(0, 0, 0, .92);
+  pointer-events: none;
+  translate: -50% 0;
+  animation: cruel-omnicapitalization-enter .34s steps(4, end) both;
+}
+
+.cruel-omnicapitalization-card small {
+  color: #d8b4fe;
+  font-size: .59rem;
+  font-weight: 950;
+  letter-spacing: .16em;
+}
+
+.cruel-omnicapitalization-card strong {
+  color: #fff7ae;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.05rem, 3.2vw, 1.55rem);
+  letter-spacing: .1em;
+}
+
+.cruel-omnicapitalization-card span {
+  font-size: clamp(.66rem, 1.8vw, .84rem);
+  font-weight: 850;
+  line-height: 1.42;
+}
+
+.cruel-omnicapitalization-card em {
+  margin-top: .18rem;
+  color: #f0abfc;
+  font-size: .76rem;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.cruel-omnicapitalization-card b {
+  color: #fef08a;
+  font-size: .7rem;
+  line-height: 1.35;
+}
+
+.cruel-omnicapitalization-card > i {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: .28rem;
+  margin-top: .18rem;
+  overflow: hidden;
+  border: 1px solid rgba(233, 213, 255, .66);
+  border-radius: 999px;
+  background: rgba(2, 6, 23, .9);
+}
+
+.cruel-omnicapitalization-card > i > u {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #4c1d95, #d946ef, #fef08a);
+  transform-origin: left center;
+  animation: cruel-omnicapitalization-cast
+    var(--cruel-telegraph-duration, 4500ms) linear both;
+}
+
+.cruel-omnicapitalization-card--cast > i > u,
+.cruel-omnicapitalization-card--impact > i > u,
+.cruel-omnicapitalization-card--afterglow > i > u,
+.cruel-omnicapitalization-card--leaving > i > u {
+  transform: scaleX(1);
+  animation: none;
+}
+
+.cruel-omnicapitalization-card--impact {
+  border-color: #fef08a;
+  box-shadow:
+    0 .75rem 1.5rem rgba(0, 0, 0, .8),
+    0 0 1.6rem rgba(217, 70, 239, .56),
+    inset 0 0 1.2rem rgba(253, 224, 71, .13);
+}
+
+@keyframes cruel-omnicapitalization-enter {
+  from { opacity: 0; translate: -50% -.5rem; }
+  to { opacity: 1; translate: -50% 0; }
+}
+
+@keyframes cruel-omnicapitalization-cast {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@media (max-width: 639px) {
+  .cruel-omnicapitalization-card {
+    top: 5.65rem;
+    width: calc(100% - .8rem);
+    gap: .16rem;
+    padding: .58rem .52rem .5rem;
+  }
+
+  .cruel-omnicapitalization-card span {
+    font-size: .66rem;
+  }
+
+  .cruel-omnicapitalization-card em,
+  .cruel-omnicapitalization-card b {
+    font-size: .64rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .cruel-omnicapitalization-card {
+    top: 2.45rem;
+    width: min(32rem, 64%);
+    grid-template-columns: 1fr;
+    gap: .08rem;
+    padding: .38rem .6rem;
+  }
+
+  .cruel-omnicapitalization-card small,
+  .cruel-omnicapitalization-card em,
+  .cruel-omnicapitalization-card b,
+  .cruel-omnicapitalization-card span {
+    font-size: .55rem;
+  }
+
+  .cruel-omnicapitalization-card strong {
+    font-size: .9rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cruel-omnicapitalization-card {
+    animation: none;
+  }
+
+  .cruel-omnicapitalization-card > i > u {
+    animation-timing-function: steps(8, end);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .buyout-screen--capital-commit
     :is(
@@ -3188,6 +3423,7 @@
   --coin-light: #fff4ad;
   --coin-mid: #e6a90b;
   --coin-dark: #704006;
+  --capital-rack-compression: 0rem;
   position: absolute;
   z-index: 1;
   inset: 0;
@@ -3195,8 +3431,15 @@
   overflow: visible;
   pointer-events: none;
   contain: layout style;
-  translate: 0 var(--capital-rack-sink, 0);
-  transition: translate 160ms steps(4, end);
+  translate: 0 calc(
+    var(--capital-rack-sink, 0rem) + var(--capital-rack-compression)
+  );
+  transition: translate 180ms steps(4, end);
+}
+
+.integrated-battlefield
+  .gil-column-field[data-rack-compressed="true"] {
+  --capital-rack-compression: .55rem;
 }
 
 .integrated-battlefield .gil-column-field--enemy {
@@ -3407,6 +3650,11 @@
 
   .integrated-battlefield .capital-fixed-column {
     left: var(--column-phone-x);
+  }
+
+  .integrated-battlefield
+    .gil-column-field[data-rack-compressed="true"] {
+    --capital-rack-compression: .62rem;
   }
 
   .integrated-battlefield .capital-overflow-stamp > i {

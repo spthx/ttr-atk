@@ -83,9 +83,8 @@ export interface PostVictoryLoyaltySettlement {
 export type DepartureProbabilityMultiplier = number | boolean;
 
 /**
- * The boolean branch temporarily keeps the existing result UI source
- * compatible while it migrates to the explicit 0/10/20 percent options.
- * `true` represents the former 10 percent gift.
+ * The boolean branch keeps older callers compatible with the explicit
+ * 「独占 / 山分け」choice. `true` means the protective 50% sharing option.
  */
 export const normalizeDepartureProbabilityMultiplier = (
   multiplier: DepartureProbabilityMultiplier

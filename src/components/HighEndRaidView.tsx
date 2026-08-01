@@ -19,6 +19,7 @@ import {
   SAVAGE_RAID_DEFINITIONS,
   SAVAGE_SERIES_DEFINITIONS,
   SAVAGE_YIELD_BONUS_PER_RANK,
+  CRUEL_RAID_DEFINITION,
   ULTIMATE_RAID_DEFINITION,
 } from '../utils/savage';
 import '../high-end-raids.css';
@@ -32,12 +33,16 @@ interface HighEndRaidViewProps {
   ultimateProperty: Property;
   ultimateUnlocked: boolean;
   ultimateCleared: boolean;
+  cruelProperty: Property;
+  cruelUnlocked: boolean;
+  cruelCleared: boolean;
   getStrengthComparison: (
     property: Property,
     mode: BattleMode
   ) => BattleReadinessResult;
   onStartSavage: (property: Property) => void;
   onStartUltimate: (property: Property) => void;
+  onStartCruel: (property: Property) => void;
   onReplayEnding: () => void;
 }
 
@@ -50,9 +55,13 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
   ultimateProperty,
   ultimateUnlocked,
   ultimateCleared,
+  cruelProperty,
+  cruelUnlocked,
+  cruelCleared,
   getStrengthComparison,
   onStartSavage,
   onStartUltimate,
+  onStartCruel,
   onReplayEnding,
 }) => {
   const propertyMap = new Map(
@@ -65,6 +74,12 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
     ultimateProperty,
     'ultimate'
   );
+  const cruelStrengthComparison = getStrengthComparison(
+    cruelProperty,
+    'cruel'
+  );
+  const cruelFee = Math.round(cruelProperty.marketPrice * 0.03);
+  const cruelAffordable = totalFunds >= cruelFee;
 
   return (
     <div className="high-end-raids">
@@ -214,16 +229,28 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
                 type="button"
                 disabled={!unlocked || !affordable}
                 onClick={() => onStartSavage(property)}
+                aria-label={
+                  cleared
+                    ? `第${raid.series}編・第${raid.layer}層 踏破済み。記録戦へ再挑戦`
+                    : undefined
+                }
               >
-                {!unlocked
-                  ? previousRaid
+                {!unlocked ? (
+                  previousRaid
                     ? `第${previousRaid.series}編・第${previousRaid.layer}層の踏破で解放`
                     : '前章の踏破で解放'
-                  : !affordable
-                    ? `手数料まで あと${formatCurrency(fee - totalFunds)}`
-                    : cleared
-                      ? '記録戦へ再挑戦'
-                      : `第${raid.layer}層へ挑戦`}
+                ) : cleared ? (
+                  <>
+                    <CheckCircle2 />
+                    {affordable
+                      ? `第${raid.layer}層 踏破済み・再挑戦`
+                      : `踏破済み・再挑戦まで あと${formatCurrency(fee - totalFunds)}`}
+                  </>
+                ) : !affordable ? (
+                  `手数料まで あと${formatCurrency(fee - totalFunds)}`
+                ) : (
+                  `第${raid.layer}層へ挑戦`
+                )}
               </button>
             </article>
           );
@@ -290,6 +317,66 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
           </div>
         </div>
       </section>}
+
+      {cruelUnlocked && (
+        <section
+          className={`cruel-raid-card ${
+            cruelCleared
+              ? 'cruel-raid-card--cleared'
+              : 'cruel-raid-card--open'
+          }`}
+        >
+          <div className="cruel-raid-card__art" aria-hidden="true">
+            <span />
+            <img src={FANKIT_ART.tataru.windUp} alt="" />
+          </div>
+          <div className="cruel-raid-card__copy">
+            <small>
+              <span className="cruel-raid-card__boss-mark">
+                <Crown /> BOSS
+              </span>
+              CRUEL TRADE DUTY / 絶商戦踏破後
+            </small>
+            <h2>{CRUEL_RAID_DEFINITION.name}</h2>
+            <p>{CRUEL_RAID_DEFINITION.description}</p>
+            <span>
+              <ShieldAlert />
+              想定相場 {formatCurrency(cruelProperty.marketPrice)}・参加手数料{' '}
+              {formatCurrency(cruelFee)}
+            </span>
+            <span>
+              <ShieldAlert />
+              AI LEVEL 6・強化かばう・通常事業と進行は保護
+            </span>
+            <div className="cruel-raid-card__warning" role="note">
+              <b>特殊技「万象資本化」</b>
+              <p>
+                残る予備資金を全投入します。4～5秒の予告を読み、スタンまたは防御で対処してください。
+              </p>
+            </div>
+            <StrengthComparison result={cruelStrengthComparison} compact />
+            <div className="cruel-raid-card__actions">
+              <button
+                type="button"
+                disabled={!cruelAffordable}
+                onClick={() => onStartCruel(cruelProperty)}
+              >
+                <Crown />
+                {!cruelAffordable
+                  ? '参加手数料が不足'
+                  : cruelCleared
+                    ? '酷へ再挑戦'
+                    : '酷へ挑戦'}
+              </button>
+              {cruelCleared && (
+                <span className="cruel-raid-card__record">
+                  <CheckCircle2 /> 称号・踏破記録 獲得済み
+                </span>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 };

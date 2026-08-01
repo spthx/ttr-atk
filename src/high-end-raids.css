@@ -310,6 +310,10 @@
 
 .savage-layer-card > button,
 .ultimate-raid-card__actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
   min-height: 2.75rem;
   margin-top: auto;
   padding: .65rem .8rem;
@@ -326,6 +330,25 @@
   border-color: #334155;
   background: #1e293b;
   color: #64748b;
+}
+
+.savage-layer-card--cleared > button {
+  border-color: rgba(52, 211, 153, .62);
+  background: linear-gradient(135deg, #047857, #059669);
+  color: #ecfdf5;
+  box-shadow: 0 0 18px rgba(16, 185, 129, .14);
+}
+
+.savage-layer-card--cleared > button:disabled {
+  border-color: rgba(52, 211, 153, .35);
+  background: rgba(6, 78, 59, .68);
+  color: #a7f3d0;
+}
+
+.savage-layer-card > button svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
 }
 
 .ultimate-raid-card {
@@ -454,6 +477,183 @@
   width: 1rem;
 }
 
+.cruel-raid-card {
+  position: relative;
+  min-height: 15rem;
+  overflow: hidden;
+  border: 1px solid rgba(192, 132, 252, .46);
+  border-radius: 1rem;
+  background:
+    radial-gradient(circle at 82% 28%, rgba(234, 179, 8, .15), transparent 31%),
+    radial-gradient(circle at 68% 62%, rgba(126, 34, 206, .22), transparent 42%),
+    linear-gradient(140deg, #09020f, #160622 58%, #1c1305);
+}
+
+.cruel-raid-card--open {
+  box-shadow: 0 0 36px rgba(147, 51, 234, .16);
+}
+
+.cruel-raid-card--cleared {
+  border-color: rgba(250, 204, 21, .7);
+  box-shadow: 0 0 34px rgba(250, 204, 21, .12);
+}
+
+.cruel-raid-card__art {
+  position: absolute;
+  inset: 0 0 0 55%;
+  display: grid;
+  place-items: end center;
+  pointer-events: none;
+}
+
+.cruel-raid-card__art span {
+  position: absolute;
+  width: min(19rem, 88%);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(217, 70, 239, .32), rgba(88, 28, 135, .08) 48%, transparent 70%);
+  filter: blur(.35rem);
+}
+
+.cruel-raid-card__art img {
+  position: relative;
+  width: clamp(8rem, 25vw, 14rem);
+  height: 14rem;
+  object-fit: contain;
+  object-position: bottom;
+  filter: saturate(.55) contrast(1.24) brightness(.62) hue-rotate(225deg) drop-shadow(0 0 1rem rgba(192, 38, 211, .72));
+  opacity: .78;
+}
+
+.cruel-raid-card__copy {
+  position: relative;
+  z-index: 2;
+  max-width: 46rem;
+  padding: 1.2rem;
+}
+
+.cruel-raid-card__copy > small {
+  color: #e9d5ff;
+  font: 900 .72rem/1 ui-monospace, monospace;
+  letter-spacing: .16em;
+}
+
+.cruel-raid-card__boss-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: .22rem;
+  margin-right: .55rem;
+  padding: .18rem .42rem;
+  border: 1px solid rgba(250, 204, 21, .72);
+  border-radius: .38rem;
+  color: #fef08a;
+  background: rgba(88, 28, 135, .78);
+  box-shadow: 0 0 .75rem rgba(250, 204, 21, .22);
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+
+.cruel-raid-card__boss-mark svg {
+  width: .82rem;
+  height: .82rem;
+}
+
+.cruel-raid-card__copy h2 {
+  margin-top: .4rem;
+  color: #fff7cc;
+  font-size: clamp(1.4rem, 4vw, 2.1rem);
+  font-weight: 1000;
+}
+
+.cruel-raid-card__copy > p {
+  margin-top: .55rem;
+  max-width: 39rem;
+  color: #e9d5ff;
+  font-size: .86rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.cruel-raid-card__copy > span {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin-top: .65rem;
+  color: #fde68a;
+  font-size: .76rem;
+  font-weight: 900;
+}
+
+.cruel-raid-card__copy > span svg {
+  width: 1rem;
+  flex: 0 0 auto;
+}
+
+.cruel-raid-card__warning {
+  max-width: 38rem;
+  margin-top: .8rem;
+  padding: .7rem .8rem;
+  border: 1px solid rgba(244, 114, 182, .42);
+  border-radius: .65rem;
+  background: rgba(76, 5, 25, .72);
+}
+
+.cruel-raid-card__warning b {
+  color: #fef08a;
+  font-size: .8rem;
+}
+
+.cruel-raid-card__warning p {
+  margin-top: .2rem;
+  color: #fbcfe8;
+  font-size: .74rem;
+  font-weight: 750;
+  line-height: 1.5;
+}
+
+.cruel-raid-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .65rem;
+  margin-top: .9rem;
+}
+
+.cruel-raid-card__actions button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  padding: .65rem .9rem;
+  border: 1px solid rgba(250, 204, 21, .58);
+  border-radius: .65rem;
+  background: linear-gradient(135deg, #581c87, #a21caf 58%, #a16207);
+  color: #fff;
+  font-size: .82rem;
+  font-weight: 1000;
+}
+
+.cruel-raid-card__actions button:disabled {
+  border-color: #475569;
+  background: #1e293b;
+  color: #64748b;
+}
+
+.cruel-raid-card__actions svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.cruel-raid-card__record {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  color: #fde68a;
+  font-size: .75rem;
+  font-weight: 900;
+}
+
 @media (max-width: 720px) {
   .savage-series {
     padding: .65rem;
@@ -486,5 +686,23 @@
   .ultimate-raid-card__art {
     left: 20%;
     opacity: .12;
+  }
+
+  .cruel-raid-card__art {
+    left: 42%;
+    opacity: .3;
+  }
+
+  .cruel-raid-card__copy {
+    padding: 1rem;
+  }
+
+  .cruel-raid-card__copy > p,
+  .cruel-raid-card__warning {
+    max-width: 100%;
+  }
+
+  .cruel-raid-card__actions button {
+    width: 100%;
   }
 }

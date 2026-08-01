@@ -23,7 +23,12 @@ export type OwnerType = 'player' | 'independent' | 'dofor' | 'abyss';
 export type MarketTrendType = 'BULL' | 'BEAR' | 'VOLATILE' | 'STABLE';
 
 export type AppTab = 'market' | 'portfolio' | 'skills' | 'cartels' | 'savage';
-export type BattleMode = 'normal' | 'savage' | 'ultimate' | 'training';
+export type BattleMode =
+  | 'normal'
+  | 'savage'
+  | 'ultimate'
+  | 'cruel'
+  | 'training';
 
 export interface MarketCondition {
   trend: MarketTrendType;
@@ -65,8 +70,8 @@ export interface TacticalSkill {
   description: string;
   effectType:
     | 'COOLDOWN_REDUCTION' // 疾風怒濤の計
-    | 'NEMAWASHI' // 守りのサンバ (reduces L_risk)
-    | 'INDEPENDENCE_SABOTAGE' // 連環計 (disrupts enemy funding)
+    | 'NEMAWASHI' // Legacy effect type retained for older saves/content.
+    | 'INDEPENDENCE_SABOTAGE' // スタン（旧IDを維持。敵の予告を1回中断）
     | 'COVER' // かばう（旧skill_demoralize IDを維持）
     | 'CAPITAL_BOOST' // 意気衝天
     | 'LIVING_DEAD' // リビングデッド（旧skill_sns_blitz IDを維持）
@@ -189,8 +194,10 @@ export interface BattleResult {
   settlementCost: number;
   battleCashDelta: number;
   victoryReward: number;
+  /** 勝利報酬から人脈全体へ均等に分配した総額。 */
   celebrationGiftCost: number;
-  celebrationGiftRate: number;
+  /** 独占は0、山分けは勝利報酬全体の50%。 */
+  celebrationGiftRate: 0 | 0.5;
   rebelledProperties: Property[];
   survivingRiskUpdates: Array<{
     id: string;
