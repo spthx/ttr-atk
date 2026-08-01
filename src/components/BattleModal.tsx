@@ -665,6 +665,10 @@ const CAPITAL_COLUMN_SLOTS = [
   { x: 35, phoneX: 19.3, bottom: 9, depth: 2 }, { x: 65, phoneX: 80.8, bottom: 9, depth: 2 },
 ] as const;
 
+// A bounded eight-lane mechanical sweep. When sixteen pieces are needed this
+// same center-out pass repeats once, never turning into a random scatter.
+const CAPITAL_OVERFLOW_LANE_ORDER = [3, 4, 2, 5, 1, 6, 0, 7] as const;
+
 const GilPileVisual = React.memo(function GilPileVisual({
   frame,
   side,
@@ -714,7 +718,10 @@ const GilPileVisual = React.memo(function GilPileVisual({
               key={index}
               style={{
                 '--overflow-index': index,
-                '--overflow-lane': index % 8,
+                '--overflow-lane':
+                  CAPITAL_OVERFLOW_LANE_ORDER[
+                    index % CAPITAL_OVERFLOW_LANE_ORDER.length
+                  ],
               } as React.CSSProperties}
             />
           ))}
@@ -1230,6 +1237,40 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     skillCinematicTimersRef.current = [];
   }, []);
 
+  const scheduleSkillCinematicCompletion = useCallback(
+    (readableDelayMs: number) => {
+      const finishWhenPresentationIsReady = () => {
+        if (endedRef.current || terminalRef.current) return;
+        if (
+          capitalCommitActiveRef.current ||
+          capitalPilePreviewActiveRef.current.player ||
+          capitalPilePreviewActiveRef.current.enemy
+        ) {
+          const retryTimer = window.setTimeout(
+            finishWhenPresentationIsReady,
+            50
+          );
+          skillCinematicTimersRef.current = [retryTimer];
+          return;
+        }
+
+        clearSkillCinematicTimers();
+        setSkillCinematic(null);
+        const onComplete = skillCinematicCompletionRef.current;
+        skillCinematicCompletionRef.current = null;
+        stunInterruptedActionRef.current = undefined;
+        onComplete?.();
+      };
+
+      const completionTimer = window.setTimeout(
+        finishWhenPresentationIsReady,
+        Math.max(0, readableDelayMs)
+      );
+      skillCinematicTimersRef.current.push(completionTimer);
+    },
+    [clearSkillCinematicTimers]
+  );
+
   const clearEnemySupportTimers = useCallback(() => {
     enemySupportSerialRef.current += 1;
     enemySupportTimersRef.current.forEach((timer) =>
@@ -1377,7 +1418,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const columnFrames = getMechanicalCapitalColumnFrames(
         previousStage,
         targetStage,
-        compact ? 4 : strongPresentation ? 30 : 22,
+        compact ? 4 : strongPresentation ? 24 : 22,
         strongPresentation ? 5 : 4,
         overflowPasses,
         overflowBeats
@@ -1680,10 +1721,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         terminalCinematicStage === 'impact'
       )
     );
-  const displayedPlayerInvested =
-    capitalRevealPending && activeCapitalSnapshot
-      ? activeCapitalSnapshot.previousCapital
-      : totalPlayerInvested;
+  // Capital is committed when the command is accepted. Show the exact amount
+  // immediately; the fixed coin rack then catches up as the visible receipt.
+  const displayedPlayerInvested = totalPlayerInvested;
   const displayedOwnership =
     capitalRevealPending && activeCapitalSnapshot
       ? activeCapitalSnapshot.previousOwnership
@@ -1785,9 +1825,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     0,
     Math.round(displayedPlayerCapitalProgress)
   );
-  const displayedCompanyInvested = capitalRevealPending
-    ? Math.max(0, companyInvested - (activeCapitalSnapshot?.amount ?? 0))
-    : companyInvested;
+  const displayedCompanyInvested = companyInvested;
   const displayedEffectivePlayerInvested =
     displayedPlayerInvested *
     currentWind.playerMultiplier *
@@ -2270,21 +2308,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     decisiveLocked ||
     showHelp ||
     showLog;
-  const skillCinematicCanContinue =
-    skillCinematic?.stage === 'resolve' &&
-    !capitalCommit &&
-    !capitalPilePresentationLocked &&
-    !terminalRef.current &&
-    !winner;
-  const completeSkillCinematic = () => {
-    if (!skillCinematicCanContinue) return;
-    clearSkillCinematicTimers();
-    setSkillCinematic(null);
-    const onComplete = skillCinematicCompletionRef.current;
-    skillCinematicCompletionRef.current = null;
-    stunInterruptedActionRef.current = undefined;
-    onComplete?.();
-  };
   const displayedPrimarySkillStateText =
     primarySkillActionLocked && primarySkillStateText === '発動可'
       ? '演出待ち'
@@ -4898,7 +4921,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const columnFrames = getMechanicalCapitalColumnFrames(
       previousStage,
       targetStage,
-      snapshot.compact ? 4 : snapshot.level >= 4 ? 30 : 22,
+      snapshot.compact ? 4 : snapshot.level >= 4 ? 24 : 22,
       5,
       overflowPasses,
       overflowBeats
@@ -5558,6 +5581,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const resolveTimer = window.setTimeout(() => {
       if (endedRef.current || terminalRef.current) return;
       setSkillCinematic({ ...baseCinematic, stage: 'resolve' });
+      scheduleSkillCinematicCompletion(timing.resolveMs);
     }, timing.nameMs + timing.castMs + timing.hitStopMs + timing.impactMs);
     skillCinematicTimersRef.current = [
       castTimer,
@@ -5654,6 +5678,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const resolveTimer = window.setTimeout(() => {
       if (endedRef.current || terminalRef.current) return;
       setSkillCinematic({ ...baseCinematic, stage: 'resolve' });
+      scheduleSkillCinematicCompletion(timing.resolveMs);
     }, timing.nameMs + timing.castMs + timing.hitStopMs + timing.impactMs);
     skillCinematicTimersRef.current = [
       castTimer,
@@ -5677,7 +5702,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       true,
       true
     );
-    chargeLimitBreak(amount * currentWind.playerMultiplier);
     setAllianceUsed(true);
     setStatusText(alliancePublicPatronage
       ? `${alliance.allyName}へ通商支援を要請――後援支援 +${formatCurrency(amount)}相当`
@@ -5960,6 +5984,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const resolveTimer = window.setTimeout(() => {
       if (endedRef.current || terminalRef.current) return;
       setSkillCinematic({ ...baseCinematic, stage: 'resolve' });
+      scheduleSkillCinematicCompletion(skillTiming.resolveMs);
     }, skillTiming.nameMs +
       skillTiming.castMs +
       skillTiming.hitStopMs +
@@ -6650,18 +6675,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <span className="battle-skill-nameplate__duration">
                   {skillCinematic.durationLabel}
                 </span>
-              )}
-              {skillCinematic.stage === 'resolve' && (
-                <button
-                  type="button"
-                  className="battle-skill-nameplate__continue"
-                  onClick={completeSkillCinematic}
-                  disabled={!skillCinematicCanContinue}
-                >
-                  {skillCinematicCanContinue
-                    ? '効果を確認して続行'
-                    : '資金を積載中…'}
-                </button>
               )}
             </div>
           </>

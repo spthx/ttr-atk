@@ -201,7 +201,7 @@ const FEATURE_UNLOCKS: Record<
   },
   trade_alliance: {
     kicker: 'ENTERPRISE ALLIANCE',
-    title: '企業連合・協力 解放',
+    title: 'アライアンス解放',
     dialogue: 'ウルダハでの実績が認められたでっす。ここからは複数組織が組む企業連合へ挑めるでっす！',
     detail: '段階式の企業連合戦、外部企業との協力協定、グランドカンパニーへの公的後援申請が解放されます。',
   },
@@ -1904,6 +1904,8 @@ export default function App() {
             <div ref={highEndViewRef}>
               <HighEndRaidView
                 savageProperties={savageProperties}
+                properties={properties}
+                cartels={cartels}
                 savageClearedIds={savageClearedSet}
                 savageUnlockedIds={savageUnlockedIds}
                 groupSynergies={groupSynergies}
@@ -1922,6 +1924,7 @@ export default function App() {
                   setEndingNotice('true');
                   soundFx.playVictory();
                 }}
+                onOpenCartels={() => setActiveTab('cartels')}
               />
             </div>
           )

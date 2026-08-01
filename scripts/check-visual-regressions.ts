@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BATTLE_CAPITAL_COLUMN_COUNT,
   CAPITAL_OVERFLOW_RESTACK_BEATS,
+  CAPITAL_STACK_BEAT_MS,
   getCapitalOverflowPassCount,
   getMechanicalCapitalColumnFrames,
 } from '../src/utils/battlePresentation';
@@ -18,7 +19,10 @@ const app = readSource('src/App.tsx');
 const appPage = readSource('app/page.tsx');
 const battlePresentation = readSource('src/utils/battlePresentation.ts');
 const capitalCss = readSource('src/battle-capital-layer.css');
+const buyoutCss = readSource('src/battle-buyout.css');
 const integratedCss = readSource('src/battle-integrated-field.css');
+const header = readSource('src/components/Header.tsx');
+const cartelAllianceView = readSource('src/components/CartelAllianceView.tsx');
 const skillsSynergyView = readSource('src/components/SkillsSynergyView.tsx');
 const gameBalance = readSource('src/utils/gameBalance.ts');
 const cruelBattle = readSource('src/utils/cruelBattle.ts');
@@ -185,8 +189,18 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /Math\.min\(16, 8 \+ frame\.overflowTier \* 2\)[\s\S]*index % 8/,
-  'overcapital may use up to sixteen bounded pieces across eight lanes'
+  /const CAPITAL_OVERFLOW_LANE_ORDER = \[3, 4, 2, 5, 1, 6, 0, 7\] as const;/,
+  'overcapital lanes must run from the center toward the outer edges'
+);
+assert.match(
+  battleModal,
+  /Math\.min\(16, 8 \+ frame\.overflowTier \* 2\)/,
+  'overcapital must keep the falling piece count at sixteen or fewer'
+);
+assert.match(
+  battleModal,
+  /CAPITAL_OVERFLOW_LANE_ORDER\[\s*index % CAPITAL_OVERFLOW_LANE_ORDER\.length\s*\]/,
+  'overcapital pieces must reuse only the eight bounded lanes'
 );
 assert.match(
   integratedCss,
@@ -259,14 +273,66 @@ const saturatedReloadFrames = getMechanicalCapitalColumnFrames(
 );
 assert.equal(
   saturatedReloadFrames.filter((frame) => frame.rackCompressed).length,
-  saturatedReloadPasses * (CAPITAL_OVERFLOW_RESTACK_BEATS.heavy + 1),
+  saturatedReloadPasses * (CAPITAL_OVERFLOW_RESTACK_BEATS.heavy + 2),
   'a saturated rack must retain every sink and mechanical reload beat'
+);
+assert.equal(
+  saturatedReloadFrames.at(-1)?.rackCompressed,
+  true,
+  'the final overflow frame must keep the rack down instead of restoring its root'
 );
 assert.ok(
   saturatedReloadFrames.every(
     (frame) => frame.columnHeights.length === BATTLE_CAPITAL_COLUMN_COUNT
   ),
   'overflow reloads must reuse the same fixed column pool'
+);
+const oneOverflowSweep = getMechanicalCapitalColumnFrames(
+  BATTLE_CAPITAL_COLUMN_COUNT * 36,
+  BATTLE_CAPITAL_COLUMN_COUNT * 36,
+  24,
+  5,
+  1,
+  CAPITAL_OVERFLOW_RESTACK_BEATS.heavy
+)
+  .filter(
+    (frame) =>
+      frame.overflowPass === 1 && frame.activeColumnIndices.length > 0
+  )
+  .flatMap((frame) => frame.activeColumnIndices);
+const outwardCapitalSweep = [
+  6, 17, 1, 2, 11, 12, 5, 7, 16, 18, 0,
+  3, 10, 13, 4, 8, 15, 19, 9, 14, 20, 21,
+];
+assert.deepEqual(
+  oneOverflowSweep.slice(0, BATTLE_CAPITAL_COLUMN_COUNT),
+  outwardCapitalSweep,
+  'one overflow pass must first deal every fixed column from the centre spines outwards'
+);
+assert.deepEqual(
+  oneOverflowSweep.slice(BATTLE_CAPITAL_COLUMN_COUNT),
+  [...outwardCapitalSweep].reverse(),
+  'one overflow pass must return from the outer edges to the centre spines'
+);
+assert.equal(
+  oneOverflowSweep.length,
+  BATTLE_CAPITAL_COLUMN_COUNT * 2,
+  'a round-trip overflow pass must touch every fixed column once in each direction'
+);
+outwardCapitalSweep.forEach((columnIndex) => {
+  assert.equal(
+    oneOverflowSweep.filter((activeIndex) => activeIndex === columnIndex).length,
+    2,
+    `fixed column ${columnIndex} must be touched exactly once per sweep direction`
+  );
+});
+assert.ok(
+  CAPITAL_STACK_BEAT_MS.heavy <= CAPITAL_STACK_BEAT_MS.standard,
+  'large capital must be dealt at least as quickly per beat as an ordinary offer'
+);
+assert.ok(
+  saturatedReloadFrames.length * CAPITAL_STACK_BEAT_MS.heavy <= 1_000,
+  'all three overflow reload passes must finish their bounded frame sequence within one second'
 );
 assert.match(
   battleModal,
@@ -298,20 +364,136 @@ assert.match(
   /resolveMs: 900,[\s\S]*totalMs: 2_230/,
   'skill effects must retain a readable result beat'
 );
+assert.ok(
+  (
+    battleModal.match(
+      /scheduleSkillCinematicCompletion\((?:timing|skillTiming)\.resolveMs\)/g
+    ) ?? []
+  ).length >= 3,
+  'player skills, auto skills and synergies must all auto-complete after their readable resolve beat'
+);
 assert.match(
   battleModal,
-  /skillCinematic\.stage === 'resolve'[\s\S]*battle-skill-nameplate__continue[\s\S]*効果を確認して続行/,
-  'resolved ability and synergy cards must wait for the player to acknowledge them'
+  /const scheduleSkillCinematicCompletion[\s\S]*capitalCommitActiveRef\.current[\s\S]*capitalPilePreviewActiveRef\.current\.player[\s\S]*capitalPilePreviewActiveRef\.current\.enemy[\s\S]*window\.setTimeout\(\s*finishWhenPresentationIsReady,\s*50\s*\)/,
+  'ability auto-completion must poll at 50ms while either capital presentation is still active'
+);
+assert.match(
+  battleModal,
+  /const onComplete = skillCinematicCompletionRef\.current;[\s\S]*skillCinematicCompletionRef\.current = null;[\s\S]*onComplete\?\.\(\);/,
+  'ability auto-completion must resume its queued battle action through the completion ref'
+);
+assert.doesNotMatch(
+  `${battleModal}\n${capitalCss}`,
+  /battle-skill-nameplate__continue|効果を確認して続行/,
+  'the removed ability acknowledgement button must not return in JSX or CSS'
+);
+assert.match(
+  battleModal,
+  /const displayedPlayerInvested = totalPlayerInvested;[\s\S]*const displayedOwnership =\s*capitalRevealPending && activeCapitalSnapshot[\s\S]*activeCapitalSnapshot\.previousOwnership[\s\S]*: ownership;/,
+  'accepted gil must update immediately while ownership alone waits for the capital reveal'
+);
+assert.match(
+  battleModal,
+  /const displayedCompanyInvested = companyInvested;/,
+  'the company-capital readout must update as soon as the command is committed'
+);
+assert.doesNotMatch(
+  battleModal,
+  /const displayed(?:Player|Company)Invested\s*=\s*capitalRevealPending/,
+  'capitalRevealPending must never roll the displayed gil totals back'
+);
+const activeCapitalColumnStart = capitalCss.indexOf(
+  '.capital-fixed-column[data-machine-active="true"]'
+);
+const activeCapitalColumnCss = capitalCss.slice(
+  activeCapitalColumnStart,
+  capitalCss.indexOf('.capital-overflow-stamp', activeCapitalColumnStart)
+);
+assert.ok(
+  activeCapitalColumnCss.length > 0,
+  'the active fixed-column CSS section must remain discoverable'
+);
+assert.match(
+  activeCapitalColumnCss,
+  /data-machine-active="true"\]::before[\s\S]*animation:\s*capital-column-machine-feed/,
+  'an active column must show a short incoming coin cap instead of flashing the whole pillar'
+);
+assert.doesNotMatch(
+  activeCapitalColumnCss,
+  /filter:\s*brightness|capital-column-machine-seat/,
+  'mechanical column loading must not use brightness flashing'
+);
+assert.doesNotMatch(
+  capitalCss,
+  /@keyframes capital-column-machine-seat/,
+  'the retired whole-column brightness animation must not return'
 );
 assert.match(
   capitalCss,
-  /battle-skill-nameplate__continue[\s\S]*min-height: 44px/,
-  'the effect acknowledgement control must keep a phone-sized touch target'
+  /gil-column-field\s*\{[\s\S]*translate:\s*0 var\(--capital-rack-sink, 0rem\)/,
+  'the fixed rack must apply its overflow sink as persistent layout state'
+);
+for (const tier of [1, 2, 3]) {
+  assert.match(
+    capitalCss,
+    new RegExp(
+      `gil-column-field\\[data-overflow-tier="${tier}"\\]\\s*\\{[\\s\\S]*?--capital-rack-sink:`
+    ),
+    `overflow tier ${tier} must keep a persistent downward rack offset`
+  );
+}
+assert.doesNotMatch(
+  capitalCss,
+  /--capital-rack-compression/,
+  'overflow completion must not remove a temporary compression offset and pop the rack root back up'
+);
+assert.doesNotMatch(
+  capitalCss,
+  /gil-tower--impact \.capital-fixed-column\s*\{[\s\S]*?translate:/,
+  'a hit must not move every fixed column root and then snap it back'
 );
 assert.match(
-  battleModal,
-  /inert=\{backgroundInert && !conditionAnnouncement && !skillCinematic\}/,
-  'the effect acknowledgement control must never be trapped below an inert battlefield ancestor'
+  capitalCss,
+  /integrated-battlefield--terminal-direct\.integrated-battlefield--terminal-winner-player[\s\S]*integrated-battlefield--settled-player\.integrated-battlefield--settled-direct[\s\S]*ownership-fighter--player[\s\S]*z-index:\s*66/,
+  'Tataru must travel above both fixed coin racks during the direct victory finisher'
+);
+assert.match(
+  capitalCss,
+  /integrated-battlefield--settled-player\.integrated-battlefield--settled-direct[\s\S]*ownership-fighter--enemy[\s\S]*z-index:\s*65/,
+  'the struck enemy must remain visible above the coin racks during the direct finisher'
+);
+assert.match(
+  buyoutCss,
+  /result-celebration-choice > div\s*\{[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/,
+  'the two profit-allocation choices must remain equal side-by-side columns on phones'
+);
+assert.match(
+  buyoutCss,
+  /result-celebration-choice > div > button\s*\{[\s\S]*min-height:\s*3\.25rem/,
+  'each phone profit-allocation choice must retain a touch-safe height'
+);
+assert.doesNotMatch(
+  buyoutCss,
+  /@media \(max-width:\s*390px\)[\s\S]*result-celebration-choice > div[\s\S]*grid-template-columns:\s*1fr/,
+  'narrow phones must not collapse the two allocation choices into a clipped vertical stack'
+);
+assert.ok(
+  (header.match(/アライアンス/g) ?? []).length >= 2,
+  'desktop and mobile navigation must both call the cooperation tab アライアンス'
+);
+assert.match(
+  cartelAllianceView,
+  /EXTERNAL ALLIANCE[\s\S]*相場75%・各争奪戦1回[\s\S]*離反なし[\s\S]*OWNED NETWORK[\s\S]*3回目から減衰[\s\S]*独立リスクあり/,
+  'the alliance screen must contrast risk-free external support with owned networks such as Agora'
+);
+const requestAllianceSource = battleModal.slice(
+  battleModal.indexOf('const requestAlliance ='),
+  battleModal.indexOf('const selectSkill =')
+);
+assert.doesNotMatch(
+  requestAllianceSource,
+  /chargeLimitBreak/,
+  'risk-free external alliance support must not charge LIMIT BREAK'
 );
 assert.ok(
   (battleModal.match(/capitalCommit \|\|\s+capitalPilePresentationLocked \|\|/g) ?? []).length >= 4,

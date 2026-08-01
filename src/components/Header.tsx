@@ -230,7 +230,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <ShieldCheck className="w-4 h-4" />
-            企業連合・協力
+            アライアンス
           </button>
         )}
 
@@ -310,7 +310,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <ShieldCheck className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px] leading-none">連合・協力</span>
+            <span className="text-[11px] leading-none">アライアンス</span>
           </button>
         )}
 

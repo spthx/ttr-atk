@@ -1429,7 +1429,7 @@ assert.ok(
 );
 assert.ok(
   lbReadiness.capitalComponents.some(
-    (component) => component.label === '協力支援1回'
+    (component) => component.label === '外部アライアンス1回'
   ),
   'readiness states the once-per-battle cooperation assumption'
 );
@@ -2420,10 +2420,10 @@ assert.equal(
   shouldBreakAllianceForTarget(legacyGarlandAlliance, { ownerName: 'ガーロンド・アイアンワークス系列' }),
   true
 );
-assert.equal(calculateAllianceSupport(1_000_000), 420_000);
-assert.equal(calculateAllianceSupport(1_000_000, 1), 420_000);
-assert.equal(calculateAllianceSupport(1_000_000, 2), 344_400);
-assert.equal(calculateAllianceSupport(1_000_000, 99), 189_000);
+assert.equal(calculateAllianceSupport(1_000_000), 750_000);
+assert.equal(calculateAllianceSupport(1_000_000, 1), 750_000);
+assert.equal(calculateAllianceSupport(1_000_000, 2), 615_000);
+assert.equal(calculateAllianceSupport(1_000_000, 99), 337_500);
 assert.equal(getRepeatedNetworkSupportMultiplier(0), 1);
 assert.equal(getRepeatedNetworkSupportMultiplier(1), 1);
 assert.equal(getRepeatedNetworkSupportMultiplier(2), 0.82);

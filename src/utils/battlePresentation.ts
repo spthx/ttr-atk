@@ -546,8 +546,11 @@ export const MAX_BATTLE_CAPITAL_VISIBLE_UNITS =
   BATTLE_CAPITAL_COLUMN_COUNT * MAX_BATTLE_CAPITAL_COLUMN_LAYERS;
 
 const CAPITAL_COLUMN_FILL_ORDER = [
-  11, 12, 6, 7, 16, 17, 20, 21, 10, 13, 5,
-  8, 15, 18, 1, 2, 9, 14, 4, 19, 0, 3,
+  // Deal from the two central spines toward the outer edges. Keeping this
+  // order deterministic makes even a saturated reload read like a fast
+  // mechanical tray rather than unrelated columns flashing at random.
+  6, 17, 1, 2, 11, 12, 5, 7, 16, 18, 0,
+  3, 10, 13, 4, 8, 15, 19, 9, 14, 20, 21,
 ] as const;
 
 /**
@@ -612,16 +615,36 @@ export interface MechanicalCapitalColumnFrame {
 }
 
 export const CAPITAL_STACK_BEAT_MS = {
-  standard: 76,
-  heavy: 92,
-  compact: 58,
+  standard: 32,
+  heavy: 24,
+  compact: 22,
 } as const;
 
 export const CAPITAL_OVERFLOW_RESTACK_BEATS = {
-  standard: 8,
-  heavy: 12,
-  compact: 6,
+  standard: 12,
+  heavy: 10,
+  compact: 10,
 } as const;
+
+const getCapitalSweepGroups = (
+  order: readonly number[],
+  maximumColumnsPerBeat: number
+) => {
+  const beatCount = Math.max(
+    1,
+    Math.ceil(order.length / Math.max(1, maximumColumnsPerBeat))
+  );
+  const minimumGroupSize = Math.floor(order.length / beatCount);
+  const largerGroupCount = order.length % beatCount;
+  let offset = 0;
+
+  return Array.from({ length: beatCount }, (_, beatIndex) => {
+    const groupSize = minimumGroupSize + (beatIndex < largerGroupCount ? 1 : 0);
+    const group = order.slice(offset, offset + groupSize);
+    offset += groupSize;
+    return group;
+  });
+};
 
 /**
  * Converts exceptional funding into a bounded number of full-rack reloads.
@@ -693,22 +716,27 @@ export const getMechanicalCapitalColumnFrames = (
   }
 
   const totalDistance = Math.abs(to - from);
-  const frameCount = from === to
-    ? 0
-    : Math.max(
-    1,
-    Math.min(30, Math.floor(maxFrames), totalDistance)
-    );
   const groupSize = Math.max(
     1,
     Math.min(BATTLE_CAPITAL_COLUMN_COUNT, Math.floor(columnsPerBeat))
   );
+  const frameCount = from === to
+    ? 0
+    : Math.max(
+    1,
+    Math.min(
+      30,
+      Math.floor(maxFrames),
+      Math.ceil(totalDistance / groupSize)
+    )
+    );
   const direction = to > from ? 1 : -1;
   const order = direction > 0
     ? [...CAPITAL_COLUMN_FILL_ORDER]
     : [...CAPITAL_COLUMN_FILL_ORDER].reverse();
+  const sweepGroups = getCapitalSweepGroups(order, groupSize);
   const frames: MechanicalCapitalColumnFrame[] = [];
-  let cursor = 0;
+  let groupCursor = 0;
 
   for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
     const framesRemaining = frameCount - frameIndex;
@@ -720,12 +748,10 @@ export const getMechanicalCapitalColumnFrames = (
     const active = new Set<number>();
     let groupSearches = 0;
 
-    while (budget > 0 && groupSearches < BATTLE_CAPITAL_COLUMN_COUNT * 2) {
-      const group = Array.from({ length: groupSize }, (_, offset) =>
-        order[(cursor + offset) % order.length]
-      );
-      cursor = (cursor + groupSize) % order.length;
-      groupSearches += groupSize;
+    while (budget > 0 && groupSearches < sweepGroups.length) {
+      const group = sweepGroups[groupCursor];
+      groupCursor = (groupCursor + 1) % sweepGroups.length;
+      groupSearches += 1;
       let groupChanged = false;
 
       while (budget > 0) {
@@ -758,7 +784,22 @@ export const getMechanicalCapitalColumnFrames = (
   }
 
   const boundedPasses = Math.max(0, Math.min(3, Math.floor(overflowPasses)));
-  const boundedBeats = Math.max(1, Math.min(12, Math.floor(overflowBeats)));
+  // A reload is a deliberate round trip: centre to edges, then edges to centre.
+  // Balanced groups prevent the last outer pair from sharing a beat with the
+  // first central pair, so the rack never appears to reset mid-sweep.
+  const outwardGroups = getCapitalSweepGroups(
+    CAPITAL_COLUMN_FILL_ORDER,
+    groupSize
+  );
+  const inwardGroups = getCapitalSweepGroups(
+    [...CAPITAL_COLUMN_FILL_ORDER].reverse(),
+    groupSize
+  );
+  const maximumRoundTripBeats = outwardGroups.length + inwardGroups.length;
+  const boundedBeats = Math.max(
+    1,
+    Math.min(maximumRoundTripBeats, Math.floor(overflowBeats))
+  );
   for (let passIndex = 0; passIndex < boundedPasses; passIndex += 1) {
     const pass = passIndex + 1;
     frames.push({
@@ -770,14 +811,10 @@ export const getMechanicalCapitalColumnFrames = (
       stackBeat: 0,
     });
     for (let beatIndex = 0; beatIndex < boundedBeats; beatIndex += 1) {
-      const groupStart = (beatIndex * groupSize) % CAPITAL_COLUMN_FILL_ORDER.length;
-      const activeColumnIndices = Array.from(
-        { length: groupSize },
-        (_, offset) =>
-          CAPITAL_COLUMN_FILL_ORDER[
-            (groupStart + offset) % CAPITAL_COLUMN_FILL_ORDER.length
-          ]
-      );
+      const sweepingOutward = beatIndex < outwardGroups.length;
+      const activeColumnIndices = sweepingOutward
+        ? outwardGroups[beatIndex]
+        : inwardGroups[beatIndex - outwardGroups.length];
       frames.push({
         visibleUnits: to,
         columnHeights: [...target],
@@ -791,7 +828,7 @@ export const getMechanicalCapitalColumnFrames = (
       visibleUnits: to,
       columnHeights: [...target],
       activeColumnIndices: [],
-      rackCompressed: false,
+      rackCompressed: true,
       overflowPass: pass,
       stackBeat: boundedBeats + 1,
     });
