@@ -478,7 +478,7 @@ export const calculateBattleReadiness = ({
   if (allianceSupport > 0) {
     capitalComponents.push({
       key: 'alliance',
-      label: '協力支援1回',
+      label: '外部アライアンス1回',
       amount: Math.max(0, allianceSupport),
     });
   }
