@@ -1904,8 +1904,6 @@ export default function App() {
             <div ref={highEndViewRef}>
               <HighEndRaidView
                 savageProperties={savageProperties}
-                properties={properties}
-                cartels={cartels}
                 savageClearedIds={savageClearedSet}
                 savageUnlockedIds={savageUnlockedIds}
                 groupSynergies={groupSynergies}
@@ -1924,7 +1922,6 @@ export default function App() {
                   setEndingNotice('true');
                   soundFx.playVictory();
                 }}
-                onOpenCartels={() => setActiveTab('cartels')}
               />
             </div>
           )
