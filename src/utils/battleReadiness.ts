@@ -20,8 +20,13 @@ export type BattleReadinessGrade =
   | 'challenge'
   | 'danger';
 
+export type BattleReadinessMechanicSeverity =
+  | 'none'
+  | 'warning'
+  | 'severe';
+
 export type BattleReadinessSupportRoute =
-  | '支援元一巡'
+  | '人脈一巡'
   | '戦闘連携'
   | 'LIMIT BREAK'
   | '支援なし';
@@ -53,6 +58,15 @@ export interface BattleReadinessInput {
   playerPushBonus: number;
   cashCapRatio?: number | null;
   battleMode?: BattleMode;
+  /**
+   * 敵固有の防御・開幕・土壇場ギミックなど、資金総額だけでは測れない警告。
+   * 通常都市ボスや企業連合本部も呼び出し側から明示できる。
+   */
+  mechanicWarning?: string | null;
+  /**
+   * warning は評価を最大「接戦」、severe は最大「要工夫」に抑える。
+   */
+  mechanicSeverity?: BattleReadinessMechanicSeverity;
 }
 
 export interface BattleReadinessResult {
@@ -86,6 +100,8 @@ export interface BattleReadinessResult {
   battleCashLimit: number;
   mechanicCheckRequired: boolean;
   mechanicWarning: string | null;
+  mechanicSeverity: BattleReadinessMechanicSeverity;
+  mechanicGradeCapped: boolean;
 }
 
 interface SupportRoute {
@@ -156,13 +172,13 @@ const getBestSupportRoute = ({
       BATTLE_SUPPORT_BALANCE.subsidiaryMarketRatio
     );
     routes.push({
-      name: '支援元一巡',
+      name: '人脈一巡',
       amount: Math.round(onePass.amount),
       actionCount: subsidiaries.length,
       maxFailureProbability: onePass.maxFailureProbability,
       cumulativeFailureProbability: 1 - onePass.allSucceedProbability,
       componentKey: 'subsidiaries',
-      componentLabel: `支援元${subsidiaries.length}件へ各1回（一巡）`,
+      componentLabel: `人脈${subsidiaries.length}件へ各1回（一巡）`,
     });
   }
 
@@ -269,7 +285,7 @@ const getGradeForRatio = (ratio: number) => {
     grade: 'danger',
     symbol: '！',
     label: '準備不足',
-    advice: '先に安い対象を取得し、現金と安全な支援元を増やすのが堅実です。',
+    advice: '先に安い対象を取得し、現金と安全な人脈を増やすのが堅実です。',
   } as const;
 };
 
@@ -322,6 +338,8 @@ export const calculateBattleReadiness = ({
   playerPushBonus,
   cashCapRatio = PLAYER_BATTLE_CASH_CAP_RATIO,
   battleMode = 'normal',
+  mechanicWarning: requestedMechanicWarning,
+  mechanicSeverity: requestedMechanicSeverity,
 }: BattleReadinessInput): BattleReadinessResult => {
   const minimumInvestment = Math.max(
     10,
@@ -386,20 +404,55 @@ export const calculateBattleReadiness = ({
     100 /
     (TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick * 10);
   const expectedEnemyResponsesDuringSupport =
-    supportRoute.name === '支援元一巡' && supportRoute.actionCount > 1
+    supportRoute.name === '人脈一巡' && supportRoute.actionCount > 1
       ? ((supportRoute.actionCount - 1) * commandRecoverySeconds) /
         Math.max(0.1, enemyBaseReactionSeconds)
       : 0;
   const sequentialSupportGradeCapped =
     ratio >= 1.15 &&
-    supportRoute.name === '支援元一巡' &&
+    supportRoute.name === '人脈一巡' &&
     supportShare >= 0.2 &&
     expectedEnemyResponsesDuringSupport >= 1;
   // 一巡総額は得られても、その操作中に競合が反応する場合は「安定圏」と断定しない。
   // 金額自体を架空に減らさず、等級だけを最大「接戦」へ抑える。
-  const assessmentRatio = sequentialSupportGradeCapped
+  const supportAdjustedRatio = sequentialSupportGradeCapped
     ? Math.min(ratio, 1.149)
     : ratio;
+  const builtInMechanicWarning =
+    battleMode === 'cruel'
+      ? '酷は残予備資金を全投入する「万象資本化」を決着前に必ず解決します。4～5秒の構えをスタンするか、防御アビリティで受ける準備が必要です。'
+      : battleMode === 'ultimate'
+      ? '絶は開幕・土壇場アビリティを決着前に必ず解決します。戦力が足りても、構えへの対応を誤ると敗北します。'
+      : battleMode === 'savage'
+        ? '零式は層ごとの開幕・土壇場・防御ギミックを含みます。戦力比だけでは勝利を保証しません。'
+        : null;
+  const initialMechanicWarning =
+    requestedMechanicWarning === undefined
+      ? builtInMechanicWarning
+      : requestedMechanicWarning;
+  const mechanicSeverity =
+    requestedMechanicSeverity ??
+    (battleMode === 'ultimate' || battleMode === 'cruel'
+      ? 'severe'
+      : battleMode === 'savage' || initialMechanicWarning
+        ? 'warning'
+        : 'none');
+  const mechanicWarning =
+    initialMechanicWarning ??
+    (mechanicSeverity !== 'none'
+      ? 'この相手には資金総額だけでは測れない固有ギミックがあります。戦闘前に内容を確認してください。'
+      : null);
+  const mechanicRatioCap =
+    mechanicSeverity === 'severe'
+      ? 0.899
+      : mechanicSeverity === 'warning'
+        ? 1.149
+        : Number.POSITIVE_INFINITY;
+  const mechanicGradeCapped = supportAdjustedRatio > mechanicRatioCap;
+  const assessmentRatio = Math.min(
+    supportAdjustedRatio,
+    mechanicRatioCap
+  );
   const assessmentRatioPercent = Math.round(assessmentRatio * 100);
   const supportVolatile =
     supportRoute.amount >= playerExpectedCapital * 0.2 &&
@@ -444,21 +497,19 @@ export const calculateBattleReadiness = ({
     });
   }
   const mechanicCheckRequired =
-    battleMode === 'savage' || battleMode === 'ultimate';
-  const mechanicWarning =
-    battleMode === 'ultimate'
-      ? '絶は開幕・土壇場アビリティを決着前に必ず解決します。戦力が足りても、構えへの対応を誤ると敗北します。'
-      : battleMode === 'savage'
-        ? '零式は層ごとの開幕・土壇場・防御ギミックを含みます。戦力比だけでは勝利を保証しません。'
-        : null;
+    mechanicSeverity !== 'none' || mechanicWarning !== null;
 
   return {
     grade: gradePresentation.grade,
     symbol: gradePresentation.symbol,
     label: gradePresentation.label,
-    advice: sequentialSupportGradeCapped
-      ? '総額は上回りますが、支援元への一巡要求中に競合が動きます。安定圏ではなく操作勝負です。'
-      : gradePresentation.advice,
+    advice: mechanicGradeCapped
+      ? mechanicSeverity === 'severe'
+        ? '資本総額が上回っても、決着を覆す固有ギミックがあります。対処手段まで含めて準備してください。'
+        : '資本総額は上回りますが、固有ギミックを無視した余裕判定はできません。内容を確認して挑みましょう。'
+      : sequentialSupportGradeCapped
+        ? '総額は上回りますが、人脈への一巡要求中に競合が動きます。安定圏ではなく操作勝負です。'
+        : gradePresentation.advice,
     playerExpectedCapital,
     enemyBudget: normalizedEnemyBudget,
     enemyOpeningCapital: Math.round(normalizedEnemyBudget * 0.25),
@@ -486,5 +537,7 @@ export const calculateBattleReadiness = ({
     battleCashLimit,
     mechanicCheckRequired,
     mechanicWarning,
+    mechanicSeverity,
+    mechanicGradeCapped,
   };
 };

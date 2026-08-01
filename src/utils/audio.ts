@@ -8,6 +8,7 @@ import { FANKIT_AUDIO } from '../data/fankitAssets';
 class SoundEffects {
   private ctx: AudioContext | null = null;
   private bufferCache = new Map<string, Promise<AudioBuffer>>();
+  private synthesizedNoiseBufferCache = new Map<string, AudioBuffer>();
   private cinematicAudioGeneration = 0;
   private cinematicSource: AudioBufferSourceNode | null = null;
   private cinematicGain: GainNode | null = null;
@@ -56,9 +57,22 @@ class SoundEffects {
     if (!this.enabled || typeof window === 'undefined') return;
     const state = this.ctx?.state as string | undefined;
     if (state === 'closed' || state === 'interrupted') {
-      this.stopCinematicAudio();
+      const staleCtx = this.ctx;
+      // Dropping the JavaScript reference is not enough on iOS: an
+      // interrupted context may keep its native mixer and scheduled synth
+      // voices alive. Stop the tracked cue, detach the singleton first, then
+      // close the old mixer while this user gesture creates its replacement.
+      this.stopBattleCinematicAudio(0);
       this.ctx = null;
       this.bufferCache.clear();
+      this.synthesizedNoiseBufferCache.clear();
+      if (staleCtx && state !== 'closed') {
+        try {
+          void staleCtx.close().catch(() => {});
+        } catch {
+          // Safari may throw synchronously while leaving an interrupted page.
+        }
+      }
     }
     const ctx = this.initCtx();
     if (ctx?.state === 'suspended') {
@@ -94,6 +108,7 @@ class SoundEffects {
         .then(async (buffer) => {
           if (
             !this.enabled ||
+            ctx !== this.ctx ||
             (channel === 'cinematic' && generation !== this.cinematicAudioGeneration)
           ) {
             return;
@@ -101,6 +116,7 @@ class SoundEffects {
           if (ctx.state === 'suspended') await ctx.resume();
           if (
             !this.enabled ||
+            ctx !== this.ctx ||
             (channel === 'cinematic' && generation !== this.cinematicAudioGeneration)
           ) {
             return;
@@ -130,10 +146,16 @@ class SoundEffects {
           source.start();
         })
         .catch(() => {
-          this.bufferCache.delete(url);
+          // A fetch/decode owned by a discarded context must not evict the
+          // replacement context's newer promise for the same asset.
+          if (this.bufferCache.get(url) === pendingBuffer) {
+            this.bufferCache.delete(url);
+          }
+          const currentContext = this.enabled && ctx === this.ctx;
           if (
-            channel !== 'cinematic' ||
-            generation === this.cinematicAudioGeneration
+            currentContext &&
+            (channel !== 'cinematic' ||
+              generation === this.cinematicAudioGeneration)
           ) {
             fallback();
           }
@@ -159,6 +181,41 @@ class SoundEffects {
       // Ignore audio context errors gracefully
     }
     return this.ctx;
+  }
+
+  private getSynthesizedNoiseBuffer(
+    ctx: AudioContext,
+    key: string,
+    duration: number,
+    envelope: (progress: number) => number
+  ) {
+    const cacheKey = `${ctx.sampleRate}:${key}`;
+    const cached = this.synthesizedNoiseBufferCache.get(cacheKey);
+    if (cached) return cached;
+    const frameCount = Math.max(1, Math.ceil(ctx.sampleRate * duration));
+    const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
+    const channel = buffer.getChannelData(0);
+    for (let index = 0; index < frameCount; index += 1) {
+      const progress = index / frameCount;
+      channel[index] = (Math.random() * 2 - 1) * envelope(progress);
+    }
+    this.synthesizedNoiseBufferCache.set(cacheKey, buffer);
+    return buffer;
+  }
+
+  private disconnectOnEnded(
+    source: AudioScheduledSourceNode,
+    ...nodes: Array<AudioNode | null>
+  ) {
+    source.onended = () => {
+      nodes.forEach((node) => {
+        try {
+          node?.disconnect();
+        } catch {
+          // An interrupted/closed context may have released the graph already.
+        }
+      });
+    };
   }
 
   // Coin / Investment Chime
@@ -219,6 +276,7 @@ class SoundEffects {
         gain.gain.exponentialRampToValueAtTime(0.001, start + 0.14);
         osc.connect(gain);
         gain.connect(this.ctx.destination);
+        this.disconnectOnEnded(osc, osc, gain);
         osc.start(start);
         osc.stop(start + 0.15);
       });
@@ -248,6 +306,7 @@ class SoundEffects {
 
         osc.connect(gain);
         gain.connect(this.ctx.destination);
+        this.disconnectOnEnded(osc, osc, gain);
 
         osc.start(now + i * 0.04);
         osc.stop(now + i * 0.04 + 0.25);
@@ -551,6 +610,7 @@ class SoundEffects {
         gain.gain.exponentialRampToValueAtTime(0.001, start + 0.24);
         osc.connect(gain);
         gain.connect(ctx.destination);
+        this.disconnectOnEnded(osc, osc, gain);
         osc.start(start);
         osc.stop(start + 0.25);
       });
@@ -571,13 +631,12 @@ class SoundEffects {
       if (!ctx) return;
       const now = ctx.currentTime;
       const duration = effectType === 'ERA_WIND' ? 0.42 : 0.26;
-      const frameCount = Math.max(1, Math.floor(ctx.sampleRate * duration));
-      const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
-      const channel = buffer.getChannelData(0);
-      for (let index = 0; index < frameCount; index += 1) {
-        const envelope = Math.sin(Math.PI * index / frameCount);
-        channel[index] = (Math.random() * 2 - 1) * envelope;
-      }
+      const buffer = this.getSynthesizedNoiseBuffer(
+        ctx,
+        effectType === 'ERA_WIND' ? 'skill-whoosh-era' : 'skill-whoosh-short',
+        duration,
+        (progress) => Math.sin(Math.PI * progress)
+      );
       const source = ctx.createBufferSource();
       const filter = ctx.createBiquadFilter();
       const gain = ctx.createGain();
@@ -611,6 +670,7 @@ class SoundEffects {
       } else {
         gain.connect(ctx.destination);
       }
+      this.disconnectOnEnded(source, source, filter, gain, panner);
       source.start(now);
       source.stop(now + duration);
     } catch {
@@ -698,6 +758,7 @@ class SoundEffects {
       drawGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
       draw.connect(drawGain);
       drawGain.connect(master);
+      this.disconnectOnEnded(draw, draw, drawGain);
       draw.start(now);
       draw.stop(now + 0.15);
 
@@ -705,17 +766,12 @@ class SoundEffects {
       slashDelays.forEach((delay, index) => {
         const start = now + delay;
         const duration = 0.105;
-        const noiseBuffer = ctx.createBuffer(
-          1,
-          Math.ceil(ctx.sampleRate * duration),
-          ctx.sampleRate
+        const noiseBuffer = this.getSynthesizedNoiseBuffer(
+          ctx,
+          `limit-slash-${index}`,
+          duration,
+          (progress) => Math.pow(1 - progress, 2.4)
         );
-        const samples = noiseBuffer.getChannelData(0);
-        for (let sample = 0; sample < samples.length; sample += 1) {
-          const progress = sample / samples.length;
-          samples[sample] =
-            (Math.random() * 2 - 1) * Math.pow(1 - progress, 2.4);
-        }
 
         const slash = ctx.createBufferSource();
         const slashFilter = ctx.createBiquadFilter();
@@ -730,6 +786,7 @@ class SoundEffects {
         slash.connect(slashFilter);
         slashFilter.connect(slashGain);
         slashGain.connect(master);
+        this.disconnectOnEnded(slash, slash, slashFilter, slashGain);
         slash.start(start);
 
         const blade = ctx.createOscillator();
@@ -745,6 +802,19 @@ class SoundEffects {
         bladeGain.gain.exponentialRampToValueAtTime(0.001, start + 0.115);
         blade.connect(bladeGain);
         bladeGain.connect(master);
+        if (index === slashDelays.length - 1) {
+          blade.onended = () => {
+            try {
+              blade.disconnect();
+              bladeGain.disconnect();
+              master.disconnect();
+            } catch {
+              // An interrupted/closed context may have released the graph.
+            }
+          };
+        } else {
+          this.disconnectOnEnded(blade, blade, bladeGain);
+        }
         blade.start(start);
         blade.stop(start + 0.12);
       });

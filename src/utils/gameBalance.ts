@@ -8,9 +8,15 @@ export const BATTLE_GAUGE_SPEED_FACTOR = 4;
 export const TRAINING_GAUGE_SPEED_MULTIPLIER = 0.1;
 export const TRAINING_MIN_OWNERSHIP_PERCENT = 1;
 export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
-export const STARTER_BAKERY_ENEMY_BUDGET_RATIO = 0.8;
+/**
+ * The second Gridania contract is still meant to demonstrate calling the
+ * first acquired ally, but must not assume that a new player already owns a
+ * broad network. Keep its reserve below a full target's worth of capital.
+ */
+export const STARTER_BAKERY_ENEMY_BUDGET_RATIO = 0.62;
 export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.58;
-export const SAVAGE_LAYER_BUDGET_MULTIPLIERS = [1, 1.08, 1.16, 1.25] as const;
+export const SAVAGE_LAYER_BUDGET_MULTIPLIERS = [1, 1.08, 1.18, 1.25] as const;
+export const SAVAGE_SERIES_BUDGET_MULTIPLIERS = [1, 1.035, 1.075] as const;
 export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 2.75;
 export const LIMIT_BREAK_CHARGE_PER_BAR = 100;
 export const LIMIT_BREAK_MAX_BARS = 3;
@@ -32,9 +38,11 @@ export const holdTrainingGaugeAboveDefeat = (
 export const DIRECT_INVESTMENT_BALANCE = {
   baseGaugeImpact: 1.9,
   gaugeImpactPerMarketRatio: 29,
+  largeCommitThresholdRatio: 0.1,
+  largeCommitBonusPerMarketRatio: 19,
   standardImpactCap: 19,
   levelOneTrainingMultiplier: 12.5,
-  levelOneTrainingImpactCap: 40,
+  levelOneTrainingImpactCap: 50,
   advancedTrainingMultiplier: 2,
   advancedTrainingImpactCap: 24,
 } as const;
@@ -57,14 +65,16 @@ export const calculateDirectInvestmentGaugeImpact = ({
   levelOneTraining?: boolean;
   trainingLevel?: number;
 }) => {
+  const marketRatio =
+    Math.max(0, investmentAmount) / Math.max(1, marketPrice);
   const baseImpact =
     (
       DIRECT_INVESTMENT_BALANCE.baseGaugeImpact +
-      (
-        Math.max(0, investmentAmount) /
-        Math.max(1, marketPrice)
-      ) *
-        DIRECT_INVESTMENT_BALANCE.gaugeImpactPerMarketRatio
+      marketRatio * DIRECT_INVESTMENT_BALANCE.gaugeImpactPerMarketRatio +
+      Math.max(
+        0,
+        marketRatio - DIRECT_INVESTMENT_BALANCE.largeCommitThresholdRatio
+      ) * DIRECT_INVESTMENT_BALANCE.largeCommitBonusPerMarketRatio
     ) *
     Math.max(0, windMultiplier);
 
@@ -113,11 +123,13 @@ export type EnemySupportSkillId =
   | 'drill'
   | 'divination'
   | 'rapid_assault'
-  | 'limit_break_3';
+  | 'limit_break_3'
+  | 'omnicapitalization';
 
 export interface EnemySupportDifficultyContext {
   isSavage?: boolean;
   isUltimate?: boolean;
+  isCruel?: boolean;
 }
 
 export const ENEMY_SUPPORT_SKILL_BALANCE = {
@@ -266,8 +278,9 @@ export const getBattleCashRecoveryWindMultipliers = (
 export const getEnemyCureRecoveryRatio = ({
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
 }: EnemySupportDifficultyContext) =>
-  isSavage || isUltimate
+  isSavage || isUltimate || isCruel
     ? ENEMY_SUPPORT_SKILL_BALANCE.cure.highDifficultyRecoveryRatio
     : ENEMY_SUPPORT_SKILL_BALANCE.cure.normalRecoveryRatio;
 
@@ -287,6 +300,7 @@ export const applyEnemyCureRecovery = ({
   cumulativeRecovered,
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
 }: EnemyCureRecoveryInput): BattleCashRecoveryStepResult => {
   const baseline = finiteNonNegative(baselineFunds);
   const currentFunds = Math.min(
@@ -301,7 +315,7 @@ export const applyEnemyCureRecovery = ({
   );
   const requestedRecovery =
     baseline *
-    getEnemyCureRecoveryRatio({ isSavage, isUltimate });
+    getEnemyCureRecoveryRatio({ isSavage, isUltimate, isCruel });
   const recoveredThisStep = Math.min(
     requestedRecovery,
     baseline - currentFunds,
@@ -357,8 +371,9 @@ export const shouldEnemyUseCure = ({
 export const getEnemyDrillOwnershipPush = ({
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
 }: EnemySupportDifficultyContext) =>
-  isUltimate
+  isUltimate || isCruel
     ? ENEMY_SUPPORT_SKILL_BALANCE.drill.ultimateOwnershipPush
     : isSavage
       ? ENEMY_SUPPORT_SKILL_BALANCE.drill.savageOwnershipPush
@@ -420,6 +435,7 @@ export const getEnemyDrillImpact = ({
   hasMugMark = false,
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
 }: EnemySupportDifficultyContext & {
   enemyBudget: number;
   hasMugMark?: boolean;
@@ -427,6 +443,7 @@ export const getEnemyDrillImpact = ({
   const baseOwnershipPush = getEnemyDrillOwnershipPush({
     isSavage,
     isUltimate,
+    isCruel,
   });
   const ownershipPush = Number(
     (
@@ -450,8 +467,9 @@ export const getEnemyDrillImpact = ({
 export const getEnemyDivinationDurationMs = ({
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
 }: EnemySupportDifficultyContext) =>
-  isSavage || isUltimate
+  isSavage || isUltimate || isCruel
     ? ENEMY_SUPPORT_SKILL_BALANCE.divination.highDifficultyDurationMs
     : ENEMY_SUPPORT_SKILL_BALANCE.divination.normalDurationMs;
 
@@ -466,9 +484,12 @@ export const TACTICAL_SKILL_BALANCE = {
     loyaltyRiskDivisor: 2,
   },
   disruption: {
-    durationMs: 15_000,
-    interruptChance: 0.75,
-    collapseMarketRatio: 0.14,
+    /** Legacy key retained for equipped-save compatibility; the action is now STUN. */
+    durationMs: 0,
+    interruptChance: 1,
+    collapseMarketRatio: 0,
+    requiresEnemyTelegraph: true,
+    maxInterruptsPerUse: 1,
   },
   cover: {
     durationMs: 20_000,
@@ -490,7 +511,7 @@ export const TACTICAL_SKILL_BALANCE = {
     pushMultiplier: 1.8,
   },
   eraWind: {
-    durationMs: 12_000,
+    durationMs: 10_000,
     cooldownMs: 0,
     minimumCost: 100_000,
     marketCostRatio: 0.02,
@@ -534,6 +555,7 @@ export const calculateBattleVictoryReward = (
   if (
     !isPlayerVictory ||
     mode === 'ultimate' ||
+    mode === 'cruel' ||
     mode === 'training' ||
     (mode === 'savage' && alreadyCleared)
   ) {
@@ -613,12 +635,13 @@ export const LIMIT_BREAK_CAPITAL_CAP_RATIOS: Record<
 };
 
 export const ENEMY_BALANCE_FACTOR = {
-  tutorial: 1.08,
+  tutorial: 0.98,
   gridania: 1.3,
   limsa: 1.42,
   uldah: 1.55,
-  goldSaucer: 1.72,
+  goldSaucer: 1.68,
   advanced: 1.55,
+  cartelMember: 1.68,
   cartelHQ: 1.85,
 } as const;
 
@@ -634,14 +657,46 @@ export const BATTLE_SUPPORT_BALANCE = {
   synergyImpactCap: 22,
 } as const;
 
+/**
+ * The first two calls on the same network retain full strength. Decay begins
+ * with the third call so players can establish a combo before diminishing
+ * returns matter. The counter is battle-local, so old saves need no migration.
+ */
+export const REPEATED_NETWORK_SUPPORT_BALANCE = {
+  fullStrengthUses: 2,
+  multiplierPerPreviousUse: 0.82,
+  minimumMultiplier: 0.45,
+} as const;
+
+export const getRepeatedNetworkSupportMultiplier = (previousUses: number) => {
+  const normalizedUses = Number.isFinite(previousUses)
+    ? Math.max(0, Math.floor(previousUses))
+    : 0;
+  const decaySteps = Math.max(
+    0,
+    normalizedUses - (REPEATED_NETWORK_SUPPORT_BALANCE.fullStrengthUses - 1)
+  );
+  return Math.max(
+    REPEATED_NETWORK_SUPPORT_BALANCE.minimumMultiplier,
+    REPEATED_NETWORK_SUPPORT_BALANCE.multiplierPerPreviousUse ** decaySteps
+  );
+};
+
+export const applyRepeatedNetworkSupportDecay = (
+  amount: number,
+  previousUses: number
+) =>
+  Math.round(
+    Math.max(0, amount) * getRepeatedNetworkSupportMultiplier(previousUses)
+  );
+
 export const BATTLE_LOYALTY_BALANCE = {
   individualRiskIncrease: 12,
   limitBreakRiskIncrease: 8,
   synergyRiskIncrease: 10,
-  // Kept temporarily while the result UI migrates from the former two-choice
-  // gift. Post-victory settlement no longer reduces saved loyalty risk.
-  celebrationRiskReduction: 20,
-  celebrationRewardRatio: 0.1,
+  // 山分けは勝利報酬全体の半分を人脈全体へ均等に配る。
+  // 独立危険度の保存値は下げず、今回の離反判定だけを強く抑える。
+  celebrationRewardRatio: 0.5,
   reacquisitionSupportBonusPerLevel: 0.1,
   reacquisitionRiskReductionPerLevel: 2,
   maxReacquisitionLevel: 2,
@@ -653,18 +708,16 @@ export const HIGH_DIFFICULTY_SUPPORT_MULTIPLIER = 1.5;
 export const CELEBRATION_GIFT_OPTIONS = [
   {
     id: 'keep',
+    label: '独占',
     rate: 0,
     departureProbabilityMultiplier: 1,
   },
   {
-    id: 'gift10',
-    rate: 0.1,
-    departureProbabilityMultiplier: 0.75,
-  },
-  {
-    id: 'gift20',
-    rate: 0.2,
-    departureProbabilityMultiplier: 0.5,
+    id: 'share50',
+    label: '山分け',
+    rate: 0.5,
+    // 強い抑止だが、危険度が高い人脈の離反可能性は残す。
+    departureProbabilityMultiplier: 0.35,
   },
 ] as const;
 
@@ -682,16 +735,55 @@ export const getReacquisitionLevel = (property: Property) =>
     )
   );
 
+export const isExtremeReacquisition = (property: Property) =>
+  property.owner === 'independent' && getReacquisitionLevel(property) > 0;
+
+export const EXTREME_REACQUISITION_BALANCE = {
+  budgetMultiplierByLevel: [1, 1.2, 1.35],
+  maximumDifficultyLevel: 5,
+} as const;
+
+export const getExtremeReacquisitionBudgetMultiplier = (
+  property: Property
+) =>
+  isExtremeReacquisition(property)
+    ? EXTREME_REACQUISITION_BALANCE.budgetMultiplierByLevel[
+        getReacquisitionLevel(property)
+      ]
+    : 1;
+
+export const getExtremeReacquisitionOpeningSkill = (
+  property: Property
+): EnemySupportSkillId => {
+  const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(property.community);
+  if (campaignIndex <= 2) return 'mug';
+  if (campaignIndex <= 6) return 'divination';
+  return 'drill';
+};
+
 export const getSubsidiarySupportMultiplier = (property: Property) =>
   1 +
   getReacquisitionLevel(property) *
     BATTLE_LOYALTY_BALANCE.reacquisitionSupportBonusPerLevel;
 
-export const calculateSubsidiarySupportAmount = (property: Property) =>
-  Math.round(
+export const calculateSubsidiarySupportAmount = (
+  property: Property,
+  previousNetworkSupportUses = 0
+) =>
+  applyRepeatedNetworkSupportDecay(
     property.marketPrice *
       BATTLE_SUPPORT_BALANCE.subsidiaryMarketRatio *
-      getSubsidiarySupportMultiplier(property)
+      getSubsidiarySupportMultiplier(property),
+    previousNetworkSupportUses
+  );
+
+/** Inverts the LIMIT BREAK pressure formula: amount / price * 85 = push pt. */
+export const calculateLimitBreakPushGilEquivalent = (
+  marketPrice: number,
+  ownershipPoints: number
+) =>
+  Math.round(
+    (Math.max(0, marketPrice) * Math.max(0, ownershipPoints)) / 85
   );
 
 export const sortSubsidiariesBySupport = (properties: Property[]) =>
@@ -729,6 +821,7 @@ export const calculateCelebrationGiftCost = (
   ) {
     return 0;
   }
+  // `rate` is the total pool shared by every ally, not a per-ally charge.
   return Math.max(
     1,
     Math.round(victoryReward * normalizedRate)
@@ -806,7 +899,7 @@ export const getEnemyMinimumCommitment = (marketPrice: number) =>
 export const NORMAL_ENEMY_BUDGET_MULTIPLIER = 0.96;
 
 export const NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS = {
-  tutorial: 0.72,
+  tutorial: 0.62,
   gridania: 0.82,
   limsa: 0.86,
   midgameAndLater: 1,
@@ -840,6 +933,7 @@ interface EnemyBudgetContext {
   isTutorial: boolean;
   isSavage?: boolean;
   isUltimate?: boolean;
+  isCruel?: boolean;
   isCityBoss?: boolean;
 }
 
@@ -885,27 +979,37 @@ export const getBossAbilityTier = ({
   isCityBoss,
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
 }: {
   targetProperty: Property;
   isCityBoss: boolean;
   isSavage?: boolean;
   isUltimate?: boolean;
+  isCruel?: boolean;
 }): BossAbilityTier => {
   if (isUltimate) return 'invincible';
+  if (isCruel) return 'enhanced_cover';
   if (isSavage) {
     const layer = getSavageLayer(targetProperty);
     if (layer >= 4) return 'invincible';
     if (layer >= 2) return 'enhanced_cover';
     return 'cover';
   }
-  if (!isCityBoss) return 'none';
-  const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
-    targetProperty.community
-  );
-  if (campaignIndex >= 9) return 'invincible';
-  if (campaignIndex >= 7) return 'enhanced_cover';
-  if (campaignIndex >= 3) return 'cover';
-  return 'boss';
+  // A returning company is a reward battle against a slightly strengthened
+  // former subsidiary, not a replay of a late boss's long invulnerability.
+  if (isExtremeReacquisition(targetProperty)) return 'boss';
+  if (isCityBoss) {
+    const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
+      targetProperty.community
+    );
+    if (campaignIndex >= 9) return 'invincible';
+    if (campaignIndex >= 7) return 'enhanced_cover';
+    if (campaignIndex >= 3) return 'cover';
+    return 'boss';
+  }
+  if (targetProperty.isCartelHQ) return 'enhanced_cover';
+  if (targetProperty.cartelId) return 'cover';
+  return 'none';
 };
 
 export const BOSS_COVER_BALANCE = {
@@ -1017,6 +1121,14 @@ const ALL_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [
   'drill',
   'divination',
 ];
+const CRUEL_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [
+  'cure',
+  'mug',
+  'drill',
+  'divination',
+  'rapid_assault',
+  'limit_break_3',
+];
 
 export interface EnemySupportProfileContext
   extends EnemySupportDifficultyContext {
@@ -1085,7 +1197,9 @@ export const getEnemySupportSkillProfile = ({
   isCityBoss,
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
 }: EnemySupportProfileContext): readonly EnemySupportSkillId[] => {
+  if (isCruel) return CRUEL_ENEMY_SUPPORT_SKILLS;
   if (isUltimate) return ALL_ENEMY_SUPPORT_SKILLS;
   if (isSavage) {
     const layer = getSavageLayer(targetProperty);
@@ -1094,11 +1208,23 @@ export const getEnemySupportSkillProfile = ({
     if (layer === 3) return MUG_DRILL;
     return ALL_ENEMY_SUPPORT_SKILLS;
   }
+  if (isExtremeReacquisition(targetProperty)) {
+    return [getExtremeReacquisitionOpeningSkill(targetProperty)];
+  }
+  if (!isCityBoss && targetProperty.cartelId === 'cartel_abyss') {
+    return targetProperty.isCartelHQ ? MUG_DRILL : MUG_DIVINATION;
+  }
+  if (!isCityBoss && targetProperty.cartelId === 'cartel_dofor') {
+    return targetProperty.isCartelHQ ? MUG_DIVINATION : CURE_MUG;
+  }
   if (!isCityBoss) return NO_ENEMY_SUPPORT_SKILLS;
 
   const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
     targetProperty.community
   );
+  if (campaignIndex === 2) return MUG_ONLY;
+  if (campaignIndex === 3) return MUG_ONLY;
+  if (campaignIndex === 4) return CURE_MUG;
   if (campaignIndex === 5) return CURE_ONLY;
   if (campaignIndex === 6) return MUG_ONLY;
   if (campaignIndex === 7) return MUG_DRILL;
@@ -1117,10 +1243,14 @@ export const getEnemySupportAutoProfile = ({
   targetProperty,
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
   ultimatePatternIndex = 0,
 }: EnemySupportProfileContext & {
   ultimatePatternIndex?: number;
 }): EnemySupportAutoProfile => {
+  if (isCruel) {
+    return { opening: 'divination', critical: null };
+  }
   if (isUltimate) {
     return getUltimateEnemyAutoProfile(ultimatePatternIndex);
   }
@@ -1136,6 +1266,17 @@ export const getEnemySupportAutoProfile = ({
       }
       return { opening: 'divination', critical: 'drill' };
     }
+  }
+  if (isExtremeReacquisition(targetProperty)) {
+    return {
+      opening: getExtremeReacquisitionOpeningSkill(targetProperty),
+      critical: null,
+    };
+  }
+  if (targetProperty.isCartelHQ) {
+    return targetProperty.cartelId === 'cartel_abyss'
+      ? { opening: 'divination', critical: 'drill' }
+      : { opening: 'mug', critical: 'cure' };
   }
   return {
     opening: null,
@@ -1155,16 +1296,48 @@ export const getOpeningBossAbilityTier = ({
 export const getSavageLayerBudgetMultiplier = (targetProperty: Property) =>
   SAVAGE_LAYER_BUDGET_MULTIPLIERS[getSavageLayer(targetProperty) - 1];
 
+export const getSavageSeriesBudgetMultiplier = (targetProperty: Property) =>
+  SAVAGE_SERIES_BUDGET_MULTIPLIERS[getSavageSeries(targetProperty) - 1];
+
+export const SAVAGE_ENEMY_DIFFICULTY_LEVELS = [
+  [4, 5, 5, 6],
+  [5, 5, 6, 6],
+  [5, 6, 6, 6],
+] as const;
+
 export const getEnemyDifficultyLevel = (
   targetProperty: Property,
   isTutorial: boolean,
   isSavage = false,
   isUltimate = false,
-  isCityBoss = false
+  isCityBoss = false,
+  isCruel = false
 ) => {
-  if (isTutorial) return 0;
+  if (isCruel) return 6;
   if (isUltimate) return 6;
-  if (isSavage) return 6;
+  if (isSavage) {
+    return SAVAGE_ENEMY_DIFFICULTY_LEVELS[getSavageSeries(targetProperty) - 1][
+      getSavageLayer(targetProperty) - 1
+    ];
+  }
+  if (isExtremeReacquisition(targetProperty)) {
+    const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
+      targetProperty.community
+    );
+    const baseDifficulty =
+      campaignIndex <= 0
+        ? 1
+        : campaignIndex === 1
+          ? 2
+          : campaignIndex === 2
+            ? 3
+            : 4;
+    return Math.min(
+      EXTREME_REACQUISITION_BALANCE.maximumDifficultyLevel,
+      baseDifficulty + 1
+    );
+  }
+  if (isTutorial) return 0;
   if (targetProperty.id === 'prop_casino_grand') {
     // ゴールドソーサーは専用の高予算補正だけで十分に手強い。
     // 都市ボス補正まで重ねると、判断レベル5の温存挙動で泥仕合化する。
@@ -1183,6 +1356,7 @@ export const getEnemyDifficultyLevel = (
     6,
     baseDifficulty +
       (isCityBoss ? 1 : 0) +
+      (targetProperty.cartelId ? 1 : 0) +
       (targetProperty.isCartelHQ ? 1 : 0)
   );
 };
@@ -1194,9 +1368,11 @@ export const calculateEnemyBudget = ({
   isTutorial,
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
   isCityBoss = false,
 }: EnemyBudgetContext) => {
   const price = targetProperty.marketPrice;
+  const isExtreme = isExtremeReacquisition(targetProperty);
   const rankFactor =
     price >= 20_000_000
       ? 1.05
@@ -1212,48 +1388,71 @@ export const calculateEnemyBudget = ({
   );
   const baseBudget =
     price *
-    (rankFactor + (targetProperty.isCartelHQ ? 0.3 : 0)) *
+    (rankFactor +
+      (
+        targetProperty.isCartelHQ &&
+        !isSavage &&
+        !isUltimate &&
+        !isCruel
+          ? 0.3
+          : 0
+      )) *
     (1 - defenseDiscount);
-  const balanceFactor = isTutorial
+  const balanceFactor = isSavage || isUltimate || isCruel
+    ? ENEMY_BALANCE_FACTOR.advanced
+    : isTutorial && !isExtreme
     ? ENEMY_BALANCE_FACTOR.tutorial
     : targetProperty.isCartelHQ
       ? ENEMY_BALANCE_FACTOR.cartelHQ
-      : targetProperty.id === 'prop_casino_grand'
-        ? ENEMY_BALANCE_FACTOR.goldSaucer
-        : COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community) === 0
-          ? ENEMY_BALANCE_FACTOR.gridania
-          : COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community) === 1
-            ? ENEMY_BALANCE_FACTOR.limsa
-            : COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community) === 2
-              ? ENEMY_BALANCE_FACTOR.uldah
-              : ENEMY_BALANCE_FACTOR.advanced;
+      : targetProperty.cartelId
+        ? ENEMY_BALANCE_FACTOR.cartelMember
+        : targetProperty.id === 'prop_casino_grand'
+          ? ENEMY_BALANCE_FACTOR.goldSaucer
+          : COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community) === 0
+            ? ENEMY_BALANCE_FACTOR.gridania
+            : COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community) === 1
+              ? ENEMY_BALANCE_FACTOR.limsa
+              : COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community) === 2
+                ? ENEMY_BALANCE_FACTOR.uldah
+                : ENEMY_BALANCE_FACTOR.advanced;
 
   const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
     targetProperty.community
   );
   const cityBossBudgetMultiplier =
-    isCityBoss &&
-    campaignIndex >= 0 &&
-    campaignIndex <= 2 &&
-    targetProperty.id !== 'prop_casino_grand'
-      ? 1.05
-      : 1;
+    !isCityBoss ||
+    campaignIndex < 0 ||
+    targetProperty.id === 'prop_casino_grand'
+      ? 1
+      : campaignIndex <= 1
+        ? 1.05
+        : campaignIndex <= 4
+          ? 1.04
+          : 1.02;
 
   const calculatedBudget = Math.round(
     baseBudget * balanceFactor * cityBossBudgetMultiplier *
-    (isUltimate
+    (isUltimate || isCruel
       ? ULTIMATE_ENEMY_BUDGET_MULTIPLIER
       : isSavage
         ? SAVAGE_ENEMY_BUDGET_MULTIPLIER *
-          getSavageLayerBudgetMultiplier(targetProperty)
+          getSavageLayerBudgetMultiplier(targetProperty) *
+          getSavageSeriesBudgetMultiplier(targetProperty)
         : NORMAL_ENEMY_BUDGET_MULTIPLIER *
-          getNormalEnemyCampaignMultiplier(targetProperty, isTutorial))
+          getNormalEnemyCampaignMultiplier(
+            targetProperty,
+            isTutorial && !isExtreme
+          )) *
+      (isSavage || isUltimate || isCruel
+        ? 1
+        : getExtremeReacquisitionBudgetMultiplier(targetProperty))
   );
 
   if (
     !isTutorial &&
     !isSavage &&
     !isUltimate &&
+    !isCruel &&
     targetProperty.id === 'prop_starter_bakery'
   ) {
     return Math.max(
@@ -1307,7 +1506,8 @@ export const calculateLimitBreakChargeGain = (
 export const calculateLimitBreakAmount = (
   targetMarketPrice: number,
   participatingSubsidiaries: Property[],
-  tier: LimitBreakTier
+  tier: LimitBreakTier,
+  previousNetworkSupportUses: Readonly<Record<string, number>> = {}
 ) => {
   if (tier === 0) return 0;
   const selfSlot = Math.round(targetMarketPrice * 0.28);
@@ -1317,7 +1517,10 @@ export const calculateLimitBreakAmount = (
       Math.round(
         property.marketPrice *
           0.28 *
-          getSubsidiarySupportMultiplier(property)
+          getSubsidiarySupportMultiplier(property) *
+          getRepeatedNetworkSupportMultiplier(
+            previousNetworkSupportUses[property.id] ?? 0
+          )
       ),
     0
   );

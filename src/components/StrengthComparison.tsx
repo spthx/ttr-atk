@@ -24,11 +24,11 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
     },
     even: {
       label: '挑戦圏',
-      advice: '投入順と支援元の使い分けを試すのに適した固定耐久です。',
+      advice: '投入順と人脈の使い分けを試すのに適した固定耐久です。',
     },
     challenge: {
       label: '要工夫',
-      advice: '支援元、有効なアビリティ、LIMIT BREAKを組み合わせて耐久を削りましょう。',
+      advice: '人脈、有効なアビリティ、LIMIT BREAKを組み合わせて耐久を削りましょう。',
     },
     danger: {
       label: '準備不足',
@@ -134,7 +134,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
             {result.cumulativeSupportFailureProbability > 0 && (
               <span className={result.supportVolatile ? 'strength-comparison__risk' : ''}>
                 <ShieldAlert />
-                {result.supportRoute === '支援元一巡' ? '勝利後の一巡離脱' : '勝利後の離脱'}{' '}
+                {result.supportRoute === '人脈一巡' ? '勝利後の一巡離脱' : '勝利後の離脱'}{' '}
                 {Math.round(result.cumulativeSupportFailureProbability * 100)}%
               </span>
             )}
@@ -164,7 +164,11 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
           </div>
         </>
       )}
-      {summaryOnly && (!result.directInvestmentAvailable || result.supportVolatile) && (
+      {summaryOnly && (
+        !result.directInvestmentAvailable ||
+        result.supportVolatile ||
+        result.mechanicCheckRequired
+      ) && (
         <div className="strength-comparison__meta strength-comparison__meta--critical">
           {!result.directInvestmentAvailable && (
             <span className="strength-comparison__risk">
@@ -176,12 +180,17 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
               <ShieldAlert />勝利後の離脱 {Math.round(result.cumulativeSupportFailureProbability * 100)}%
             </span>
           )}
+          {result.mechanicCheckRequired && result.mechanicWarning && (
+            <span className="strength-comparison__risk">
+              <ShieldAlert />{result.mechanicWarning}
+            </span>
+          )}
         </div>
       )}
       {result.sequentialSupportGradeCapped && (
         <div className="strength-comparison__meta strength-comparison__meta--critical">
           <span className="strength-comparison__risk">
-            <ShieldAlert />支援中に競合が約{result.expectedEnemyResponsesDuringSupport.toFixed(1)}回動くため、判定は接戦
+            <ShieldAlert />人脈への要請中に競合が約{result.expectedEnemyResponsesDuringSupport.toFixed(1)}回動くため、判定は接戦
           </span>
         </div>
       )}
@@ -191,7 +200,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
           <small className="strength-comparison__note">
             {isTraining
               ? '追加行動なしの固定耐久です。訓練中の出資・離反・LB増減は保存されません。'
-              : `現金＋最良の支援（${result.supportRoute}）＋1争奪戦につき1回の協力・資金アビリティ・選択中の手動SYNERGYを戦力換算。風と通常の押し込み速度は等級に含みません。`}
+              : `現金＋最良の人脈支援（${result.supportRoute}）＋1争奪戦につき1回の協力・資金アビリティ・選択中の手動SYNERGYを戦力換算。風と通常の押し込み速度は等級に含みません。`}
           </small>
         </>
       )}

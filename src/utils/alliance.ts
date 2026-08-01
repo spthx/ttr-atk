@@ -1,4 +1,5 @@
 import type { AllianceState, Property } from '../types';
+import { applyRepeatedNetworkSupportDecay } from './gameBalance';
 
 export const ALLIANCE_SUPPORT_MARKET_RATIO = 0.42;
 
@@ -17,5 +18,11 @@ export const shouldBreakAllianceForTarget = (
   alliance.allyName.length > 0 &&
   targetProperty.ownerName.includes(alliance.allyName);
 
-export const calculateAllianceSupport = (marketPrice: number) =>
-  Math.round(Math.max(0, marketPrice) * ALLIANCE_SUPPORT_MARKET_RATIO);
+export const calculateAllianceSupport = (
+  marketPrice: number,
+  previousNetworkSupportUses = 0
+) =>
+  applyRepeatedNetworkSupportDecay(
+    Math.max(0, marketPrice) * ALLIANCE_SUPPORT_MARKET_RATIO,
+    previousNetworkSupportUses
+  );

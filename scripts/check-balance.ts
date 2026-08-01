@@ -105,6 +105,7 @@ import {
 } from '../src/utils/campaignProgress';
 import {
   applySavageSynergyUpgrades,
+  buildCruelProperty,
   buildUltimateProperty,
   buildSavageProperties,
   getSavagePropertyYieldMultiplier,
@@ -119,8 +120,14 @@ import {
   SAVAGE_RAID_DEFINITIONS,
   SAVAGE_SERIES_DEFINITIONS,
   SAVAGE_YIELD_BONUS_PER_RANK,
+  CRUEL_RAID_DEFINITION,
   ULTIMATE_RAID_DEFINITION,
 } from '../src/utils/savage';
+import {
+  calculateCruelOmnicapitalizationImpact,
+  CRUEL_OMNICAPITALIZATION_BALANCE,
+  shouldTriggerCruelOmnicapitalization,
+} from '../src/utils/cruelBattle';
 import {
   GRAND_COMPANY_EORZEA_ID,
   getBattleOnlySynergyMultiplier,
@@ -155,12 +162,14 @@ import {
   CELEBRATION_GIFT_OPTIONS,
   calculateDirectInvestmentGaugeImpact,
   calculateEnemyDrillReserveCost,
+  calculateLimitBreakPushGilEquivalent,
   calculateSubsidiarySupportAmount,
   calculateCelebrationGiftCost,
   calculateCompanyStrengthScore,
   calculateBattleVictoryReward,
   calculatePlayerBattleCashLimit,
   ENEMY_INITIAL_COMMITMENT_RATIO,
+  ENEMY_BALANCE_FACTOR,
   INITIAL_PLAYER_FUNDS,
   PASSIVE_REVENUE_MULTIPLIER,
   PLAYER_BATTLE_CASH_CAP_RATIO,
@@ -187,6 +196,10 @@ import {
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
   getReacquisitionLevel,
+  getExtremeReacquisitionBudgetMultiplier,
+  getExtremeReacquisitionOpeningSkill,
+  isExtremeReacquisition,
+  EXTREME_REACQUISITION_BALANCE,
   getSubsidiaryRiskIncrease,
   getSubsidiarySupportMultiplier,
   holdTrainingGaugeAboveDefeat,
@@ -197,11 +210,13 @@ import {
   LIMIT_BREAK_MULTIPLIERS,
   LIMIT_BREAK_OWNERSHIP_CAPS,
   NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS,
-  NORMAL_ENEMY_BUDGET_MULTIPLIER,
+  REPEATED_NETWORK_SUPPORT_BALANCE,
   resolveLivingDeadOutcome,
   sortSubsidiariesBySupport,
   SAVAGE_ENEMY_BUDGET_MULTIPLIER,
+  SAVAGE_ENEMY_DIFFICULTY_LEVELS,
   SAVAGE_LAYER_BUDGET_MULTIPLIERS,
+  SAVAGE_SERIES_BUDGET_MULTIPLIERS,
   STARTER_BAKERY_ENEMY_BUDGET_RATIO,
   ULTIMATE_ENEMY_BUDGET_MULTIPLIER,
   getEnemyDifficultyLevel,
@@ -211,8 +226,9 @@ import {
   getOpeningBossAbilityTier,
   getEnemySupportAutoProfile,
   getEnemySupportSkillProfile,
-  getNormalEnemyCampaignMultiplier,
   getSavageLayerBudgetMultiplier,
+  getSavageSeriesBudgetMultiplier,
+  getRepeatedNetworkSupportMultiplier,
   calculateEraWindCost,
   getEraWindGaugePushPerSecond,
   canEnemyAffordDrill,
@@ -309,7 +325,12 @@ battleWind = advanceBattleWind(
 );
 assert.equal(battleWind.phase, 'telegraph');
 assert.equal(battleWind.windType, 'CALM');
-assert.equal(battleWind.secondsRemaining, BATTLE_WIND_TELEGRAPH_SECONDS);
+assert.ok(
+  Math.abs(battleWind.secondsRemaining - BATTLE_WIND_TELEGRAPH_SECONDS) < 1e-9
+);
+assert.equal(BATTLE_WIND_TELEGRAPH_SECONDS, 2);
+assert.equal(BATTLE_WIND_ACTIVE_MIN_SECONDS, 10);
+assert.equal(BATTLE_WIND_ACTIVE_MAX_SECONDS, 13);
 const telegraphedWind = battleWind.pendingWindType;
 battleWind = advanceBattleWind(
   battleWind,
@@ -1377,7 +1398,7 @@ assert.equal(
 assert.equal(multiRequestReadiness.sequentialSupportGradeCapped, true);
 assert.ok(
   multiRequestReadiness.capitalComponents.some(
-    (component) => component.label.includes('支援元2件へ各1回')
+    (component) => component.label.includes('人脈2件へ各1回')
   ),
   'readiness details the subsidiary one-pass assumption'
 );
@@ -1464,9 +1485,9 @@ const campaignSummary = COMMUNITY_CAMPAIGN_ORDER.map((community, index) => {
 const expectedNormalEnemySupportProfiles = [
   [],
   [],
-  [],
-  [],
-  [],
+  ['mug'],
+  ['mug'],
+  ['cure', 'mug'],
   ['cure'],
   ['mug'],
   ['mug', 'drill'],
@@ -1484,7 +1505,7 @@ COMMUNITY_CAMPAIGN_ORDER.forEach((community, index) => {
     expectedNormalEnemySupportProfiles[index],
     `normal city ${index + 1} has its authored enemy support profile`
   );
-  if (targets.length > 1) {
+  if (targets.length > 1 && !targets[0].cartelId) {
     assert.deepEqual(
       getEnemySupportSkillProfile({
         targetProperty: targets[0],
@@ -1495,6 +1516,79 @@ COMMUNITY_CAMPAIGN_ORDER.forEach((community, index) => {
     );
   }
 });
+
+const firstCartelMember = INITIAL_PROPERTIES.find(
+  (property) => property.id === 'prop_dofor_ship'
+)!;
+const firstCartelHeadquarters = INITIAL_PROPERTIES.find(
+  (property) => property.id === 'prop_dofor_hq'
+)!;
+const lateCartelMember = INITIAL_PROPERTIES.find(
+  (property) => property.id === 'prop_abyss_heavy'
+)!;
+const lateCartelHeadquarters = INITIAL_PROPERTIES.find(
+  (property) => property.id === 'prop_abyss_hq'
+)!;
+assert.deepEqual(
+  getEnemySupportSkillProfile({
+    targetProperty: firstCartelMember,
+    isCityBoss: false,
+  }),
+  ['cure', 'mug']
+);
+assert.deepEqual(
+  getEnemySupportSkillProfile({
+    targetProperty: firstCartelHeadquarters,
+    isCityBoss: false,
+  }),
+  ['mug', 'divination']
+);
+assert.deepEqual(
+  getEnemySupportSkillProfile({
+    targetProperty: lateCartelMember,
+    isCityBoss: false,
+  }),
+  ['mug', 'divination']
+);
+assert.deepEqual(
+  getEnemySupportSkillProfile({
+    targetProperty: lateCartelHeadquarters,
+    isCityBoss: false,
+  }),
+  ['mug', 'drill']
+);
+assert.equal(
+  getBossAbilityTier({
+    targetProperty: firstCartelMember,
+    isCityBoss: false,
+  }),
+  'cover'
+);
+assert.equal(
+  getBossAbilityTier({
+    targetProperty: lateCartelHeadquarters,
+    isCityBoss: false,
+  }),
+  'enhanced_cover'
+);
+assert.deepEqual(
+  getEnemySupportAutoProfile({
+    targetProperty: firstCartelHeadquarters,
+    isCityBoss: false,
+  }),
+  { opening: 'mug', critical: 'cure' }
+);
+assert.deepEqual(
+  getEnemySupportAutoProfile({
+    targetProperty: lateCartelHeadquarters,
+    isCityBoss: false,
+  }),
+  { opening: 'divination', critical: 'drill' }
+);
+assert.equal(getEnemyDifficultyLevel(firstCartelMember, false), 4);
+assert.equal(getEnemyDifficultyLevel(firstCartelHeadquarters, false), 5);
+assert.equal(getEnemyDifficultyLevel(lateCartelMember, false), 5);
+assert.equal(getEnemyDifficultyLevel(lateCartelHeadquarters, false), 6);
 
 for (let index = 4; index <= 8; index += 1) {
   assert.ok(
@@ -1693,6 +1787,8 @@ const unlockFastHorseSkill = INITIAL_SKILLS.find(
 const fastHorseExplanation = getSkillUnlockExplanation(unlockFastHorseSkill);
 assert.equal(fastHorseExplanation.key, 'skill:skill_fast_horse');
 assert.match(fastHorseExplanation.detail, /15秒間/);
+assert.match(fastHorseExplanation.detail, /リキャストタイム/);
+assert.doesNotMatch(fastHorseExplanation.detail, /再使用まで/);
 assert.match(fastHorseExplanation.operation, /アビリティ装備/);
 const forestSynergyExplanation = getSynergyUnlockExplanation(
   INITIAL_GROUP_SYNERGIES[0]
@@ -2079,6 +2175,106 @@ assert.ok(
   ultimateProperty.marketPrice > savageProperties[savageProperties.length - 1].marketPrice
 );
 assert.match(ultimateProperty.description, /単独・最終高難度交易戦/);
+
+const cruelProperty = buildCruelProperty(false, '検証商会');
+assert.equal(cruelProperty.id, CRUEL_RAID_DEFINITION.id);
+assert.equal(
+  cruelProperty.marketPrice,
+  ULTIMATE_RAID_DEFINITION.marketPrice * 1.25,
+  'Cruel starts at 1.25 times the current Ultimate market price'
+);
+assert.equal(cruelProperty.annualRevenue, 0);
+assert.equal(cruelProperty.countsTowardCityConquest, false);
+assert.equal(getEnemyDifficultyLevel(cruelProperty, false, false, false, false, true), 6);
+assert.equal(
+  getBossAbilityTier({
+    targetProperty: cruelProperty,
+    isCityBoss: false,
+    isCruel: true,
+  }),
+  'enhanced_cover',
+  'Cruel uses Passage instead of inheriting Ultimate invincibility'
+);
+assert.deepEqual(
+  getEnemySupportSkillProfile({
+    targetProperty: cruelProperty,
+    isCityBoss: false,
+    isCruel: true,
+  }),
+  ['cure', 'mug', 'drill', 'divination', 'rapid_assault', 'limit_break_3']
+);
+assert.deepEqual(
+  getEnemySupportAutoProfile({
+    targetProperty: cruelProperty,
+    isCityBoss: false,
+    isCruel: true,
+  }),
+  { opening: 'divination', critical: null },
+  'Cruel always opens with Divination and reserves its critical beat for Omnicapitalization'
+);
+assert.equal(
+  calculateBattleVictoryReward(cruelProperty.marketPrice, true, 'cruel'),
+  0,
+  'Cruel awards only its record and title, never repeatable cash'
+);
+
+assert.deepEqual(
+  calculateCruelOmnicapitalizationImpact({
+    remainingReserve: 750,
+    openingReserve: 750,
+  }),
+  { reserveRatio: 1, ownershipPush: 40, gaugeDelta: 80 }
+);
+assert.deepEqual(
+  calculateCruelOmnicapitalizationImpact({
+    remainingReserve: 375,
+    openingReserve: 750,
+  }),
+  { reserveRatio: 0.5, ownershipPush: 20, gaugeDelta: 40 }
+);
+assert.deepEqual(
+  calculateCruelOmnicapitalizationImpact({
+    remainingReserve: 0,
+    openingReserve: 750,
+  }),
+  { reserveRatio: 0, ownershipPush: 0, gaugeDelta: 0 }
+);
+assert.equal(CRUEL_OMNICAPITALIZATION_BALANCE.triggerPlayerOwnership, 75);
+assert.equal(CRUEL_OMNICAPITALIZATION_BALANCE.telegraphMs, 4_500);
+assert.equal(
+  shouldTriggerCruelOmnicapitalization({
+    isCruel: true,
+    alreadyUsed: false,
+    pending: false,
+    currentPlayerOwnership: 74.9,
+    candidatePlayerOwnership: 75,
+  }),
+  true,
+  'crossing the 75% boundary triggers the once-per-battle response'
+);
+assert.equal(
+  shouldTriggerCruelOmnicapitalization({
+    isCruel: true,
+    alreadyUsed: false,
+    pending: false,
+    currentPlayerOwnership: 60,
+    candidatePlayerOwnership: 120,
+  }),
+  true,
+  'a lethal overkill cannot skip Omnicapitalization'
+);
+assert.equal(
+  shouldTriggerCruelOmnicapitalization({
+    isCruel: true,
+    alreadyUsed: true,
+    pending: false,
+    currentPlayerOwnership: 60,
+    candidatePlayerOwnership: 90,
+  }),
+  false,
+  'a stunned or resolved Omnicapitalization never fires a second time'
+);
+
 assert.equal(
   calculateBattleVictoryReward(600_000_000, true, 'savage', false),
   30_000_000,
@@ -2225,6 +2421,87 @@ assert.equal(
   true
 );
 assert.equal(calculateAllianceSupport(1_000_000), 420_000);
+assert.equal(calculateAllianceSupport(1_000_000, 1), 420_000);
+assert.equal(calculateAllianceSupport(1_000_000, 2), 344_400);
+assert.equal(calculateAllianceSupport(1_000_000, 99), 189_000);
+assert.equal(getRepeatedNetworkSupportMultiplier(0), 1);
+assert.equal(getRepeatedNetworkSupportMultiplier(1), 1);
+assert.equal(getRepeatedNetworkSupportMultiplier(2), 0.82);
+assert.equal(
+  getRepeatedNetworkSupportMultiplier(99),
+  REPEATED_NETWORK_SUPPORT_BALANCE.minimumMultiplier
+);
+
+const extremeBaseProperty = {
+  ...INITIAL_PROPERTIES.find((property) => property.id === 'prop_coffee_aurora')!,
+  owner: 'independent' as const,
+  ownerName: '独立物件',
+  reacquisitionLevel: 0,
+};
+const extremeLevelOneProperty = {
+  ...extremeBaseProperty,
+  reacquisitionLevel: 1,
+};
+const extremeLevelTwoProperty = {
+  ...extremeBaseProperty,
+  reacquisitionLevel: 2,
+};
+assert.equal(isExtremeReacquisition(extremeBaseProperty), false);
+assert.equal(isExtremeReacquisition(extremeLevelOneProperty), true);
+assert.deepEqual(
+  EXTREME_REACQUISITION_BALANCE.budgetMultiplierByLevel,
+  [1, 1.2, 1.35]
+);
+assert.equal(getExtremeReacquisitionBudgetMultiplier(extremeLevelOneProperty), 1.2);
+assert.equal(getExtremeReacquisitionBudgetMultiplier(extremeLevelTwoProperty), 1.35);
+assert.equal(
+  getEnemyDifficultyLevel(extremeLevelOneProperty, false),
+  Math.min(5, getEnemyDifficultyLevel(extremeBaseProperty, false) + 1),
+  'Extreme raises normal AI by one level but never above LEVEL 5'
+);
+assert.equal(
+  getEnemyDifficultyLevel(extremeLevelTwoProperty, false),
+  5,
+  'late Extreme reacquisition remains capped at LEVEL 5'
+);
+assert.equal(
+  getExtremeReacquisitionOpeningSkill(extremeLevelOneProperty),
+  'drill',
+  'late returning companies retain one representative opening action'
+);
+const baseReacquisitionBudget = calculateEnemyBudget({
+  targetProperty: extremeBaseProperty,
+  industryInfluence: noInfluence,
+  regionalInfluence: noInfluence,
+  isTutorial: false,
+});
+const levelOneReacquisitionBudget = calculateEnemyBudget({
+  targetProperty: extremeLevelOneProperty,
+  industryInfluence: noInfluence,
+  regionalInfluence: noInfluence,
+  isTutorial: false,
+});
+const levelTwoReacquisitionBudget = calculateEnemyBudget({
+  targetProperty: extremeLevelTwoProperty,
+  industryInfluence: noInfluence,
+  regionalInfluence: noInfluence,
+  isTutorial: false,
+});
+assert.ok(
+  Math.abs(levelOneReacquisitionBudget / baseReacquisitionBudget - 1.2) < 0.0001
+);
+assert.ok(
+  Math.abs(levelTwoReacquisitionBudget / baseReacquisitionBudget - 1.35) < 0.0001
+);
+assert.equal(
+  calculateSubsidiarySupportAmount(
+    { ...INITIAL_PROPERTIES[0], marketPrice: 100_000, reacquisitionLevel: 0 },
+    1
+  ),
+  75_000,
+  'the second request retains full strength before battle-local decay begins'
+);
+assert.equal(calculateLimitBreakPushGilEquivalent(1_000_000, 8.5), 100_000);
 assert.deepEqual(
   INITIAL_CARTELS.map((cartel) =>
     calculateCartelHeadquartersDefense(
@@ -2289,7 +2566,7 @@ const enemyBudgetRatio = (propertyId: string, isTutorial = false) => {
     isTutorial,
   }) / property.marketPrice;
 };
-assert.ok(Math.abs(enemyBudgetRatio('prop_starter_farm', true) - 0.4031) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_starter_farm', true) - 0.315) < 0.001);
 assert.equal(
   enemyBudgetRatio('prop_starter_bakery'),
   STARTER_BAKERY_ENEMY_BUDGET_RATIO,
@@ -2297,9 +2574,9 @@ assert.equal(
 );
 assert.ok(Math.abs(enemyBudgetRatio('prop_timber_ake') - 0.5526) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_land_transport') - 0.6331) < 0.001);
-assert.ok(Math.abs(enemyBudgetRatio('prop_casino_grand') - 1.1228) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_casino_grand') - 1.0967) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_coffee_aurora') - 1.2202) < 0.001);
-assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_heavy') - 1.5624) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_heavy') - 1.6934) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_hq') - 2.3976) < 0.001);
 const savageBudgetTarget = savageProperties[0];
 const savageBudget = calculateEnemyBudget({
@@ -2309,47 +2586,18 @@ const savageBudget = calculateEnemyBudget({
   isTutorial: false,
   isSavage: true,
 });
-const sameTargetNormalBudget = calculateEnemyBudget({
-  targetProperty: savageBudgetTarget,
-  industryInfluence: noInfluence,
-  regionalInfluence: noInfluence,
-  isTutorial: false,
-});
 assert.equal(
   savageBudget,
   Math.round(
-    sameTargetNormalBudget *
-      (1 /
-        (
-          NORMAL_ENEMY_BUDGET_MULTIPLIER *
-          getNormalEnemyCampaignMultiplier(savageBudgetTarget, false)
-        )) *
+    savageBudgetTarget.marketPrice *
+      1.05 *
+      ENEMY_BALANCE_FACTOR.advanced *
       SAVAGE_ENEMY_BUDGET_MULTIPLIER *
-      getSavageLayerBudgetMultiplier(savageBudgetTarget)
+      getSavageLayerBudgetMultiplier(savageBudgetTarget) *
+      getSavageSeriesBudgetMultiplier(savageBudgetTarget)
   )
 );
-assert.equal(getEnemyDifficultyLevel(savageBudgetTarget, false, true), 6);
-const savageLayerBudgets = savageProperties.map((targetProperty) => {
-  const normalBudget = calculateEnemyBudget({
-    targetProperty,
-    industryInfluence: noInfluence,
-    regionalInfluence: noInfluence,
-    isTutorial: false,
-  });
-  return calculateEnemyBudget({
-    targetProperty,
-    industryInfluence: noInfluence,
-    regionalInfluence: noInfluence,
-    isTutorial: false,
-    isSavage: true,
-  }) / (
-    normalBudget /
-    (
-      NORMAL_ENEMY_BUDGET_MULTIPLIER *
-      getNormalEnemyCampaignMultiplier(targetProperty, false)
-    )
-  );
-});
+assert.equal(getEnemyDifficultyLevel(savageBudgetTarget, false, true), 4);
 assert.deepEqual(
   savageProperties.map((property) =>
     getBossAbilityTier({
@@ -2366,23 +2614,32 @@ assert.deepEqual(
   'all three Savage series repeat the complete visible defensive pattern'
 );
 assert.deepEqual(
-  savageLayerBudgets.map((ratio) => Number(ratio.toFixed(3))),
   SAVAGE_RAID_DEFINITIONS.map((raid) =>
     Number(
       (
         SAVAGE_ENEMY_BUDGET_MULTIPLIER *
-        SAVAGE_LAYER_BUDGET_MULTIPLIERS[raid.layer - 1]
+        SAVAGE_LAYER_BUDGET_MULTIPLIERS[raid.layer - 1] *
+        SAVAGE_SERIES_BUDGET_MULTIPLIERS[raid.series - 1]
       ).toFixed(3)
     )
   ),
-  'each Savage series repeats the layer 1 through layer 4 budget rhythm'
+  savageProperties.map((property) =>
+    Number(
+      (
+        SAVAGE_ENEMY_BUDGET_MULTIPLIER *
+        getSavageLayerBudgetMultiplier(property) *
+        getSavageSeriesBudgetMultiplier(property)
+      ).toFixed(3)
+    )
+  ),
+  'every Savage encounter combines its authored layer and series rhythm'
 );
-SAVAGE_RAID_DEFINITIONS.forEach((_raid, index) => {
-  assert.equal(
-    getEnemyDifficultyLevel(savageProperties[index], false, true),
-    6
-  );
-});
+assert.deepEqual(
+  savageProperties.map((property) =>
+    getEnemyDifficultyLevel(property, false, true)
+  ),
+  SAVAGE_ENEMY_DIFFICULTY_LEVELS.flat()
+);
 const fullyUpgradedGrandCompanyEorzea = upgradedSynergies.find(
   (synergy) => synergy.id === GRAND_COMPANY_EORZEA_ID
 )!;
@@ -2405,6 +2662,20 @@ const absoluteSavageBudgets = savageProperties.map((targetProperty) =>
     isSavage: true,
   })
 );
+assert.deepEqual(
+  absoluteSavageBudgets,
+  SAVAGE_RAID_DEFINITIONS.map((raid) =>
+    Math.round(
+      raid.marketPrice *
+        1.05 *
+        ENEMY_BALANCE_FACTOR.advanced *
+        SAVAGE_ENEMY_BUDGET_MULTIPLIER *
+        SAVAGE_LAYER_BUDGET_MULTIPLIERS[raid.layer - 1] *
+        SAVAGE_SERIES_BUDGET_MULTIPLIERS[raid.series - 1]
+    )
+  ),
+  'Savage budgets ignore inherited normal-property cartel flags'
+);
 for (let seriesStart = 0; seriesStart < absoluteSavageBudgets.length; seriesStart += 4) {
   for (let layer = 1; layer < 4; layer += 1) {
     assert.ok(
@@ -2414,6 +2685,18 @@ for (let seriesStart = 0; seriesStart < absoluteSavageBudgets.length; seriesStar
     );
   }
 }
+for (let series = 1; series < 3; series += 1) {
+  const previousStart = (series - 1) * 4;
+  const nextStart = series * 4;
+  assert.ok(
+    absoluteSavageBudgets[nextStart] < absoluteSavageBudgets[previousStart + 3],
+    `Savage series ${series + 1} layer 1 drops below the previous layer 4 peak`
+  );
+  assert.ok(
+    absoluteSavageBudgets[nextStart] > absoluteSavageBudgets[previousStart],
+    `Savage series ${series + 1} layer 1 exceeds the previous series layer 1`
+  );
+}
 const ultimateBudget = calculateEnemyBudget({
   targetProperty: ultimateProperty,
   industryInfluence: noInfluence,
@@ -2421,22 +2704,12 @@ const ultimateBudget = calculateEnemyBudget({
   isTutorial: false,
   isUltimate: true,
 });
-const ultimateAsNormalBudget = calculateEnemyBudget({
-  targetProperty: ultimateProperty,
-  industryInfluence: noInfluence,
-  regionalInfluence: noInfluence,
-  isTutorial: false,
-});
 assert.equal(
   ultimateBudget,
   Math.round(
-    (
-      ultimateAsNormalBudget /
-      (
-        NORMAL_ENEMY_BUDGET_MULTIPLIER *
-        getNormalEnemyCampaignMultiplier(ultimateProperty, false)
-      )
-    ) *
+    ultimateProperty.marketPrice *
+      1.05 *
+      ENEMY_BALANCE_FACTOR.advanced *
       ULTIMATE_ENEMY_BUDGET_MULTIPLIER
   )
 );
@@ -2477,13 +2750,42 @@ assert.ok(
 const protectedReserve = decideEnemyAction({ ...baseAiContext, enemyReservePercent: 14 });
 assert.equal(protectedReserve.intent, 'CONSERVE');
 assert.equal(protectedReserve.reserveProtected, true);
+assert.equal(
+  decideEnemyAction({
+    ...baseAiContext,
+    difficultyLevel: 6,
+    enemyReservePercent: 10,
+  }).reserveProtected,
+  false,
+  'Ultimate AI may spend below the normal 15% reserve floor'
+);
+assert.equal(
+  decideEnemyAction({
+    ...baseAiContext,
+    difficultyLevel: 6,
+    enemyReservePercent: 9,
+  }).reserveProtected,
+  true,
+  'Ultimate AI still retains a bounded final reserve outside emergencies'
+);
+for (const lastPlayerAction of ['FUNDS', 'SYNERGY', 'ALLIANCE'] as const) {
+  assert.equal(
+    decideEnemyAction({
+      ...baseAiContext,
+      difficultyLevel: 5,
+      lastPlayerAction,
+      effectiveCapitalGap: 50_000,
+    }).intent,
+    'COUNTER_ATTACK',
+    `high-end AI recognizes the ${lastPlayerAction} capital burst`
+  );
+}
 const allInCounter = decideEnemyAction({ ...baseAiContext, enemyReservePercent: 14, lastPlayerAction: 'ALL_IN' });
 assert.equal(allInCounter.reserveProtected, false);
 assert.equal(allInCounter.intent, 'COUNTER_ATTACK');
 
 const livingDeadSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_sns_blitz')!;
 const fastHorseSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_fast_horse')!;
-const moraleSupportSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_nemawashi')!;
 const disruptionSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_sabotage')!;
 const coverSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_demoralize')!;
 const capitalBoostSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_capital_boost')!;
@@ -2520,7 +2822,7 @@ assert.equal(isSkillUnlocked({
 assert.equal(capitalBoostSkill.oncePerBattle, true);
 assert.deepEqual(
   INITIAL_SKILLS.map((skill) => skill.name),
-  ['疾風怒濤の計', '守りのサンバ', '連環計', 'かばう', '意気衝天', 'リビングデッド', 'バトルリタニー', '時代の風']
+  ['疾風怒濤の計', 'スタン', 'かばう', '意気衝天', 'リビングデッド', 'バトルリタニー', '時代の風']
 );
 assert.equal(fastHorseSkill.cooldownMs, TACTICAL_SKILL_BALANCE.fastAction.cooldownMs);
 assert.equal(
@@ -2532,12 +2834,17 @@ const fastActionRatio =
   TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick /
   TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick;
 assert.ok(fastActionRatio > 1.85 && fastActionRatio < 1.86);
-assert.equal(TACTICAL_SKILL_BALANCE.moraleSupport.loyaltyRiskDivisor, 2);
-assert.match(moraleSupportSkill.description, /半減/);
-assert.equal(TACTICAL_SKILL_BALANCE.disruption.interruptChance, 0.75);
-assert.equal(TACTICAL_SKILL_BALANCE.disruption.durationMs, 15_000);
-assert.equal(TACTICAL_SKILL_BALANCE.disruption.collapseMarketRatio, 0.14);
-assert.match(disruptionSkill.description, /中断分は追加防衛枠から消費されない/);
+assert.match(fastHorseSkill.description, /リキャストタイム/);
+assert.match(fastHorseSkill.description, /約47%短縮/);
+assert.equal(INITIAL_SKILLS.some((skill) => skill.id === 'skill_nemawashi'), false);
+assert.equal(disruptionSkill.name, 'スタン');
+assert.equal(TACTICAL_SKILL_BALANCE.disruption.interruptChance, 1);
+assert.equal(TACTICAL_SKILL_BALANCE.disruption.durationMs, 0);
+assert.equal(TACTICAL_SKILL_BALANCE.disruption.collapseMarketRatio, 0);
+assert.equal(TACTICAL_SKILL_BALANCE.disruption.requiresEnemyTelegraph, true);
+assert.equal(TACTICAL_SKILL_BALANCE.disruption.maxInterruptsPerUse, 1);
+assert.match(disruptionSkill.description, /行動予告中/);
+assert.match(disruptionSkill.description, /予告外.*不発/);
 assert.equal(coverSkill.id, 'skill_demoralize', 'legacy equipped ability id remains valid');
 assert.equal(coverSkill.effectType, 'COVER');
 assert.equal(coverSkill.oncePerBattle, true);
@@ -2686,7 +2993,7 @@ assert.equal(TACTICAL_SKILL_BALANCE.livingDead.recoveryOwnership, 30);
 assert.equal(calculateEraWindCost(1_000_000, 0), 100_000);
 assert.equal(calculateEraWindCost(100_000_000, 0), 2_000_000);
 assert.equal(calculateEraWindCost(100_000_000, 1), 2_000_000);
-assert.equal(TACTICAL_SKILL_BALANCE.eraWind.durationMs, 12_000);
+assert.equal(TACTICAL_SKILL_BALANCE.eraWind.durationMs, 10_000);
 assert.equal(TACTICAL_SKILL_BALANCE.eraWind.maxUsesPerBattle, 1);
 assert.equal(getEraWindGaugePushPerSecond(0), 1.55);
 assert.equal(getEraWindGaugePushPerSecond(2), 1.55);
@@ -2698,11 +3005,11 @@ assert.equal(
       2
     ).toFixed(1)
   ),
-  9.3,
-  'one full Era Wind pushes displayed ownership by about 9.3 points'
+  7.8,
+  'the shortened Era Wind still produces a meaningful but bounded push'
 );
 assert.equal(eraWindSkill.oncePerBattle, true);
-assert.match(eraWindSkill.description, /12秒間/);
+assert.match(eraWindSkill.description, /10秒間/);
 assert.match(eraWindSkill.description, /1争奪戦につき1回/);
 assert.match(livingDeadSkill.description, /1争奪戦につき1回/);
 assert.equal(calculateOwnershipFromGauge(98), 1);
@@ -2730,8 +3037,7 @@ assert.deepEqual(BATTLE_LOYALTY_BALANCE, {
   individualRiskIncrease: 12,
   limitBreakRiskIncrease: 8,
   synergyRiskIncrease: 10,
-  celebrationRiskReduction: 20,
-  celebrationRewardRatio: 0.1,
+  celebrationRewardRatio: 0.5,
   reacquisitionSupportBonusPerLevel: 0.1,
   reacquisitionRiskReductionPerLevel: 2,
   maxReacquisitionLevel: 2,
@@ -2739,18 +3045,15 @@ assert.deepEqual(BATTLE_LOYALTY_BALANCE, {
 assert.deepEqual(CELEBRATION_GIFT_OPTIONS, [
   {
     id: 'keep',
+    label: '独占',
     rate: 0,
     departureProbabilityMultiplier: 1,
   },
   {
-    id: 'gift10',
-    rate: 0.1,
-    departureProbabilityMultiplier: 0.75,
-  },
-  {
-    id: 'gift20',
-    rate: 0.2,
-    departureProbabilityMultiplier: 0.5,
+    id: 'share50',
+    label: '山分け',
+    rate: 0.5,
+    departureProbabilityMultiplier: 0.35,
   },
 ]);
 const returningSubsidiary = {
@@ -2808,17 +3111,21 @@ assert.equal(
     10_000,
     CELEBRATION_GIFT_OPTIONS[1].rate
   ),
-  1_000,
-  'the victory gift uses 10% of the earned victory reward'
+  5_000,
+  'equal sharing uses 50% of the earned victory reward in total'
 );
 assert.equal(
   calculateCelebrationGiftCost(
-    [{ ...readinessProperty, marketPrice: 100_000 }],
+    [
+      { ...readinessProperty, id: 'share-a' },
+      { ...readinessProperty, id: 'share-b' },
+      { ...readinessProperty, id: 'share-c' },
+    ],
     10_000,
-    CELEBRATION_GIFT_OPTIONS[2].rate
+    CELEBRATION_GIFT_OPTIONS[1].rate
   ),
-  2_000,
-  'the generous victory gift uses 20% of the earned victory reward'
+  5_000,
+  'the 50% pool is divided across all allies rather than charged once per ally'
 );
 assert.equal(
   calculateCelebrationGiftCost(
@@ -2826,8 +3133,8 @@ assert.equal(
     300,
     CELEBRATION_GIFT_OPTIONS[1].rate
   ),
-  30,
-  'the victory gift scales with small victory rewards'
+  150,
+  'equal sharing scales with small victory rewards'
 );
 assert.equal(
   calculateCelebrationGiftCost([], 10_000),
@@ -2900,41 +3207,30 @@ const noGiftLoyaltySettlement = resolvePostVictoryLoyalty(
   () => 0.06
 );
 assert.equal(noGiftLoyaltySettlement.leaving.length, 1);
-const tenPercentGiftLoyaltySettlement = resolvePostVictoryLoyalty(
+const sharedLoyaltySettlement = resolvePostVictoryLoyalty(
   [highRiskSettlementProperty],
   CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier,
   () => 0.06
 );
 assert.equal(
-  tenPercentGiftLoyaltySettlement.leaving.length,
+  sharedLoyaltySettlement.leaving.length,
   0,
-  'the 10% gift reduces only this settlement departure probability'
+  '50% sharing strongly reduces only this settlement departure probability'
 );
 assert.equal(
-  tenPercentGiftLoyaltySettlement.survivors[0].loyaltyRisk,
+  sharedLoyaltySettlement.survivors[0].loyaltyRisk,
   highRiskSettlementProperty.loyaltyRisk,
-  'the 10% gift never reduces saved loyalty risk'
+  '50% sharing never reduces saved loyalty risk'
 );
-const tenPercentBoundarySettlement = resolvePostVictoryLoyalty(
+const sharedNonzeroRiskSettlement = resolvePostVictoryLoyalty(
   [highRiskSettlementProperty],
   CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier,
-  () => 0.04
-);
-const twentyPercentBoundarySettlement = resolvePostVictoryLoyalty(
-  [highRiskSettlementProperty],
-  CELEBRATION_GIFT_OPTIONS[2].departureProbabilityMultiplier,
-  () => 0.04
-);
-assert.equal(tenPercentBoundarySettlement.leaving.length, 1);
-assert.equal(
-  twentyPercentBoundarySettlement.leaving.length,
-  0,
-  'the 20% gift provides a distinct stronger probability reduction'
+  () => 0.02
 );
 assert.equal(
-  twentyPercentBoundarySettlement.survivors[0].loyaltyRisk,
-  highRiskSettlementProperty.loyaltyRisk,
-  'the 20% gift also leaves saved loyalty risk unchanged'
+  sharedNonzeroRiskSettlement.leaving.length,
+  1,
+  '50% sharing suppresses departure strongly but never guarantees survival'
 );
 assert.equal(
   highRiskSettlementProperty.loyaltyRisk,
@@ -2948,7 +3244,7 @@ assert.equal(
 assert.equal(
   normalizeDepartureProbabilityMultiplier(true),
   CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier,
-  'the temporary boolean compatibility path maps true to the 10% gift'
+  'the temporary boolean compatibility path maps true to 50% sharing'
 );
 assert.equal(normalizeDepartureProbabilityMultiplier(-1), 0);
 assert.equal(normalizeDepartureProbabilityMultiplier(2), 1);
@@ -2994,13 +3290,13 @@ assert.ok(
 assert.ok(
   calculateAtLeastOneDepartureProbability(
     twoMaximumRiskSubsidiaries,
-    CELEBRATION_GIFT_OPTIONS[2].departureProbabilityMultiplier
+    CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier
   ) <
     calculateAtLeastOneDepartureProbability(
       twoMaximumRiskSubsidiaries,
-      CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier
+      CELEBRATION_GIFT_OPTIONS[0].departureProbabilityMultiplier
     ),
-  '20% gift lowers aggregate departure probability more than 10%'
+  '50% sharing lowers aggregate departure probability for the whole network'
 );
 assert.deepEqual(
   resolvePostVictoryLoyalty([], true, () => 0),
@@ -3143,6 +3439,21 @@ assert.equal(
   800,
   'LB1 cannot turn legacy high-price subsidiaries into more than 0.8 target prices'
 );
+const freshNetworkLimitAmount = calculateLimitBreakAmount(
+  10_000,
+  lbSubs,
+  lbTier
+);
+const repeatedNetworkLimitAmount = calculateLimitBreakAmount(
+  10_000,
+  lbSubs,
+  lbTier,
+  Object.fromEntries(lbSubs.map((property) => [property.id, 3]))
+);
+assert.ok(
+  repeatedNetworkLimitAmount < freshNetworkLimitAmount,
+  'repeated network calls reduce the subsidiary portion of later LIMIT BREAK funding'
+);
 const lbTier2Subs = Array.from({ length: 7 }, (_, index) => ({
   ...INITIAL_PROPERTIES[index % INITIAL_PROPERTIES.length],
   id: `lb-tier-2-${index}`,
@@ -3169,13 +3480,31 @@ assert.ok(
   ) < 1e-9,
   'normal direct investment keeps the campaign-wide impact curve'
 );
+const maximumCommitSequenceImpact = [0.35, 0.35, 0.2, 0.1].reduce(
+  (sum, ratio) =>
+    sum +
+    calculateDirectInvestmentGaugeImpact({
+      investmentAmount: 1_000 * ratio,
+      marketPrice: 1_000,
+    }),
+  0
+);
+const tenSteadyCommitmentsImpact =
+  calculateDirectInvestmentGaugeImpact({
+    investmentAmount: 100,
+    marketPrice: 1_000,
+  }) * 10;
+assert.ok(
+  Math.abs(maximumCommitSequenceImpact - tenSteadyCommitmentsImpact) < 1e-9,
+  'maximum-first capital keeps the same total pressure as ten steady offers'
+);
 assert.ok(
   Math.abs(
     calculateDirectInvestmentGaugeImpact({
       investmentAmount: 750,
       marketPrice: 7_500,
       levelOneTraining: true,
-    }) - 40
+    }) - 50
   ) < 1e-9,
   'level-one training keeps a strong default offer at its safe impact cap'
 );
@@ -3185,7 +3514,7 @@ assert.equal(
     marketPrice: 7_500,
     levelOneTraining: true,
   }),
-  40,
+  50,
   'level-one training amplification remains capped'
 );
 assert.ok(
@@ -3233,7 +3562,7 @@ assert.deepEqual(LIMIT_BREAK_CAPITAL_CAP_RATIOS, {
 assert.deepEqual(LIMIT_BREAK_MULTIPLIERS, { 1: 1.56, 2: 1.98, 3: 2.46 });
 assert.deepEqual(LIMIT_BREAK_OWNERSHIP_CAPS, { 1: 7, 2: 14, 3: 30 });
 assert.deepEqual(NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS, {
-  tutorial: 0.72,
+  tutorial: 0.62,
   gridania: 0.82,
   limsa: 0.86,
   midgameAndLater: 1,
@@ -4033,6 +4362,28 @@ assert.equal(restoredUltimateSave?.savageProgressVersion, 3);
 assert.equal(restoredUltimateSave?.ultimateCleared, true);
 assert.equal(restoredUltimateSave?.trueEndingSeen, true);
 assert.equal(restoredUltimateSave?.selectedBattleSynergyId, 'KUGANE_TRADE_GATEWAY');
+assert.equal(
+  restoredUltimateSave?.cruelCleared,
+  false,
+  'schema-v3 saves made before Cruel default to an uncleared optional record'
+);
+savedPayload = JSON.stringify({
+  ...legacySchemaThreePayload,
+  savageClearedPropertyIds: savageTargetIds,
+  savageProgressVersion: 3,
+  savageEndingSeen: true,
+  ultimateCleared: true,
+  trueEndingSeen: true,
+  cruelCleared: true,
+});
+const restoredCruelSave = loadGameSave();
+assert.equal(restoredCruelSave?.cruelCleared, true);
+assert.equal(restoredCruelSave?.ultimateCleared, true);
+assert.equal(
+  restoredCruelSave?.trueEndingSeen,
+  true,
+  'the optional Cruel record never rewrites or replays the true ending'
+);
 Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
 
 const preFinalTargets = COMMUNITY_CAMPAIGN_ORDER.slice(0, 9).flatMap((community) =>

@@ -11,6 +11,8 @@ import {
   BOSS_COVER_BALANCE,
   calculateDirectInvestmentGaugeImpact,
   calculateEnemyBudget,
+  calculateLimitBreakAmount,
+  calculateLimitBreakOwnershipPush,
   calculateSubsidiarySupportAmount,
   ENEMY_INITIAL_COMMITMENT_RATIO,
   ENEMY_SUPPORT_SKILL_BALANCE,
@@ -32,6 +34,7 @@ import {
   HIGH_DIFFICULTY_SUPPORT_MULTIPLIER,
   ULTIMATE_ENEMY_AUTO_PATTERNS,
   type EnemySupportSkillId,
+  type LimitBreakTier,
 } from '../src/utils/gameBalance';
 import {
   getBattleHitStopTiming,
@@ -39,9 +42,14 @@ import {
 } from '../src/utils/battlePresentation';
 import { calculateGaugeVelocity } from '../src/utils/formatter';
 import {
+  buildCruelProperty,
   buildSavageProperties,
   buildUltimateProperty,
 } from '../src/utils/savage';
+import {
+  calculateCruelOmnicapitalizationImpact,
+  shouldTriggerCruelOmnicapitalization,
+} from '../src/utils/cruelBattle';
 import {
   buildTrainingDummyProperty,
   TRAINING_DUMMY_DEFINITIONS,
@@ -87,6 +95,11 @@ interface SimulationScenario {
     multiplier: number;
     ownershipPush: number;
   };
+  preparedLimitBreak?: {
+    tier: LimitBreakTier;
+    triggerAfterSupportActions: number;
+    participants: readonly Property[];
+  };
 }
 
 type EnemySupportActivationCounts = Record<EnemySupportSkillId, number>;
@@ -115,6 +128,7 @@ const createEnemySupportActivationCounts =
     divination: 0,
     rapid_assault: 0,
     limit_break_3: 0,
+    omnicapitalization: 0,
   });
 
 const ENEMY_SUPPORT_PRESENTATION = {
@@ -160,6 +174,13 @@ const ENEMY_SUPPORT_PRESENTATION = {
     afterglowSeconds: 0.9,
     leavingSeconds: 0.72,
   },
+  omnicapitalization: {
+    telegraphSeconds: 4.5,
+    castSeconds: 0.9,
+    impactSeconds: 0.52,
+    afterglowSeconds: 1.1,
+    leavingSeconds: 0.52,
+  },
 } as const;
 
 interface PendingEnemySupport {
@@ -173,11 +194,6 @@ const deterministicReactionDelay = (seed: number, actionCount: number) =>
   ((seed * 17 + actionCount * 11) % 8) * 0.05;
 
 const getAffordableInvestment = (cash: number, marketPrice: number) =>
-  INVESTMENT_LEVELS.find(
-    ({ level, ratio }) =>
-      level === 3 &&
-      Math.max(10, Math.round(marketPrice * ratio)) <= cash
-  ) ??
   [...INVESTMENT_LEVELS]
     .reverse()
     .find(
@@ -275,6 +291,7 @@ const simulateBattle = (
   let reactionDelaySeconds = deterministicReactionDelay(seed, 0);
   let directActions = 0;
   let supportActions = 0;
+  const supportUseCounts: Record<string, number> = {};
   let wallSeconds = 0;
   let mugMarkActive = false;
   let divinationRemainingSeconds = 0;
@@ -299,6 +316,7 @@ const simulateBattle = (
     openingBossDefenseBalance ? 1 : 0;
   let enemyBossDefenseAbsorbedGauge = 0;
   let timedCapitalBuffUsed = false;
+  let preparedLimitBreakUsed = false;
   let timedCapitalBuffRemainingSeconds = 0;
   let timedCapitalBuffActivations = 0;
   const usedEnemySupportSkills = new Set(
@@ -425,7 +443,7 @@ const simulateBattle = (
     } else if (skill === 'rapid_assault') {
       rapidAssaultRemainingSeconds =
         ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.durationMs / 1_000;
-    } else {
+    } else if (skill === 'limit_break_3') {
       gauge += ENEMY_SUPPORT_SKILL_BALANCE.limitBreak3.gaugeDelta;
     }
 
@@ -652,14 +670,85 @@ const simulateBattle = (
         timedCapitalBuffRemainingSeconds > 0
           ? scenario.timedCapitalBuff?.multiplier ?? 1
           : 1;
+      const preparedLimitBreak = scenario.preparedLimitBreak;
+      if (
+        preparedLimitBreak &&
+        !preparedLimitBreakUsed &&
+        supportActions >= preparedLimitBreak.triggerAfterSupportActions &&
+        enemyBossDefenseUsed &&
+        enemyBossDefenseRemainingSeconds <= 0
+      ) {
+        preparedLimitBreakUsed = true;
+        const amount = calculateLimitBreakAmount(
+          marketPrice,
+          [...preparedLimitBreak.participants],
+          preparedLimitBreak.tier,
+          supportUseCounts
+        );
+        preparedLimitBreak.participants.forEach((property) => {
+          supportUseCounts[property.id] =
+            (supportUseCounts[property.id] ?? 0) + 1;
+        });
+        playerInvested += amount;
+
+        const emergencyDefense = Math.min(
+          enemyReserve,
+          Math.round(amount * 0.45)
+        );
+        enemyReserve -= emergencyDefense;
+        enemyInvested += emergencyDefense;
+        minimumEnemyReserve = Math.min(minimumEnemyReserve, enemyReserve);
+        const enemyCapitalMultiplier =
+          divinationRemainingSeconds > 0
+            ? ENEMY_SUPPORT_SKILL_BALANCE.divination
+                .enemyInvestmentMultiplier
+            : 1;
+        const supportMarkMultiplier = mugMarkActive
+          ? ENEMY_SUPPORT_SKILL_BALANCE.mug.nextGaugeImpactMultiplier
+          : 1;
+        const counterShock = Math.min(
+          10,
+          (
+            1.5 +
+            (emergencyDefense / Math.max(1, marketPrice)) * 18
+          ) * enemyCapitalMultiplier * supportMarkMultiplier
+        );
+        mugMarkActive = false;
+        const ownershipPush = calculateLimitBreakOwnershipPush(
+          amount,
+          marketPrice,
+          preparedLimitBreak.tier,
+          playerCapitalMultiplier
+        );
+        applyPlayerGaugeCandidate(
+          gauge - ownershipPush * 2 + counterShock
+        );
+        // Keep the global action-limit audit honest without conflating the LB
+        // with another network request.
+        directActions += 1;
+        commandProgress = 0;
+        lastPlayerAction = 'LIMIT_BREAK';
+        presentationLockSeconds = 2.4;
+        reactionDelaySeconds = deterministicReactionDelay(
+          seed,
+          directActions + supportActions
+        );
+        const terminal = finish();
+        if (terminal) return terminal;
+        continue;
+      }
       const supportSource = scenario.supportSources?.[supportActions];
       const supportThreshold =
         scenario.supportAfterDirectActions?.(supportActions, seed) ??
         Number.POSITIVE_INFINITY;
 
       if (supportSource && directActions >= supportThreshold) {
+        const previousSupportUses = supportUseCounts[supportSource.id] ?? 0;
         const amount = Math.round(
-          calculateSubsidiarySupportAmount(supportSource) *
+          calculateSubsidiarySupportAmount(
+            supportSource,
+            previousSupportUses
+          ) *
             (isSavage || isUltimate
               ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
               : 1)
@@ -674,6 +763,7 @@ const simulateBattle = (
         );
         playerInvested += amount;
         applyPlayerGaugeCandidate(gauge - impact);
+        supportUseCounts[supportSource.id] = previousSupportUses + 1;
         supportActions += 1;
         commandProgress = 0;
         lastPlayerAction = 'FUNDS';
@@ -955,6 +1045,12 @@ const summarize = (
     p90SupportActions: percentile(
       results.map((result) => result.supportActions),
       0.9
+    ),
+    maximumSeconds: Math.max(...results.map((result) => result.wallSeconds)),
+    maximumCapitalActions: Math.max(
+      ...results.map(
+        (result) => result.directActions + result.supportActions
+      )
     ),
     activations,
     bossDefenseTier: results[0]?.enemyBossDefenseTier ?? 'none',
@@ -1352,7 +1448,10 @@ const normalScenarios = [
     target: starterBakery,
     influenceBonus: 0.03,
     supportSources: [starterFarm],
-    supportAfterDirectActions: (_supportIndex, seed) => 6 + (seed % 3),
+    // The authored lesson presents the first acquired ally immediately; use
+    // it early instead of waiting until the maximum-capital route has nearly
+    // resolved the battle by itself.
+    supportAfterDirectActions: () => 1,
   },
   {
     id: 'gridania_second_without_support',
@@ -1537,6 +1636,11 @@ const highDifficultySupportSources = [...INITIAL_PROPERTIES]
       calculateSubsidiarySupportAmount(left)
   )
   .slice(0, 12);
+const preparedUltimateSupportRotation = [...INITIAL_PROPERTIES].sort(
+  (left, right) =>
+    calculateSubsidiarySupportAmount(right) -
+    calculateSubsidiarySupportAmount(left)
+);
 const highDifficultySupportRotation = [
   ...highDifficultySupportSources,
   ...highDifficultySupportSources,
@@ -1630,8 +1734,28 @@ const ultimatePatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
         id: `ultimate_pattern_${pattern.id}`,
         ultimateAutoPatternIndex: patternIndex,
       },
-      4,
+      3,
       9_000 + patternIndex * 100
+    )
+);
+const ultimatePreparedPatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
+  (pattern, patternIndex) =>
+    summarize(
+      {
+        ...ultimateScenarioBase,
+        id: `ultimate_prepared_${pattern.id}`,
+        ultimateAutoPatternIndex: patternIndex,
+        // A prepared clear route rotates through every acquired company once
+        // instead of repeating only the twelve largest sources into decay.
+        supportSources: preparedUltimateSupportRotation,
+        preparedLimitBreak: {
+          tier: 3,
+          triggerAfterSupportActions: 12,
+          participants: preparedUltimateSupportRotation,
+        },
+      },
+      1,
+      9_600 + patternIndex * 10
     )
 );
 const ultimateSupportDisabledReport = summarize(
@@ -1645,6 +1769,7 @@ const ultimateSupportDisabledReport = summarize(
 );
 const ultimateReports = [
   ...ultimatePatternReports,
+  ...ultimatePreparedPatternReports,
   ultimateSupportDisabledReport,
 ];
 const runtimeAlignmentProbes = {
@@ -1778,15 +1903,15 @@ for (const report of trainingReports) {
   );
 }
 assert.ok(
-  reportById.training_level_1.medianDirectActions >= 3 &&
-    reportById.training_level_1.medianDirectActions <= 5,
-  'level-one training should take three to five default direct offers'
+  reportById.training_level_1.medianDirectActions >= 2 &&
+    reportById.training_level_1.medianDirectActions <= 4,
+  'level-one training should take two to four maximum-affordable direct offers'
 );
 assert.ok(reportById.training_level_1.p90Seconds <= 25);
 assert.equal(reportById.gridania_first.wins, 8);
 assert.ok(
-  reportById.gridania_first.medianDirectActions >= 10 &&
-    reportById.gridania_first.medianDirectActions <= 12
+  reportById.gridania_first.medianDirectActions >= 4 &&
+    reportById.gridania_first.medianDirectActions <= 6
 );
 assert.equal(reportById.gridania_second_with_support.wins, 8);
 assert.equal(
@@ -1794,7 +1919,7 @@ assert.equal(
   1
 );
 assert.ok(
-  reportById.gridania_second_with_support.medianSeconds + 15 <
+  reportById.gridania_second_with_support.medianSeconds + 8 <
     reportById.gridania_second_without_support.medianSeconds,
   'the first acquired ally saves a clearly perceptible amount of time'
 );
@@ -1928,9 +2053,9 @@ const expectedCityDefenseTiers = [
 const expectedCitySupportProfiles = [
   [],
   [],
-  [],
-  [],
-  [],
+  ['mug'],
+  ['mug'],
+  ['cure', 'mug'],
   ['cure'],
   ['mug'],
   ['mug', 'drill'],
@@ -2074,13 +2199,29 @@ ultimatePatternReports.forEach((report, index) => {
   );
   ultimatePatternWins += report.wins;
 });
+const ultimatePatternBattles = ultimatePatternReports.reduce(
+  (total, report) => total + report.battles,
+  0
+);
 assert.ok(
-  ultimatePatternWins > 0 &&
-    ultimatePatternWins < ultimatePatternReports.reduce(
-      (total, report) => total + report.battles,
-      0
-    ),
-  'an unadapted support route can clear some Ultimate patterns but still wipes to the final surprises'
+  ultimatePatternWins <= Math.floor(ultimatePatternBattles * 0.15),
+  'two full-strength calls may scrape through the easiest Ultimate surprise, but an unadapted repeated-support route stays below a 15% win rate'
+);
+assert.ok(
+  ultimatePatternReports.every((report) => report.losses > 0),
+  'an unadapted repeated-support route cannot solve any Ultimate surprise reliably'
+);
+assert.equal(
+  ultimatePreparedPatternReports.length,
+  ULTIMATE_ENEMY_AUTO_PATTERNS.length
+);
+const ultimatePreparedWins = ultimatePreparedPatternReports.reduce(
+  (total, report) => total + report.wins,
+  0
+);
+assert.ok(
+  ultimatePreparedWins > 0,
+  'a prepared route that rotates through the full acquired network can clear at least one Ultimate pattern'
 );
 assert.deepEqual(ultimateSupportDisabledReport.profile, []);
 assert.deepEqual(
@@ -2240,4 +2381,280 @@ runtimeAlignmentProbes.forcedBossDefense.forEach(
       `${probe.id} allows player pressure after expiry`
     );
   }
+);
+
+// Deterministic post-Ultimate mechanic probes stay outside the 500-run
+// campaign sample: they lock authored transitions rather than sample RNG.
+const cruelSimulationTarget = buildCruelProperty(false, '検証商会');
+assert.equal(
+  getEnemyDifficultyLevel(
+    cruelSimulationTarget,
+    false,
+    false,
+    false,
+    false,
+    true
+  ),
+  6
+);
+assert.equal(
+  getBossAbilityTier({
+    targetProperty: cruelSimulationTarget,
+    isCityBoss: false,
+    isCruel: true,
+  }),
+  'enhanced_cover'
+);
+assert.deepEqual(
+  getEnemySupportAutoProfile({
+    targetProperty: cruelSimulationTarget,
+    isCityBoss: false,
+    isCruel: true,
+  }),
+  { opening: 'divination', critical: null }
+);
+const cruelBoundaryProbe = {
+  isCruel: true,
+  alreadyUsed: false,
+  pending: false,
+  currentPlayerOwnership: 74,
+  candidatePlayerOwnership: 75,
+};
+assert.equal(shouldTriggerCruelOmnicapitalization(cruelBoundaryProbe), true);
+assert.equal(
+  shouldTriggerCruelOmnicapitalization({
+    ...cruelBoundaryProbe,
+    candidatePlayerOwnership: 130,
+  }),
+  true,
+  'overkill still enters the authored response window before settlement'
+);
+assert.equal(
+  shouldTriggerCruelOmnicapitalization({
+    ...cruelBoundaryProbe,
+    alreadyUsed: true,
+  }),
+  false,
+  'a stunned or completed response remains consumed for the attempt'
+);
+[1, 0.5, 0].forEach((reserveRatio) => {
+  const impact = calculateCruelOmnicapitalizationImpact({
+    remainingReserve: 750 * reserveRatio,
+    openingReserve: 750,
+  });
+  assertNearlyEqual(
+    impact.ownershipPush,
+    40 * reserveRatio,
+    `Cruel reserve ${reserveRatio * 100}% ownership response`
+  );
+  assertNearlyEqual(
+    impact.gaugeDelta,
+    80 * reserveRatio,
+    `Cruel reserve ${reserveRatio * 100}% gauge response`
+  );
+});
+
+// Reacquisition reward-battle probes use the full deterministic battle loop,
+// but stay outside the fixed 500-run campaign audit. The player keeps a late
+// save's command kit while the target's authored gil value remains untouched.
+const buildExtremeProbeProperty = (
+  property: Property,
+  reacquisitionLevel: 1 | 2
+): Property => ({
+  ...property,
+  owner: 'independent',
+  ownerName: '独立勢力',
+  reacquisitionLevel,
+});
+const earlyExtremeTarget = buildExtremeProbeProperty(starterFarm, 1);
+const lateExtremeTarget = buildExtremeProbeProperty(solutionNineIndustry, 2);
+assert.equal(earlyExtremeTarget.marketPrice, starterFarm.marketPrice);
+assert.equal(lateExtremeTarget.marketPrice, solutionNineIndustry.marketPrice);
+
+const extremeReacquisitionScenarios = [
+  {
+    id: 'extreme_reacquisition_early_grown_player',
+    target: earlyExtremeTarget,
+    maxSeconds: 120,
+    playerBaselineCash: earlyExtremeTarget.marketPrice * 2,
+    openingCapitalBoostRatio: TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
+    supportSources: [starterBakery],
+    supportAfterDirectActions: () => 4,
+  },
+  {
+    id: 'extreme_reacquisition_late_grown_player',
+    target: lateExtremeTarget,
+    maxSeconds: 120,
+    playerBaselineCash: lateExtremeTarget.marketPrice * 2,
+    openingCapitalBoostRatio: TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
+    supportSources: [solutionNineBoss],
+    supportAfterDirectActions: () => 3,
+  },
+] as const satisfies readonly SimulationScenario[];
+const extremeReacquisitionReports = extremeReacquisitionScenarios.map(
+  (scenario, index) => summarize(scenario, 8, 12_000 + index * 100)
+);
+for (const report of extremeReacquisitionReports) {
+  assert.equal(report.wins, report.battles, `${report.id} should be a reward clear`);
+  assert.equal(report.timeouts, 0, `${report.id} should never time out`);
+  assert.ok(
+    report.maximumSeconds < 120,
+    `${report.id} should never become a two-minute grind`
+  );
+  assert.ok(
+    report.maximumCapitalActions < 30,
+    `${report.id} should never require thirty capital commands`
+  );
+  assert.ok(
+    report.p90DirectActions + report.p90SupportActions <= 8,
+    `${report.id} should resolve in a few large calls`
+  );
+}
+const [earlyExtremeReport, lateExtremeReport] = extremeReacquisitionReports;
+assert.ok(
+  earlyExtremeReport.medianSeconds >= 10 &&
+    earlyExtremeReport.medianSeconds <= 25,
+  'an early-company 極 should be a short, emphatic grown-player victory'
+);
+assert.ok(
+  lateExtremeReport.medianSeconds >= 20 &&
+    lateExtremeReport.medianSeconds <= 40,
+  'a late-company 極 should land in the authored twenty-to-forty-second band'
+);
+
+// The simulator intentionally does not duplicate BattleModal's asynchronous
+// telegraph queue. Instead, this critical-phase probe composes the production
+// pure functions and real player skill values. It proves why an unprepared
+// full-reserve hit is punishing, and why each learned counter has a repeatable
+// route rather than a fixed random win chance.
+const CRUEL_TRIGGER_OWNERSHIP = 75;
+const CRUEL_TRIGGER_GAUGE = 100 - CRUEL_TRIGGER_OWNERSHIP * 2;
+const cruelFinisherOwnershipPush =
+  grandCompanyEorzeaBurst.ownershipPush + LIMIT_BREAK_OWNERSHIP_CAPS[3];
+const resolveCruelCriticalPhase = ({
+  remainingReserveRatio,
+  response,
+}: {
+  remainingReserveRatio: number;
+  response: 'none' | 'stun' | 'cover';
+}) => {
+  const impact = calculateCruelOmnicapitalizationImpact({
+    remainingReserve: remainingReserveRatio,
+    openingReserve: 1,
+  });
+  const rawGaugeAfterImpact = CRUEL_TRIGGER_GAUGE + impact.gaugeDelta;
+  const appliedGaugeAfterImpact =
+    response === 'stun'
+      ? CRUEL_TRIGGER_GAUGE
+      : response === 'cover'
+        ? applyCoverToGaugeDelta({
+            currentGauge: CRUEL_TRIGGER_GAUGE,
+            nextGauge: rawGaugeAfterImpact,
+            protects: 'player',
+            absorbRatio: TACTICAL_SKILL_BALANCE.cover.absorbRatio,
+            remainingGaugeCapacity:
+              TACTICAL_SKILL_BALANCE.cover.gaugeCapacity,
+          }).nextGauge
+        : rawGaugeAfterImpact;
+  const ownershipAfterImpact = (100 - appliedGaugeAfterImpact) / 2;
+  const ownershipAfterPreparedFinisher =
+    ownershipAfterImpact + cruelFinisherOwnershipPush;
+  return {
+    impact,
+    ownershipAfterImpact,
+    ownershipAfterPreparedFinisher,
+    clearsWithPreparedFinisher: ownershipAfterPreparedFinisher >= 100,
+    enemyReservePreserved: response === 'stun',
+  };
+};
+
+const cruelCriticalPhaseProbes = {
+  unprepared: resolveCruelCriticalPhase({
+    remainingReserveRatio: 1,
+    response: 'none',
+  }),
+  learnedStun: resolveCruelCriticalPhase({
+    remainingReserveRatio: 1,
+    response: 'stun',
+  }),
+  learnedCover: resolveCruelCriticalPhase({
+    remainingReserveRatio: 1,
+    response: 'cover',
+  }),
+  reserveBaited: resolveCruelCriticalPhase({
+    remainingReserveRatio: 0.5,
+    response: 'none',
+  }),
+};
+assert.equal(
+  cruelCriticalPhaseProbes.unprepared.clearsWithPreparedFinisher,
+  false,
+  'eating a full 万象資本化 should erase an otherwise decisive finisher route'
+);
+assert.equal(cruelCriticalPhaseProbes.unprepared.ownershipAfterImpact, 35);
+assert.equal(
+  cruelCriticalPhaseProbes.learnedStun.clearsWithPreparedFinisher,
+  true,
+  'a timed Stun should preserve a deterministic clear route'
+);
+assert.equal(cruelCriticalPhaseProbes.learnedStun.enemyReservePreserved, true);
+assert.equal(
+  cruelCriticalPhaseProbes.learnedCover.clearsWithPreparedFinisher,
+  true,
+  'Cover should turn the full hit into a recoverable deterministic route'
+);
+assert.equal(
+  cruelCriticalPhaseProbes.reserveBaited.impact.ownershipPush,
+  20,
+  'spending half of the enemy reserve beforehand should halve the reversal'
+);
+assert.ok(
+  cruelCriticalPhaseProbes.reserveBaited.ownershipAfterPreparedFinisher >
+    cruelCriticalPhaseProbes.unprepared.ownershipAfterPreparedFinisher,
+  'baiting reserve must improve the learned route without changing RNG'
+);
+const largeDirectOwnershipPush =
+  calculateDirectInvestmentGaugeImpact({
+    investmentAmount: 0.2,
+    marketPrice: 1,
+    windMultiplier: 1,
+  }) / 2;
+assert.ok(
+  cruelCriticalPhaseProbes.reserveBaited.ownershipAfterPreparedFinisher +
+    largeDirectOwnershipPush >=
+    100,
+  'halving the reserve should leave a deterministic one-large-offer follow-up'
+);
+
+console.log(
+  JSON.stringify(
+    {
+      additionalDeterministicProbes: {
+        extremeReacquisition: extremeReacquisitionReports,
+        cruelCriticalPhase: cruelCriticalPhaseProbes,
+      },
+    },
+    null,
+    2
+  )
+);
+
+const cruelLeapCounterBeforeCover = -120;
+const cruelLeapCounterDelta = 80;
+const cruelLeapCounterCovered = applyCoverToGaugeDelta({
+  currentGauge: cruelLeapCounterBeforeCover,
+  nextGauge: cruelLeapCounterBeforeCover + cruelLeapCounterDelta,
+  protects: 'player',
+  absorbRatio: TACTICAL_SKILL_BALANCE.cover.absorbRatio,
+  remainingGaugeCapacity: TACTICAL_SKILL_BALANCE.cover.gaugeCapacity,
+});
+assert.equal(
+  cruelLeapCounterCovered.absorbedGauge,
+  TACTICAL_SKILL_BALANCE.cover.gaugeCapacity,
+  'Cruel Cover evaluates the full +80 counterattack from the held overkill candidate'
+);
+assert.equal(
+  cruelLeapCounterCovered.nextGauge,
+  -88,
+  'Cruel Cover does not use the visible 75% warning line as its damage origin'
 );

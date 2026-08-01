@@ -197,6 +197,19 @@
   box-shadow: 0 0 1rem rgba(250, 204, 21, .38), inset 0 0 .8rem rgba(192, 132, 252, .18);
 }
 
+.battlefield-raid-marker--cruel {
+  border-color: rgba(240, 171, 252, .82);
+  color: #fff7ae;
+  background: linear-gradient(90deg, rgba(17, 2, 29, .97), rgba(74, 10, 94, .96));
+  box-shadow:
+    0 0 1rem rgba(217, 70, 239, .42),
+    inset 0 0 .8rem rgba(253, 224, 71, .12);
+}
+
+.battlefield-raid-marker--cruel > span {
+  color: #f5d0fe;
+}
+
 .integrated-battlefield--savage .ownership-board__labels > span,
 .integrated-battlefield--ultimate .ownership-board__labels > span {
   visibility: hidden;
