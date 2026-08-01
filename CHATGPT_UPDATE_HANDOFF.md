@@ -5,10 +5,10 @@
 「タタルの大繁盛店」買収戦アップデートの継続開発記録です。
 Ver.2／Ver.3.1指示書は履歴資料です。現行仕様の正本は`README.md`、実装コード、`scripts/check-balance.ts`です。
 
-公開先はGitHub Pages一般公開版と、所有者限定Sites版です。
+公開先としてリポジトリに記載するのはGitHub Pages一般公開版だけです。
+非公開デプロイ先のURL、アクセス範囲、アカウント情報は公開文書へ記載しません。
 
 - <https://spthx.github.io/ttr-atk/>
-- <https://tataru-world-trade.yutton.chatgpt.site/>
 
 ## ユーザーが目指しているもの
 

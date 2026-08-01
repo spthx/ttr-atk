@@ -5,7 +5,6 @@
 ## 今すぐ遊ぶ
 
 - **GitHub Pages（一般公開）**: <https://spthx.github.io/ttr-atk/>
-- **Sites（所有者限定版）**: <https://tataru-world-trade.yutton.chatgpt.site/>
 
 スマートフォンでは縦画面推奨です。起動後にカンパニー名を決め、グリダニアの小型物件から買収を始めてください。進行状況はブラウザへ自動保存されます。
 
@@ -13,7 +12,6 @@ FFXIVの主要都市を舞台に、ギルを積み合って民間事業・営業
 ロマンシング サ・ガ3のトレードを参考にしていますが、キャラクターシナリオの再現ではなく、資金調達・所有率の押し合い・地域制覇というゲームルールを中心にしています。
 
 - GitHubリポジトリ: `spthx/ttr-atk`
-- 公開範囲: GitHub Pages版は一般公開、Sites版は所有者限定
 - 技術: React 19 / TypeScript / Vite / Tailwind CSS / vinext / Cloudflare / GitHub Pages
 - データ: 10都市、26物件、8スキル、5事業シナジー、2企業連合
 
@@ -626,8 +624,8 @@ INITIAL_PROPERTIES / INITIAL_SKILLS / INITIAL_GROUP_SYNERGIES
 7. `pnpm run check:balance`
 8. `pnpm run build`
 9. `public/game/`のハッシュ付きJS/CSSと`index.html`を一緒にコミットする
-10. Sitesでは`.openai/hosting.json`の既存`project_id`を必ず再利用する
-11. 所有者限定アクセスを確認してから非公開デプロイする
+10. 非公開デプロイ先のURL、アクセス範囲、アカウント情報を公開リポジトリへ記載しない
+11. 公開前にREADMEと引き継ぎ文書を検索し、非公開URLが混入していないことを確認する
 
 ---
 
