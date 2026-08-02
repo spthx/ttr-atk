@@ -931,6 +931,9 @@ body {
 
 .launch-intro__copyright a,
 .game-legal-notice a {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
   color: #f5cf67;
   text-decoration: underline;
   text-underline-offset: 2px;

@@ -1,5 +1,5 @@
 import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
-import type { CommunityType } from '../types';
+import type { BattleMode, CommunityType } from '../types';
 import {
   getTrainingDummyDefinition,
   isTrainingDummyUnlocked,
@@ -13,6 +13,113 @@ export interface NormalBattleNavigation {
   unlockedCommunity: CommunityType | null;
 }
 
+export type BattleResultDestination =
+  | 'next-case'
+  | 'next-community'
+  | 'same-community'
+  | 'high-end-list'
+  | 'training-list'
+  | 'campaign-ending';
+
+export type BattleResultCtaIntent = 'continue' | 'retry' | 'return';
+
+export interface BattleResultCta {
+  destination: BattleResultDestination;
+  intent: BattleResultCtaIntent;
+  label: string;
+  departureLabel: string;
+}
+
+/**
+ * Result-screen wording is derived from the same destination facts that drive
+ * progression. Keeping this pure makes the intent portable to a later Unity
+ * scene-flow controller instead of embedding route assumptions in React copy.
+ */
+export const getBattleResultCta = ({
+  battleMode,
+  winner,
+  hasNextCommunity = false,
+  isCityBoss = false,
+  isReacquisition = false,
+}: {
+  battleMode: BattleMode;
+  winner: 'player' | 'opponent';
+  hasNextCommunity?: boolean;
+  isCityBoss?: boolean;
+  isReacquisition?: boolean;
+}): BattleResultCta => {
+  if (battleMode === 'training') {
+    return {
+      destination: 'training-list',
+      intent: 'return',
+      label: '訓練結果を保存せず木人一覧へ戻る',
+      departureLabel: '離脱報告を確認して木人一覧へ戻る',
+    };
+  }
+
+  if (
+    battleMode === 'savage' ||
+    battleMode === 'ultimate' ||
+    battleMode === 'cruel'
+  ) {
+    return {
+      destination: 'high-end-list',
+      intent: winner === 'player' ? 'continue' : 'retry',
+      label:
+        winner === 'player'
+          ? '攻略結果を確定して高難度一覧へ'
+          : '敗因を記録して高難度一覧へ',
+      departureLabel: '離脱報告を確認して高難度一覧へ',
+    };
+  }
+
+  if (isReacquisition) {
+    return {
+      destination: 'same-community',
+      intent: winner === 'player' ? 'continue' : 'retry',
+      label:
+        winner === 'player'
+          ? '再買収結果を確定して保有案件へ'
+          : '敗因を記録して再買収案件へ',
+      departureLabel: '離脱報告を確認して保有案件へ',
+    };
+  }
+
+  if (winner === 'opponent') {
+    return {
+      destination: 'same-community',
+      intent: 'retry',
+      label: '敗因を記録して案件一覧へ',
+      departureLabel: '離脱報告を確認して案件一覧へ',
+    };
+  }
+
+  if (hasNextCommunity) {
+    return {
+      destination: 'next-community',
+      intent: 'continue',
+      label: '買収結果を確定して次の都市へ',
+      departureLabel: '離脱報告を確認して次の都市へ',
+    };
+  }
+
+  if (isCityBoss) {
+    return {
+      destination: 'campaign-ending',
+      intent: 'continue',
+      label: '買収結果を確定してエンディングへ',
+      departureLabel: '離脱報告を確認してエンディングへ',
+    };
+  }
+
+  return {
+    destination: 'next-case',
+    intent: 'continue',
+    label: '買収結果を確定して次の案件へ',
+    departureLabel: '離脱報告を確認して次の案件へ',
+  };
+};
+
 /**
  * Keep campaign momentum inside the target list. The wide-area map is an
  * explicit player destination, not an automatic result-screen destination.
@@ -21,12 +128,17 @@ export const getNormalBattleNavigation = ({
   winner,
   targetCommunity,
   newlyConquered,
+  isReacquisition = false,
 }: {
   winner: 'player' | 'opponent';
   targetCommunity: CommunityType;
   newlyConquered: boolean;
+  isReacquisition?: boolean;
 }): NormalBattleNavigation => {
-  if (winner !== 'player' || !newlyConquered) {
+  // Reacquisition restores a holding inside an already visited route. Even if
+  // a legacy save lacks that historical conquest marker, its result must not
+  // replay a city-unlock announcement the player has already acknowledged.
+  if (winner !== 'player' || !newlyConquered || isReacquisition) {
     return {
       community: targetCommunity,
       mode: 'targets',

@@ -289,7 +289,7 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
                       <dd className="mt-0.5 font-black text-slate-200">
                         {definition.requiredConqueredCommunityCount === 0
                           ? '最初から解放'
-                          : `都市制覇 ${definition.requiredConqueredCommunityCount}`}
+                          : `都市人脈 ${definition.requiredConqueredCommunityCount}地域開通`}
                       </dd>
                     </div>
                   </dl>
@@ -317,7 +317,7 @@ export const TrainingDummyView: React.FC<TrainingDummyViewProps> = ({
                     ) : (
                       <>
                         <Lock className="h-4 w-4" />
-                        あと{remainingCommunities}都市制覇で解放
+                        あと{remainingCommunities}地域の人脈開通で解放
                       </>
                     )}
                   </button>

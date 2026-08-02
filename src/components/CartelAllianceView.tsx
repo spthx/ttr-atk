@@ -83,7 +83,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
                       {isGrandCompany ? `${candidate.allyName}へ後援を申請` : `${candidate.allyName}と協定を結ぶ`}
                     </strong>
                     <span className="mt-1 block text-[10px] text-slate-500">
-                      相場75%支援・1争奪戦につき1回
+                      通常75%・高難度×1.70・1争奪戦につき1回
                     </span>
                   </button>
                 );
@@ -99,28 +99,28 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
             </p>
             <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
               <div className="flex items-start gap-2"><span className="text-violet-400 font-bold">1. 通商・調達の後援:</span><span>{activeCandidate?.summary || `${alliance.allyName}から公的後援を受けます。`}</span></div>
-              <div className="flex items-start gap-2"><span className="text-violet-400 font-bold">2. 支援要請:</span><span>1争奪戦につき1回、許認可・調達・輸送を含む相場75%相当の支援価値を受けます。離反リスクはなく、LBには含まれません。</span></div>
+              <div className="flex items-start gap-2"><span className="text-violet-400 font-bold">2. 支援要請:</span><span>1争奪戦につき1回、通常は相場75%相当、零式・絶・酷では人脈と同じ1.70倍の支援価値を受けます。離反リスクはなく、LBには含まれません。</span></div>
               <div className="flex items-start gap-2"><span className="text-slate-400 font-bold">3. 選び直し:</span><span>上位組織への自動昇格はありません。後援を返上すれば、ガーロンド・双蛇党・黒渦団・不滅隊から選び直せます。</span></div>
             </div>
           </>
         ) : alliance.active ? (
           <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
             <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">1. 不可侵契約:</span><span>協力企業から{companyName}への対抗買収が一切仕掛けられなくなります。</span></div>
-            <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">2. 協力支援要請:</span><span>買収交渉ごとに1回、対象相場の75%相当を要請できます。離反リスクはなく、LBには含まれません。</span></div>
+            <div className="flex items-start gap-2"><span className="text-indigo-400 font-bold">2. 協力支援要請:</span><span>争奪戦ごとに1回、通常は対象相場の75%相当、零式・絶・酷では人脈と同じ1.70倍を要請できます。離反リスクはなく、LBには含まれません。</span></div>
             <div className="flex items-start gap-2"><span className="text-rose-400 font-bold">3. 選び直し:</span><span>上位組織への自動昇格はありません。協定を解除すれば、ガーロンド・双蛇党・黒渦団・不滅隊から選び直せます。協力企業の傘下へ交渉を仕掛ける場合も自動解除されます。</span></div>
           </div>
         ) : (
           <p className="text-xs leading-relaxed text-slate-400">
-            候補はガーロンド・アイアンワークス、双蛇党、黒渦団、不滅隊の4つです。同時に有効にできるアライアンスは1つで、どの候補も相場75%相当の支援を1争奪戦につき1回だけ要請できます。
+            候補はガーロンド・アイアンワークス、双蛇党、黒渦団、不滅隊の4つです。同時に有効にできるアライアンスは1つで、どの候補も通常は相場75%相当、零式・絶・酷ではさらに1.70倍の支援を1争奪戦につき1回だけ要請できます。
             上位組織への自動昇格はなく、協定・後援を解除してから候補を選び直します。組織名を除き、協力協定と公的後援の交易効果は本作独自のルールです。
           </p>
         )}
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="アライアンスと所有人脈の組織評価">
           <section className="rounded-lg border border-indigo-500/30 bg-indigo-950/20 p-3 text-xs text-indigo-100">
             <small className="font-black tracking-wider text-indigo-300">EXTERNAL ALLIANCE</small>
-            <b className="mt-1 block">外部組織からの切り札</b>
+            <b className="mt-1 block">ガーロンドなど外部組織の切り札</b>
             <span className="mt-1 block leading-relaxed text-slate-300">
-              相場75%・各争奪戦1回／離反なし／LB加算なし／恒常収益なし
+              通常は相場75%、高難度はさらに×1.70／各争奪戦1回／離反なし／LB加算なし／恒常収益なし
             </span>
           </section>
           <section className="rounded-lg border border-cyan-500/25 bg-cyan-950/15 p-3 text-xs text-cyan-100">

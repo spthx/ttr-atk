@@ -540,10 +540,10 @@
   --enemy-support-panel: rgba(45, 24, 30, .95);
 }
 
-.enemy-support-actor--ninja {
-  --enemy-support-accent: #fda4af;
-  --enemy-support-accent-soft: rgba(244, 63, 94, .34);
-  --enemy-support-panel: rgba(54, 8, 25, .95);
+.enemy-support-actor--black-mage {
+  --enemy-support-accent: #d8b4fe;
+  --enemy-support-accent-soft: rgba(147, 51, 234, .34);
+  --enemy-support-panel: rgba(35, 13, 56, .95);
 }
 
 .enemy-support-actor--machinist {
@@ -629,6 +629,30 @@
   line-height: 1.2;
   text-overflow: ellipsis;
   text-shadow: 0 .08rem .12rem rgba(0, 0, 0, .86);
+  translate: 50% 0;
+  white-space: nowrap;
+}
+
+.enemy-support-actor__stun-window {
+  position: absolute;
+  z-index: 3;
+  top: 1.42rem;
+  right: 50%;
+  min-width: max-content;
+  padding: .12rem .34rem;
+  border: 1px solid rgba(253, 186, 116, .88);
+  border-radius: 999px;
+  color: #fff7ed;
+  background: rgba(69, 10, 10, .94);
+  box-shadow:
+    0 .18rem .38rem rgba(0, 0, 0, .62),
+    0 0 .48rem rgba(251, 146, 60, .28);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: .54rem;
+  font-weight: 950;
+  line-height: 1.15;
+  letter-spacing: .02em;
+  text-shadow: 0 .08rem .12rem rgba(0, 0, 0, .88);
   translate: 50% 0;
   white-space: nowrap;
 }
@@ -811,6 +835,12 @@
     max-width: calc(100% - .25rem);
     padding-inline: .28rem;
     font-size: .5rem;
+  }
+
+  .enemy-support-actor__stun-window {
+    top: 1.25rem;
+    padding: .1rem .26rem;
+    font-size: .47rem;
   }
 
   .enemy-support-actor__castbar {
@@ -1846,21 +1876,19 @@
   animation: skill-nameplate-enter .32s cubic-bezier(.16, .8, .2, 1) both;
 }
 
-.battle-skill-nameplate--stage-cast {
-  opacity: .72;
-  translate: -50% -.12rem;
-  transition: opacity .12s ease-out, translate .12s ease-out;
+.battle-skill-nameplate--stage-cast,
+.battle-skill-nameplate--stage-hitstop,
+.battle-skill-nameplate--stage-impact,
+.battle-skill-nameplate--stage-resolve {
+  opacity: 1;
+  translate: -50% 0;
+  transition: border-color .16s ease-out, box-shadow .16s ease-out;
 }
 
 .battle-skill-nameplate--stage-hitstop,
-.battle-skill-nameplate--stage-impact {
-  opacity: 0;
-  animation: none;
-}
-
+.battle-skill-nameplate--stage-impact,
 .battle-skill-nameplate--stage-resolve {
-  pointer-events: auto;
-  animation: skill-nameplate-resolve .24s cubic-bezier(.16, .8, .2, 1) both;
+  border-color: #fde68a;
 }
 
 .battle-skill-nameplate--enemy {
@@ -1910,6 +1938,11 @@
   color: #fde68a;
   background: rgba(120, 53, 15, .38);
   font: 900 .56rem/1.2 ui-monospace, monospace;
+}
+
+.battle-skill-nameplate__effect--pending,
+.battle-skill-nameplate__duration--pending {
+  visibility: hidden;
 }
 
 .integrated-battlefield--skill-stage-cast .ownership-fighter--player {
@@ -2124,37 +2157,37 @@
 .capital-commit-cue {
   position: absolute;
   z-index: 42;
-  top: 38%;
-  left: 25%;
-  display: grid;
-  width: min(13rem, 43%);
-  padding: .34rem .55rem .4rem;
-  overflow: hidden;
-  border: 1px solid rgba(253, 224, 71, .62);
-  border-radius: .28rem;
-  color: #fff8ce;
-  background:
-    linear-gradient(90deg, rgba(15, 10, 2, .94), rgba(51, 34, 4, .9));
-  box-shadow:
-    0 .34rem .72rem rgba(0, 0, 0, .62),
-    inset .18rem 0 rgba(250, 204, 21, .7);
-  contain: layout paint style;
+  top: 55%;
+  left: 29%;
+  display: block;
+  width: min(15rem, 44%);
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  color: #fff1a8;
+  background: transparent;
+  box-shadow: none;
+  contain: layout style;
   pointer-events: none;
   translate: -50% -50%;
   text-align: center;
 }
 
 .capital-commit-cue small {
-  color: #facc15;
-  font: 900 .48rem/1 ui-monospace, monospace;
-  letter-spacing: .16em;
+  display: none;
 }
 
 .capital-commit-cue strong {
-  margin-top: .2rem;
-  overflow: hidden;
-  font: 900 clamp(.68rem, 1.7vw, .9rem)/1.12 sans-serif;
-  text-overflow: ellipsis;
+  display: block;
+  overflow: visible;
+  font: 1000 clamp(1rem, 3.1vw, 2rem)/1 ui-monospace, "Arial Black", sans-serif;
+  letter-spacing: -.04em;
+  text-shadow:
+    -2px -2px 0 #130b02,
+    2px -2px 0 #130b02,
+    -2px 2px 0 #130b02,
+    2px 2px 0 #130b02,
+    0 .18rem .28rem rgba(0, 0, 0, .8);
   white-space: nowrap;
 }
 
@@ -2691,14 +2724,13 @@
   }
 
   .capital-commit-cue {
-    top: 40%;
-    left: 26%;
-    width: min(10.4rem, 48%);
-    padding-inline: .38rem;
+    top: 57%;
+    left: 27%;
+    width: min(10.4rem, 46%);
   }
 
   .capital-commit-cue strong {
-    font-size: .66rem;
+    font-size: clamp(.95rem, 5vw, 1.35rem);
   }
 }
 
@@ -3654,6 +3686,32 @@
 
   .integrated-battlefield .gil-column-field[data-overflow-tier="3"] {
     --capital-rack-sink: 1.46rem;
+  }
+}
+
+/* Tablet landscape has room for a broad treasury rack. Keep the phone
+ * portrait composition unchanged, but use the same wide slot spread here so
+ * twenty-two fixed columns fill the available half-field instead of huddling
+ * around its centre. DOM count and battle state remain identical. */
+@media (orientation: landscape) and (min-width: 900px) and (min-height: 600px) {
+  .integrated-battlefield .gil-column-field {
+    --coin-column-width: clamp(.72rem, 1.25vw, 1rem);
+    --coin-layer-step: clamp(.14rem, .32vw, .2rem);
+    --coin-cap-height: clamp(.4rem, .7vw, .56rem);
+  }
+
+  .integrated-battlefield .capital-fixed-column {
+    left: var(--column-tablet-x);
+  }
+
+  .integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips {
+    right: -8%;
+    left: 18%;
+  }
+
+  .integrated-battlefield .capital-visual-row .gil-tower--enemy .gil-tower__chips {
+    right: 18%;
+    left: -8%;
   }
 }
 

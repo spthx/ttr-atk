@@ -4,12 +4,15 @@ import {
   BATTLE_LOYALTY_BALANCE,
   BATTLE_SUPPORT_BALANCE,
   DIRECT_INVESTMENT_BALANCE,
+  HIGH_DIFFICULTY_SUPPORT_MULTIPLIER,
   LIMIT_BREAK_MULTIPLIERS,
   getChargedLimitBreakTier,
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
+  getRepeatedNetworkSupportMultiplier,
   PLAYER_BATTLE_CASH_CAP_RATIO,
   TACTICAL_SKILL_BALANCE,
+  calculateSubsidiarySupportAmount,
   getSubsidiaryRiskIncrease,
   getSubsidiarySupportMultiplier,
 } from './gameBalance';
@@ -57,9 +60,15 @@ export interface BattleReadinessInput {
   enemyBaseReactionSeconds: number;
   playerPushBonus: number;
   cashCapRatio?: number | null;
-  battleMode?: BattleMode;
   /**
-   * 敵固有の防御・開幕・土壇場ギミックなど、資金総額だけでは測れない警告。
+   * `extreme` is a presentation-only assessment mode for reacquisition.
+   * The live battle still uses the normal settlement and real-gil rules, but
+   * an overwhelmingly stronger current company must not be mislabeled as a
+   * close fight merely because deploying several contacts takes time.
+   */
+  battleMode?: BattleMode | 'extreme';
+  /**
+   * 敵固有の防御・開幕・瀕死ギミックなど、資金総額だけでは測れない警告。
    * 通常都市ボスや企業連合本部も呼び出し側から明示できる。
    */
   mechanicWarning?: string | null;
@@ -114,10 +123,18 @@ interface SupportRoute {
   componentLabel: string;
 }
 
+const isHighDifficultyBattleMode = (
+  battleMode: BattleReadinessInput['battleMode']
+) =>
+  battleMode === 'savage' ||
+  battleMode === 'ultimate' ||
+  battleMode === 'cruel';
+
 const expectedSupport = (
   properties: Property[],
   riskIncrease: number,
-  marketRatio: number
+  marketRatio: number,
+  amountMultiplier = 1
 ) =>
   properties.reduce(
     (summary, property) => {
@@ -132,7 +149,8 @@ const expectedSupport = (
         Math.round(
           property.marketPrice *
             marketRatio *
-            getSubsidiarySupportMultiplier(property)
+            getSubsidiarySupportMultiplier(property) *
+            amountMultiplier
         );
       return {
         amount: summary.amount + expectedAmount,
@@ -156,14 +174,23 @@ const getBestSupportRoute = ({
   subsidiaries,
   selectedBattleSynergy,
   limitBreakCharge,
+  battleMode,
 }: Pick<
   BattleReadinessInput,
   | 'targetMarketPrice'
   | 'subsidiaries'
   | 'selectedBattleSynergy'
   | 'limitBreakCharge'
+  | 'battleMode'
 >) => {
   const routes: SupportRoute[] = [];
+  const supportMultiplier = isHighDifficultyBattleMode(battleMode)
+    ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
+    : 1;
+  const highDifficultyLabel =
+    supportMultiplier > 1
+      ? `（高難度×${supportMultiplier.toFixed(2)}）`
+      : '';
 
   if (subsidiaries.length > 0) {
     const onePass = expectedSupport(
@@ -171,14 +198,26 @@ const getBestSupportRoute = ({
       BATTLE_LOYALTY_BALANCE.individualRiskIncrease,
       BATTLE_SUPPORT_BALANCE.subsidiaryMarketRatio
     );
+    const orderedSupportAmounts = subsidiaries
+      .map((property) =>
+        Math.round(calculateSubsidiarySupportAmount(property) * supportMultiplier)
+      )
+      .sort((a, b) => b - a);
     routes.push({
       name: '人脈一巡',
-      amount: Math.round(onePass.amount),
+      amount: orderedSupportAmounts.reduce(
+        (total, amount, requestIndex) =>
+          total +
+          Math.round(
+            amount * getRepeatedNetworkSupportMultiplier(requestIndex)
+          ),
+        0
+      ),
       actionCount: subsidiaries.length,
       maxFailureProbability: onePass.maxFailureProbability,
       cumulativeFailureProbability: 1 - onePass.allSucceedProbability,
       componentKey: 'subsidiaries',
-      componentLabel: `人脈${subsidiaries.length}件へ各1回（一巡）`,
+      componentLabel: `人脈${subsidiaries.length}件を強い順に要請（2回目から全体減衰）${highDifficultyLabel}`,
     });
   }
 
@@ -194,7 +233,8 @@ const getBestSupportRoute = ({
       const synergySupport = expectedSupport(
         members,
         BATTLE_LOYALTY_BALANCE.synergyRiskIncrease,
-        BATTLE_SUPPORT_BALANCE.synergyMemberMarketRatio
+        BATTLE_SUPPORT_BALANCE.synergyMemberMarketRatio,
+        supportMultiplier
       );
       routes.push({
         name: '戦闘連携',
@@ -208,7 +248,7 @@ const getBestSupportRoute = ({
         cumulativeFailureProbability:
           1 - synergySupport.allSucceedProbability,
         componentKey: 'synergy',
-        componentLabel: `SYNERGY「${selectedBattleSynergy.name}」1回`,
+        componentLabel: `SYNERGY「${selectedBattleSynergy.name}」1回${highDifficultyLabel}`,
       });
     }
   }
@@ -298,6 +338,10 @@ export const calculateBattleSynergyReadinessEquivalent = ({
   synergy?: GroupSynergy | null;
   followUpCapital: number;
 }) => {
+  // Fourteen seconds is the neutral window used to value a timed battle
+  // synergy. Keep this independent from any individual tactical ability so
+  // the readiness model survives ability catalogue changes and ports cleanly.
+  const battleSynergyBaselineDurationMs = 14_000;
   const effect = synergy?.battleOnly ? synergy.battleEffect : null;
   if (!effect) return 0;
 
@@ -314,7 +358,7 @@ export const calculateBattleSynergyReadinessEquivalent = ({
   const durationWeight = Math.min(
     1,
     Math.max(0, effect.durationMs) /
-      TACTICAL_SKILL_BALANCE.battleLitany.durationMs
+      battleSynergyBaselineDurationMs
   );
   const pressureEquivalent =
     Math.max(0, followUpCapital) *
@@ -369,6 +413,7 @@ export const calculateBattleReadiness = ({
     subsidiaries,
     selectedBattleSynergy,
     limitBreakCharge,
+    battleMode,
   });
   const capitalBoost = hasCapitalBoost
     ? Math.round(
@@ -408,7 +453,9 @@ export const calculateBattleReadiness = ({
       ? ((supportRoute.actionCount - 1) * commandRecoverySeconds) /
         Math.max(0.1, enemyBaseReactionSeconds)
       : 0;
+  const reacquisitionAssessment = battleMode === 'extreme';
   const sequentialSupportGradeCapped =
+    !reacquisitionAssessment &&
     ratio >= 1.15 &&
     supportRoute.name === '人脈一巡' &&
     supportShare >= 0.2 &&
@@ -420,11 +467,11 @@ export const calculateBattleReadiness = ({
     : ratio;
   const builtInMechanicWarning =
     battleMode === 'cruel'
-      ? '酷は残予備資金を全投入する「万象資本化」を決着前に必ず解決します。4～5秒の構えをスタンするか、防御アビリティで受ける準備が必要です。'
+      ? '酷は実戦約15秒で中断不能の第一宣告が発動し、投入資本とLBを保ったまま所有率10%から立て直します。50%まで戻すと12秒の第二宣告が始まり、その間も行動可能。75%以上で突破し、未達ならその場で敗北します。特定アビリティは必須ではありません。'
       : battleMode === 'ultimate'
-      ? '絶は開幕・土壇場アビリティを決着前に必ず解決します。戦力が足りても、構えへの対応を誤ると敗北します。'
+      ? '絶は開幕・瀕死アビリティを決着前に必ず解決します。戦力が足りても、構えへの対応を誤ると敗北します。'
       : battleMode === 'savage'
-        ? '零式は層ごとの開幕・土壇場・防御ギミックを含みます。戦力比だけでは勝利を保証しません。'
+        ? '零式は層ごとの開幕・瀕死・防御ギミックを含みます。戦力比だけでは勝利を保証しません。'
         : null;
   const initialMechanicWarning =
     requestedMechanicWarning === undefined
@@ -443,7 +490,9 @@ export const calculateBattleReadiness = ({
       ? 'この相手には資金総額だけでは測れない固有ギミックがあります。戦闘前に内容を確認してください。'
       : null);
   const mechanicRatioCap =
-    mechanicSeverity === 'severe'
+    reacquisitionAssessment
+      ? Number.POSITIVE_INFINITY
+      : mechanicSeverity === 'severe'
       ? 0.899
       : mechanicSeverity === 'warning'
         ? 1.149
@@ -478,7 +527,7 @@ export const calculateBattleReadiness = ({
   if (allianceSupport > 0) {
     capitalComponents.push({
       key: 'alliance',
-      label: '協力支援1回',
+      label: '外部アライアンス1回（高難度補正なし）',
       amount: Math.max(0, allianceSupport),
     });
   }
@@ -492,7 +541,7 @@ export const calculateBattleReadiness = ({
   if (battleSynergyEquivalent > 0 && selectedBattleSynergy) {
     capitalComponents.push({
       key: 'battle_synergy',
-      label: `${selectedBattleSynergy.name}（号令＋次の一手）`,
+      label: `${selectedBattleSynergy.name}（シナジー＋次の一手）`,
       amount: battleSynergyEquivalent,
     });
   }

@@ -1,8 +1,11 @@
 import type { Property } from '../types';
 import {
   BATTLE_LOYALTY_BALANCE,
-  CELEBRATION_GIFT_OPTIONS,
+  calculateProfitAllocationCost,
   getReacquisitionLevel,
+  PROFIT_ALLOCATION_OPTIONS,
+  type ProfitAllocationOptionId,
+  type ProfitAllocationRate,
 } from './gameBalance';
 import { calculateRebellionProbability } from './formatter';
 
@@ -49,18 +52,22 @@ export const calculateBattleSettlementSummary = ({
   settlementCost,
   celebrationGiftCost,
   liquidationCashback,
+  battleCashDelta = 0,
 }: {
   victoryReward: number;
   brokerageFee: number;
   settlementCost: number;
   celebrationGiftCost: number;
   liquidationCashback: number;
+  /** Battle-time cash movements such as Drain. Negative values are losses. */
+  battleCashDelta?: number;
 }): BattleSettlementSummary => {
   const transactionDelta =
     victoryReward -
     brokerageFee -
     settlementCost -
-    celebrationGiftCost;
+    celebrationGiftCost +
+    battleCashDelta;
   const fundsDelta = transactionDelta + liquidationCashback;
 
   return {
@@ -83,16 +90,17 @@ export interface PostVictoryLoyaltySettlement {
 export type DepartureProbabilityMultiplier = number | boolean;
 
 /**
- * The boolean branch keeps older callers compatible with the explicit
- * 「独占 / 山分け」choice. `true` means the protective 50% sharing option.
+ * The boolean branch keeps older callers compatible with the two-choice
+ * settlement contract. `true` maps to the strongest allocation option.
  */
 export const normalizeDepartureProbabilityMultiplier = (
   multiplier: DepartureProbabilityMultiplier
 ) => {
   if (typeof multiplier === 'boolean') {
     return multiplier
-      ? CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier
-      : CELEBRATION_GIFT_OPTIONS[0].departureProbabilityMultiplier;
+      ? PROFIT_ALLOCATION_OPTIONS[PROFIT_ALLOCATION_OPTIONS.length - 1]
+          .departureProbabilityMultiplier
+      : PROFIT_ALLOCATION_OPTIONS[0].departureProbabilityMultiplier;
   }
   return Number.isFinite(multiplier)
     ? Math.max(0, Math.min(1, multiplier))
@@ -117,6 +125,37 @@ export const calculateAtLeastOneDepartureProbability = (
   );
   return Math.max(0, Math.min(1, 1 - noDepartureProbability));
 };
+
+export interface VictoryProfitAllocationChoice {
+  id: ProfitAllocationOptionId;
+  label: string;
+  rate: ProfitAllocationRate;
+  departureProbabilityMultiplier: number;
+  cost: number;
+  departureProbability: number;
+}
+
+/**
+ * Pure settlement projection shared by the web presentation and a future
+ * Unity client. The UI only renders these choices; it does not recreate any
+ * rates, costs or loyalty modifiers.
+ */
+export const getVictoryProfitAllocationChoices = (
+  subsidiaries: Property[],
+  victoryReward: number
+): VictoryProfitAllocationChoice[] =>
+  PROFIT_ALLOCATION_OPTIONS.map((option) => ({
+    ...option,
+    cost: calculateProfitAllocationCost(
+      subsidiaries,
+      victoryReward,
+      option.rate
+    ),
+    departureProbability: calculateAtLeastOneDepartureProbability(
+      subsidiaries,
+      option.departureProbabilityMultiplier
+    ),
+  }));
 
 export const resolvePostVictoryLoyalty = (
   subsidiaries: Property[],

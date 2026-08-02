@@ -25,7 +25,7 @@ const INTRO_STEPS = [
   {
     eyebrow: 'FOUND YOUR COMPANY',
     title: 'カンパニーを旗揚げする',
-    body: 'この名前が保有事業・契約、交渉結果、都市制覇の記録に表示されます。',
+    body: 'この名前が保有事業・契約、交渉結果、都市人脈の開通記録に表示されます。',
     icon: Building2,
   },
 ] as const;

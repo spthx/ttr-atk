@@ -1,5 +1,24 @@
 import type { BattleMode, CommunityType, Property, TacticalSkill } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
+import {
+  DIVINE_BENISON_BALANCE,
+  ENEMY_SUPPORT_SKILL_BALANCE,
+  SAVAGE_ENEMY_AUTO_PROFILES,
+  SAVAGE_ENEMY_SUPPORT_PROFILES,
+  ULTIMATE_ENEMY_AUTO_PATTERNS,
+  type EnemySupportSkillId,
+} from '../data/battleEncounterData';
+import {
+  CAMPAIGN_ENCOUNTER_DEFINITIONS,
+  getCampaignEncounterDefinition,
+} from '../data/campaignEncounterData';
+
+export {
+  DIVINE_BENISON_BALANCE,
+  ENEMY_SUPPORT_SKILL_BALANCE,
+  ULTIMATE_ENEMY_AUTO_PATTERNS,
+};
+export type { EnemySupportSkillId };
 
 export const PASSIVE_REVENUE_MULTIPLIER = 2;
 export const INITIAL_PLAYER_FUNDS = 20_000;
@@ -8,12 +27,6 @@ export const BATTLE_GAUGE_SPEED_FACTOR = 4;
 export const TRAINING_GAUGE_SPEED_MULTIPLIER = 0.1;
 export const TRAINING_MIN_OWNERSHIP_PERCENT = 1;
 export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
-/**
- * The second Gridania contract is still meant to demonstrate calling the
- * first acquired ally, but must not assume that a new player already owns a
- * broad network. Keep its reserve below a full target's worth of capital.
- */
-export const STARTER_BAKERY_ENEMY_BUDGET_RATIO = 0.62;
 export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.58;
 export const SAVAGE_LAYER_BUDGET_MULTIPLIERS = [1, 1.08, 1.18, 1.25] as const;
 export const SAVAGE_SERIES_BUDGET_MULTIPLIERS = [1, 1.035, 1.075] as const;
@@ -117,53 +130,11 @@ export const LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER = 1.2;
 export const BATTLE_CASH_RECOVERY_RATE_PER_SECOND = 0.003;
 export const BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO = 0.2;
 
-export type EnemySupportSkillId =
-  | 'cure'
-  | 'mug'
-  | 'drill'
-  | 'divination'
-  | 'rapid_assault'
-  | 'limit_break_3'
-  | 'omnicapitalization';
-
 export interface EnemySupportDifficultyContext {
   isSavage?: boolean;
   isUltimate?: boolean;
   isCruel?: boolean;
 }
-
-export const ENEMY_SUPPORT_SKILL_BALANCE = {
-  cure: {
-    normalRecoveryRatio: 0.08,
-    highDifficultyRecoveryRatio: 0.1,
-    triggerReserveRatio: 0.35,
-    triggerPlayerOwnership: 55,
-    minimumUsefulRecoveryRatio: 0.03,
-  },
-  mug: {
-    maxMarks: 1,
-    nextGaugeImpactMultiplier: 1.05,
-  },
-  drill: {
-    normalOwnershipPush: 4,
-    savageOwnershipPush: 5,
-    ultimateOwnershipPush: 6,
-    reserveCostRatio: 0.06,
-  },
-  divination: {
-    normalDurationMs: 3_500,
-    highDifficultyDurationMs: 4_000,
-    enemyInvestmentMultiplier: 1.35,
-  },
-  rapidAssault: {
-    durationMs: 15_000,
-    actionProgressMultiplier: 5.2 / 2.8,
-  },
-  limitBreak3: {
-    ownershipPush: 30,
-    gaugeDelta: 60,
-  },
-} as const;
 
 export type BattleCashRecoveryWindType =
   | 'TAILWIND_PLAYER'
@@ -195,6 +166,7 @@ export interface BattleCashRecoveryStepInput
   timeScale: number;
   windMultiplier: number;
   terminal: boolean;
+  cumulativeCapRatio?: number;
 }
 
 export interface BattleCashRecoveryStepResult
@@ -218,14 +190,18 @@ export const advanceBattleCashRecovery = ({
   timeScale,
   windMultiplier,
   terminal,
+  cumulativeCapRatio = BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO,
 }: BattleCashRecoveryStepInput): BattleCashRecoveryStepResult => {
   const baseline = finiteNonNegative(baselineFunds);
-  const currentFunds = Math.min(
-    baseline,
-    finiteNonNegative(availableFunds)
-  );
+  // Drain may legitimately put the battle-local reserve above its authored
+  // opening budget. Preserve that surplus; recovery waits until the reserve
+  // falls below the original baseline instead of deleting transferred funds.
+  const currentFunds = finiteNonNegative(availableFunds);
   const cumulativeCap =
-    baseline * BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO;
+    baseline * Math.max(
+      0,
+      Math.min(BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO, cumulativeCapRatio)
+    );
   const recoveredSoFar = Math.min(
     cumulativeCap,
     finiteNonNegative(cumulativeRecovered)
@@ -256,7 +232,7 @@ export const advanceBattleCashRecovery = ({
     finiteNonNegative(windMultiplier);
   const recoveredThisStep = Math.min(
     requestedRecovery,
-    baseline - currentFunds,
+    Math.max(0, baseline - currentFunds),
     cumulativeCap - recoveredSoFar
   );
   const nextCumulativeRecovered =
@@ -275,97 +251,114 @@ export const getBattleCashRecoveryWindMultipliers = (
   windType: BattleCashRecoveryWindType
 ) => BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS[windType];
 
-export const getEnemyCureRecoveryRatio = ({
-  isSavage = false,
-  isUltimate = false,
-  isCruel = false,
-}: EnemySupportDifficultyContext) =>
-  isSavage || isUltimate || isCruel
-    ? ENEMY_SUPPORT_SKILL_BALANCE.cure.highDifficultyRecoveryRatio
-    : ENEMY_SUPPORT_SKILL_BALANCE.cure.normalRecoveryRatio;
-
-export interface EnemyCureRecoveryInput
-  extends BattleCashRecoveryState,
-    EnemySupportDifficultyContext {
-  baselineFunds: number;
+export interface DivineBenisonGaugeInput {
+  currentGauge: number;
+  nextGauge: number;
+  protects: 'player' | 'opponent';
+  remainingGaugeCapacity: number;
 }
 
 /**
- * Applies the one-shot enemy Cure to the same cumulative 20% recovery pool as
- * passive battle recovery. It never changes ownership or invested capital.
+ * Shared player/enemy finite barrier resolver. It deliberately contains no
+ * React state or timers so the same contract can be exported to Unity.
  */
-export const applyEnemyCureRecovery = ({
-  baselineFunds,
-  availableFunds,
-  cumulativeRecovered,
-  isSavage = false,
-  isUltimate = false,
-  isCruel = false,
-}: EnemyCureRecoveryInput): BattleCashRecoveryStepResult => {
-  const baseline = finiteNonNegative(baselineFunds);
-  const currentFunds = Math.min(
-    baseline,
-    finiteNonNegative(availableFunds)
+export const applyDivineBenisonToGaugeDelta = ({
+  currentGauge,
+  nextGauge,
+  protects,
+  remainingGaugeCapacity,
+}: DivineBenisonGaugeInput) => {
+  const current = Number.isFinite(currentGauge) ? currentGauge : 0;
+  const candidate = Number.isFinite(nextGauge) ? nextGauge : current;
+  const capacity = finiteNonNegative(remainingGaugeCapacity);
+  const delta = candidate - current;
+  const incoming =
+    protects === 'player' ? Math.max(0, delta) : Math.max(0, -delta);
+  const absorbedGauge = Math.min(
+    incoming * DIVINE_BENISON_BALANCE.absorbRatio,
+    capacity
   );
-  const cumulativeCap =
-    baseline * BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO;
-  const recoveredSoFar = Math.min(
-    cumulativeCap,
-    finiteNonNegative(cumulativeRecovered)
-  );
-  const requestedRecovery =
-    baseline *
-    getEnemyCureRecoveryRatio({ isSavage, isUltimate, isCruel });
-  const recoveredThisStep = Math.min(
-    requestedRecovery,
-    baseline - currentFunds,
-    cumulativeCap - recoveredSoFar
-  );
-  const nextCumulativeRecovered =
-    recoveredSoFar + recoveredThisStep;
 
   return {
-    availableFunds: currentFunds + recoveredThisStep,
-    cumulativeRecovered: nextCumulativeRecovered,
-    recoveredThisStep,
-    cumulativeRecoveryRatio:
-      baseline > 0 ? nextCumulativeRecovered / baseline : 0,
+    nextGauge:
+      protects === 'player'
+        ? candidate - absorbedGauge
+        : candidate + absorbedGauge,
+    absorbedGauge,
+    remainingGaugeCapacity: Math.max(0, capacity - absorbedGauge),
   };
 };
 
-export interface EnemyCureTriggerInput
-  extends EnemyCureRecoveryInput {
-  playerOwnership: number;
-  terminal: boolean;
-}
+export const getDivineBenisonDisplayPercent = ({
+  remainingGaugeCapacity,
+  remainingMs,
+}: {
+  remainingGaugeCapacity: number;
+  remainingMs: number;
+}) => {
+  if (remainingGaugeCapacity <= 0 || remainingMs <= 0) return 0;
+  const capacityRatio =
+    finiteNonNegative(remainingGaugeCapacity) /
+    DIVINE_BENISON_BALANCE.gaugeCapacity;
+  const timeRatio =
+    finiteNonNegative(remainingMs) / DIVINE_BENISON_BALANCE.durationMs;
+  const rawPercent = Math.max(0, Math.min(1, capacityRatio, timeRatio)) * 100;
+  return Math.max(5, Math.min(100, Math.ceil(rawPercent / 5) * 5));
+};
 
-export const shouldEnemyUseCure = ({
+export const shouldEnemyUseDivineBenison = ({
   playerOwnership,
   terminal,
-  ...recoveryInput
-}: EnemyCureTriggerInput) => {
-  if (terminal) return false;
-  const baseline = finiteNonNegative(recoveryInput.baselineFunds);
-  if (baseline <= 0) return false;
-  const currentFunds = Math.min(
-    baseline,
-    finiteNonNegative(recoveryInput.availableFunds)
-  );
-  const reserveRatio = currentFunds / baseline;
-  const pressureTrigger =
-    normalizeBattleOwnership(playerOwnership) >=
-    ENEMY_SUPPORT_SKILL_BALANCE.cure.triggerPlayerOwnership;
-  const reserveTrigger =
-    reserveRatio <=
-    ENEMY_SUPPORT_SKILL_BALANCE.cure.triggerReserveRatio;
-  if (!pressureTrigger && !reserveTrigger) return false;
+}: {
+  playerOwnership: number;
+  terminal: boolean;
+}) =>
+  !terminal &&
+  normalizeBattleOwnership(playerOwnership) >=
+    DIVINE_BENISON_BALANCE.triggerPlayerOwnership;
 
-  const recovery = applyEnemyCureRecovery(recoveryInput);
-  return (
-    recovery.recoveredThisStep >=
-    baseline *
-      ENEMY_SUPPORT_SKILL_BALANCE.cure.minimumUsefulRecoveryRatio
+export const calculateEnemyDrainAmount = ({
+  playerCash,
+  marketPrice,
+}: {
+  playerCash: number;
+  marketPrice: number;
+}) =>
+  Math.max(
+    0,
+    Math.min(
+      Math.round(
+        finiteNonNegative(playerCash) *
+          ENEMY_SUPPORT_SKILL_BALANCE.drain.handCashRatio
+      ),
+      Math.round(
+        finiteNonNegative(marketPrice) *
+          ENEMY_SUPPORT_SKILL_BALANCE.drain.marketPriceCapRatio
+      )
+    )
   );
+
+/** Moves only uncommitted battle cash; ownership, invested capital and LB stay untouched. */
+export const resolveEnemyDrainTransfer = ({
+  playerCash,
+  enemyReserve,
+  marketPrice,
+}: {
+  playerCash: number;
+  enemyReserve: number;
+  marketPrice: number;
+}) => {
+  const safePlayerCash = finiteNonNegative(playerCash);
+  const safeEnemyReserve = finiteNonNegative(enemyReserve);
+  const transferred = calculateEnemyDrainAmount({
+    playerCash: safePlayerCash,
+    marketPrice,
+  });
+  return {
+    playerCash: safePlayerCash - transferred,
+    enemyReserve: safeEnemyReserve + transferred,
+    transferred,
+  };
 };
 
 export const getEnemyDrillOwnershipPush = ({
@@ -432,35 +425,21 @@ export const shouldForceUltimateCriticalBeforeVictory = ({
 
 export const getEnemyDrillImpact = ({
   enemyBudget,
-  hasMugMark = false,
   isSavage = false,
   isUltimate = false,
   isCruel = false,
-}: EnemySupportDifficultyContext & {
-  enemyBudget: number;
-  hasMugMark?: boolean;
-}) => {
+}: EnemySupportDifficultyContext & { enemyBudget: number }) => {
   const baseOwnershipPush = getEnemyDrillOwnershipPush({
     isSavage,
     isUltimate,
     isCruel,
   });
-  const ownershipPush = Number(
-    (
-      baseOwnershipPush *
-      (
-        hasMugMark
-          ? ENEMY_SUPPORT_SKILL_BALANCE.mug.nextGaugeImpactMultiplier
-          : 1
-      )
-    ).toFixed(2)
-  );
+  const ownershipPush = Number(baseOwnershipPush.toFixed(2));
   return {
     baseOwnershipPush,
     ownershipPush,
     gaugeDelta: Number((ownershipPush * 2).toFixed(2)),
     reserveCost: calculateEnemyDrillReserveCost(enemyBudget),
-    consumesMugMark: hasMugMark,
   };
 };
 
@@ -492,9 +471,9 @@ export const TACTICAL_SKILL_BALANCE = {
     maxInterruptsPerUse: 1,
   },
   cover: {
-    durationMs: 20_000,
-    absorbRatio: 0.78,
-    gaugeCapacity: 48,
+    durationMs: 18_000,
+    absorbRatio: 0.92,
+    gaugeCapacity: 84,
   },
   capitalBoost: {
     marketRatio: 0.4,
@@ -506,45 +485,7 @@ export const TACTICAL_SKILL_BALANCE = {
     recoveryOwnership: 30,
     requiredAssetValue: 1_000_000,
   },
-  battleLitany: {
-    durationMs: 14_000,
-    pushMultiplier: 1.8,
-  },
-  eraWind: {
-    durationMs: 10_000,
-    cooldownMs: 0,
-    minimumCost: 100_000,
-    marketCostRatio: 0.02,
-    useCostMultipliers: [1],
-    baseGaugePushPerSecond: 1.55,
-    pushStepPerUse: 0,
-    maxUsesPerBattle: 1,
-  },
 } as const;
-
-export const calculateEraWindCost = (
-  marketPrice: number,
-  previousUses: number
-) => {
-  const baseCost = Math.max(
-    TACTICAL_SKILL_BALANCE.eraWind.minimumCost,
-    Math.round(
-      Math.max(0, marketPrice) *
-        TACTICAL_SKILL_BALANCE.eraWind.marketCostRatio
-    )
-  );
-  const multipliers = TACTICAL_SKILL_BALANCE.eraWind.useCostMultipliers;
-  const multiplier =
-    multipliers[Math.min(multipliers.length - 1, Math.max(0, previousUses))];
-  return Math.round(baseCost * multiplier);
-};
-
-export const getEraWindGaugePushPerSecond = (previousUses: number) =>
-  TACTICAL_SKILL_BALANCE.eraWind.baseGaugePushPerSecond +
-  Math.min(
-    TACTICAL_SKILL_BALANCE.eraWind.maxUsesPerBattle - 1,
-    Math.max(0, previousUses)
-  ) * TACTICAL_SKILL_BALANCE.eraWind.pushStepPerUse;
 
 export const calculateBattleVictoryReward = (
   marketPrice: number,
@@ -583,6 +524,93 @@ export const normalizeBattleOwnership = (ownership: number) =>
 
 export const calculateOwnershipFromGauge = (gauge: number) =>
   normalizeBattleOwnership((100 - gauge) / 2);
+
+export const CRITICAL_AUTO_OWNERSHIP_THRESHOLD = 25;
+
+export interface CriticalAutoInterception {
+  shouldIntercept: boolean;
+  heldGauge: number;
+}
+
+export type CriticalAutoResolutionPhase =
+  | 'idle'
+  | 'held'
+  | 'cinematic'
+  | 'effect_committed'
+  | 'presentation_complete';
+
+export type CriticalAutoResolutionEvent =
+  | 'hold'
+  | 'start_cinematic'
+  | 'commit_effect'
+  | 'complete_presentation'
+  | 'release'
+  | 'cancel';
+
+/**
+ * Pure ordering contract for the critical AUTO interrupt. The web UI and a
+ * future Unity runner can share the same rule: hold the battle, show the
+ * ability, commit its effect, finish any capital presentation, then release.
+ * Invalid out-of-order events are ignored instead of unlocking combat early.
+ */
+export const advanceCriticalAutoResolution = (
+  phase: CriticalAutoResolutionPhase,
+  event: CriticalAutoResolutionEvent
+): CriticalAutoResolutionPhase => {
+  if (event === 'cancel') return 'idle';
+  if (phase === 'idle' && event === 'hold') return 'held';
+  if (phase === 'held' && event === 'start_cinematic') return 'cinematic';
+  if (phase === 'cinematic' && event === 'commit_effect') {
+    return 'effect_committed';
+  }
+  if (
+    phase === 'effect_committed' &&
+    event === 'complete_presentation'
+  ) {
+    return 'presentation_complete';
+  }
+  if (phase === 'presentation_complete' && event === 'release') return 'idle';
+  return phase;
+};
+
+/**
+ * Resolves the state boundary for a once-per-battle critical AUTO skill.
+ *
+ * The triggering enemy push stops at 25% ownership before the AUTO effect is
+ * resolved. Its overshoot is deliberately not replayed afterwards. A late
+ * frame may observe the player just below the line, so the once-per-battle
+ * interrupt still restores the held 25% boundary instead of firing uselessly
+ * at 7% immediately before defeat. The caller must arm this transition before
+ * combat pressure begins; it must not become available dynamically below the
+ * threshold.
+ */
+export const resolveCriticalAutoInterception = ({
+  currentGauge,
+  candidateGauge,
+  canIntercept,
+}: {
+  currentGauge: number;
+  candidateGauge: number;
+  canIntercept: boolean;
+}): CriticalAutoInterception => {
+  if (
+    !canIntercept ||
+    !Number.isFinite(currentGauge) ||
+    !Number.isFinite(candidateGauge) ||
+    candidateGauge <= currentGauge ||
+    calculateOwnershipFromGauge(candidateGauge) >
+      CRITICAL_AUTO_OWNERSHIP_THRESHOLD
+  ) {
+    return { shouldIntercept: false, heldGauge: candidateGauge };
+  }
+
+  const thresholdGauge =
+    100 - CRITICAL_AUTO_OWNERSHIP_THRESHOLD * 2;
+  return {
+    shouldIntercept: true,
+    heldGauge: thresholdGauge,
+  };
+};
 
 export const resolveLivingDeadOutcome = (
   phase: LivingDeadPhase,
@@ -658,14 +686,15 @@ export const BATTLE_SUPPORT_BALANCE = {
 } as const;
 
 /**
- * The first two calls on the same network retain full strength. Decay begins
- * with the third call so players can establish a combo before diminishing
- * returns matter. The counter is battle-local, so old saves need no migration.
+ * One network request retains full strength. Every later direct request in the
+ * same battle decays even when the player changes companies, so rotating the
+ * contact list cannot bypass diminishing returns. The shared counter is
+ * battle-local, so old saves need no migration.
  */
 export const REPEATED_NETWORK_SUPPORT_BALANCE = {
-  fullStrengthUses: 2,
-  multiplierPerPreviousUse: 0.82,
-  minimumMultiplier: 0.45,
+  fullStrengthUses: 1,
+  multiplierPerPreviousUse: 0.9,
+  minimumMultiplier: 0.5,
 } as const;
 
 export const getRepeatedNetworkSupportMultiplier = (previousUses: number) => {
@@ -694,18 +723,22 @@ export const BATTLE_LOYALTY_BALANCE = {
   individualRiskIncrease: 12,
   limitBreakRiskIncrease: 8,
   synergyRiskIncrease: 10,
-  // 山分けは勝利報酬全体の半分を人脈全体へ均等に配る。
+  // 山分けは勝利利益の50%を人脈全体へ均等に配る。
   // 独立危険度の保存値は下げず、今回の離反判定だけを強く抑える。
-  celebrationRewardRatio: 0.5,
+  profitShareRewardRatio: 0.5,
   reacquisitionSupportBonusPerLevel: 0.1,
   reacquisitionRiskReductionPerLevel: 2,
   maxReacquisitionLevel: 2,
 } as const;
 
-/** Endgame duties are fought by the whole acquired network, not petty cash. */
-export const HIGH_DIFFICULTY_SUPPORT_MULTIPLIER = 1.5;
+/**
+ * Endgame duties are fought by the whole acquired network, not petty cash.
+ * The extra weight keeps ally calls satisfying after enemy barriers, Passage and
+ * LB3 were made meaningful, without raising the player's personal bankroll.
+ */
+export const HIGH_DIFFICULTY_SUPPORT_MULTIPLIER = 1.7;
 
-export const CELEBRATION_GIFT_OPTIONS = [
+export const PROFIT_ALLOCATION_OPTIONS = [
   {
     id: 'keep',
     label: '独占',
@@ -716,15 +749,15 @@ export const CELEBRATION_GIFT_OPTIONS = [
     id: 'share50',
     label: '山分け',
     rate: 0.5,
-    // 強い抑止だが、危険度が高い人脈の離反可能性は残す。
-    departureProbabilityMultiplier: 0.35,
+    // 高コストに見合う強い抑止。ただし離反を保証で0にはしない。
+    departureProbabilityMultiplier: 0.2,
   },
 ] as const;
 
-export type CelebrationGiftOption =
-  (typeof CELEBRATION_GIFT_OPTIONS)[number];
-export type CelebrationGiftOptionId = CelebrationGiftOption['id'];
-export type CelebrationGiftRate = CelebrationGiftOption['rate'];
+export type ProfitAllocationOption =
+  (typeof PROFIT_ALLOCATION_OPTIONS)[number];
+export type ProfitAllocationOptionId = ProfitAllocationOption['id'];
+export type ProfitAllocationRate = ProfitAllocationOption['rate'];
 
 export const getReacquisitionLevel = (property: Property) =>
   Math.max(
@@ -756,7 +789,9 @@ export const getExtremeReacquisitionOpeningSkill = (
   property: Property
 ): EnemySupportSkillId => {
   const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(property.community);
-  if (campaignIndex <= 2) return 'mug';
+  // Extreme reacquisition is a payoff battle. It may present a small barrier,
+  // but never takes permanent cash through Drain.
+  if (campaignIndex <= 2) return 'divine_benison';
   if (campaignIndex <= 6) return 'divination';
   return 'drill';
 };
@@ -806,10 +841,10 @@ export const getSubsidiaryRiskIncrease = (
         BATTLE_LOYALTY_BALANCE.reacquisitionRiskReductionPerLevel
   );
 
-export const calculateCelebrationGiftCost = (
+export const calculateProfitAllocationCost = (
   subsidiaries: Property[],
   victoryReward: number,
-  rate: number = BATTLE_LOYALTY_BALANCE.celebrationRewardRatio
+  rate: number = BATTLE_LOYALTY_BALANCE.profitShareRewardRatio
 ) => {
   const normalizedRate = Number.isFinite(rate)
     ? Math.max(0, Math.min(1, rate))
@@ -950,11 +985,19 @@ export const countsTowardCityConquest = (property: Property) =>
 export const getCampaignProperties = (
   properties: Property[],
   community: CommunityType
-) =>
-  properties.filter(
-    (property) =>
-      property.community === community && countsTowardCityConquest(property)
+) => {
+  const propertyById = new Map(
+    properties.map((property) => [property.id, property])
   );
+  return CAMPAIGN_ENCOUNTER_DEFINITIONS.flatMap((definition) => {
+    const property = propertyById.get(definition.targetPropertyId);
+    return property &&
+      property.community === community &&
+      countsTowardCityConquest(property)
+      ? [property]
+      : [];
+  });
+};
 
 export type BossAbilityTier =
   | 'none'
@@ -1015,19 +1058,24 @@ export const getBossAbilityTier = ({
 export const BOSS_COVER_BALANCE = {
   triggerPlayerOwnership: 60,
   cover: {
-    durationMs: 20_000,
-    absorbRatio: 0.78,
-    gaugeCapacity: 48,
+    durationMs: 18_000,
+    absorbRatio: 0.84,
+    gaugeCapacity: 58,
+    counterCapitalRatio: 0.06,
   },
   enhancedCover: {
-    durationMs: 22_000,
-    absorbRatio: 0.9,
-    gaugeCapacity: 68,
+    durationMs: 18_000,
+    absorbRatio: 0.92,
+    gaugeCapacity: 84,
+    counterCapitalRatio: 0.12,
   },
   invincible: {
-    durationMs: 8_000,
+    durationMs: 5_000,
     absorbRatio: 1,
     gaugeCapacity: Number.POSITIVE_INFINITY,
+    counterCapitalRatio: 0.18,
+    followupDurationMs: 6_000,
+    followupGaugeCapacity: 44,
   },
 } as const;
 
@@ -1105,25 +1153,30 @@ export const getSavageSeries = (targetProperty: Property) => {
 };
 
 const NO_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [];
-const CURE_ONLY: readonly EnemySupportSkillId[] = ['cure'];
-const CURE_MUG: readonly EnemySupportSkillId[] = ['cure', 'mug'];
-const MUG_ONLY: readonly EnemySupportSkillId[] = ['mug'];
-const MUG_DIVINATION: readonly EnemySupportSkillId[] = ['mug', 'divination'];
-const MUG_DRILL: readonly EnemySupportSkillId[] = ['mug', 'drill'];
+const BENISON_ONLY: readonly EnemySupportSkillId[] = ['divine_benison'];
+const BENISON_DRAIN: readonly EnemySupportSkillId[] = [
+  'divine_benison',
+  'drain',
+];
+const DRAIN_ONLY: readonly EnemySupportSkillId[] = ['drain'];
+const DRAIN_DIVINATION: readonly EnemySupportSkillId[] = [
+  'drain',
+  'divination',
+];
+const DRAIN_DRILL: readonly EnemySupportSkillId[] = ['drain', 'drill'];
 const DIVINATION_ONLY: readonly EnemySupportSkillId[] = ['divination'];
-const CURE_DIVINATION: readonly EnemySupportSkillId[] = [
-  'cure',
+const BENISON_DIVINATION: readonly EnemySupportSkillId[] = [
+  'divine_benison',
   'divination',
 ];
 const ALL_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [
-  'cure',
-  'mug',
+  'divine_benison',
+  'drain',
   'drill',
   'divination',
 ];
 const CRUEL_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [
-  'cure',
-  'mug',
+  'divine_benison',
   'drill',
   'divination',
   'rapid_assault',
@@ -1140,39 +1193,6 @@ export interface EnemySupportAutoProfile {
   opening: EnemySupportSkillId | null;
   critical: EnemySupportSkillId | null;
 }
-
-export const ULTIMATE_ENEMY_AUTO_PATTERNS = [
-  { id: 'mug_drill', opening: 'mug', critical: 'drill' },
-  {
-    id: 'divination_cure',
-    opening: 'divination',
-    critical: 'cure',
-  },
-  {
-    id: 'rapid_assault_drill',
-    opening: 'rapid_assault',
-    critical: 'drill',
-  },
-  {
-    id: 'mug_limit_break_3',
-    opening: 'mug',
-    critical: 'limit_break_3',
-  },
-  {
-    id: 'limit_break_3_cure',
-    opening: 'limit_break_3',
-    critical: 'cure',
-  },
-  {
-    id: 'rapid_assault_limit_break_3',
-    opening: 'rapid_assault',
-    critical: 'limit_break_3',
-  },
-] as const satisfies readonly {
-  id: string;
-  opening: EnemySupportSkillId;
-  critical: EnemySupportSkillId;
-}[];
 
 export const getUltimateEnemyAutoProfile = (
   patternIndex: number
@@ -1202,42 +1222,41 @@ export const getEnemySupportSkillProfile = ({
   if (isCruel) return CRUEL_ENEMY_SUPPORT_SKILLS;
   if (isUltimate) return ALL_ENEMY_SUPPORT_SKILLS;
   if (isSavage) {
+    const series = getSavageSeries(targetProperty);
     const layer = getSavageLayer(targetProperty);
-    if (layer === 1) return CURE_MUG;
-    if (layer === 2) return MUG_DIVINATION;
-    if (layer === 3) return MUG_DRILL;
-    return ALL_ENEMY_SUPPORT_SKILLS;
+    return SAVAGE_ENEMY_SUPPORT_PROFILES[series - 1][layer - 1];
   }
   if (isExtremeReacquisition(targetProperty)) {
     return [getExtremeReacquisitionOpeningSkill(targetProperty)];
   }
   if (!isCityBoss && targetProperty.cartelId === 'cartel_abyss') {
-    return targetProperty.isCartelHQ ? MUG_DRILL : MUG_DIVINATION;
+    return targetProperty.isCartelHQ ? DRAIN_DRILL : DRAIN_DIVINATION;
   }
   if (!isCityBoss && targetProperty.cartelId === 'cartel_dofor') {
-    return targetProperty.isCartelHQ ? MUG_DIVINATION : CURE_MUG;
+    return targetProperty.isCartelHQ ? DRAIN_DIVINATION : BENISON_DRAIN;
   }
   if (!isCityBoss) return NO_ENEMY_SUPPORT_SKILLS;
 
   const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
     targetProperty.community
   );
-  if (campaignIndex === 2) return MUG_ONLY;
-  if (campaignIndex === 3) return MUG_ONLY;
-  if (campaignIndex === 4) return CURE_MUG;
-  if (campaignIndex === 5) return CURE_ONLY;
-  if (campaignIndex === 6) return MUG_ONLY;
-  if (campaignIndex === 7) return MUG_DRILL;
+  if (campaignIndex === 2) return DRAIN_ONLY;
+  if (campaignIndex === 3) return DRAIN_ONLY;
+  if (campaignIndex === 4) return BENISON_DRAIN;
+  if (campaignIndex === 5) return BENISON_ONLY;
+  if (campaignIndex === 6) return DRAIN_ONLY;
+  if (campaignIndex === 7) return DRAIN_DRILL;
   if (campaignIndex === 8) return DIVINATION_ONLY;
-  if (campaignIndex === 9) return CURE_DIVINATION;
+  if (campaignIndex === 9) return BENISON_DIVINATION;
   return NO_ENEMY_SUPPORT_SKILLS;
 };
 
 /**
  * High-end duties reserve explicit support actions for authored battle beats.
- * Savage layer two owns a separate opening Cover; layer four fixes its
- * Divination/Drill progression pair. Ultimate chooses one curated pair at
- * battle start so every surprise remains deterministic for that attempt.
+ * Savage layer two owns a separate opening Cover. Layer three adds one
+ * interruptible opening check, while layer four keeps its authored opening
+ * and critical pair. Ultimate chooses one curated pair at battle start so
+ * every surprise remains deterministic for that attempt.
  */
 export const getEnemySupportAutoProfile = ({
   targetProperty,
@@ -1255,17 +1274,9 @@ export const getEnemySupportAutoProfile = ({
     return getUltimateEnemyAutoProfile(ultimatePatternIndex);
   }
   if (isSavage) {
+    const series = getSavageSeries(targetProperty);
     const layer = getSavageLayer(targetProperty);
-    if (layer === 4) {
-      const series = getSavageSeries(targetProperty);
-      if (series === 1) {
-        return { opening: 'mug', critical: 'drill' };
-      }
-      if (series === 2) {
-        return { opening: 'divination', critical: 'cure' };
-      }
-      return { opening: 'divination', critical: 'drill' };
-    }
+    return SAVAGE_ENEMY_AUTO_PROFILES[series - 1][layer - 1];
   }
   if (isExtremeReacquisition(targetProperty)) {
     return {
@@ -1276,7 +1287,7 @@ export const getEnemySupportAutoProfile = ({
   if (targetProperty.isCartelHQ) {
     return targetProperty.cartelId === 'cartel_abyss'
       ? { opening: 'divination', critical: 'drill' }
-      : { opening: 'mug', critical: 'cure' };
+      : { opening: 'drain', critical: 'divine_benison' };
   }
   return {
     opening: null,
@@ -1419,6 +1430,11 @@ export const calculateEnemyBudget = ({
   const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
     targetProperty.community
   );
+  const authoredNormalBudgetMultiplier =
+    !isSavage && !isUltimate && !isCruel
+      ? getCampaignEncounterDefinition(targetProperty.id)
+          ?.enemyBudgetMultiplier ?? 1
+      : 1;
   const cityBossBudgetMultiplier =
     !isCityBoss ||
     campaignIndex < 0 ||
@@ -1432,6 +1448,7 @@ export const calculateEnemyBudget = ({
 
   const calculatedBudget = Math.round(
     baseBudget * balanceFactor * cityBossBudgetMultiplier *
+    authoredNormalBudgetMultiplier *
     (isUltimate || isCruel
       ? ULTIMATE_ENEMY_BUDGET_MULTIPLIER
       : isSavage
@@ -1447,19 +1464,6 @@ export const calculateEnemyBudget = ({
         ? 1
         : getExtremeReacquisitionBudgetMultiplier(targetProperty))
   );
-
-  if (
-    !isTutorial &&
-    !isSavage &&
-    !isUltimate &&
-    !isCruel &&
-    targetProperty.id === 'prop_starter_bakery'
-  ) {
-    return Math.max(
-      calculatedBudget,
-      Math.round(price * STARTER_BAKERY_ENEMY_BUDGET_RATIO)
-    );
-  }
 
   return calculatedBudget;
 };
