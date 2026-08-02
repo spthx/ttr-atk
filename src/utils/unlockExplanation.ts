@@ -32,7 +32,7 @@ export const getSkillUnlockExplanation = (
     dialogue: `${skill.name}を修得したでっす！ 商戦前に装備して、ここぞという場面で使うでっす。`,
     detail: `${skill.description} ${usageLimit}`,
     operation:
-      '「アビリティ」画面でアビリティ装備を設定します。開幕アビリティ・土壇場アビリティに設定した技は、手動発動の一覧から外れます。',
+      '「アビリティ」画面でアビリティ装備を設定します。開幕アビリティ・瀕死アビリティに設定した技は、手動発動の一覧から外れます。控えの技は商戦中に使えません。',
   };
 };
 
@@ -43,18 +43,27 @@ export const getSynergyUnlockExplanation = (
     const ownershipPush = synergy.battleEffect.ownershipPush
       ? `、発動時に所有率ゲージを${synergy.battleEffect.ownershipPush}%分押し込みます`
       : '';
+    const limitBreakCharge = synergy.battleEffect.limitBreakChargeMultiplier
+      ? `、LB蓄積が${synergy.battleEffect.limitBreakChargeMultiplier.toFixed(2)}倍`
+      : '';
+    const continuousPressure = synergy.battleEffect.continuousGaugePushPerSecond
+      ? `、継続圧力+${synergy.battleEffect.continuousGaugePushPerSecond.toFixed(2)}/秒`
+      : '';
+    const marketWindCounter = synergy.battleEffect.countersMarketWind
+      ? '、敵の相場風を解除して効果中の再発を防ぎます'
+      : '';
 
     return {
       key: `synergy:${synergy.id}`,
       kind: 'synergy',
       kicker: 'NEW SYNERGY',
       title: `${synergy.name} 解放`,
-      dialogue: `${synergy.name}が商戦の号令として使えるようになったでっす！ 新しい連携へ切り替えておいたでっす。`,
+      dialogue: `${synergy.name}が商戦シナジーとして使えるようになったでっす！ 新しいシナジーへ切り替えておいたでっす。`,
       detail: `${synergy.description} 発動すると${formatDuration(
         synergy.battleEffect.durationMs
-      )}、資金圧力が${synergy.battleEffect.capitalPressureMultiplier.toFixed(
+      )}、資本圧力が${synergy.battleEffect.capitalPressureMultiplier.toFixed(
         2
-      )}倍${ownershipPush}。使用回数は1争奪戦につき1回。`,
+      )}倍${ownershipPush}${limitBreakCharge}${continuousPressure}${marketWindCounter}。使用回数は1争奪戦につき1回。`,
       operation:
         '「アビリティ」画面のSYNERGY枠で選択し、商戦中に手動発動します。',
     };

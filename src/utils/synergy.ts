@@ -1,6 +1,7 @@
 import type { CommunityType, GroupSynergy } from '../types';
 
 export const GRAND_COMPANY_EORZEA_ID = 'GRAND_COMPANY_EORZEA';
+export const ERA_WIND_SYNERGY_ID = 'ERA_WIND_SYNERGY';
 
 export const isProgressionBattleSynergy = (synergy: GroupSynergy) =>
   synergy.battleOnly === true &&
@@ -10,12 +11,17 @@ export const isGroupSynergyUnlocked = ({
   synergy,
   ownedPropertyIds,
   conqueredCommunityIds,
+  savageClearedRaidIds = new Set<string>(),
 }: {
   synergy: GroupSynergy;
   ownedPropertyIds: ReadonlySet<string>;
   conqueredCommunityIds: ReadonlySet<CommunityType>;
+  savageClearedRaidIds?: ReadonlySet<string>;
 }) => {
   if (isProgressionBattleSynergy(synergy)) {
+    if (synergy.unlockAfterSavageRaidId) {
+      return savageClearedRaidIds.has(synergy.unlockAfterSavageRaidId);
+    }
     return !!synergy.unlockAfterCommunity &&
       conqueredCommunityIds.has(synergy.unlockAfterCommunity);
   }

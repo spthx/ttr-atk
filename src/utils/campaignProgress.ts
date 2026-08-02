@@ -12,19 +12,68 @@ const legacyFeatureConquestDepth: Readonly<Record<string, number>> = {
   critical_auto: 7,
 };
 
+const hasConnectedNetworkContact = (property: Property) =>
+  property.owner === 'player' || (property.reacquisitionLevel ?? 0) > 0;
+
+export const getCommunityNetworkProgress = (
+  properties: readonly Property[],
+  communityId: CommunityType
+) => {
+  const targets = getCampaignProperties(properties as Property[], communityId);
+  const available = targets.filter(
+    (property) => property.owner === 'player'
+  ).length;
+  const connected = targets.filter(
+    hasConnectedNetworkContact
+  ).length;
+  return {
+    available,
+    connected,
+    total: targets.length,
+    complete: targets.length > 0 && connected === targets.length,
+  };
+};
+
+export const hasCompletedCommunityNetwork = (
+  properties: readonly Property[],
+  communityId: CommunityType
+) => getCommunityNetworkProgress(properties, communityId).complete;
+
+export const wouldCompleteCommunityNetwork = (
+  properties: readonly Property[],
+  communityId: CommunityType,
+  acquiredPropertyId: string
+) => {
+  const targets = getCampaignProperties(properties as Property[], communityId);
+  return (
+    targets.length > 0 &&
+    targets.every(
+      (property) =>
+        hasConnectedNetworkContact(property) ||
+        property.id === acquiredPropertyId
+    )
+  );
+};
+
 export const getCurrentlyControlledCommunityIds = (
   properties: readonly Property[]
 ) =>
   COMMUNITY_CAMPAIGN_ORDER.filter((communityId) => {
-    const targets = getCampaignProperties(properties as Property[], communityId);
-    return (
-      targets.length > 0 &&
-      targets.every((property) => property.owner === 'player')
-    );
+    const progress = getCommunityNetworkProgress(properties, communityId);
+    return progress.total > 0 && progress.available === progress.total;
   });
 
+export const getCompletedCommunityNetworkIds = (
+  properties: readonly Property[]
+) =>
+  COMMUNITY_CAMPAIGN_ORDER.filter((communityId) =>
+    hasCompletedCommunityNetwork(properties, communityId)
+  );
+
 /**
- * Restores permanent campaign progress without breaking schema-v3 saves.
+ * Restores the permanent regional-network record without breaking schema-v3
+ * saves. Like an explored aether-current route, a completed connection stays
+ * open even if a supporting business later leaves the player.
  *
  * Owning anything in a later city proves every earlier route was unlocked at
  * some point, even if an earlier subsidiary has since become independent.
@@ -60,7 +109,7 @@ export const normalizeConqueredCommunityIds = ({
     includeThrough((legacyFeatureConquestDepth[unlockId] ?? 0) - 1);
   }
 
-  for (const communityId of getCurrentlyControlledCommunityIds(properties)) {
+  for (const communityId of getCompletedCommunityNetworkIds(properties)) {
     includeThrough(COMMUNITY_CAMPAIGN_ORDER.indexOf(communityId));
   }
 

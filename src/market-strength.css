@@ -333,6 +333,28 @@
   min-width: 0;
 }
 
+.trade-target-card__strategy-note {
+  display: grid;
+  gap: .18rem;
+  margin-top: .5rem;
+  padding: .5rem .6rem;
+  border: 1px solid rgba(250, 204, 21, .42);
+  border-radius: .6rem;
+  color: #fef3c7;
+  background: rgba(120, 53, 15, .16);
+  font-size: .7rem;
+  line-height: 1.45;
+}
+
+.trade-target-card__strategy-note b {
+  color: #facc15;
+  font-size: .72rem;
+}
+
+.trade-target-card__strategy-note span {
+  color: #fde68a;
+}
+
 .trade-target-card__challenge,
 .trade-target-card__owned-state {
   display: flex;

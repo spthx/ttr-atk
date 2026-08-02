@@ -13,6 +13,34 @@ export const BATTLE_CINEMATIC_TIMING = {
 export const RESULT_CONFIRM_ARM_DELAY_MS = 1_200;
 export const BATTLE_GAUGE_VISUAL_COMMIT_MS = 100;
 export const BATTLE_STATE_UPDATE_INTERVAL_MS = 100;
+export const ENEMY_SUPPORT_POST_PILE_GRACE_MS = 800;
+
+export const getBattleClockScales = ({
+  baseTimeScale,
+  simulationPaused,
+  capitalPileActive,
+  capitalPileAllowsCommandRecharge,
+  fullPresentationActive,
+}: {
+  baseTimeScale: number;
+  simulationPaused: boolean;
+  capitalPileActive: boolean;
+  capitalPileAllowsCommandRecharge: boolean;
+  fullPresentationActive: boolean;
+}) => {
+  const normalizedBaseTimeScale = Math.max(0, baseTimeScale);
+  const simulationTimeScale = simulationPaused ? 0 : normalizedBaseTimeScale;
+  const commandTimeScale =
+    simulationPaused &&
+    capitalPileActive &&
+    capitalPileAllowsCommandRecharge &&
+    !fullPresentationActive
+      ? normalizedBaseTimeScale
+      : simulationTimeScale;
+
+  return { commandTimeScale, simulationTimeScale };
+};
+
 export type BattleFrameRate = 30 | 60;
 export const BATTLE_GAUGE_FRAME_MS: Record<BattleFrameRate, number> = {
   30: 1_000 / 30,
@@ -91,25 +119,25 @@ const CAPITAL_COMMIT_TIMINGS: Record<
       prepareMs: 220,
       travelMs: 240,
       hitStopMs: 55,
-      settleMs: 590,
+      settleMs: 360,
       afterglowMs: 480,
-      totalMs: 1_585,
+      totalMs: 1_355,
     },
     medium: {
       prepareMs: 280,
       travelMs: 300,
       hitStopMs: 64,
-      settleMs: 700,
+      settleMs: 430,
       afterglowMs: 570,
-      totalMs: 1_914,
+      totalMs: 1_644,
     },
     heavy: {
       prepareMs: 400,
       travelMs: 440,
       hitStopMs: 88,
-      settleMs: 860,
+      settleMs: 520,
       afterglowMs: 760,
-      totalMs: 2_548,
+      totalMs: 2_208,
     },
   },
   compact: {
@@ -159,6 +187,35 @@ export const getCapitalCommitTiming = (
   };
 };
 
+export type CapitalPresentationRecoveryAction =
+  | 'none'
+  | 'release_stale'
+  | 'resume_terminal';
+
+/**
+ * Resolves an interrupted capital presentation without coupling the decision
+ * to React timers. A future Unity runner can feed the same visible/runtime
+ * snapshot after a scene reload and either keep waiting, release a stale lock,
+ * or continue a terminal handoff exactly once.
+ */
+export const getCapitalPresentationRecoveryAction = ({
+  ended,
+  hasVisiblePresentation,
+  runnerActive,
+  pendingTimerCount,
+  terminalHandoffPending,
+}: {
+  ended: boolean;
+  hasVisiblePresentation: boolean;
+  runnerActive: boolean;
+  pendingTimerCount: number;
+  terminalHandoffPending: boolean;
+}): CapitalPresentationRecoveryAction => {
+  if (ended || runnerActive || pendingTimerCount > 0) return 'none';
+  if (terminalHandoffPending) return 'resume_terminal';
+  return hasVisiblePresentation ? 'release_stale' : 'none';
+};
+
 export const shouldProcessGaugeFrame = (
   elapsedMs: number,
   frameRate: BattleFrameRate
@@ -169,7 +226,16 @@ export const shouldProcessGaugeFrame = (
  * Skills read as a short chain of deliberate beats instead of one crowded
  * frame: name card, actor wind-up, impact, then a brief readable result.
  */
-export const SKILL_CINEMATIC_TIMING = {
+export interface SkillCinematicTiming {
+  readonly nameMs: number;
+  readonly castMs: number;
+  readonly hitStopMs: number;
+  readonly impactMs: number;
+  readonly resolveMs: number;
+  readonly totalMs: number;
+}
+
+export const SKILL_CINEMATIC_TIMING: SkillCinematicTiming = {
   nameMs: 420,
   castMs: 460,
   hitStopMs: 90,
@@ -181,7 +247,7 @@ export const SKILL_CINEMATIC_TIMING = {
   totalMs: 2_230,
 } as const;
 
-export const REDUCED_MOTION_SKILL_CINEMATIC_TIMING = {
+export const REDUCED_MOTION_SKILL_CINEMATIC_TIMING: SkillCinematicTiming = {
   nameMs: 210,
   castMs: 220,
   hitStopMs: 42,
@@ -202,6 +268,151 @@ export const getSkillCinematicTiming = (reducedMotion = false) =>
   reducedMotion
     ? REDUCED_MOTION_SKILL_CINEMATIC_TIMING
     : SKILL_CINEMATIC_TIMING;
+
+export interface SkillCinematicTimelineState {
+  stage: SkillCinematicStage;
+  castDue: boolean;
+  effectDue: boolean;
+  completionDue: boolean;
+  nextTransitionInMs: number | null;
+}
+
+export interface SkillCinematicConsumedEvents {
+  cast: boolean;
+  effect: boolean;
+  completion: boolean;
+}
+
+export interface SkillCinematicEventDecision {
+  fireCast: boolean;
+  fireEffect: boolean;
+  fireCompletion: boolean;
+  waitForPresentation: boolean;
+  consumed: SkillCinematicConsumedEvents;
+}
+
+/**
+ * Pure projection for an ability/SYNERGY presentation. Consumers may render
+ * `stage` directly and consume each due event once per run. Keeping the event
+ * deadlines outside React lets another runtime (including Unity) resume the
+ * same presentation without an acknowledgement click or a chain of orphanable
+ * UI timers.
+ */
+export const getSkillCinematicTimelineState = (
+  elapsedMs: number,
+  timing: SkillCinematicTiming = SKILL_CINEMATIC_TIMING
+): SkillCinematicTimelineState => {
+  const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+  const castAt = timing.nameMs;
+  const effectAt = castAt + timing.castMs;
+  const impactAt = effectAt + timing.hitStopMs;
+  const resolveAt = impactAt + timing.impactMs;
+  const completeAt = resolveAt + timing.resolveMs;
+
+  if (elapsed >= completeAt) {
+    return {
+      stage: 'resolve',
+      castDue: true,
+      effectDue: true,
+      completionDue: true,
+      nextTransitionInMs: null,
+    };
+  }
+
+  if (elapsed >= resolveAt) {
+    return {
+      stage: 'resolve',
+      castDue: true,
+      effectDue: true,
+      completionDue: false,
+      nextTransitionInMs: completeAt - elapsed,
+    };
+  }
+
+  if (elapsed >= impactAt) {
+    return {
+      stage: 'impact',
+      castDue: true,
+      effectDue: true,
+      completionDue: false,
+      nextTransitionInMs: resolveAt - elapsed,
+    };
+  }
+
+  if (elapsed >= effectAt) {
+    return {
+      stage: 'hitstop',
+      castDue: true,
+      effectDue: true,
+      completionDue: false,
+      nextTransitionInMs: impactAt - elapsed,
+    };
+  }
+
+  if (elapsed >= castAt) {
+    return {
+      stage: 'cast',
+      castDue: true,
+      effectDue: false,
+      completionDue: false,
+      nextTransitionInMs: effectAt - elapsed,
+    };
+  }
+
+  return {
+    stage: 'name',
+    castDue: false,
+    effectDue: false,
+    completionDue: false,
+    nextTransitionInMs: castAt - elapsed,
+  };
+};
+
+/**
+ * Converts cumulative timeline deadlines into one-shot events. The caller owns
+ * the consumed flags, so re-running this decision after a render, timer replay,
+ * or runtime handoff cannot apply an effect or completion twice.
+ */
+export const getSkillCinematicEventDecision = ({
+  timeline,
+  consumed,
+  completionBlocked = false,
+  runMatches = true,
+}: {
+  timeline: SkillCinematicTimelineState;
+  consumed: SkillCinematicConsumedEvents;
+  completionBlocked?: boolean;
+  runMatches?: boolean;
+}): SkillCinematicEventDecision => {
+  if (!runMatches) {
+    return {
+      fireCast: false,
+      fireEffect: false,
+      fireCompletion: false,
+      waitForPresentation: false,
+      consumed,
+    };
+  }
+
+  const fireCast = timeline.castDue && !consumed.cast;
+  const fireEffect = timeline.effectDue && !consumed.effect;
+  const waitForPresentation =
+    timeline.completionDue && completionBlocked && !consumed.completion;
+  const fireCompletion =
+    timeline.completionDue && !completionBlocked && !consumed.completion;
+
+  return {
+    fireCast,
+    fireEffect,
+    fireCompletion,
+    waitForPresentation,
+    consumed: {
+      cast: consumed.cast || fireCast,
+      effect: consumed.effect || fireEffect,
+      completion: consumed.completion || fireCompletion,
+    },
+  };
+};
 
 export const getNextBattleSkillId = (
   skillIds: readonly string[],
@@ -615,15 +826,15 @@ export interface MechanicalCapitalColumnFrame {
 }
 
 export const CAPITAL_STACK_BEAT_MS = {
-  standard: 32,
-  heavy: 24,
-  compact: 22,
+  standard: 18,
+  heavy: 16,
+  compact: 16,
 } as const;
 
 export const CAPITAL_OVERFLOW_RESTACK_BEATS = {
-  standard: 12,
-  heavy: 10,
-  compact: 10,
+  standard: 8,
+  heavy: 6,
+  compact: 6,
 } as const;
 
 const getCapitalSweepGroups = (

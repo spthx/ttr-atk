@@ -12,6 +12,32 @@ export interface PendingBattleSession {
   startedAt: number;
 }
 
+/**
+ * A result save is committed before the recovery marker is removed. If the
+ * page is interrupted in that narrow window, the newer authoritative save
+ * means the marker is only a stale remnant and must not reopen the settled
+ * battle. Keeping this as a timestamp-only rule also supports replaying an
+ * already-cleared high-end encounter: its start marker is newer than the save
+ * taken immediately before that attempt.
+ */
+export const shouldRestorePendingBattleSession = (
+  session: PendingBattleSession,
+  latestSavedAt: number | null | undefined
+) =>
+  !Number.isFinite(latestSavedAt) ||
+  (latestSavedAt as number) <= session.startedAt;
+
+/**
+ * Normal encounters must still exist in the current authored campaign. This
+ * prevents an interrupted battle against a retired business from reopening as
+ * an unwinnable "ghost" encounter after a data update. High-end encounters use
+ * their own stable raid IDs and are intentionally unaffected.
+ */
+export const isPendingBattleTargetAvailable = (
+  session: PendingBattleSession,
+  normalPropertyIds: ReadonlySet<string>
+) => session.mode !== 'normal' || normalPropertyIds.has(session.targetProperty.id);
+
 const BATTLE_MODES: readonly BattleMode[] = [
   'normal',
   'savage',

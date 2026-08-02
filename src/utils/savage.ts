@@ -67,7 +67,6 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     battlePropertyId: 'prop_starter_farm',
     memberPropertyIds: [
       'prop_starter_farm',
-      'prop_starter_bakery',
       'prop_timber_ake',
     ],
     communities: ['グリダニア'],
@@ -82,7 +81,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     layer: 2,
     encounterName: '黒潮輸送共同体',
     coalitionName: 'バイルブランド海陸運連合',
-    battlePropertyId: 'prop_blacksmith',
+    battlePropertyId: 'prop_land_transport',
     memberPropertyIds: ['prop_land_transport'],
     communities: ['リムサ・ロミンサ'],
     rewardSynergyIds: [],
@@ -99,7 +98,6 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     battlePropertyId: 'prop_wheat_farm',
     memberPropertyIds: [
       'prop_brewery_beer',
-      'prop_pub_central',
     ],
     communities: ['リムサ・ロミンサ', 'ウルダハ'],
     rewardSynergyIds: ['EORZEA_FOOD_ROUTE'],
@@ -131,7 +129,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     encounterName: '蒼天畜産共同体',
     coalitionName: 'クルザス生産者連盟',
     battlePropertyId: 'prop_ranch_1',
-    memberPropertyIds: ['prop_ranch_1', 'prop_horse_meat'],
+    memberPropertyIds: ['prop_ranch_1'],
     communities: ['イシュガルド'],
     rewardSynergyIds: [],
     marketPrice: 3_200_000_000,
@@ -145,7 +143,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     encounterName: '蒼天産業共同体',
     coalitionName: 'イシュガルド機工防衛会',
     battlePropertyId: 'prop_weapon_dealer',
-    memberPropertyIds: ['prop_blacksmith', 'prop_weapon_dealer'],
+    memberPropertyIds: ['prop_weapon_dealer'],
     communities: ['イシュガルド'],
     rewardSynergyIds: ['ISHGARD_DEFENSE_INDUSTRY'],
     marketPrice: 3_400_000_000,
@@ -237,6 +235,31 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
       '資源調達から販売網までを束ねた最終層。無敵防衛を含む全システムの総力戦です。',
   },
 ] as const;
+
+/**
+ * Presentation-only disclosure policy shared by the web UI and a future
+ * native client: open only the series containing the next playable chapter.
+ */
+export const getDefaultOpenSavageSeries = ({
+  clearedIds,
+  unlockedIds,
+}: {
+  clearedIds: readonly string[];
+  unlockedIds: readonly string[];
+}): SavageSeries | null => {
+  const cleared = new Set(clearedIds);
+  if (SAVAGE_RAID_DEFINITIONS.every((raid) => cleared.has(raid.id))) {
+    return null;
+  }
+  const unlocked = new Set(unlockedIds);
+  return (
+    SAVAGE_RAID_DEFINITIONS.find(
+      (raid) => unlocked.has(raid.id) && !cleared.has(raid.id)
+    )?.series ??
+    SAVAGE_RAID_DEFINITIONS.find((raid) => !cleared.has(raid.id))?.series ??
+    null
+  );
+};
 
 export const ULTIMATE_RAID_ID = 'ultimate_starwide_trade';
 

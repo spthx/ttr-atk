@@ -23,6 +23,9 @@ const JOB_ART_BY_JOB = {
   paladin: JOB_ART[0],
   warrior: JOB_ART[1],
   darkKnight: JOB_ART[2],
+  // The same lightweight fan-kit asset can serve both semantic lookups. Keep
+  // the alias explicit so authored battle data never depends on array order.
+  blackMage: JOB_ART[2],
   gunbreaker: JOB_ART[3],
   monk: JOB_ART[4],
   samurai: JOB_ART[5],

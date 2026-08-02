@@ -3,6 +3,8 @@ import type { AllianceState, CommunityType, Property } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
 import { LIMIT_BREAK_MAX_CHARGE } from './gameBalance';
 import type { SavageProgressVersion } from './savage';
+import { normalizeAbilityLoadout } from './abilityLoadout';
+import { ERA_WIND_SYNERGY_ID } from './synergy';
 
 export const SAVE_SCHEMA_VERSION = 3;
 export const SAVE_STORAGE_KEY = 'tataru-world-trade-save-v3';
@@ -23,9 +25,11 @@ export interface GameSaveData {
   totalFunds: number;
   properties: SavedPropertyState[];
   equippedSkillIds: string[];
-  /** Optional schema-v3 additions. AUTO skills still consume the existing eight equipment slots. */
+  /** Optional schema-v3 additions. AUTO skills consume the six-role loadout. */
   openingAutoSkillId?: string | null;
   criticalAutoSkillId?: string | null;
+  /** One learned ability kept outside the five battle-active slots. */
+  reserveSkillId?: string | null;
   alliance: AllianceState;
   /** Optional so schema v3 saves created before staged unlocks stay compatible. */
   seenUnlockIds?: string[];
@@ -57,6 +61,8 @@ export interface GameSaveData {
 }
 
 const knownSkillIds = new Set(INITIAL_SKILLS.map((skill) => skill.id));
+const LEGACY_ERA_WIND_SKILL_ID = 'skill_era_wind';
+const ERA_WIND_UNLOCK_RAID_ID = 'savage_raid_2_layer_2';
 
 export const normalizeAutoSkillLoadout = ({
   equippedSkillIds,
@@ -90,6 +96,27 @@ export const normalizeAutoSkillLoadout = ({
     criticalAutoSkillId: normalizedCriticalAutoSkillId,
   };
 };
+
+export const normalizeSavedAbilityLoadout = ({
+  equippedSkillIds,
+  openingAutoSkillId,
+  criticalAutoSkillId,
+  reserveSkillId,
+  validSkillIds = knownSkillIds,
+}: {
+  equippedSkillIds: readonly string[];
+  openingAutoSkillId: unknown;
+  criticalAutoSkillId: unknown;
+  reserveSkillId: unknown;
+  validSkillIds?: ReadonlySet<string>;
+}) =>
+  normalizeAbilityLoadout({
+    equippedSkillIds,
+    openingAutoSkillId,
+    criticalAutoSkillId,
+    reserveSkillId,
+    validSkillIds,
+  });
 
 export const normalizeLimitBreakCharge = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value)
@@ -166,22 +193,30 @@ export const loadGameSave = (): GameSaveData | null => {
       return null;
     }
 
-    const equippedSkillIds = parsed.equippedSkillIds.filter((skillId) =>
-      knownSkillIds.has(skillId)
-    );
-    const autoSkillLoadout = normalizeAutoSkillLoadout({
-      equippedSkillIds,
+    const abilityLoadout = normalizeSavedAbilityLoadout({
+      equippedSkillIds: parsed.equippedSkillIds,
       openingAutoSkillId: parsed.openingAutoSkillId,
       criticalAutoSkillId: parsed.criticalAutoSkillId,
+      reserveSkillId: parsed.reserveSkillId,
     });
+    const migratedSelectedBattleSynergyId =
+      parsed.equippedSkillIds.includes(LEGACY_ERA_WIND_SKILL_ID) &&
+      Array.isArray(parsed.savageClearedPropertyIds) &&
+      parsed.savageClearedPropertyIds.includes(ERA_WIND_UNLOCK_RAID_ID)
+        ? ERA_WIND_SYNERGY_ID
+        : typeof parsed.selectedBattleSynergyId === 'string'
+          ? parsed.selectedBattleSynergyId
+          : null;
 
     return {
       schemaVersion: SAVE_SCHEMA_VERSION,
       companyName: parsed.companyName.trim(),
       totalFunds: Math.max(0, parsed.totalFunds),
       properties: parsed.properties,
-      equippedSkillIds,
-      ...autoSkillLoadout,
+      equippedSkillIds: abilityLoadout.equippedSkillIds,
+      openingAutoSkillId: abilityLoadout.openingAutoSkillId,
+      criticalAutoSkillId: abilityLoadout.criticalAutoSkillId,
+      reserveSkillId: abilityLoadout.reserveSkillId,
       alliance: normalizeAllianceState(parsed.alliance),
       seenUnlockIds: Array.isArray(parsed.seenUnlockIds)
         ? parsed.seenUnlockIds.filter((id): id is string => typeof id === 'string')
@@ -210,10 +245,7 @@ export const loadGameSave = (): GameSaveData | null => {
       cruelCleared: parsed.cruelCleared === true,
       trueEndingSeen:
         parsed.ultimateCleared === true && parsed.trueEndingSeen === true,
-      selectedBattleSynergyId:
-        typeof parsed.selectedBattleSynergyId === 'string'
-          ? parsed.selectedBattleSynergyId
-          : null,
+      selectedBattleSynergyId: migratedSelectedBattleSynergyId,
       grandCompanyEorzeaIntegrated:
         parsed.grandCompanyEorzeaIntegrated === true,
       passiveIncomePaused: false,

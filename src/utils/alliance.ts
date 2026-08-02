@@ -1,5 +1,4 @@
 import type { AllianceState, Property } from '../types';
-import { applyRepeatedNetworkSupportDecay } from './gameBalance';
 
 // An external alliance is the risk-free, once-per-battle counterpart to one
 // full-strength network request. It does not add to LB and cannot provide
@@ -21,11 +20,5 @@ export const shouldBreakAllianceForTarget = (
   alliance.allyName.length > 0 &&
   targetProperty.ownerName.includes(alliance.allyName);
 
-export const calculateAllianceSupport = (
-  marketPrice: number,
-  previousNetworkSupportUses = 0
-) =>
-  applyRepeatedNetworkSupportDecay(
-    Math.max(0, marketPrice) * ALLIANCE_SUPPORT_MARKET_RATIO,
-    previousNetworkSupportUses
-  );
+export const calculateAllianceSupport = (marketPrice: number) =>
+  Math.round(Math.max(0, marketPrice) * ALLIANCE_SUPPORT_MARKET_RATIO);

@@ -72,11 +72,12 @@ export interface TacticalSkill {
     | 'COOLDOWN_REDUCTION' // 疾風怒濤の計
     | 'NEMAWASHI' // Legacy effect type retained for older saves/content.
     | 'INDEPENDENCE_SABOTAGE' // スタン（旧IDを維持。敵の予告を1回中断）
-    | 'COVER' // かばう（旧skill_demoralize IDを維持）
+    | 'COVER' // パッセージ・オブ・アームズ（旧skill_demoralize IDを維持）
+    | 'BARRIER' // ディヴァインベニゾン（旧skill_synergy_push IDを維持）
     | 'CAPITAL_BOOST' // 意気衝天
     | 'LIVING_DEAD' // リビングデッド（旧skill_sns_blitz IDを維持）
-    | 'SYNERGY_PUSH' // バトルリタニー
-    | 'ERA_WIND'; // 時代の風（本作の持続逆転アビリティ）
+    | 'SYNERGY_PUSH' // Legacy presentation value kept for older saved content.
+    | 'ERA_WIND'; // Legacy presentation value kept for older saved content.
   unlockRequirements: string; // Text description
   requiredIndustries?: IndustryType[];
   requiredPropertyIds?: string[];
@@ -107,6 +108,8 @@ export interface GroupSynergy {
    */
   battleOnly?: boolean;
   unlockAfterCommunity?: CommunityType;
+  /** Optional high-end milestone; derived from the existing Savage clear IDs. */
+  unlockAfterSavageRaidId?: string;
   selectionPriority?: number;
   battleEffect?: {
     kind: 'timed_capital_buff';
@@ -114,6 +117,12 @@ export interface GroupSynergy {
     capitalPressureMultiplier: number;
     /** Immediate ownership rally when the manual order lands. */
     ownershipPush?: number;
+    /** Multiplies only LB charge gain while this battle-only buff is active. */
+    limitBreakChargeMultiplier?: number;
+    /** Adds a bounded continuous push without changing invested capital. */
+    continuousGaugePushPerSecond?: number;
+    /** Clears enemy market manipulation and suspends random wind while active. */
+    countersMarketWind?: boolean;
     oncePerBattle: boolean;
   };
 }
@@ -194,9 +203,9 @@ export interface BattleResult {
   settlementCost: number;
   battleCashDelta: number;
   victoryReward: number;
-  /** 勝利報酬から人脈全体へ均等に分配した総額。 */
+  /** 勝利利益から人脈全体へ均等に分配した総額。 */
   celebrationGiftCost: number;
-  /** 独占は0、山分けは勝利報酬全体の50%。 */
+  /** 独占は0、山分けは勝利利益全体の50%。 */
   celebrationGiftRate: 0 | 0.5;
   rebelledProperties: Property[];
   survivingRiskUpdates: Array<{

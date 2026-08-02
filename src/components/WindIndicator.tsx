@@ -90,12 +90,11 @@ export const WIND_ACTIVE_SECONDS = 10;
 export const WIND_CALM_SECONDS = 16;
 
 export const getWindProgressionStage = (
-  conqueredCommunityCount: number,
-  ownedPropertyCount: number
+  connectedCommunityCount: number
 ): WindProgressionStage => {
-  if (conqueredCommunityCount < 1 || ownedPropertyCount < 4) return 0;
-  if (conqueredCommunityCount < 2) return 1;
-  if (conqueredCommunityCount < 3) return 2;
+  if (connectedCommunityCount < 1) return 0;
+  if (connectedCommunityCount < 2) return 1;
+  if (connectedCommunityCount < 3) return 2;
   return 3;
 };
 

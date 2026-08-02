@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
-import { INITIAL_PROPERTIES } from '../src/data/initialData';
+import {
+  INITIAL_GROUP_SYNERGIES,
+  INITIAL_PROPERTIES,
+} from '../src/data/initialData';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
 import { decideEnemyAction } from '../src/utils/enemyAi';
+import {
+  CRUEL_SCRIPTED_BATTLE,
+  DIVINE_BENISON_BALANCE,
+  ENEMY_SUPPORT_ACTIONS,
+  SAVAGE_ENEMY_AUTO_PROFILES,
+  SAVAGE_ENEMY_SUPPORT_PROFILES,
+  type CruelScriptPhase,
+} from '../src/data/battleEncounterData';
 import {
   advanceBattleCashRecovery,
   applyTrainingGaugeSpeed,
@@ -16,8 +27,8 @@ import {
   calculateSubsidiarySupportAmount,
   ENEMY_INITIAL_COMMITMENT_RATIO,
   ENEMY_SUPPORT_SKILL_BALANCE,
+  applyDivineBenisonToGaugeDelta,
   applyCoverToGaugeDelta,
-  applyEnemyCureRecovery,
   canEnemyAffordDrill,
   getEnemyDivinationDurationMs,
   getEnemyDifficultyLevel,
@@ -29,7 +40,9 @@ import {
   getBossAbilityTier,
   getCampaignProperties,
   LIMIT_BREAK_OWNERSHIP_CAPS,
-  shouldEnemyUseCure,
+  resolveEnemyDrainTransfer,
+  shouldEnemyUseDivineBenison,
+  shouldForceUltimateCriticalBeforeVictory,
   TACTICAL_SKILL_BALANCE,
   HIGH_DIFFICULTY_SUPPORT_MULTIPLIER,
   ULTIMATE_ENEMY_AUTO_PATTERNS,
@@ -47,15 +60,15 @@ import {
   buildUltimateProperty,
 } from '../src/utils/savage';
 import {
-  calculateCruelOmnicapitalizationImpact,
-  shouldTriggerCruelOmnicapitalization,
+  resolveCruelFirstImpact,
+  resolveCruelSecondImpact,
+  shouldHoldCruelVictory,
+  shouldTriggerCruelFirstPhase,
+  shouldTriggerCruelSecondPhase,
 } from '../src/utils/cruelBattle';
-import {
-  buildTrainingDummyProperty,
-  TRAINING_DUMMY_DEFINITIONS,
-} from '../src/utils/trainingDummy';
 import type { PlayerBattleAction } from '../src/utils/enemyAi';
 import type { Property } from '../src/types';
+import { ALLIANCE_SUPPORT_MARKET_RATIO } from '../src/utils/alliance';
 
 const NO_INFLUENCE = { enemyBudgetDiscount: 0 };
 const STEP_SECONDS = 0.05;
@@ -80,11 +93,14 @@ interface SimulationScenario {
   isCityBoss?: boolean;
   isSavage?: boolean;
   isUltimate?: boolean;
+  isCruel?: boolean;
   ultimateAutoPatternIndex?: number;
   disableEnemySupport?: boolean;
   maxSeconds?: number;
   playerBaselineCash?: number;
   openingCapitalBoostRatio?: number;
+  openingAllianceSupportRatio?: number;
+  openingPlayerPassage?: boolean;
   influenceBonus?: number;
   supportSources?: readonly Property[];
   supportAfterDirectActions?: (supportIndex: number, seed: number) => number;
@@ -94,6 +110,8 @@ interface SimulationScenario {
     durationSeconds: number;
     multiplier: number;
     ownershipPush: number;
+    continuousGaugePushPerSecond?: number;
+    limitBreakChargeMultiplier?: number;
   };
   preparedLimitBreak?: {
     tier: LimitBreakTier;
@@ -122,66 +140,37 @@ interface SimulationResult {
 
 const createEnemySupportActivationCounts =
   (): EnemySupportActivationCounts => ({
-    cure: 0,
-    mug: 0,
+    divine_benison: 0,
+    drain: 0,
     drill: 0,
     divination: 0,
     rapid_assault: 0,
     limit_break_3: 0,
     omnicapitalization: 0,
+    cruel_reckoning: 0,
   });
 
-const ENEMY_SUPPORT_PRESENTATION = {
-  cure: {
-    telegraphSeconds: 0.52,
-    castSeconds: 1.2,
-    impactSeconds: 0.36,
-    afterglowSeconds: 0.72,
-    leavingSeconds: 0.62,
-  },
-  mug: {
-    telegraphSeconds: 0.48,
-    castSeconds: 0.65,
-    impactSeconds: 0.3,
-    afterglowSeconds: 0.7,
-    leavingSeconds: 0.62,
-  },
-  drill: {
-    telegraphSeconds: 1.6,
-    castSeconds: 1.1,
-    impactSeconds: 0.42,
-    afterglowSeconds: 0.78,
-    leavingSeconds: 0.65,
-  },
-  divination: {
-    telegraphSeconds: 0.7,
-    castSeconds: 1.1,
-    impactSeconds: 0.36,
-    afterglowSeconds: 0.76,
-    leavingSeconds: 0.65,
-  },
-  rapid_assault: {
-    telegraphSeconds: 0.62,
-    castSeconds: 0.9,
-    impactSeconds: 0.34,
-    afterglowSeconds: 0.72,
-    leavingSeconds: 0.62,
-  },
-  limit_break_3: {
-    telegraphSeconds: 1.8,
-    castSeconds: 1.4,
-    impactSeconds: 0.52,
-    afterglowSeconds: 0.9,
-    leavingSeconds: 0.72,
-  },
-  omnicapitalization: {
-    telegraphSeconds: 4.5,
-    castSeconds: 0.9,
-    impactSeconds: 0.52,
-    afterglowSeconds: 1.1,
-    leavingSeconds: 0.52,
-  },
-} as const;
+const ENEMY_SUPPORT_PRESENTATION = Object.fromEntries(
+  Object.entries(ENEMY_SUPPORT_ACTIONS).map(([skillId, action]) => [
+    skillId,
+    {
+      telegraphSeconds: action.telegraphMs / 1_000,
+      castSeconds: action.castMs / 1_000,
+      impactSeconds: action.impactMs / 1_000,
+      afterglowSeconds: action.afterglowMs / 1_000,
+      leavingSeconds: action.leavingMs / 1_000,
+    },
+  ])
+) as Record<
+  EnemySupportSkillId,
+  {
+    telegraphSeconds: number;
+    castSeconds: number;
+    impactSeconds: number;
+    afterglowSeconds: number;
+    leavingSeconds: number;
+  }
+>;
 
 interface PendingEnemySupport {
   skill: EnemySupportSkillId;
@@ -211,21 +200,24 @@ const simulateBattle = (
   const isTutorial = scenario.isTutorial ?? false;
   const isSavage = scenario.isSavage ?? false;
   const isUltimate = scenario.isUltimate ?? false;
+  const isCruel = scenario.isCruel ?? false;
   const enemySupportProfile = scenario.disableEnemySupport
     ? []
     : getEnemySupportSkillProfile({
         targetProperty: scenario.target,
         isCityBoss: scenario.isCityBoss ?? false,
-        isSavage,
-        isUltimate,
+         isSavage,
+         isUltimate,
+         isCruel,
       });
   const enemySupportAutoProfile = scenario.disableEnemySupport
     ? { opening: null, critical: null }
     : getEnemySupportAutoProfile({
         targetProperty: scenario.target,
         isCityBoss: scenario.isCityBoss ?? false,
-        isSavage,
-        isUltimate,
+         isSavage,
+         isUltimate,
+         isCruel,
         ultimatePatternIndex: scenario.ultimateAutoPatternIndex,
       });
   const enemyBossDefenseTier = getBossAbilityTier({
@@ -233,6 +225,7 @@ const simulateBattle = (
     isCityBoss: scenario.isCityBoss ?? false,
     isSavage,
     isUltimate,
+    isCruel,
   });
   const enemyBossDefenseBalance =
     enemyBossDefenseTier === 'invincible'
@@ -255,7 +248,8 @@ const simulateBattle = (
     isTutorial,
     isSavage,
     isUltimate,
-    scenario.isCityBoss ?? false
+    scenario.isCityBoss ?? false,
+    isCruel
   );
   const enemyBudget = isTraining
     ? marketPrice
@@ -266,6 +260,7 @@ const simulateBattle = (
         isTutorial,
         isSavage,
         isUltimate,
+        isCruel,
         isCityBoss: scenario.isCityBoss ?? false,
       });
   const initialEnemyCommitment = isTraining
@@ -277,7 +272,9 @@ const simulateBattle = (
 
   let gauge = 0;
   let playerInvested =
-    marketPrice * (scenario.openingCapitalBoostRatio ?? 0);
+    marketPrice *
+    ((scenario.openingCapitalBoostRatio ?? 0) +
+      (scenario.openingAllianceSupportRatio ?? 0));
   let enemyInvested = initialEnemyCommitment;
   let playerCash = playerBaselineCash;
   let enemyReserve = enemyBudget - initialEnemyCommitment;
@@ -293,20 +290,37 @@ const simulateBattle = (
   let supportActions = 0;
   const supportUseCounts: Record<string, number> = {};
   let wallSeconds = 0;
-  let mugMarkActive = false;
+  let enemyBenisonRemainingSeconds = 0;
+  let enemyBenisonCapacity = 0;
+  let playerPassageRemainingSeconds = scenario.openingPlayerPassage
+    ? TACTICAL_SKILL_BALANCE.cover.durationMs / 1_000
+    : 0;
+  let playerPassageCapacity = scenario.openingPlayerPassage
+    ? TACTICAL_SKILL_BALANCE.cover.gaugeCapacity
+    : 0;
   let divinationRemainingSeconds = 0;
   let rapidAssaultRemainingSeconds = 0;
+  let enemyLimitBreakHoldRemainingSeconds = 0;
+  let cruelPhase: CruelScriptPhase = isCruel
+    ? 'awaiting_first'
+    : 'inactive';
+  let cruelActiveSeconds = 0;
+  let cruelRecoverySeconds = 0;
   let maximumPlayerRecoveryRatio = 0;
   let maximumEnemyRecoveryRatio = 0;
   let minimumEnemyReserve = enemyReserve;
   let pendingEnemySupport: PendingEnemySupport | null = null;
+  let cruelSecondFailurePending = false;
   let enemyBossDefenseUsed = false;
   let enemyActiveBossDefenseBalance:
-    | (typeof BOSS_COVER_BALANCE)[
-        | 'cover'
-        | 'enhancedCover'
-        | 'invincible']
+    | {
+        durationMs: number;
+        absorbRatio: number;
+        gaugeCapacity: number;
+        counterCapitalRatio: number;
+      }
     | null = openingBossDefenseBalance;
+  let enemyActiveBossDefenseTier = openingBossAbilityTier;
   let enemyBossDefenseRemainingSeconds = openingBossDefenseBalance
     ? openingBossDefenseBalance.durationMs / 1_000
     : 0;
@@ -315,6 +329,7 @@ const simulateBattle = (
   let enemyBossDefenseActivations =
     openingBossDefenseBalance ? 1 : 0;
   let enemyBossDefenseAbsorbedGauge = 0;
+  let ultimateCriticalGateConsumed = false;
   let timedCapitalBuffUsed = false;
   let preparedLimitBreakUsed = false;
   let timedCapitalBuffRemainingSeconds = 0;
@@ -325,9 +340,47 @@ const simulateBattle = (
   const enemySupportActivations =
     createEnemySupportActivationCounts();
 
+  const commitEnemyGuardCapital = (counterCapitalRatio: number) => {
+    const guardCapital = Math.min(
+      enemyReserve,
+      Math.round(marketPrice * counterCapitalRatio)
+    );
+    enemyReserve -= guardCapital;
+    enemyInvested += guardCapital;
+    minimumEnemyReserve = Math.min(minimumEnemyReserve, enemyReserve);
+  };
+  if (openingBossDefenseBalance) {
+    commitEnemyGuardCapital(openingBossDefenseBalance.counterCapitalRatio);
+  }
+
+  const applyEnemyGaugeCandidate = (nextGauge: number) => {
+    if (nextGauge <= gauge) {
+      gauge = nextGauge;
+      return;
+    }
+    if (
+      playerPassageRemainingSeconds > 0 &&
+      playerPassageCapacity > 0
+    ) {
+      const passage = applyCoverToGaugeDelta({
+        currentGauge: gauge,
+        nextGauge,
+        protects: 'player',
+        absorbRatio: TACTICAL_SKILL_BALANCE.cover.absorbRatio,
+        remainingGaugeCapacity: playerPassageCapacity,
+      });
+      nextGauge = passage.nextGauge;
+      playerPassageCapacity = passage.remainingGaugeCapacity;
+      if (playerPassageCapacity <= 0) {
+        playerPassageRemainingSeconds = 0;
+      }
+    }
+    gauge = nextGauge;
+  };
+
   const applyPlayerGaugeCandidate = (nextGauge: number) => {
     if (nextGauge >= gauge) {
-      gauge = nextGauge;
+      applyEnemyGaugeCandidate(nextGauge);
       return;
     }
     const predictedPlayerOwnership = (100 - nextGauge) / 2;
@@ -335,6 +388,7 @@ const simulateBattle = (
       enemyBossDefenseBalance &&
       !enemyBossDefenseUsed &&
       enemyBossDefenseRemainingSeconds <= 0 &&
+      (enemyBenisonRemainingSeconds <= 0 || enemyBenisonCapacity <= 0) &&
       predictedPlayerOwnership >=
         BOSS_COVER_BALANCE.triggerPlayerOwnership
     ) {
@@ -345,6 +399,8 @@ const simulateBattle = (
       enemyBossDefenseCapacity =
         enemyBossDefenseBalance.gaugeCapacity;
       enemyActiveBossDefenseBalance = enemyBossDefenseBalance;
+      enemyActiveBossDefenseTier = enemyBossDefenseTier;
+      commitEnemyGuardCapital(enemyBossDefenseBalance.counterCapitalRatio);
     }
     if (
       enemyBossDefenseRemainingSeconds > 0 &&
@@ -363,6 +419,23 @@ const simulateBattle = (
       if (enemyBossDefenseCapacity <= 0) {
         enemyBossDefenseRemainingSeconds = 0;
         enemyActiveBossDefenseBalance = null;
+        enemyActiveBossDefenseTier = 'none';
+      }
+    }
+    if (
+      enemyBenisonRemainingSeconds > 0 &&
+      enemyBenisonCapacity > 0
+    ) {
+      const barrier = applyDivineBenisonToGaugeDelta({
+        currentGauge: gauge,
+        nextGauge,
+        protects: 'opponent',
+        remainingGaugeCapacity: enemyBenisonCapacity,
+      });
+      nextGauge = barrier.nextGauge;
+      enemyBenisonCapacity = barrier.remainingGaugeCapacity;
+      if (enemyBenisonCapacity <= 0) {
+        enemyBenisonRemainingSeconds = 0;
       }
     }
     gauge = nextGauge;
@@ -370,6 +443,27 @@ const simulateBattle = (
 
   const finish = (): SimulationResult | null => {
     if (gauge <= -100) {
+      if (shouldHoldCruelVictory(isCruel, cruelPhase)) {
+        gauge = -98;
+        return null;
+      }
+      if (
+        shouldForceUltimateCriticalBeforeVictory({
+          isUltimate,
+          terminalWinner: 'player',
+          criticalSkillId: enemySupportAutoProfile.critical,
+          criticalSkillUsed:
+            !!enemySupportAutoProfile.critical &&
+            usedEnemySupportSkills.has(enemySupportAutoProfile.critical),
+          gateConsumed: ultimateCriticalGateConsumed,
+          enemyReserve,
+          enemyBudget,
+        })
+      ) {
+        ultimateCriticalGateConsumed = true;
+        gauge = -98;
+        return null;
+      }
       return {
         winner: 'player',
         wallSeconds,
@@ -410,41 +504,71 @@ const simulateBattle = (
   const resolveEnemySupportImpact = (
     skill: EnemySupportSkillId
   ) => {
-    if (skill === 'cure') {
-      const recovery = applyEnemyCureRecovery({
-        baselineFunds: enemyBudget,
-        availableFunds: enemyReserve,
-        cumulativeRecovered: enemyRecovered,
-        isSavage,
-        isUltimate,
+    if (skill === 'divine_benison') {
+      enemyBenisonRemainingSeconds =
+        DIVINE_BENISON_BALANCE.durationMs / 1_000;
+      enemyBenisonCapacity = DIVINE_BENISON_BALANCE.gaugeCapacity;
+    } else if (skill === 'drain') {
+      const transfer = resolveEnemyDrainTransfer({
+        playerCash,
+        enemyReserve,
+        marketPrice,
       });
-      enemyReserve = recovery.availableFunds;
-      enemyRecovered = recovery.cumulativeRecovered;
-    } else if (skill === 'mug') {
-      mugMarkActive = true;
+      playerCash = transfer.playerCash;
+      enemyReserve = transfer.enemyReserve;
     } else if (skill === 'drill') {
       const impact = getEnemyDrillImpact({
         enemyBudget,
-        hasMugMark: mugMarkActive,
         isSavage,
         isUltimate,
+        isCruel,
       });
       if (enemyReserve >= impact.reserveCost) {
         enemyReserve -= impact.reserveCost;
-        gauge += impact.gaugeDelta;
-        if (impact.consumesMugMark) mugMarkActive = false;
+        applyEnemyGaugeCandidate(gauge + impact.gaugeDelta);
       }
     } else if (skill === 'divination') {
       divinationRemainingSeconds =
         getEnemyDivinationDurationMs({
           isSavage,
           isUltimate,
+          isCruel,
         }) / 1_000;
     } else if (skill === 'rapid_assault') {
       rapidAssaultRemainingSeconds =
         ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.durationMs / 1_000;
     } else if (skill === 'limit_break_3') {
-      gauge += ENEMY_SUPPORT_SKILL_BALANCE.limitBreak3.gaugeDelta;
+      const capitalSupport = Math.min(
+        enemyReserve,
+        Math.round(
+          marketPrice *
+            ENEMY_SUPPORT_SKILL_BALANCE.limitBreak3.capitalSupportRatio
+        )
+      );
+      enemyReserve -= capitalSupport;
+      enemyInvested += capitalSupport;
+      applyEnemyGaugeCandidate(
+        gauge + ENEMY_SUPPORT_SKILL_BALANCE.limitBreak3.gaugeDelta
+      );
+      enemyLimitBreakHoldRemainingSeconds =
+        ENEMY_SUPPORT_SKILL_BALANCE.limitBreak3.momentumHoldMs / 1_000;
+    } else if (skill === 'omnicapitalization') {
+      const ownership = (100 - gauge) / 2;
+      gauge = 100 - resolveCruelFirstImpact(ownership) * 2;
+      cruelPhase = 'recovery';
+      cruelRecoverySeconds = 0;
+    } else if (skill === 'cruel_reckoning') {
+      const ownership = (100 - gauge) / 2;
+      const result = resolveCruelSecondImpact(ownership);
+      gauge = 100 - result.ownershipAfter * 2;
+      if (result.outcome === 'break') {
+        enemyInvested *= 1 - CRUEL_SCRIPTED_BATTLE.bossBreakCapitalRatio;
+        enemyReserve = 0;
+        cruelPhase = 'resolved';
+      } else {
+        cruelSecondFailurePending = true;
+        cruelPhase = 'second_failed';
+      }
     }
 
     minimumEnemyReserve = Math.min(
@@ -460,6 +584,7 @@ const simulateBattle = (
   while (wallSeconds < (scenario.maxSeconds ?? MAX_SECONDS)) {
     wallSeconds += STEP_SECONDS;
 
+    let interactiveCruelCountdown = false;
     if (pendingEnemySupport) {
       pendingEnemySupport.impactRemainingSeconds -= STEP_SECONDS;
       pendingEnemySupport.completeRemainingSeconds -= STEP_SECONDS;
@@ -469,13 +594,28 @@ const simulateBattle = (
       ) {
         pendingEnemySupport.impacted = true;
         resolveEnemySupportImpact(pendingEnemySupport.skill);
-        const terminal = finish();
-        if (terminal) return terminal;
+        if (!cruelSecondFailurePending) {
+          const terminal = finish();
+          if (terminal) return terminal;
+        }
       }
       if (pendingEnemySupport.completeRemainingSeconds <= 0) {
         pendingEnemySupport = null;
+        if (cruelSecondFailurePending) {
+          cruelSecondFailurePending = false;
+          const terminal = finish();
+          if (terminal) return terminal;
+        }
       }
-      continue;
+      interactiveCruelCountdown = !!(
+        pendingEnemySupport &&
+        !pendingEnemySupport.impacted &&
+        (pendingEnemySupport.skill === 'omnicapitalization' ||
+          pendingEnemySupport.skill === 'cruel_reckoning') &&
+        pendingEnemySupport.impactRemainingSeconds >
+          ENEMY_SUPPORT_PRESENTATION[pendingEnemySupport.skill].castSeconds
+      );
+      if (!interactiveCruelCountdown) continue;
     }
 
     if (presentationLockSeconds > 0) {
@@ -491,8 +631,27 @@ const simulateBattle = (
       enemyBossDefenseRemainingSeconds - STEP_SECONDS
     );
     if (enemyBossDefenseRemainingSeconds <= 0) {
-      enemyBossDefenseCapacity = 0;
-      enemyActiveBossDefenseBalance = null;
+      if (
+        enemyActiveBossDefenseTier === 'invincible' &&
+        BOSS_COVER_BALANCE.invincible.followupDurationMs > 0
+      ) {
+        enemyActiveBossDefenseTier = 'enhanced_cover';
+        enemyActiveBossDefenseBalance = {
+          durationMs: BOSS_COVER_BALANCE.invincible.followupDurationMs,
+          absorbRatio: BOSS_COVER_BALANCE.enhancedCover.absorbRatio,
+          gaugeCapacity:
+            BOSS_COVER_BALANCE.invincible.followupGaugeCapacity,
+          counterCapitalRatio: 0,
+        };
+        enemyBossDefenseRemainingSeconds =
+          BOSS_COVER_BALANCE.invincible.followupDurationMs / 1_000;
+        enemyBossDefenseCapacity =
+          BOSS_COVER_BALANCE.invincible.followupGaugeCapacity;
+      } else {
+        enemyBossDefenseCapacity = 0;
+        enemyActiveBossDefenseBalance = null;
+        enemyActiveBossDefenseTier = 'none';
+      }
     }
 
     if (divinationRemainingSeconds > 0) {
@@ -501,10 +660,34 @@ const simulateBattle = (
         divinationRemainingSeconds - STEP_SECONDS
       );
     }
+    if (enemyBenisonRemainingSeconds > 0) {
+      enemyBenisonRemainingSeconds = Math.max(
+        0,
+        enemyBenisonRemainingSeconds - STEP_SECONDS
+      );
+      if (enemyBenisonRemainingSeconds <= 0) {
+        enemyBenisonCapacity = 0;
+      }
+    }
+    if (playerPassageRemainingSeconds > 0) {
+      playerPassageRemainingSeconds = Math.max(
+        0,
+        playerPassageRemainingSeconds - STEP_SECONDS
+      );
+      if (playerPassageRemainingSeconds <= 0) {
+        playerPassageCapacity = 0;
+      }
+    }
     if (rapidAssaultRemainingSeconds > 0) {
       rapidAssaultRemainingSeconds = Math.max(
         0,
         rapidAssaultRemainingSeconds - STEP_SECONDS
+      );
+    }
+    if (enemyLimitBreakHoldRemainingSeconds > 0) {
+      enemyLimitBreakHoldRemainingSeconds = Math.max(
+        0,
+        enemyLimitBreakHoldRemainingSeconds - STEP_SECONDS
       );
     }
     if (timedCapitalBuffRemainingSeconds > 0) {
@@ -514,6 +697,47 @@ const simulateBattle = (
       );
     }
 
+    if (cruelPhase === 'awaiting_first') {
+      cruelActiveSeconds += STEP_SECONDS;
+    } else if ((cruelPhase as CruelScriptPhase) === 'recovery') {
+      cruelRecoverySeconds += STEP_SECONDS;
+    }
+    const currentCruelOwnership = (100 - gauge) / 2;
+    const cruelAction = shouldTriggerCruelFirstPhase({
+      isCruel,
+      phase: cruelPhase,
+      activeElapsedMs: cruelActiveSeconds * 1_000,
+    })
+      ? CRUEL_SCRIPTED_BATTLE.firstActionId
+      : shouldTriggerCruelSecondPhase({
+            phase: cruelPhase,
+            currentPlayerOwnership: currentCruelOwnership,
+            recoveryElapsedMs: cruelRecoverySeconds * 1_000,
+          })
+        ? CRUEL_SCRIPTED_BATTLE.secondActionId
+        : null;
+    if (cruelAction && !pendingEnemySupport) {
+      cruelPhase =
+        cruelAction === CRUEL_SCRIPTED_BATTLE.firstActionId
+          ? 'first_countdown'
+          : 'second_countdown';
+      const presentation = ENEMY_SUPPORT_PRESENTATION[cruelAction];
+      const impactRemainingSeconds =
+        presentation.telegraphSeconds + presentation.castSeconds;
+      pendingEnemySupport = {
+        skill: cruelAction,
+        impactRemainingSeconds,
+        completeRemainingSeconds:
+          impactRemainingSeconds +
+          presentation.impactSeconds +
+          presentation.afterglowSeconds +
+          presentation.leavingSeconds,
+        impacted: false,
+      };
+      enemySupportActivations[cruelAction] += 1;
+      continue;
+    }
+
     const playerOwnership = (100 - gauge) / 2;
     const bossGuardNeedsPriority =
       !!enemyBossDefenseBalance &&
@@ -521,6 +745,8 @@ const simulateBattle = (
       playerOwnership >=
         BOSS_COVER_BALANCE.triggerPlayerOwnership - 5;
     if (
+      (!isCruel ||
+        (cruelPhase as CruelScriptPhase) === 'resolved') &&
       !bossGuardNeedsPriority &&
       enemyBossDefenseRemainingSeconds <= 0
     ) {
@@ -551,24 +777,19 @@ const simulateBattle = (
         ) {
           return false;
         }
-        if (candidate === 'cure') {
-          return shouldEnemyUseCure({
-            baselineFunds: enemyBudget,
-            availableFunds: enemyReserve,
-            cumulativeRecovered: enemyRecovered,
+        if (candidate === 'divine_benison') {
+          return shouldEnemyUseDivineBenison({
             playerOwnership,
             terminal: false,
-            isSavage,
-            isUltimate,
           });
         }
-        if (candidate === 'mug') {
+        if (candidate === 'drain') {
           return aiCycle >= 1 || playerOwnership >= 52;
         }
         if (candidate === 'drill') {
           return (
             commandProgress >= 100 &&
-            mugMarkActive &&
+            (aiCycle >= 2 || playerOwnership >= 58) &&
             canEnemyAffordDrill(enemyReserve, enemyBudget)
           );
         }
@@ -635,6 +856,8 @@ const simulateBattle = (
       timeScale: 1,
       windMultiplier: 1,
       terminal: false,
+      cumulativeCapRatio:
+        ENEMY_SUPPORT_SKILL_BALANCE.cashRecovery.passiveRecoveryCapRatio,
     });
     enemyReserve = enemyRecovery.availableFunds;
     enemyRecovered = enemyRecovery.cumulativeRecovered;
@@ -703,17 +926,13 @@ const simulateBattle = (
             ? ENEMY_SUPPORT_SKILL_BALANCE.divination
                 .enemyInvestmentMultiplier
             : 1;
-        const supportMarkMultiplier = mugMarkActive
-          ? ENEMY_SUPPORT_SKILL_BALANCE.mug.nextGaugeImpactMultiplier
-          : 1;
         const counterShock = Math.min(
           10,
           (
             1.5 +
             (emergencyDefense / Math.max(1, marketPrice)) * 18
-          ) * enemyCapitalMultiplier * supportMarkMultiplier
+          ) * enemyCapitalMultiplier
         );
-        mugMarkActive = false;
         const ownershipPush = calculateLimitBreakOwnershipPush(
           amount,
           marketPrice,
@@ -743,13 +962,13 @@ const simulateBattle = (
         Number.POSITIVE_INFINITY;
 
       if (supportSource && directActions >= supportThreshold) {
-        const previousSupportUses = supportUseCounts[supportSource.id] ?? 0;
+        const previousSupportUses = supportActions;
         const amount = Math.round(
           calculateSubsidiarySupportAmount(
             supportSource,
             previousSupportUses
           ) *
-            (isSavage || isUltimate
+            (isSavage || isUltimate || isCruel
               ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
               : 1)
         );
@@ -763,7 +982,8 @@ const simulateBattle = (
         );
         playerInvested += amount;
         applyPlayerGaugeCandidate(gauge - impact);
-        supportUseCounts[supportSource.id] = previousSupportUses + 1;
+        supportUseCounts[supportSource.id] =
+          (supportUseCounts[supportSource.id] ?? 0) + 1;
         supportActions += 1;
         commandProgress = 0;
         lastPlayerAction = 'FUNDS';
@@ -814,16 +1034,20 @@ const simulateBattle = (
 
     if (
       !isTraining &&
+      !pendingEnemySupport &&
       enemyReserve >= getEnemyMinimumCommitment(marketPrice)
     ) {
       const enemyOwnership = Math.round(((100 + gauge) / 2) / 5) * 5;
       const enemyReservePercent =
         enemyBudget > 0 ? (enemyReserve / enemyBudget) * 100 : 0;
       const enemyCapitalMultiplier =
-        divinationRemainingSeconds > 0
+        (divinationRemainingSeconds > 0
           ? ENEMY_SUPPORT_SKILL_BALANCE.divination
               .enemyInvestmentMultiplier
-          : 1;
+          : 1) *
+        ((cruelPhase as CruelScriptPhase) === 'recovery'
+          ? CRUEL_SCRIPTED_BATTLE.recoveryEnemyPressureMultiplier
+          : 1);
       const effectiveEnemyInvested =
         enemyInvested * enemyCapitalMultiplier;
       const enemyDecision = decideEnemyAction({
@@ -858,23 +1082,15 @@ const simulateBattle = (
           );
           enemyReserve -= actual;
           enemyInvested += actual;
-          const markMultiplier = mugMarkActive
-            ? ENEMY_SUPPORT_SKILL_BALANCE.mug
-                .nextGaugeImpactMultiplier
-            : 1;
           const enemyGaugeShock = Math.min(
             10,
             (
               1.5 +
               (actual / Math.max(1, marketPrice)) * 18
             ) *
-              enemyCapitalMultiplier *
-              markMultiplier
+              enemyCapitalMultiplier
           );
-          if (mugMarkActive) {
-            mugMarkActive = false;
-          }
-          gauge += enemyGaugeShock;
+          applyEnemyGaugeCandidate(gauge + enemyGaugeShock);
           minimumEnemyReserve = Math.min(
             minimumEnemyReserve,
             enemyReserve
@@ -904,15 +1120,22 @@ const simulateBattle = (
               : 1
           ) -
           enemyInvested *
-            (divinationRemainingSeconds > 0
+            ((divinationRemainingSeconds > 0
               ? ENEMY_SUPPORT_SKILL_BALANCE.divination
                   .enemyInvestmentMultiplier
-              : 1)
+              : 1) *
+              ((cruelPhase as CruelScriptPhase) === 'recovery'
+                ? CRUEL_SCRIPTED_BATTLE.recoveryEnemyPressureMultiplier
+                : 1))
       ) /
       Math.max(1, marketPrice);
     const leverage = 1 + Math.min(2.4, gapRatio * 3.2);
     const deadZone = gapRatio < 0.025 ? 0.32 : 1;
-    const velocity = applyTrainingGaugeSpeed(
+    const continuousSynergyGaugePushPerSecond =
+      timedCapitalBuffRemainingSeconds > 0
+        ? scenario.timedCapitalBuff?.continuousGaugePushPerSecond ?? 0
+        : 0;
+    const rawVelocity = applyTrainingGaugeSpeed(
       calculateGaugeVelocity(
         playerInvested *
           (
@@ -930,14 +1153,19 @@ const simulateBattle = (
       ) *
         BATTLE_GAUGE_SPEED_FACTOR *
         leverage *
-        deadZone,
+        deadZone -
+        continuousSynergyGaugePushPerSecond,
       isTraining
     );
+    const velocity =
+      enemyLimitBreakHoldRemainingSeconds > 0
+        ? Math.max(0, rawVelocity)
+        : rawVelocity;
     const nextGauge = gauge + velocity * STEP_SECONDS;
     if (velocity < 0) {
       applyPlayerGaugeCandidate(nextGauge);
     } else {
-      gauge = nextGauge;
+      applyEnemyGaugeCandidate(nextGauge);
     }
 
     const terminal = finish();
@@ -990,8 +1218,9 @@ const summarize = (
   ).length;
   const activations = results.reduce(
     (totals, result) => {
-      totals.cure += result.enemySupportActivations.cure;
-      totals.mug += result.enemySupportActivations.mug;
+      totals.divine_benison +=
+        result.enemySupportActivations.divine_benison;
+      totals.drain += result.enemySupportActivations.drain;
       totals.drill += result.enemySupportActivations.drill;
       totals.divination +=
         result.enemySupportActivations.divination;
@@ -999,6 +1228,10 @@ const summarize = (
         result.enemySupportActivations.rapid_assault;
       totals.limit_break_3 +=
         result.enemySupportActivations.limit_break_3;
+      totals.omnicapitalization +=
+        result.enemySupportActivations.omnicapitalization;
+      totals.cruel_reckoning +=
+        result.enemySupportActivations.cruel_reckoning;
       return totals;
     },
     createEnemySupportActivationCounts()
@@ -1010,6 +1243,7 @@ const summarize = (
         isCityBoss: scenario.isCityBoss ?? false,
         isSavage: scenario.isSavage,
         isUltimate: scenario.isUltimate,
+        isCruel: scenario.isCruel,
       });
 
   return {
@@ -1109,7 +1343,6 @@ const runDrillTelegraphCoverProbe = () => {
   const currentGauge = -10;
   const drill = getEnemyDrillImpact({
     enemyBudget: 1_000_000,
-    hasMugMark: true,
   });
   const covered = applyCoverToGaugeDelta({
     currentGauge,
@@ -1334,20 +1567,11 @@ const runForcedBossDefenseProbe = ({
   };
 };
 
-const trainingDummies = TRAINING_DUMMY_DEFINITIONS.map(
-  buildTrainingDummyProperty
-);
 const starterFarm = INITIAL_PROPERTIES.find(
   (property) => property.id === 'prop_starter_farm'
 )!;
-const starterBakery = INITIAL_PROPERTIES.find(
-  (property) => property.id === 'prop_starter_bakery'
-)!;
 const limsaTransport = INITIAL_PROPERTIES.find(
   (property) => property.id === 'prop_land_transport'
-)!;
-const uldahPub = INITIAL_PROPERTIES.find(
-  (property) => property.id === 'prop_pub_central'
 )!;
 const uldahIronMine = INITIAL_PROPERTIES.find(
   (property) => property.id === 'prop_iron_mine'
@@ -1406,36 +1630,40 @@ const ultimateSanityTarget = buildUltimateProperty(
   false,
   '決定論監査商会'
 );
+const cruelSanityTarget = buildCruelProperty(false, '決定論監査商会');
 const useProgressionSupport = (supportIndex: number, seed: number) =>
-  3 + supportIndex * 3 + (seed % 2);
+  2 + supportIndex * 2 + (seed % 2);
 const useHighDifficultySupport = () => 0;
-const grandCompanyEorzeaBurst = {
-  // Manual progression SYNERGY is available after Radz-at-Han.
-  triggerAfterDirectActions: 0,
-  durationSeconds: 18,
-  multiplier: 1.78,
-  ownershipPush: 12,
-} as const;
+const useSavageSupport = (supportIndex: number) =>
+  supportIndex < 4 ? 0 : Math.floor((supportIndex - 4) / 4) + 1;
+const progressionSynergyBurst = (synergyId: string) => {
+  const synergy = INITIAL_GROUP_SYNERGIES.find(
+    (candidate) => candidate.id === synergyId
+  );
+  const effect = synergy?.battleEffect;
+  assert.equal(effect?.kind, 'timed_capital_buff');
+  return {
+    triggerAfterDirectActions: 0,
+    durationSeconds: effect.durationMs / 1_000,
+    multiplier: effect.capitalPressureMultiplier,
+    ownershipPush: effect.ownershipPush,
+    continuousGaugePushPerSecond:
+      effect.continuousGaugePushPerSecond ?? 0,
+    limitBreakChargeMultiplier:
+      effect.limitBreakChargeMultiplier ?? 1,
+  };
+};
+const crystalBravesBurst = progressionSynergyBurst('CRYSTAL_BRAVES');
+const lightOfHopeBurst = progressionSynergyBurst('LIGHT_OF_HOPE');
+const grandCompanyEorzeaBurst = progressionSynergyBurst(
+  'GRAND_COMPANY_EORZEA'
+);
+const eraWindBurst = progressionSynergyBurst('ERA_WIND_SYNERGY');
 const ultimateGrandCompanyEorzeaBurst = {
   ...grandCompanyEorzeaBurst,
   // Three Savage upgrades (+0.06) and full integration (+0.07).
   multiplier: 1.91,
 } as const;
-
-const trainingReports = trainingDummies.map((target, index) =>
-  summarize(
-    {
-      id: `training_level_${index + 1}`,
-      target,
-      isTraining: true,
-      playerBaselineCash:
-        index === 0 ? 20_000 : target.marketPrice,
-      maxSeconds: index === 0 ? MAX_SECONDS : 900,
-    },
-    8,
-    1_000 + index * 100
-  )
-);
 
 const normalScenarios = [
   {
@@ -1444,18 +1672,17 @@ const normalScenarios = [
     isTutorial: true,
   },
   {
-    id: 'gridania_second_with_support',
-    target: starterBakery,
+    id: 'gridania_boss_with_network_support',
+    target: gridaniaBoss,
     influenceBonus: 0.03,
     supportSources: [starterFarm],
-    // The authored lesson presents the first acquired ally immediately; use
-    // it early instead of waiting until the maximum-capital route has nearly
-    // resolved the battle by itself.
+    // The first real contact becomes the player's first callable network in
+    // the second (boss) fight. No retired business is granted in the background.
     supportAfterDirectActions: () => 1,
   },
   {
-    id: 'gridania_second_without_support',
-    target: starterBakery,
+    id: 'gridania_boss_without_network_support',
+    target: gridaniaBoss,
     influenceBonus: 0.03,
   },
   {
@@ -1464,6 +1691,7 @@ const normalScenarios = [
     maxSeconds: 600,
     supportSources: [ishgardWeaponDealer, gridaniaBoss],
     supportAfterDirectActions: useProgressionSupport,
+    timedCapitalBuff: lightOfHopeBurst,
   },
   {
     id: 'normal_late_solution_nine',
@@ -1494,7 +1722,7 @@ const cityAuditScenarios = [
     target: gridaniaBoss,
     isCityBoss: true,
     maxSeconds: 600,
-    supportSources: [starterFarm, starterBakery],
+    supportSources: [starterFarm],
     supportAfterDirectActions: useProgressionSupport,
   },
   {
@@ -1502,7 +1730,7 @@ const cityAuditScenarios = [
     target: limsaBoss,
     isCityBoss: true,
     maxSeconds: 600,
-    supportSources: [gridaniaBoss, starterBakery],
+    supportSources: [limsaTransport, gridaniaBoss, starterFarm],
     supportAfterDirectActions: useProgressionSupport,
   },
   {
@@ -1511,12 +1739,10 @@ const cityAuditScenarios = [
     isCityBoss: true,
     maxSeconds: 600,
     supportSources: [
-      uldahPub,
       uldahIronMine,
       limsaTransport,
       limsaBoss,
       gridaniaBoss,
-      starterBakery,
       starterFarm,
     ],
     supportAfterDirectActions: useProgressionSupport,
@@ -1528,6 +1754,7 @@ const cityAuditScenarios = [
     maxSeconds: 600,
     supportSources: [uldahBoss, limsaBoss],
     supportAfterDirectActions: useProgressionSupport,
+    timedCapitalBuff: crystalBravesBurst,
   },
   {
     id: 'city_5_kugane_cover',
@@ -1536,30 +1763,34 @@ const cityAuditScenarios = [
     maxSeconds: 600,
     supportSources: [ishgardBoss, uldahBoss],
     supportAfterDirectActions: useProgressionSupport,
+    timedCapitalBuff: lightOfHopeBurst,
   },
   {
-    id: 'city_6_crystarium_cure',
+    id: 'city_6_crystarium_benison',
     target: crystariumBoss,
     isCityBoss: true,
     maxSeconds: 600,
     supportSources: [kuganeTradeBroker, ishgardWeaponDealer],
     supportAfterDirectActions: useProgressionSupport,
+    timedCapitalBuff: lightOfHopeBurst,
   },
   {
-    id: 'city_7_old_sharlayan_mug',
+    id: 'city_7_old_sharlayan_drain',
     target: oldSharlayanBoss,
     isCityBoss: true,
     maxSeconds: 600,
     supportSources: [crystariumBoss, kuganeTradeBroker],
     supportAfterDirectActions: useProgressionSupport,
+    timedCapitalBuff: lightOfHopeBurst,
   },
   {
-    id: 'city_8_radz_at_han_mug_drill',
+    id: 'city_8_radz_at_han_drain_drill',
     target: radzAtHanBoss,
     isCityBoss: true,
     maxSeconds: 600,
     supportSources: [oldSharlayanBoss, crystariumBoss],
     supportAfterDirectActions: useProgressionSupport,
+    timedCapitalBuff: lightOfHopeBurst,
   },
   {
     id: 'city_9_tuliyollal_divination',
@@ -1571,7 +1802,7 @@ const cityAuditScenarios = [
     timedCapitalBuff: grandCompanyEorzeaBurst,
   },
   {
-    id: 'city_10_solution_nine_cure_divination',
+    id: 'city_10_solution_nine_benison_divination',
     target: solutionNineBoss,
     isCityBoss: true,
     maxSeconds: 600,
@@ -1651,17 +1882,18 @@ const savageScenarios: SimulationScenario[] =
     target,
     isSavage: true,
     maxSeconds: 900,
-    // Normal-clear cash can be far below a late Savage target's market price.
-    // Audit the intended ally/AUTO route with only a 10% personal war chest
-    // instead of silently granting the simulator a full target-price bankroll.
-    playerBaselineCash: Math.round(target.marketPrice * 0.1),
+    // Shared network fatigue makes later ally calls a supplement rather than a
+    // complete solution. Audit a prepared clear with a finite 35% personal war
+    // chest so direct investment and support decisions both matter.
+    playerBaselineCash: Math.round(target.marketPrice * 0.35),
     openingCapitalBoostRatio:
       TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
+    openingAllianceSupportRatio: ALLIANCE_SUPPORT_MARKET_RATIO,
     supportSources: highDifficultySupportRotation,
     // A low-cash normal-clear save must be able to open with its holdings.
     // Requiring three personal buys before the first ally call made the
     // simulator test an impossible route rather than the in-game support plan.
-    supportAfterDirectActions: useHighDifficultySupport,
+    supportAfterDirectActions: useSavageSupport,
     timedCapitalBuff: {
       ...grandCompanyEorzeaBurst,
       // Spend the early calls baiting Cover / Passage / Invincible, then
@@ -1745,8 +1977,13 @@ const ultimatePreparedPatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
         ...ultimateScenarioBase,
         id: `ultimate_prepared_${pattern.id}`,
         ultimateAutoPatternIndex: patternIndex,
-        // A prepared clear route rotates through every acquired company once
-        // instead of repeating only the twelve largest sources into decay.
+        openingPlayerPassage: true,
+        timedCapitalBuff: {
+          ...eraWindBurst,
+          triggerAfterSupportActions: 8,
+        },
+        // A prepared clear route rotates through every acquired company while
+        // the battle-wide request counter still applies shared fatigue.
         supportSources: preparedUltimateSupportRotation,
         preparedLimitBreak: {
           tier: 3,
@@ -1772,6 +2009,65 @@ const ultimateReports = [
   ...ultimatePreparedPatternReports,
   ultimateSupportDisabledReport,
 ];
+const cruelSupportRotation = [
+  ultimateSanityTarget,
+  ...[...savageProperties].sort(
+    (left, right) =>
+      calculateSubsidiarySupportAmount(right) -
+      calculateSubsidiarySupportAmount(left)
+  ),
+  ...preparedUltimateSupportRotation,
+];
+const cruelScenarioBase = {
+  target: cruelSanityTarget,
+  isCruel: true,
+  maxSeconds: 120,
+  playerBaselineCash: Math.round(cruelSanityTarget.marketPrice * 0.1),
+  supportSources: cruelSupportRotation,
+  supportAfterDirectActions: useHighDifficultySupport,
+} as const satisfies Omit<SimulationScenario, 'id'>;
+const cruelScenarios: SimulationScenario[] = [
+  {
+    ...cruelScenarioBase,
+    id: 'cruel_prepared_full_route',
+    openingCapitalBoostRatio:
+      TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
+    timedCapitalBuff: {
+      ...ultimateGrandCompanyEorzeaBurst,
+      triggerAfterSupportActions: 8,
+    },
+    preparedLimitBreak: {
+      tier: 3,
+      triggerAfterSupportActions: 12,
+      participants: cruelSupportRotation,
+    },
+  },
+  {
+    ...cruelScenarioBase,
+    id: 'cruel_no_limit_break',
+    timedCapitalBuff: {
+      ...ultimateGrandCompanyEorzeaBurst,
+      triggerAfterSupportActions: 8,
+    },
+  },
+  {
+    ...cruelScenarioBase,
+    id: 'cruel_no_manual_synergy',
+    openingCapitalBoostRatio:
+      TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
+  },
+  {
+    ...cruelScenarioBase,
+    id: 'cruel_support_and_synergy_only',
+    timedCapitalBuff: {
+      ...ultimateGrandCompanyEorzeaBurst,
+      triggerAfterSupportActions: 10,
+    },
+  },
+];
+const cruelReports = cruelScenarios.map((scenario, index) =>
+  summarize(scenario, 10, 10_500 + index * 100)
+);
 const runtimeAlignmentProbes = {
   drillTelegraphPlayerCover:
     runDrillTelegraphCoverProbe(),
@@ -1817,13 +2113,13 @@ const runtimeAlignmentProbes = {
 };
 
 const allReports = [
-  ...trainingReports,
   ...normalReports,
   ...cityReports,
   ...cityEnemySupportDisabledReports,
   ...savageReports,
   ...savageEnemySupportDisabledReports,
   ...ultimateReports,
+  ...cruelReports,
 ];
 const totalBattles = allReports.reduce(
   (total, report) => total + report.battles,
@@ -1840,12 +2136,12 @@ const reportById = Object.fromEntries(
 );
 console.log(JSON.stringify({
   totalBattles,
-  trainingAudit: {
-    totalBattles: trainingReports.reduce(
+  cruelAudit: {
+    totalBattles: cruelReports.reduce(
       (total, report) => total + report.battles,
       0
     ),
-    reports: trainingReports,
+    reports: cruelReports,
   },
   normalProgressionAudit: {
     totalBattles: normalReports.reduce(
@@ -1894,49 +2190,45 @@ console.log(JSON.stringify({
   runtimeAlignmentProbes,
 }, null, 2));
 
-assert.equal(reportById.training_level_1.wins, 8);
-for (const report of trainingReports) {
+for (const report of cruelReports) {
   assert.equal(
-    report.wins,
+    report.activations.omnicapitalization,
     report.battles,
-    `${report.id} should remain completable with its authored training funds`
+    `${report.id} must always reach the first scripted collapse`
+  );
+  assert.equal(
+    report.activations.cruel_reckoning,
+    report.battles,
+    `${report.id} must always resolve the second recovery check`
   );
 }
-assert.ok(
-  reportById.training_level_1.medianDirectActions >= 2 &&
-    reportById.training_level_1.medianDirectActions <= 4,
-  'level-one training should take two to four maximum-affordable direct offers'
-);
-assert.ok(reportById.training_level_1.p90Seconds <= 25);
 assert.equal(reportById.gridania_first.wins, 8);
 assert.ok(
   reportById.gridania_first.medianDirectActions >= 4 &&
     reportById.gridania_first.medianDirectActions <= 6
 );
-assert.equal(reportById.gridania_second_with_support.wins, 8);
-assert.equal(
-  reportById.gridania_second_with_support.medianSupportActions,
-  1
+assert.equal(reportById.gridania_boss_with_network_support.wins, 8);
+assert.ok(
+  reportById.gridania_boss_with_network_support.medianSupportActions >= 1
 );
 assert.ok(
-  reportById.gridania_second_with_support.medianSeconds + 8 <
-    reportById.gridania_second_without_support.medianSeconds,
-  'the first acquired ally saves a clearly perceptible amount of time'
+  reportById.gridania_boss_with_network_support.medianSeconds <
+    reportById.gridania_boss_without_network_support.medianSeconds,
+  'the first Gridania network contact saves a perceptible amount of time'
 );
 assert.ok(
-  reportById.gridania_second_with_support.medianDirectActions <
-  reportById.gridania_second_without_support.medianDirectActions,
-  'the first acquired ally reduces the direct-investment grind'
+  reportById.gridania_boss_with_network_support.maximumCapitalActions <= 8,
+  'the first network lesson remains compact even when its support call is counted'
 );
 assert.equal(
-  reportById.city_8_radz_at_han_mug_drill.timedCapitalBuffActivations,
-  0,
-  'Grand Company Eorzea is not available during the Radz-at-Han boss itself'
+  reportById.city_8_radz_at_han_drain_drill.timedCapitalBuffActivations,
+  reportById.city_8_radz_at_han_drain_drill.battles,
+  'Light of Hope remains available before Grand Company Eorzea replaces it'
 );
 for (const id of [
   'normal_late_solution_nine',
   'city_9_tuliyollal_divination',
-  'city_10_solution_nine_cure_divination',
+  'city_10_solution_nine_benison_divination',
 ] as const) {
   assert.equal(
     reportById[id].timedCapitalBuffActivations,
@@ -1944,6 +2236,16 @@ for (const id of [
     `${id} can use Grand Company Eorzea after Radz-at-Han`
   );
 }
+
+const savageAutoSkillsByReportId = new Map(
+  savageReports.map((report, index) => {
+    const profile = SAVAGE_ENEMY_AUTO_PROFILES[Math.floor(index / 4)][index % 4];
+    return [
+      report.id,
+      new Set([profile.opening, profile.critical].filter(Boolean)),
+    ] as const;
+  })
+);
 
 for (const report of allReports) {
   assert.equal(
@@ -1976,18 +2278,25 @@ for (const report of allReports) {
     `${report.id} must share the cumulative 20% recovery cap`
   );
   for (const skill of [
-    'cure',
-    'mug',
+    'divine_benison',
+    'drain',
     'drill',
     'divination',
   ] as const) {
-    if (report.profile.includes(skill)) {
+    if (
+      report.profile.includes(skill) ||
+      savageAutoSkillsByReportId.get(report.id)?.has(skill)
+    ) {
       assert.ok(
         report.activations[skill] <= report.battles,
         `${report.id} must not activate configured ${skill} more than once per battle`
       );
     } else {
-      assert.equal(report.activations[skill], 0);
+      assert.equal(
+        report.activations[skill],
+        0,
+        `${report.id} must not activate unconfigured ${skill}`
+      );
     }
   }
   assert.ok(
@@ -1999,10 +2308,10 @@ for (const report of allReports) {
 }
 
 for (const report of [
-  ...trainingReports,
   ...normalReports,
   ...cityReports,
   ...cityEnemySupportDisabledReports,
+  ...cruelReports,
 ]) {
   assert.equal(
     report.timeouts,
@@ -2012,9 +2321,9 @@ for (const report of [
 }
 
 for (const report of [
-  ...trainingReports,
   ...normalReports,
   ...cityReports,
+  ...cruelReports,
 ]) {
   assert.ok(
     report.p90Seconds < 120,
@@ -2053,14 +2362,14 @@ const expectedCityDefenseTiers = [
 const expectedCitySupportProfiles = [
   [],
   [],
-  ['mug'],
-  ['mug'],
-  ['cure', 'mug'],
-  ['cure'],
-  ['mug'],
-  ['mug', 'drill'],
+  ['drain'],
+  ['drain'],
+  ['divine_benison', 'drain'],
+  ['divine_benison'],
+  ['drain'],
+  ['drain', 'drill'],
   ['divination'],
-  ['cure', 'divination'],
+  ['divine_benison', 'divination'],
 ] as const;
 
 assert.equal(cityReports.length, 10);
@@ -2093,20 +2402,14 @@ assert.equal(savageProperties.length, 12);
 assert.equal(savageReports.length, 12);
 savageReports.forEach((report, index) => {
   const layer = (index % 4) + 1;
+  const seriesIndex = Math.floor(index / 4);
   const expectedTier =
     layer === 1
       ? 'cover'
       : layer < 4
         ? 'enhanced_cover'
         : 'invincible';
-  const expectedProfile =
-    layer === 1
-      ? ['cure', 'mug']
-      : layer === 2
-        ? ['mug', 'divination']
-        : layer === 3
-          ? ['mug', 'drill']
-          : ['cure', 'mug', 'drill', 'divination'];
+  const expectedProfile = SAVAGE_ENEMY_SUPPORT_PROFILES[seriesIndex][layer - 1];
   assert.equal(report.bossDefenseTier, expectedTier);
   assert.equal(
     report.openingBossDefenseTier,
@@ -2114,6 +2417,14 @@ savageReports.forEach((report, index) => {
     `${report.id} uses guaranteed opening Cover only on layer two`
   );
   assert.deepEqual(report.profile, expectedProfile);
+  const expectedAuto = SAVAGE_ENEMY_AUTO_PROFILES[seriesIndex][layer - 1];
+  if (expectedAuto.opening) {
+    assert.equal(
+      report.activations[expectedAuto.opening],
+      report.battles,
+      `${report.id} presents its authored opening action exactly once per run`
+    );
+  }
   assert.equal(
     report.wins,
     report.battles,
@@ -2134,6 +2445,18 @@ savageReports.forEach((report, index) => {
   );
 });
 
+for (let seriesIndex = 0; seriesIndex < 3; seriesIndex += 1) {
+  const seriesReports = savageReports.slice(seriesIndex * 4, seriesIndex * 4 + 4);
+  for (let layerIndex = 1; layerIndex < seriesReports.length; layerIndex += 1) {
+    const previous = seriesReports[layerIndex - 1];
+    const current = seriesReports[layerIndex];
+    assert.ok(
+      current.p90Seconds > previous.p90Seconds,
+      `Savage series ${seriesIndex + 1} p90 rises from layer ${layerIndex} (${previous.p90Seconds.toFixed(2)}s) to layer ${layerIndex + 1} (${current.p90Seconds.toFixed(2)}s)`
+    );
+  }
+}
+
 assert.equal(savageEnemySupportDisabledReports.length, 12);
 for (const report of savageEnemySupportDisabledReports) {
   assert.deepEqual(report.profile, []);
@@ -2152,7 +2475,7 @@ ultimatePatternReports.forEach((report, index) => {
   const pattern = ULTIMATE_ENEMY_AUTO_PATTERNS[index];
   assert.deepEqual(
     report.profile,
-    ['cure', 'mug', 'drill', 'divination']
+    ['divine_benison', 'drain', 'drill', 'divination']
   );
   assert.equal(
     report.openingBossDefenseTier,
@@ -2164,19 +2487,20 @@ ultimatePatternReports.forEach((report, index) => {
     report.battles,
     `${report.id} always presents its selected opening action`
   );
-  assert.equal(
-    report.activations[pattern.critical],
-    report.battles,
-    `${report.id} always presents its selected critical action`
+  assert.ok(
+    report.activations[pattern.critical] + report.losses >= report.battles,
+    `${report.id} presents its selected critical action unless the opening action already defeats the player`
   );
   for (const special of [
     'rapid_assault',
     'limit_break_3',
   ] as const) {
     const expectedActivations =
-      pattern.opening === special || pattern.critical === special
+      pattern.opening === special
         ? report.battles
-        : 0;
+        : pattern.critical === special
+          ? report.activations[pattern.critical]
+          : 0;
     assert.equal(
       report.activations[special],
       expectedActivations,
@@ -2192,10 +2516,9 @@ ultimatePatternReports.forEach((report, index) => {
     report.p90DirectActions + report.p90SupportActions < 30,
     `${report.id} resolves before thirty investment actions`
   );
-  assert.equal(
-    report.timedCapitalBuffActivations,
-    report.battles,
-    `${report.id} evaluates Grand Company Eorzea against the selected surprise`
+  assert.ok(
+    report.timedCapitalBuffActivations + report.losses >= report.battles,
+    `${report.id} evaluates Grand Company Eorzea unless the opening surprise already defeats the unprepared route`
   );
   ultimatePatternWins += report.wins;
 });
@@ -2204,12 +2527,20 @@ const ultimatePatternBattles = ultimatePatternReports.reduce(
   0
 );
 assert.ok(
-  ultimatePatternWins <= Math.floor(ultimatePatternBattles * 0.15),
-  'two full-strength calls may scrape through the easiest Ultimate surprise, but an unadapted repeated-support route stays below a 15% win rate'
+  ultimatePatternWins <= Math.floor(ultimatePatternBattles * 0.4),
+  'an unadapted repeated-support route may solve the two defensive patterns, but loses most Ultimate attempts'
 );
 assert.ok(
-  ultimatePatternReports.every((report) => report.losses > 0),
-  'an unadapted repeated-support route cannot solve any Ultimate surprise reliably'
+  ultimatePatternReports
+    .filter((_, index) => {
+      const pattern = ULTIMATE_ENEMY_AUTO_PATTERNS[index];
+      return (
+        pattern.opening === 'limit_break_3' ||
+        pattern.critical === 'limit_break_3'
+      );
+    })
+    .every((report) => report.losses === report.battles),
+  'an unadapted repeated-support route cannot survive any Ultimate LB3 surprise'
 );
 assert.equal(
   ultimatePreparedPatternReports.length,
@@ -2269,19 +2600,24 @@ assert.equal(
 assert.equal(divinationCancelProbe.eraWindActive, true);
 
 assert.deepEqual(BOSS_COVER_BALANCE.cover, {
-  durationMs: 20_000,
-  absorbRatio: 0.78,
-  gaugeCapacity: 48,
+  durationMs: 18_000,
+  absorbRatio: 0.84,
+  gaugeCapacity: 58,
+  counterCapitalRatio: 0.06,
 });
 assert.deepEqual(BOSS_COVER_BALANCE.enhancedCover, {
-  durationMs: 22_000,
-  absorbRatio: 0.9,
-  gaugeCapacity: 68,
+  durationMs: 18_000,
+  absorbRatio: 0.92,
+  gaugeCapacity: 84,
+  counterCapitalRatio: 0.12,
 });
 assert.deepEqual(BOSS_COVER_BALANCE.invincible, {
-  durationMs: 8_000,
+  durationMs: 5_000,
   absorbRatio: 1,
   gaugeCapacity: Number.POSITIVE_INFINITY,
+  counterCapitalRatio: 0.18,
+  followupDurationMs: 6_000,
+  followupGaugeCapacity: 44,
 });
 
 const expectedForcedDefenseTiers = [
@@ -2413,46 +2749,35 @@ assert.deepEqual(
   }),
   { opening: 'divination', critical: null }
 );
-const cruelBoundaryProbe = {
+const cruelFirstPhaseProbe = {
   isCruel: true,
-  alreadyUsed: false,
-  pending: false,
-  currentPlayerOwnership: 74,
-  candidatePlayerOwnership: 75,
+  phase: 'awaiting_first' as const,
+  activeElapsedMs: 15_000,
 };
-assert.equal(shouldTriggerCruelOmnicapitalization(cruelBoundaryProbe), true);
+assert.equal(shouldTriggerCruelFirstPhase(cruelFirstPhaseProbe), true);
 assert.equal(
-  shouldTriggerCruelOmnicapitalization({
-    ...cruelBoundaryProbe,
-    candidatePlayerOwnership: 130,
-  }),
+  shouldHoldCruelVictory(true, 'first_countdown'),
   true,
-  'overkill still enters the authored response window before settlement'
+  'overkill stays held until both authored declarations resolve'
 );
 assert.equal(
-  shouldTriggerCruelOmnicapitalization({
-    ...cruelBoundaryProbe,
-    alreadyUsed: true,
+  shouldTriggerCruelFirstPhase({
+    ...cruelFirstPhaseProbe,
+    phase: 'recovery',
   }),
   false,
-  'a stunned or completed response remains consumed for the attempt'
+  'the first declaration cannot fire twice after recovery begins'
 );
-[1, 0.5, 0].forEach((reserveRatio) => {
-  const impact = calculateCruelOmnicapitalizationImpact({
-    remainingReserve: 750 * reserveRatio,
-    openingReserve: 750,
-  });
-  assertNearlyEqual(
-    impact.ownershipPush,
-    40 * reserveRatio,
-    `Cruel reserve ${reserveRatio * 100}% ownership response`
-  );
-  assertNearlyEqual(
-    impact.gaugeDelta,
-    80 * reserveRatio,
-    `Cruel reserve ${reserveRatio * 100}% gauge response`
-  );
-});
+assert.equal(resolveCruelFirstImpact(100), 10);
+assert.equal(resolveCruelFirstImpact(8), 8);
+assert.equal(
+  shouldTriggerCruelSecondPhase({
+    phase: 'recovery',
+    currentPlayerOwnership: 50,
+    recoveryElapsedMs: 8_000,
+  }),
+  true
+);
 
 // Reacquisition reward-battle probes use the full deterministic battle loop,
 // but stay outside the fixed 500-run campaign audit. The player keeps a late
@@ -2478,7 +2803,7 @@ const extremeReacquisitionScenarios = [
     maxSeconds: 120,
     playerBaselineCash: earlyExtremeTarget.marketPrice * 2,
     openingCapitalBoostRatio: TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
-    supportSources: [starterBakery],
+    supportSources: [starterFarm],
     supportAfterDirectActions: () => 4,
   },
   {
@@ -2522,109 +2847,33 @@ assert.ok(
   'a late-company 極 should land in the authored twenty-to-forty-second band'
 );
 
-// The simulator intentionally does not duplicate BattleModal's asynchronous
-// telegraph queue. Instead, this critical-phase probe composes the production
-// pure functions and real player skill values. It proves why an unprepared
-// full-reserve hit is punishing, and why each learned counter has a repeatable
-// route rather than a fixed random win chance.
-const CRUEL_TRIGGER_OWNERSHIP = 75;
-const CRUEL_TRIGGER_GAUGE = 100 - CRUEL_TRIGGER_OWNERSHIP * 2;
-const cruelFinisherOwnershipPush =
-  grandCompanyEorzeaBurst.ownershipPush + LIMIT_BREAK_OWNERSHIP_CAPS[3];
-const resolveCruelCriticalPhase = ({
-  remainingReserveRatio,
-  response,
-}: {
-  remainingReserveRatio: number;
-  response: 'none' | 'stun' | 'cover';
-}) => {
-  const impact = calculateCruelOmnicapitalizationImpact({
-    remainingReserve: remainingReserveRatio,
-    openingReserve: 1,
-  });
-  const rawGaugeAfterImpact = CRUEL_TRIGGER_GAUGE + impact.gaugeDelta;
-  const appliedGaugeAfterImpact =
-    response === 'stun'
-      ? CRUEL_TRIGGER_GAUGE
-      : response === 'cover'
-        ? applyCoverToGaugeDelta({
-            currentGauge: CRUEL_TRIGGER_GAUGE,
-            nextGauge: rawGaugeAfterImpact,
-            protects: 'player',
-            absorbRatio: TACTICAL_SKILL_BALANCE.cover.absorbRatio,
-            remainingGaugeCapacity:
-              TACTICAL_SKILL_BALANCE.cover.gaugeCapacity,
-          }).nextGauge
-        : rawGaugeAfterImpact;
-  const ownershipAfterImpact = (100 - appliedGaugeAfterImpact) / 2;
-  const ownershipAfterPreparedFinisher =
-    ownershipAfterImpact + cruelFinisherOwnershipPush;
-  return {
-    impact,
-    ownershipAfterImpact,
-    ownershipAfterPreparedFinisher,
-    clearsWithPreparedFinisher: ownershipAfterPreparedFinisher >= 100,
-    enemyReservePreserved: response === 'stun',
-  };
-};
-
+// Cruel's phase checks use only active time and ownership. Stun, Cover and
+// Living Dead remain useful around the declarations but are never required to
+// cancel them.
 const cruelCriticalPhaseProbes = {
-  unprepared: resolveCruelCriticalPhase({
-    remainingReserveRatio: 1,
-    response: 'none',
-  }),
-  learnedStun: resolveCruelCriticalPhase({
-    remainingReserveRatio: 1,
-    response: 'stun',
-  }),
-  learnedCover: resolveCruelCriticalPhase({
-    remainingReserveRatio: 1,
-    response: 'cover',
-  }),
-  reserveBaited: resolveCruelCriticalPhase({
-    remainingReserveRatio: 0.5,
-    response: 'none',
-  }),
+  firstFromFull: resolveCruelFirstImpact(100),
+  firstFromLow: resolveCruelFirstImpact(7),
+  secondAtThreshold: resolveCruelSecondImpact(50),
+  secondPrepared: resolveCruelSecondImpact(75),
+  secondAlmostPrepared: resolveCruelSecondImpact(74),
 };
-assert.equal(
-  cruelCriticalPhaseProbes.unprepared.clearsWithPreparedFinisher,
-  false,
-  'eating a full 万象資本化 should erase an otherwise decisive finisher route'
-);
-assert.equal(cruelCriticalPhaseProbes.unprepared.ownershipAfterImpact, 35);
-assert.equal(
-  cruelCriticalPhaseProbes.learnedStun.clearsWithPreparedFinisher,
-  true,
-  'a timed Stun should preserve a deterministic clear route'
-);
-assert.equal(cruelCriticalPhaseProbes.learnedStun.enemyReservePreserved, true);
-assert.equal(
-  cruelCriticalPhaseProbes.learnedCover.clearsWithPreparedFinisher,
-  true,
-  'Cover should turn the full hit into a recoverable deterministic route'
-);
-assert.equal(
-  cruelCriticalPhaseProbes.reserveBaited.impact.ownershipPush,
-  20,
-  'spending half of the enemy reserve beforehand should halve the reversal'
-);
-assert.ok(
-  cruelCriticalPhaseProbes.reserveBaited.ownershipAfterPreparedFinisher >
-    cruelCriticalPhaseProbes.unprepared.ownershipAfterPreparedFinisher,
-  'baiting reserve must improve the learned route without changing RNG'
-);
-const largeDirectOwnershipPush =
-  calculateDirectInvestmentGaugeImpact({
-    investmentAmount: 0.2,
-    marketPrice: 1,
-    windMultiplier: 1,
-  }) / 2;
-assert.ok(
-  cruelCriticalPhaseProbes.reserveBaited.ownershipAfterPreparedFinisher +
-    largeDirectOwnershipPush >=
-    100,
-  'halving the reserve should leave a deterministic one-large-offer follow-up'
-);
+assert.equal(cruelCriticalPhaseProbes.firstFromFull, 10);
+assert.equal(cruelCriticalPhaseProbes.firstFromLow, 7);
+assert.deepEqual(cruelCriticalPhaseProbes.secondAtThreshold, {
+  outcome: 'defeat',
+  ownershipBefore: 50,
+  ownershipAfter: 0,
+});
+assert.deepEqual(cruelCriticalPhaseProbes.secondPrepared, {
+  outcome: 'break',
+  ownershipBefore: 75,
+  ownershipAfter: 75,
+});
+assert.deepEqual(cruelCriticalPhaseProbes.secondAlmostPrepared, {
+  outcome: 'defeat',
+  ownershipBefore: 74,
+  ownershipAfter: 0,
+}, 'a failed second assessment deterministically loses after its presentation');
 
 console.log(
   JSON.stringify(
@@ -2639,22 +2888,8 @@ console.log(
   )
 );
 
-const cruelLeapCounterBeforeCover = -120;
-const cruelLeapCounterDelta = 80;
-const cruelLeapCounterCovered = applyCoverToGaugeDelta({
-  currentGauge: cruelLeapCounterBeforeCover,
-  nextGauge: cruelLeapCounterBeforeCover + cruelLeapCounterDelta,
-  protects: 'player',
-  absorbRatio: TACTICAL_SKILL_BALANCE.cover.absorbRatio,
-  remainingGaugeCapacity: TACTICAL_SKILL_BALANCE.cover.gaugeCapacity,
-});
 assert.equal(
-  cruelLeapCounterCovered.absorbedGauge,
-  TACTICAL_SKILL_BALANCE.cover.gaugeCapacity,
-  'Cruel Cover evaluates the full +80 counterattack from the held overkill candidate'
-);
-assert.equal(
-  cruelLeapCounterCovered.nextGauge,
-  -88,
-  'Cruel Cover does not use the visible 75% warning line as its damage origin'
+  resolveCruelFirstImpact(82),
+  10,
+  'Cruel phase damage ignores Cover because it changes the encounter state'
 );
