@@ -93,11 +93,29 @@
 }
 
 .savage-series__header {
+  position: relative;
   display: grid;
+  min-height: 2.75rem;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: .7rem;
+  cursor: pointer;
+  list-style: none;
+  padding-right: 3.2rem;
 }
+
+.savage-series__header::-webkit-details-marker { display: none; }
+.savage-series__header::after {
+  position: absolute;
+  top: 50%;
+  right: .2rem;
+  content: '開く';
+  color: #94a3b8;
+  font-size: .62rem;
+  font-weight: 900;
+  transform: translateY(-50%);
+}
+.savage-series[open] > .savage-series__header::after { content: '閉じる'; }
 
 .savage-series__header > span {
   padding: .35rem .5rem;
@@ -306,6 +324,36 @@
   color: #a5b4fc;
   font-size: .7rem;
   line-height: 1.4;
+}
+
+.savage-layer-card__preparation {
+  display: grid;
+  gap: .35rem;
+  padding: .65rem;
+  border: 1px solid rgba(251, 191, 36, .48);
+  border-radius: .7rem;
+  background: rgba(120, 53, 15, .17);
+}
+
+.savage-layer-card__preparation b {
+  color: #fef3c7;
+  font-size: .78rem;
+}
+
+.savage-layer-card__preparation p {
+  color: #fde68a;
+  font-size: .7rem;
+  line-height: 1.45;
+}
+
+.savage-layer-card__preparation button {
+  min-height: 2.75rem;
+  border: 1px solid rgba(251, 191, 36, .7);
+  border-radius: .55rem;
+  color: #fffbeb;
+  background: rgba(146, 64, 14, .7);
+  font-size: .74rem;
+  font-weight: 800;
 }
 
 .savage-layer-card > button,

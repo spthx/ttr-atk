@@ -7,6 +7,7 @@ import {
 } from '../src/data/initialData';
 import { ALLIANCE_CANDIDATES, GRAND_COMPANY_NAMES } from '../src/data/allianceData';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
+import { CAMPAIGN_ENCOUNTER_DEFINITIONS } from '../src/data/campaignEncounterData';
 import {
   decideEnemyAction,
   getEnemyBaseWaitMs,
@@ -21,6 +22,7 @@ import {
   calculateAtLeastOneDepartureProbability,
   calculateBattleSettlementSummary,
   calculateLiquidationCashback,
+  getVictoryProfitAllocationChoices,
   normalizeDepartureProbabilityMultiplier,
   resolvePostVictoryLoyalty,
 } from '../src/utils/battleSettlement';
@@ -57,9 +59,13 @@ import {
   getCapitalVisualStageForBundleCount,
   getInvestmentStakeVisualPieceCount,
   getBattleHitStopTiming,
+  getBattleClockScales,
+  getSkillCinematicEventDecision,
+  getSkillCinematicTimelineState,
   getSkillCinematicTiming,
   getVictoryConfettiParticleCount,
   BATTLE_GAUGE_FRAME_MS,
+  ENEMY_SUPPORT_POST_PILE_GRACE_MS,
   REDUCED_MOTION_SKILL_CINEMATIC_TIMING,
   MAX_CAPITAL_DROP_PARTICLE_COUNT,
   MAX_BATTLE_CAPITAL_VISUAL_STAGE,
@@ -73,8 +79,10 @@ import {
   TERMINAL_CINEMATIC_TIMING,
 } from '../src/utils/battlePresentation';
 import {
+  isPendingBattleTargetAvailable,
   parsePendingBattleSession,
   PENDING_BATTLE_SESSION_MAX_AGE_MS,
+  shouldRestorePendingBattleSession,
 } from '../src/utils/battleSession';
 import { calculateCartelHeadquartersDefense } from '../src/utils/cartel';
 import {
@@ -93,16 +101,22 @@ import {
   loadGameSave,
   normalizeAllianceState,
   normalizeAutoSkillLoadout,
+  normalizeSavedAbilityLoadout,
   normalizeLimitBreakCharge,
   restoreProperties,
   saveGame,
   SAVE_STORAGE_KEY,
 } from '../src/utils/saveData';
 import {
+  getCompletedCommunityNetworkIds,
+  getCommunityNetworkProgress,
   getCurrentlyControlledCommunityIds,
   getUnlockedCommunityIds,
+  hasCompletedCommunityNetwork,
   normalizeConqueredCommunityIds,
+  wouldCompleteCommunityNetwork,
 } from '../src/utils/campaignProgress';
+import { getNormalBattleNavigation } from '../src/utils/progressionNavigation';
 import {
   applySavageSynergyUpgrades,
   buildCruelProperty,
@@ -111,6 +125,7 @@ import {
   getSavagePropertyYieldMultiplier,
   getSavageSynergyRanks,
   getSavageTargetIds,
+  getDefaultOpenSavageSeries,
   getUnlockedSavageRaidIds,
   normalizeSavageClearedRaidIds,
   SAVAGE_BATTLE_ONLY_CAPITAL_BONUS_PER_RANK,
@@ -124,11 +139,21 @@ import {
   ULTIMATE_RAID_DEFINITION,
 } from '../src/utils/savage';
 import {
-  calculateCruelOmnicapitalizationImpact,
-  CRUEL_OMNICAPITALIZATION_BALANCE,
-  shouldTriggerCruelOmnicapitalization,
+  resolveCruelFirstImpact,
+  resolveCruelSecondImpact,
+  shouldHoldCruelVictory,
+  shouldTriggerCruelFirstPhase,
+  shouldTriggerCruelSecondPhase,
 } from '../src/utils/cruelBattle';
 import {
+  BATTLE_CONTENT_MANIFEST,
+  BATTLE_CONTENT_SCHEMA_VERSION,
+  CRUEL_SCRIPTED_BATTLE,
+  DIVINE_BENISON_BALANCE,
+  ENEMY_SUPPORT_ACTIONS,
+} from '../src/data/battleEncounterData';
+import {
+  ERA_WIND_SYNERGY_ID,
   GRAND_COMPANY_EORZEA_ID,
   getBattleOnlySynergyMultiplier,
   getLatestProgressionBattleSynergy,
@@ -149,7 +174,7 @@ import {
 } from '../src/utils/trainingDummy';
 import {
   advanceBattleCashRecovery,
-  applyEnemyCureRecovery,
+  applyDivineBenisonToGaugeDelta,
   applyCoverToGaugeDelta,
   applyTrainingGaugeSpeed,
   BOSS_COVER_BALANCE,
@@ -159,12 +184,12 @@ import {
   BATTLE_GAUGE_SPEED_FACTOR,
   BATTLE_LOYALTY_BALANCE,
   BATTLE_SUPPORT_BALANCE,
-  CELEBRATION_GIFT_OPTIONS,
+  PROFIT_ALLOCATION_OPTIONS,
   calculateDirectInvestmentGaugeImpact,
   calculateEnemyDrillReserveCost,
   calculateLimitBreakPushGilEquivalent,
   calculateSubsidiarySupportAmount,
-  calculateCelebrationGiftCost,
+  calculateProfitAllocationCost,
   calculateCompanyStrengthScore,
   calculateBattleVictoryReward,
   calculatePlayerBattleCashLimit,
@@ -177,6 +202,7 @@ import {
   TRAINING_GAUGE_SPEED_MULTIPLIER,
   TRAINING_MIN_OWNERSHIP_PERCENT,
   calculateEnemyBudget,
+  calculateEnemyDrainAmount,
   calculateLimitBreakAmount,
   calculateLimitBreakChargeGain,
   consumeLimitBreakCharge,
@@ -211,15 +237,17 @@ import {
   LIMIT_BREAK_OWNERSHIP_CAPS,
   NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS,
   REPEATED_NETWORK_SUPPORT_BALANCE,
+  advanceCriticalAutoResolution,
+  resolveCriticalAutoInterception,
   resolveLivingDeadOutcome,
   sortSubsidiariesBySupport,
   SAVAGE_ENEMY_BUDGET_MULTIPLIER,
   SAVAGE_ENEMY_DIFFICULTY_LEVELS,
   SAVAGE_LAYER_BUDGET_MULTIPLIERS,
   SAVAGE_SERIES_BUDGET_MULTIPLIERS,
-  STARTER_BAKERY_ENEMY_BUDGET_RATIO,
   ULTIMATE_ENEMY_BUDGET_MULTIPLIER,
   getEnemyDifficultyLevel,
+  getDivineBenisonDisplayPercent,
   getEnemyDivinationDurationMs,
   getEnemyDrillImpact,
   getEnemyDrillOwnershipPush,
@@ -229,14 +257,12 @@ import {
   getSavageLayerBudgetMultiplier,
   getSavageSeriesBudgetMultiplier,
   getRepeatedNetworkSupportMultiplier,
-  calculateEraWindCost,
-  getEraWindGaugePushPerSecond,
   canEnemyAffordDrill,
   shouldForceUltimateCriticalBeforeVictory,
   ENEMY_SUPPORT_SKILL_BALANCE,
   ULTIMATE_ENEMY_AUTO_PATTERNS,
-  getEnemyCureRecoveryRatio,
-  shouldEnemyUseCure,
+  resolveEnemyDrainTransfer,
+  shouldEnemyUseDivineBenison,
 } from '../src/utils/gameBalance';
 import {
   advanceBattleWind,
@@ -254,7 +280,19 @@ const noInfluence = { enemyBudgetDiscount: 0 };
 assert.equal(INITIAL_PLAYER_FUNDS, 20_000);
 assert.equal(PLAYER_BATTLE_CASH_CAP_RATIO, 1);
 assert.equal(calculatePlayerBattleCashLimit(2_000), 2_000);
-const expectedCampaignCounts = [3, 2, 3, 4, 2, 1, 1, 1, 1, 2];
+const expectedCampaignCounts = [2, 2, 2, 2, 2, 1, 1, 1, 1, 2];
+const expectedCampaignTargetIds = [
+  ['prop_starter_farm', 'prop_timber_ake'],
+  ['prop_land_transport', 'prop_brewery_beer'],
+  ['prop_iron_mine', 'prop_casino_grand'],
+  ['prop_ranch_1', 'prop_weapon_dealer'],
+  ['prop_detective', 'prop_info_broker'],
+  ['prop_inn_town'],
+  ['prop_wheat_farm'],
+  ['prop_security_firm'],
+  ['prop_coffee_aurora'],
+  ['prop_abyss_heavy', 'prop_abyss_mine'],
+] as const;
 const expectedStageMaxPrices = [
   15_000,
   60_000,
@@ -281,17 +319,16 @@ assert.deepEqual(COMMUNITY_CAMPAIGN_ORDER, [
   'ソリューション・ナイン',
 ]);
 
-assert.equal(getWindProgressionStage(0, 0), 0);
+assert.equal(getWindProgressionStage(0), 0);
 assert.equal(
-  getWindProgressionStage(1, 3),
-  0,
-  'the first Limsa battle remains a wind-free fundamentals battle'
+  getWindProgressionStage(1),
+  1,
+  'Gridania network completion unlocks the first wind lesson in Limsa'
 );
-assert.equal(getWindProgressionStage(1, 4), 1);
 assert.deepEqual(getWindPool(1), ['TAILWIND_PLAYER']);
-assert.equal(getWindProgressionStage(2, 5), 2);
+assert.equal(getWindProgressionStage(2), 2);
 assert.ok(getWindPool(2).includes('TAILWIND_ENEMY'));
-assert.equal(getWindProgressionStage(3, 8), 3);
+assert.equal(getWindProgressionStage(3), 3);
 assert.ok(getWindPool(3).includes('HEADWIND_PLAYER'));
 assert.ok(getWindPool(3).includes('CROSSWIND'));
 assert.ok(
@@ -416,6 +453,77 @@ assert.equal(
   100,
   'battle countdowns share a 10Hz state tick instead of rerendering at 20Hz'
 );
+assert.deepEqual(
+  getBattleClockScales({
+    baseTimeScale: 1,
+    simulationPaused: false,
+    capitalPileActive: false,
+    capitalPileAllowsCommandRecharge: true,
+    fullPresentationActive: false,
+  }),
+  { commandTimeScale: 1, simulationTimeScale: 1 },
+  'the command and simulation clocks advance together during ordinary battle time'
+);
+assert.deepEqual(
+  getBattleClockScales({
+    baseTimeScale: 1,
+    simulationPaused: true,
+    capitalPileActive: true,
+    capitalPileAllowsCommandRecharge: true,
+    fullPresentationActive: false,
+  }),
+  { commandTimeScale: 1, simulationTimeScale: 0 },
+  'ordinary coin stacking advances only the player command clock'
+);
+assert.deepEqual(
+  getBattleClockScales({
+    baseTimeScale: 1,
+    simulationPaused: true,
+    capitalPileActive: true,
+    capitalPileAllowsCommandRecharge: false,
+    fullPresentationActive: false,
+  }),
+  { commandTimeScale: 0, simulationTimeScale: 0 },
+  'capital piles tagged as exceptional keep every battle clock paused'
+);
+assert.deepEqual(
+  getBattleClockScales({
+    baseTimeScale: 1,
+    simulationPaused: true,
+    capitalPileActive: true,
+    capitalPileAllowsCommandRecharge: true,
+    fullPresentationActive: true,
+  }),
+  { commandTimeScale: 0, simulationTimeScale: 0 },
+  'an overlapping skill or full presentation overrides ordinary pile recharge'
+);
+assert.deepEqual(
+  getBattleClockScales({
+    baseTimeScale: 0.12,
+    simulationPaused: false,
+    capitalPileActive: false,
+    capitalPileAllowsCommandRecharge: true,
+    fullPresentationActive: false,
+  }),
+  { commandTimeScale: 0.12, simulationTimeScale: 0.12 },
+  'decision grace continues to scale both clocks outside a presentation pause'
+);
+assert.deepEqual(
+  getBattleClockScales({
+    baseTimeScale: -1,
+    simulationPaused: false,
+    capitalPileActive: false,
+    capitalPileAllowsCommandRecharge: true,
+    fullPresentationActive: false,
+  }),
+  { commandTimeScale: 0, simulationTimeScale: 0 },
+  'battle clock scales never become negative'
+);
+assert.equal(
+  ENEMY_SUPPORT_POST_PILE_GRACE_MS,
+  800,
+  'an enemy support warning held by coin stacking reopens a readable input window'
+);
 assert.ok(
   Math.abs(BATTLE_GAUGE_FRAME_MS[30] - (1_000 / 30)) < 0.001 &&
     Math.abs(BATTLE_GAUGE_FRAME_MS[60] - (1_000 / 60)) < 0.001,
@@ -473,6 +581,154 @@ assert.ok(
   REDUCED_MOTION_SKILL_CINEMATIC_TIMING.totalMs <=
     SKILL_CINEMATIC_TIMING.totalMs,
   'reduced-motion staging never lasts longer than standard staging'
+);
+for (const timing of [
+  SKILL_CINEMATIC_TIMING,
+  REDUCED_MOTION_SKILL_CINEMATIC_TIMING,
+]) {
+  const castAt = timing.nameMs;
+  const effectAt = castAt + timing.castMs;
+  const impactAt = effectAt + timing.hitStopMs;
+  const resolveAt = impactAt + timing.impactMs;
+
+  assert.deepEqual(
+    getSkillCinematicTimelineState(Number.NaN, timing),
+    getSkillCinematicTimelineState(-1, timing),
+    'invalid or negative elapsed time safely restarts from the skill name beat'
+  );
+  assert.deepEqual(
+    getSkillCinematicTimelineState(castAt - 1, timing),
+    {
+      stage: 'name',
+      castDue: false,
+      effectDue: false,
+      completionDue: false,
+      nextTransitionInMs: 1,
+    },
+    'the skill name beat owns the full pre-cast interval'
+  );
+  assert.deepEqual(
+    getSkillCinematicTimelineState(castAt, timing),
+    {
+      stage: 'cast',
+      castDue: true,
+      effectDue: false,
+      completionDue: false,
+      nextTransitionInMs: timing.castMs,
+    },
+    'cast begins exactly once at the pure name deadline'
+  );
+  assert.deepEqual(
+    getSkillCinematicTimelineState(effectAt, timing),
+    {
+      stage: 'hitstop',
+      castDue: true,
+      effectDue: true,
+      completionDue: false,
+      nextTransitionInMs: timing.hitStopMs,
+    },
+    'the battle effect becomes due at the hit-stop boundary'
+  );
+  assert.equal(
+    getSkillCinematicTimelineState(impactAt, timing).stage,
+    'impact',
+    'impact follows hit-stop without an acknowledgement click'
+  );
+  assert.deepEqual(
+    getSkillCinematicTimelineState(resolveAt, timing),
+    {
+      stage: 'resolve',
+      castDue: true,
+      effectDue: true,
+      completionDue: false,
+      nextTransitionInMs: timing.resolveMs,
+    },
+    'the resolved value remains visible for its readable afterglow'
+  );
+  assert.equal(
+    getSkillCinematicTimelineState(timing.totalMs - 1, timing)
+      .nextTransitionInMs,
+    1,
+    'the final readable millisecond is retained before auto-resume'
+  );
+  assert.deepEqual(
+    getSkillCinematicTimelineState(timing.totalMs + 30_000, timing),
+    {
+      stage: 'resolve',
+      castDue: true,
+      effectDue: true,
+      completionDue: true,
+      nextTransitionInMs: null,
+    },
+    'a delayed or HMR-restored runner catches up instead of stranding the battle'
+  );
+}
+
+const completedSkillTimeline = getSkillCinematicTimelineState(
+  SKILL_CINEMATIC_TIMING.totalMs,
+  SKILL_CINEMATIC_TIMING
+);
+const initialSkillEvents = {
+  cast: false,
+  effect: false,
+  completion: false,
+};
+const blockedSkillDecision = getSkillCinematicEventDecision({
+  timeline: completedSkillTimeline,
+  consumed: initialSkillEvents,
+  completionBlocked: true,
+});
+assert.deepEqual(
+  blockedSkillDecision,
+  {
+    fireCast: true,
+    fireEffect: true,
+    fireCompletion: false,
+    waitForPresentation: true,
+    consumed: { cast: true, effect: true, completion: false },
+  },
+  'catch-up applies cast/effect once but waits for a capital presentation'
+);
+const replayedBlockedSkillDecision = getSkillCinematicEventDecision({
+  timeline: completedSkillTimeline,
+  consumed: blockedSkillDecision.consumed,
+  completionBlocked: true,
+});
+assert.equal(
+  replayedBlockedSkillDecision.fireCast ||
+    replayedBlockedSkillDecision.fireEffect ||
+    replayedBlockedSkillDecision.fireCompletion,
+  false,
+  'timer or HMR replay cannot double-fire a consumed skill event'
+);
+const resumedSkillDecision = getSkillCinematicEventDecision({
+  timeline: completedSkillTimeline,
+  consumed: replayedBlockedSkillDecision.consumed,
+});
+assert.equal(
+  resumedSkillDecision.fireCompletion,
+  true,
+  'completion fires once after the presentation lock clears'
+);
+const replayedCompletionDecision = getSkillCinematicEventDecision({
+  timeline: completedSkillTimeline,
+  consumed: resumedSkillDecision.consumed,
+});
+assert.equal(
+  replayedCompletionDecision.fireCast ||
+    replayedCompletionDecision.fireEffect ||
+    replayedCompletionDecision.fireCompletion,
+  false,
+  'a replay after completion cannot resume the battle queue twice'
+);
+assert.equal(
+  getSkillCinematicEventDecision({
+    timeline: completedSkillTimeline,
+    consumed: initialSkillEvents,
+    runMatches: false,
+  }).fireEffect,
+  false,
+  'a stale cinematic run cannot apply its effect to the active queue item'
 );
 assert.deepEqual(
   getBattleHitStopTiming(false, false),
@@ -566,7 +822,7 @@ assert.equal(
 assert.deepEqual(
   resolveBattleSkillSelection(
     ['skill_demoralize', 'skill_fast_horse'],
-    ['skill_fast_horse', 'skill_demoralize', 'skill_era_wind'],
+    ['skill_fast_horse', 'skill_demoralize', 'skill_capital_boost'],
     'skill_fast_horse'
   ),
   {
@@ -579,7 +835,7 @@ assert.deepEqual(
 assert.deepEqual(
   resolveBattleSkillSelection(
     [],
-    ['skill_era_wind', 'skill_demoralize'],
+    ['skill_capital_boost', 'skill_demoralize'],
     null
   ),
   {
@@ -664,6 +920,69 @@ const pendingBattleSession = parsePendingBattleSession(
 );
 assert.equal(pendingBattleSession?.targetProperty.id, pendingBattleProperty.id);
 assert.equal(pendingBattleSession?.mode, 'normal');
+const currentNormalPropertyIds = new Set(
+  INITIAL_PROPERTIES.map((property) => property.id)
+);
+assert.equal(
+  isPendingBattleTargetAvailable(
+    pendingBattleSession!,
+    currentNormalPropertyIds
+  ),
+  true
+);
+assert.equal(
+  isPendingBattleTargetAvailable(
+    {
+      ...pendingBattleSession!,
+      targetProperty: {
+        ...pendingBattleSession!.targetProperty,
+        id: 'prop_starter_bakery',
+      },
+    },
+    currentNormalPropertyIds
+  ),
+  false,
+  'a removed normal business cannot reopen as a ghost battle'
+);
+assert.equal(
+  isPendingBattleTargetAvailable(
+    {
+      ...pendingBattleSession!,
+      mode: 'savage',
+      targetProperty: {
+        ...pendingBattleSession!.targetProperty,
+        id: 'prop_blacksmith',
+      },
+    },
+    currentNormalPropertyIds
+  ),
+  true,
+  'legacy high-end save IDs remain recoverable without becoming normal contacts'
+);
+assert.equal(
+  shouldRestorePendingBattleSession(
+    pendingBattleSession!,
+    pendingBattleSession!.startedAt - 1
+  ),
+  true,
+  'a battle marker newer than the pre-battle save remains recoverable'
+);
+assert.equal(
+  shouldRestorePendingBattleSession(
+    pendingBattleSession!,
+    pendingBattleSession!.startedAt
+  ),
+  true,
+  'same-millisecond start saves must not discard an active battle'
+);
+assert.equal(
+  shouldRestorePendingBattleSession(
+    pendingBattleSession!,
+    pendingBattleSession!.startedAt + 1
+  ),
+  false,
+  'a newer authoritative result save suppresses a stale recovery marker'
+);
 assert.equal(
   parsePendingBattleSession(
     JSON.stringify({
@@ -1398,10 +1717,69 @@ assert.equal(
 assert.equal(multiRequestReadiness.sequentialSupportGradeCapped, true);
 assert.ok(
   multiRequestReadiness.capitalComponents.some(
-    (component) => component.label.includes('人脈2件へ各1回')
+    (component) => component.label.includes('人脈2件を強い順に要請')
   ),
   'readiness details the subsidiary one-pass assumption'
 );
+
+const overwhelmingReacquisitionSubsidiaries = Array.from(
+  { length: 3 },
+  (_, index) => ({
+    ...readinessProperty,
+    id: `extreme_readiness_${index}`,
+    marketPrice: 10_000_000,
+  })
+);
+const overwhelmingNormalReadiness = calculateBattleReadiness({
+  targetMarketPrice: 100_000,
+  availableCash: 100_000,
+  subsidiaries: overwhelmingReacquisitionSubsidiaries,
+  selectedBattleSynergy: null,
+  limitBreakCharge: 0,
+  allianceSupport: 0,
+  hasCapitalBoost: false,
+  enemyBudget: 100_000,
+  enemyDifficultyLevel: 3,
+  enemyBaseReactionSeconds: 2,
+  playerPushBonus: 0,
+  battleMode: 'normal',
+  mechanicWarning: '代表ギミックあり',
+  mechanicSeverity: 'warning',
+});
+const overwhelmingExtremeReadiness = calculateBattleReadiness({
+  targetMarketPrice: 100_000,
+  availableCash: 100_000,
+  subsidiaries: overwhelmingReacquisitionSubsidiaries,
+  selectedBattleSynergy: null,
+  limitBreakCharge: 0,
+  allianceSupport: 0,
+  hasCapitalBoost: false,
+  enemyBudget: 100_000,
+  enemyDifficultyLevel: 3,
+  enemyBaseReactionSeconds: 2,
+  playerPushBonus: 0,
+  battleMode: 'extreme',
+  mechanicWarning: '代表ギミックあり',
+  mechanicSeverity: 'warning',
+});
+assert.ok(
+  overwhelmingExtremeReadiness.ratio >= 150,
+  'the Extreme regression fixture represents an overwhelmingly stronger current company'
+);
+assert.equal(
+  overwhelmingExtremeReadiness.playerExpectedCapital,
+  overwhelmingNormalReadiness.playerExpectedCapital,
+  'Extreme assessment never changes the real deployable gil calculation'
+);
+assert.equal(overwhelmingNormalReadiness.grade, 'even');
+assert.equal(overwhelmingExtremeReadiness.grade, 'advantage');
+assert.equal(
+  overwhelmingExtremeReadiness.assessmentRatio,
+  overwhelmingExtremeReadiness.ratio,
+  'Extreme readiness reports the real ratio instead of a close-fight presentation cap'
+);
+assert.equal(overwhelmingExtremeReadiness.sequentialSupportGradeCapped, false);
+assert.equal(overwhelmingExtremeReadiness.mechanicGradeCapped, false);
 
 const lbReadiness = calculateBattleReadiness({
   targetMarketPrice: 1_000_000,
@@ -1429,7 +1807,7 @@ assert.ok(
 );
 assert.ok(
   lbReadiness.capitalComponents.some(
-    (component) => component.label === '外部アライアンス1回'
+    (component) => component.label === '外部アライアンス1回（高難度補正なし）'
   ),
   'readiness states the once-per-battle cooperation assumption'
 );
@@ -1443,6 +1821,12 @@ assert.ok(
 const campaignSummary = COMMUNITY_CAMPAIGN_ORDER.map((community, index) => {
   const targets = getCampaignProperties(INITIAL_PROPERTIES, community);
   assert.equal(targets.length, expectedCampaignCounts[index], `campaign target count: stage ${index + 1}`);
+  assert.ok(targets.length <= 2, `normal city has at most two encounters: ${community}`);
+  assert.deepEqual(
+    targets.map((property) => property.id),
+    expectedCampaignTargetIds[index],
+    `authored existing-property encounters: stage ${index + 1}`
+  );
   const maxPrice = Math.max(...targets.map((property) => property.marketPrice));
   assert.equal(maxPrice, expectedStageMaxPrices[index], `stage max price: stage ${index + 1}`);
   targets.forEach((property) => {
@@ -1485,14 +1869,14 @@ const campaignSummary = COMMUNITY_CAMPAIGN_ORDER.map((community, index) => {
 const expectedNormalEnemySupportProfiles = [
   [],
   [],
-  ['mug'],
-  ['mug'],
-  ['cure', 'mug'],
-  ['cure'],
-  ['mug'],
-  ['mug', 'drill'],
+  ['drain'],
+  ['drain'],
+  ['divine_benison', 'drain'],
+  ['divine_benison'],
+  ['drain'],
+  ['drain', 'drill'],
   ['divination'],
-  ['cure', 'divination'],
+  ['divine_benison', 'divination'],
 ] as const;
 COMMUNITY_CAMPAIGN_ORDER.forEach((community, index) => {
   const targets = getCampaignProperties(INITIAL_PROPERTIES, community);
@@ -1534,28 +1918,28 @@ assert.deepEqual(
     targetProperty: firstCartelMember,
     isCityBoss: false,
   }),
-  ['cure', 'mug']
+  ['divine_benison', 'drain']
 );
 assert.deepEqual(
   getEnemySupportSkillProfile({
     targetProperty: firstCartelHeadquarters,
     isCityBoss: false,
   }),
-  ['mug', 'divination']
+  ['drain', 'divination']
 );
 assert.deepEqual(
   getEnemySupportSkillProfile({
     targetProperty: lateCartelMember,
     isCityBoss: false,
   }),
-  ['mug', 'divination']
+  ['drain', 'divination']
 );
 assert.deepEqual(
   getEnemySupportSkillProfile({
     targetProperty: lateCartelHeadquarters,
     isCityBoss: false,
   }),
-  ['mug', 'drill']
+  ['drain', 'drill']
 );
 assert.equal(
   getBossAbilityTier({
@@ -1576,7 +1960,7 @@ assert.deepEqual(
     targetProperty: firstCartelHeadquarters,
     isCityBoss: false,
   }),
-  { opening: 'mug', critical: 'cure' }
+  { opening: 'drain', critical: 'divine_benison' }
 );
 assert.deepEqual(
   getEnemySupportAutoProfile({
@@ -1610,6 +1994,30 @@ assert.deepEqual(
   SAVAGE_RAID_DEFINITIONS.map((raid) => raid.layer),
   [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4]
 );
+assert.equal(
+  getDefaultOpenSavageSeries({
+    clearedIds: [],
+    unlockedIds: [SAVAGE_RAID_DEFINITIONS[0].id],
+  }),
+  1,
+  'the compact high-end list opens the first playable Savage series'
+);
+assert.equal(
+  getDefaultOpenSavageSeries({
+    clearedIds: SAVAGE_RAID_DEFINITIONS.slice(0, 4).map((raid) => raid.id),
+    unlockedIds: [SAVAGE_RAID_DEFINITIONS[4].id],
+  }),
+  2,
+  'the disclosure follows the next playable series'
+);
+assert.equal(
+  getDefaultOpenSavageSeries({
+    clearedIds: SAVAGE_RAID_DEFINITIONS.map((raid) => raid.id),
+    unlockedIds: SAVAGE_RAID_DEFINITIONS.map((raid) => raid.id),
+  }),
+  null,
+  'all Savage series stay collapsed after all twelve clears'
+);
 assert.deepEqual(
   savageProperties.map((property) =>
     getEnemySupportSkillProfile({
@@ -1619,11 +2027,22 @@ assert.deepEqual(
     })
   ),
   [
-    ['cure', 'mug'], ['mug', 'divination'], ['mug', 'drill'], ['cure', 'mug', 'drill', 'divination'],
-    ['cure', 'mug'], ['mug', 'divination'], ['mug', 'drill'], ['cure', 'mug', 'drill', 'divination'],
-    ['cure', 'mug'], ['mug', 'divination'], ['mug', 'drill'], ['cure', 'mug', 'drill', 'divination'],
+    ['divine_benison'], ['drain', 'divination'], ['divination'], ['divine_benison', 'drill', 'divination'],
+    ['drain'], ['divine_benison', 'divination'], ['drain', 'rapid_assault'], ['divine_benison', 'divination', 'rapid_assault', 'limit_break_3'],
+    ['divine_benison', 'divination'], ['drill'], ['drain', 'rapid_assault'], ['drill', 'divination', 'limit_break_3'],
   ],
-  'all three Savage series repeat the authored four-layer support pattern'
+  'the twelve Savage layers must use the authored progression-specific support pattern'
+);
+assert.equal(
+  savageProperties.filter((property) =>
+    getEnemySupportSkillProfile({
+      targetProperty: property,
+      isCityBoss: false,
+      isSavage: true,
+    }).includes('drain')
+  ).length,
+  4,
+  'Drain must stay a notable cash-pressure mechanic instead of appearing in every Savage layer'
 );
 assert.deepEqual(
   savageProperties.map((property) =>
@@ -1636,18 +2055,18 @@ assert.deepEqual(
   [
     { opening: null, critical: null },
     { opening: null, critical: null },
-    { opening: null, critical: null },
-    { opening: 'mug', critical: 'drill' },
-    { opening: null, critical: null },
-    { opening: null, critical: null },
-    { opening: null, critical: null },
-    { opening: 'divination', critical: 'cure' },
+    { opening: 'rapid_assault', critical: null },
+    { opening: 'divine_benison', critical: 'drill' },
     { opening: null, critical: null },
     { opening: null, critical: null },
+    { opening: 'divination', critical: null },
+    { opening: 'divination', critical: 'limit_break_3' },
     { opening: null, critical: null },
-    { opening: 'divination', critical: 'drill' },
+    { opening: null, critical: null },
+    { opening: 'divination', critical: null },
+    { opening: 'rapid_assault', critical: 'limit_break_3' },
   ],
-  'each Savage layer-four boss reserves both its opening and critical ability'
+  'Savage layer three adds one authored opening check and layer four reserves its opening/critical pair'
 );
 assert.deepEqual(
   savageProperties.map((property) =>
@@ -1717,10 +2136,37 @@ assert.deepEqual(
 const normalCampaignIds = COMMUNITY_CAMPAIGN_ORDER.flatMap((community) =>
   getCampaignProperties(INITIAL_PROPERTIES, community).map((property) => property.id)
 );
+const authoredCampaignIds = CAMPAIGN_ENCOUNTER_DEFINITIONS.map(
+  (definition) => definition.targetPropertyId
+);
+const retiredNormalPropertyIds = [
+  'prop_starter_bakery',
+  'prop_pub_central',
+  'prop_horse_meat',
+  'prop_blacksmith',
+] as const;
+assert.equal(new Set(normalCampaignIds).size, normalCampaignIds.length);
+assert.deepEqual(authoredCampaignIds, normalCampaignIds);
+const allNormalBusinessIds = INITIAL_PROPERTIES.filter(
+  countsTowardCityConquest
+).map((property) => property.id);
+assert.deepEqual(
+  [...normalCampaignIds].sort(),
+  [...allNormalBusinessIds].sort(),
+  'all sixteen retained businesses are real encounters and real network contacts'
+);
+assert.equal(normalCampaignIds.length, 16);
+retiredNormalPropertyIds.forEach((propertyId) => {
+  assert.equal(
+    INITIAL_PROPERTIES.some((property) => property.id === propertyId),
+    false,
+    `${propertyId} is absent from assets, revenue and battle support`
+  );
+});
 const raidMemberIds = SAVAGE_RAID_DEFINITIONS.flatMap((raid) => raid.memberPropertyIds);
-assert.equal(raidMemberIds.length, normalCampaignIds.length);
+assert.equal(raidMemberIds.length, allNormalBusinessIds.length);
 assert.equal(new Set(raidMemberIds).size, raidMemberIds.length);
-assert.deepEqual([...raidMemberIds].sort(), [...normalCampaignIds].sort());
+assert.deepEqual([...raidMemberIds].sort(), [...allNormalBusinessIds].sort());
 
 const synergyIds = new Set(INITIAL_GROUP_SYNERGIES.map((synergy) => synergy.id));
 assert.equal(
@@ -1751,8 +2197,13 @@ const progressionBattleSynergies = INITIAL_GROUP_SYNERGIES.filter(
 );
 assert.deepEqual(
   progressionBattleSynergies.map((synergy) => synergy.id),
-  ['CRYSTAL_BRAVES', 'LIGHT_OF_HOPE', GRAND_COMPANY_EORZEA_ID],
-  'the three manual progression synergies keep their narrative order'
+  [
+    'CRYSTAL_BRAVES',
+    'LIGHT_OF_HOPE',
+    GRAND_COMPANY_EORZEA_ID,
+    ERA_WIND_SYNERGY_ID,
+  ],
+  'the four manual progression synergies keep their narrative order'
 );
 assert.equal(
   progressionBattleSynergies.every(
@@ -1772,6 +2223,7 @@ const noOwnedPropertyIds = new Set<string>();
 const crystalBraves = progressionBattleSynergies[0];
 const lightOfHope = progressionBattleSynergies[1];
 const grandCompanyEorzea = progressionBattleSynergies[2];
+const eraWindSynergy = progressionBattleSynergies[3];
 assert.equal(
   grandCompanyEorzea.unlockAfterCommunity,
   'ラザハン',
@@ -1818,6 +2270,40 @@ assert.ok(
   'Grand Company Eorzea is the strongest progression battle synergy'
 );
 assert.equal(grandCompanyEorzea.battleEffect?.ownershipPush, 12);
+assert.equal(eraWindSynergy.id, ERA_WIND_SYNERGY_ID);
+assert.equal(
+  eraWindSynergy.unlockAfterSavageRaidId,
+  'savage_raid_2_layer_2',
+  'Era Wind moves from the ability list to a mid-Savage progression SYNERGY'
+);
+assert.ok(
+  (eraWindSynergy.battleEffect?.capitalPressureMultiplier ?? 0) >
+    (grandCompanyEorzea.battleEffect?.capitalPressureMultiplier ?? 0),
+  'Era Wind is the direct upgrade above Grand Company Eorzea'
+);
+assert.equal(eraWindSynergy.battleEffect?.capitalPressureMultiplier, 2.05);
+assert.equal(eraWindSynergy.battleEffect?.limitBreakChargeMultiplier, 1.25);
+assert.equal(eraWindSynergy.battleEffect?.continuousGaugePushPerSecond, 0.75);
+assert.equal(eraWindSynergy.battleEffect?.countersMarketWind, true);
+assert.equal(
+  isGroupSynergyUnlocked({
+    synergy: eraWindSynergy,
+    ownedPropertyIds: noOwnedPropertyIds,
+    conqueredCommunityIds: new Set(),
+    savageClearedRaidIds: new Set(),
+  }),
+  false
+);
+assert.equal(
+  isGroupSynergyUnlocked({
+    synergy: eraWindSynergy,
+    ownedPropertyIds: noOwnedPropertyIds,
+    conqueredCommunityIds: new Set(),
+    savageClearedRaidIds: new Set(['savage_raid_2_layer_2']),
+  }),
+  true,
+  'the authored mid-Savage clear unlocks Era Wind'
+);
 const grandCompanyReadinessEquivalent =
   calculateBattleSynergyReadinessEquivalent({
     targetMarketPrice: 6_000_000_000,
@@ -1851,7 +2337,7 @@ assert.ok(
 assert.equal(ultimateReadinessWithGrandCompany.mechanicCheckRequired, true);
 assert.match(
   ultimateReadinessWithGrandCompany.mechanicWarning ?? '',
-  /開幕・土壇場/
+  /開幕・瀕死/
 );
 assert.equal(
   isGroupSynergyUnlocked({
@@ -2001,7 +2487,10 @@ assert.deepEqual(
   'a former four-layer clear preserves the already unlocked Ultimate duty'
 );
 assert.deepEqual(
-  normalizeSavageClearedRaidIds(normalCampaignIds, undefined),
+  normalizeSavageClearedRaidIds(
+    [...allNormalBusinessIds, ...retiredNormalPropertyIds],
+    undefined
+  ),
   savageTargetIds,
   'a complete pre-versioned twenty-encounter clear also remains complete'
 );
@@ -2013,13 +2502,15 @@ assert.deepEqual(
 const migratedLegacyLayerOne = new Set(
   normalizeSavageClearedRaidIds(legacyFirstLayerMemberIds, undefined)
 );
-legacyFirstLayerMemberIds.forEach((propertyId) => {
+legacyFirstLayerMemberIds
+  .filter((propertyId) => allNormalBusinessIds.includes(propertyId))
+  .forEach((propertyId) => {
   assert.equal(
     getSavagePropertyYieldMultiplier(propertyId, migratedLegacyLayerOne),
     1 + SAVAGE_PROPERTY_YIELD_BONUS,
     `legacy first-layer property reward remains intact: ${propertyId}`
   );
-});
+  });
 assert.deepEqual(
   Array.from(getSavageSynergyRanks(migratedLegacyLayerOne).entries()).sort(),
   [
@@ -2093,7 +2584,7 @@ assert.deepEqual(
     isCityBoss: false,
     isUltimate: true,
   }),
-  ['cure', 'mug', 'drill', 'divination'],
+  ['divine_benison', 'drain', 'drill', 'divination'],
   'Ultimate exposes the complete sequential enemy support kit'
 );
 assert.deepEqual(
@@ -2102,7 +2593,7 @@ assert.deepEqual(
     isCityBoss: false,
     isUltimate: true,
   }),
-  { opening: 'mug', critical: 'drill' },
+  { opening: 'drain', critical: 'drill' },
   'Ultimate reserves both an opening and a critical automatic ability'
 );
 assert.equal(ULTIMATE_ENEMY_AUTO_PATTERNS.length, 6);
@@ -2201,7 +2692,8 @@ assert.deepEqual(
     isCityBoss: false,
     isCruel: true,
   }),
-  ['cure', 'mug', 'drill', 'divination', 'rapid_assault', 'limit_break_3']
+  ['divine_benison', 'drill', 'divination', 'rapid_assault', 'limit_break_3'],
+  'Cruel deliberately excludes Drain so its two capital assessments stay legible'
 );
 assert.deepEqual(
   getEnemySupportAutoProfile({
@@ -2218,62 +2710,70 @@ assert.equal(
   'Cruel awards only its record and title, never repeatable cash'
 );
 
-assert.deepEqual(
-  calculateCruelOmnicapitalizationImpact({
-    remainingReserve: 750,
-    openingReserve: 750,
-  }),
-  { reserveRatio: 1, ownershipPush: 40, gaugeDelta: 80 }
+const exportedBattleContent = JSON.parse(
+  JSON.stringify(BATTLE_CONTENT_MANIFEST)
 );
-assert.deepEqual(
-  calculateCruelOmnicapitalizationImpact({
-    remainingReserve: 375,
-    openingReserve: 750,
-  }),
-  { reserveRatio: 0.5, ownershipPush: 20, gaugeDelta: 40 }
-);
-assert.deepEqual(
-  calculateCruelOmnicapitalizationImpact({
-    remainingReserve: 0,
-    openingReserve: 750,
-  }),
-  { reserveRatio: 0, ownershipPush: 0, gaugeDelta: 0 }
-);
-assert.equal(CRUEL_OMNICAPITALIZATION_BALANCE.triggerPlayerOwnership, 75);
-assert.equal(CRUEL_OMNICAPITALIZATION_BALANCE.telegraphMs, 4_500);
+assert.equal(exportedBattleContent.schemaVersion, BATTLE_CONTENT_SCHEMA_VERSION);
 assert.equal(
-  shouldTriggerCruelOmnicapitalization({
+  exportedBattleContent.enemySupportActions.length,
+  Object.keys(ENEMY_SUPPORT_ACTIONS).length,
+  'Unity/editor battle content manifest must survive a JSON round trip'
+);
+assert.equal(
+  exportedBattleContent.enemySupportActions.some(
+    (action: { id?: string }) => action.id === 'limit_break_3'
+  ),
+  true
+);
+
+assert.equal(CRUEL_SCRIPTED_BATTLE.firstTriggerActiveMs, 15_000);
+assert.equal(resolveCruelFirstImpact(90), 10);
+assert.equal(resolveCruelFirstImpact(5), 5);
+assert.equal(
+  shouldTriggerCruelFirstPhase({
     isCruel: true,
-    alreadyUsed: false,
-    pending: false,
-    currentPlayerOwnership: 74.9,
-    candidatePlayerOwnership: 75,
+    phase: 'awaiting_first',
+    activeElapsedMs: 15_000,
   }),
   true,
-  'crossing the 75% boundary triggers the once-per-battle response'
+  'Cruel first declaration follows active battle time, not ownership'
 );
 assert.equal(
-  shouldTriggerCruelOmnicapitalization({
-    isCruel: true,
-    alreadyUsed: false,
-    pending: false,
-    currentPlayerOwnership: 60,
-    candidatePlayerOwnership: 120,
+  shouldTriggerCruelSecondPhase({
+    phase: 'recovery',
+    currentPlayerOwnership: 50,
+    recoveryElapsedMs: 1_000,
   }),
   true,
-  'a lethal overkill cannot skip Omnicapitalization'
+  'recovering to 50% starts the second declaration once'
 );
 assert.equal(
-  shouldTriggerCruelOmnicapitalization({
-    isCruel: true,
-    alreadyUsed: true,
-    pending: false,
-    currentPlayerOwnership: 60,
-    candidatePlayerOwnership: 90,
+  shouldTriggerCruelSecondPhase({
+    phase: 'recovery',
+    currentPlayerOwnership: 20,
+    recoveryElapsedMs: 35_000,
   }),
-  false,
-  'a stunned or resolved Omnicapitalization never fires a second time'
+  true,
+  'the second declaration is forced before a two-minute mud fight'
 );
+assert.deepEqual(resolveCruelSecondImpact(75), {
+  outcome: 'break',
+  ownershipBefore: 75,
+  ownershipAfter: 75,
+});
+assert.deepEqual(resolveCruelSecondImpact(50), {
+  outcome: 'defeat',
+  ownershipBefore: 50,
+  ownershipAfter: 0,
+});
+assert.deepEqual(resolveCruelSecondImpact(74.999), {
+  outcome: 'defeat',
+  ownershipBefore: 74.999,
+  ownershipAfter: 0,
+});
+assert.equal(shouldHoldCruelVictory(true, 'second_failed'), true);
+assert.equal(shouldHoldCruelVictory(true, 'second_countdown'), true);
+assert.equal(shouldHoldCruelVictory(true, 'resolved'), false);
 
 assert.equal(
   calculateBattleVictoryReward(600_000_000, true, 'savage', false),
@@ -2421,12 +2921,17 @@ assert.equal(
   true
 );
 assert.equal(calculateAllianceSupport(1_000_000), 750_000);
-assert.equal(calculateAllianceSupport(1_000_000, 1), 750_000);
-assert.equal(calculateAllianceSupport(1_000_000, 2), 615_000);
-assert.equal(calculateAllianceSupport(1_000_000, 99), 337_500);
+const agoraTradeAgreement = INITIAL_PROPERTIES.find(
+  (property) => property.id === 'prop_abyss_hq'
+)!;
+assert.equal(
+  calculateAllianceSupport(agoraTradeAgreement.marketPrice),
+  calculateSubsidiarySupportAmount(agoraTradeAgreement),
+  'one external alliance request must match one full-strength Agora network request at the same scale'
+);
 assert.equal(getRepeatedNetworkSupportMultiplier(0), 1);
-assert.equal(getRepeatedNetworkSupportMultiplier(1), 1);
-assert.equal(getRepeatedNetworkSupportMultiplier(2), 0.82);
+assert.equal(getRepeatedNetworkSupportMultiplier(1), 0.9);
+assert.equal(getRepeatedNetworkSupportMultiplier(2), 0.8);
 assert.equal(
   getRepeatedNetworkSupportMultiplier(99),
   REPEATED_NETWORK_SUPPORT_BALANCE.minimumMultiplier
@@ -2498,8 +3003,8 @@ assert.equal(
     { ...INITIAL_PROPERTIES[0], marketPrice: 100_000, reacquisitionLevel: 0 },
     1
   ),
-  75_000,
-  'the second request retains full strength before battle-local decay begins'
+  67_500,
+  'the second battle-local network request decays by ten percent'
 );
 assert.equal(calculateLimitBreakPushGilEquivalent(1_000_000, 8.5), 100_000);
 assert.deepEqual(
@@ -2528,6 +3033,10 @@ const restoredWorldCopy = restoreProperties({
     { id: 'prop_abyss_heavy', owner: 'independent', ownerName: '独立物件', loyaltyRisk: 0 },
     { id: 'prop_abyss_mine', owner: 'abyss', ownerName: '古い連盟表示', loyaltyRisk: 0 },
     { id: 'prop_starter_farm', owner: 'player', ownerName: '旧セーブ商会', loyaltyRisk: 12 },
+    { id: 'prop_starter_bakery', owner: 'player', ownerName: '旧セーブ商会', loyaltyRisk: 0 },
+    { id: 'prop_pub_central', owner: 'player', ownerName: '旧セーブ商会', loyaltyRisk: 0 },
+    { id: 'prop_horse_meat', owner: 'player', ownerName: '旧セーブ商会', loyaltyRisk: 0 },
+    { id: 'prop_blacksmith', owner: 'independent', ownerName: '独立物件', loyaltyRisk: 0, reacquisitionLevel: 1 },
     {
       id: 'prop_timber_ake',
       owner: 'player',
@@ -2544,6 +3053,13 @@ assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_abyss_he
 assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_abyss_heavy')?.owner, 'independent');
 assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_abyss_mine')?.ownerName, '知識・技術交易連盟');
 assert.equal(restoredWorldCopy.find((property) => property.id === 'prop_starter_farm')?.ownerName, '旧セーブ商会');
+retiredNormalPropertyIds.forEach((propertyId) => {
+  assert.equal(
+    restoredWorldCopy.some((property) => property.id === propertyId),
+    false,
+    `old saves cannot restore retired support contact ${propertyId}`
+  );
+});
 assert.equal(
   restoredWorldCopy.find((property) => property.id === 'prop_starter_farm')
     ?.reacquisitionLevel,
@@ -2556,7 +3072,6 @@ assert.equal(
   2,
   'new schema-v3 saves restore the optional reacquisition level'
 );
-
 const enemyBudgetRatio = (propertyId: string, isTutorial = false) => {
   const property = INITIAL_PROPERTIES.find((candidate) => candidate.id === propertyId)!;
   return calculateEnemyBudget({
@@ -2567,16 +3082,12 @@ const enemyBudgetRatio = (propertyId: string, isTutorial = false) => {
   }) / property.marketPrice;
 };
 assert.ok(Math.abs(enemyBudgetRatio('prop_starter_farm', true) - 0.315) < 0.001);
-assert.equal(
-  enemyBudgetRatio('prop_starter_bakery'),
-  STARTER_BAKERY_ENEMY_BUDGET_RATIO,
-  'the second Gridania lesson makes the first subsidiary materially useful'
-);
 assert.ok(Math.abs(enemyBudgetRatio('prop_timber_ake') - 0.5526) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_land_transport') - 0.6331) < 0.001);
-assert.ok(Math.abs(enemyBudgetRatio('prop_casino_grand') - 1.0967) < 0.001);
-assert.ok(Math.abs(enemyBudgetRatio('prop_coffee_aurora') - 1.2202) < 0.001);
-assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_heavy') - 1.6934) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_brewery_beer') - 1.2661) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_casino_grand') - 0.9327) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_coffee_aurora') - 1.5252) < 0.001);
+assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_heavy') - 2.0321) < 0.001);
 assert.ok(Math.abs(enemyBudgetRatio('prop_abyss_hq') - 2.3976) < 0.001);
 const savageBudgetTarget = savageProperties[0];
 const savageBudget = calculateEnemyBudget({
@@ -2790,39 +3301,51 @@ const disruptionSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_sabot
 const coverSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_demoralize')!;
 const capitalBoostSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_capital_boost')!;
 const synergyPushSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_synergy_push')!;
-const eraWindSkill = INITIAL_SKILLS.find((skill) => skill.id === 'skill_era_wind')!;
 const noAssets = { ownedProperties: [], totalFunds: 50_000, activeSynergyCount: 0 };
 assert.equal(isSkillUnlocked({ skill: livingDeadSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: fastHorseSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: capitalBoostSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: synergyPushSkill, ...noAssets }), false);
-assert.equal(isSkillUnlocked({ skill: eraWindSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: capitalBoostSkill, ...noAssets, totalFunds: 1_000_000 }), true);
 assert.equal(isSkillUnlocked({ skill: livingDeadSkill, ...noAssets, totalFunds: 999_999 }), false);
 assert.equal(isSkillUnlocked({ skill: livingDeadSkill, ...noAssets, totalFunds: 1_000_000 }), true);
-assert.equal(isSkillUnlocked({ skill: synergyPushSkill, ...noAssets, activeSynergyCount: 1 }), true);
+assert.equal(
+  isSkillUnlocked({
+    skill: synergyPushSkill,
+    ...noAssets,
+    activeSynergyCount: 1,
+  }),
+  false,
+  'Divine Benison no longer unlocks from an unrelated active SYNERGY count'
+);
+assert.equal(
+  isSkillUnlocked({
+    skill: synergyPushSkill,
+    ...noAssets,
+    ownedProperties: [
+      INITIAL_PROPERTIES.find((property) => property.id === 'prop_brewery_beer')!,
+    ],
+  }),
+  true,
+  'Divine Benison unlocks from the authored Limsa contract'
+);
 assert.equal(isSkillUnlocked({
   skill: fastHorseSkill,
   ...noAssets,
   ownedProperties: [INITIAL_PROPERTIES.find((property) => property.id === 'prop_ranch_1')!],
 }), true);
-const eraWindRequiredProperties = eraWindSkill.requiredAllPropertyIds!.map(
-  (id) => INITIAL_PROPERTIES.find((property) => property.id === id)!
-);
-assert.equal(isSkillUnlocked({
-  skill: eraWindSkill,
-  ...noAssets,
-  ownedProperties: eraWindRequiredProperties.slice(0, 2),
-}), false);
-assert.equal(isSkillUnlocked({
-  skill: eraWindSkill,
-  ...noAssets,
-  ownedProperties: eraWindRequiredProperties,
-}), true);
 assert.equal(capitalBoostSkill.oncePerBattle, true);
 assert.deepEqual(
-  INITIAL_SKILLS.map((skill) => skill.name),
-  ['疾風怒濤の計', 'スタン', 'かばう', '意気衝天', 'リビングデッド', 'バトルリタニー', '時代の風']
+  INITIAL_SKILLS.map((skill) => skill.id),
+  [
+    'skill_fast_horse',
+    'skill_synergy_push',
+    'skill_demoralize',
+    'skill_capital_boost',
+    'skill_sns_blitz',
+    'skill_sabotage',
+  ],
+  'manual abilities keep six stable legacy IDs after Era Wind becomes SYNERGY'
 );
 assert.equal(fastHorseSkill.cooldownMs, TACTICAL_SKILL_BALANCE.fastAction.cooldownMs);
 assert.equal(
@@ -2848,21 +3371,27 @@ assert.match(disruptionSkill.description, /予告外.*不発/);
 assert.equal(coverSkill.id, 'skill_demoralize', 'legacy equipped ability id remains valid');
 assert.equal(coverSkill.effectType, 'COVER');
 assert.equal(coverSkill.oncePerBattle, true);
-assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 20_000);
-assert.equal(HIGH_DIFFICULTY_SUPPORT_MULTIPLIER, 1.5);
-assert.equal(TACTICAL_SKILL_BALANCE.cover.absorbRatio, 0.78);
-assert.equal(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity, 48);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 18_000);
+assert.equal(HIGH_DIFFICULTY_SUPPORT_MULTIPLIER, 1.7);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.absorbRatio, 0.92);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity, 84);
 assert.deepEqual(
-  BOSS_COVER_BALANCE.cover,
   TACTICAL_SKILL_BALANCE.cover,
-  'standard enemy and player Cover use the same duration, reduction and guard capacity'
+  {
+    durationMs: BOSS_COVER_BALANCE.enhancedCover.durationMs,
+    absorbRatio: BOSS_COVER_BALANCE.enhancedCover.absorbRatio,
+    gaugeCapacity: BOSS_COVER_BALANCE.enhancedCover.gaugeCapacity,
+  },
+  'player Passage and enemy Passage share the same defensive contract'
 );
-assert.equal(BOSS_COVER_BALANCE.cover.durationMs, 20_000);
-assert.equal(BOSS_COVER_BALANCE.enhancedCover.durationMs, 22_000);
-assert.equal(BOSS_COVER_BALANCE.invincible.durationMs, 8_000);
-assert.equal(BOSS_COVER_BALANCE.cover.gaugeCapacity, 48);
-assert.equal(BOSS_COVER_BALANCE.enhancedCover.gaugeCapacity, 68);
-assert.match(coverSkill.description, /20秒間/);
+assert.equal(BOSS_COVER_BALANCE.cover.durationMs, 18_000);
+assert.equal(BOSS_COVER_BALANCE.enhancedCover.durationMs, 18_000);
+assert.equal(BOSS_COVER_BALANCE.invincible.durationMs, 5_000);
+assert.equal(BOSS_COVER_BALANCE.cover.gaugeCapacity, 58);
+assert.equal(BOSS_COVER_BALANCE.enhancedCover.gaugeCapacity, 84);
+assert.equal(BOSS_COVER_BALANCE.invincible.followupDurationMs, 6_000);
+assert.equal(BOSS_COVER_BALANCE.invincible.followupGaugeCapacity, 44);
+assert.match(coverSkill.description, /18秒間/);
 assert.deepEqual(
   applyCoverToGaugeDelta({
     currentGauge: 0,
@@ -2893,20 +3422,20 @@ assert.deepEqual(
 );
 assert.equal(
   getCoverGuardDisplayPercent({
-    remainingGaugeCapacity: 48,
-    maximumGaugeCapacity: 48,
-    remainingMs: 20_000,
-    durationMs: 20_000,
+    remainingGaugeCapacity: 84,
+    maximumGaugeCapacity: 84,
+    remainingMs: 18_000,
+    durationMs: 18_000,
   }),
   100,
   'a fresh Cover guard starts with a full display gauge'
 );
 assert.equal(
   getCoverGuardDisplayPercent({
-    remainingGaugeCapacity: 24,
-    maximumGaugeCapacity: 48,
+    remainingGaugeCapacity: 42,
+    maximumGaugeCapacity: 84,
     remainingMs: 14_000,
-    durationMs: 20_000,
+    durationMs: 18_000,
   }),
   50,
   'the display gauge follows the lower of absorption capacity and duration'
@@ -2915,8 +3444,8 @@ assert.equal(
   getCoverGuardDisplayPercent({
     remainingGaugeCapacity: Number.POSITIVE_INFINITY,
     maximumGaugeCapacity: Number.POSITIVE_INFINITY,
-    remainingMs: 4_000,
-    durationMs: 8_000,
+    remainingMs: 2_500,
+    durationMs: 5_000,
   }),
   50,
   'Invincible displays its remaining duration as guard gauge'
@@ -2924,9 +3453,9 @@ assert.equal(
 assert.equal(
   getCoverGuardDisplayPercent({
     remainingGaugeCapacity: 0,
-    maximumGaugeCapacity: 48,
+    maximumGaugeCapacity: 84,
     remainingMs: 14_000,
-    durationMs: 20_000,
+    durationMs: 18_000,
   }),
   0,
   'a depleted guard reaches zero before the knight is blown away'
@@ -2951,19 +3480,16 @@ assert.equal(
 );
 assert.equal(
   terminalLimitBreakCovered.absorbedGauge,
-  17.16,
+  18.48,
   'Cover absorbs the movement from the pre-LB gauge, not the 99% preview'
 );
-assert.equal(
-  ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.durationMs,
-  TACTICAL_SKILL_BALANCE.fastAction.durationMs,
-  'Ultimate Rapid Assault lasts exactly as long as player Fast Action'
+assert.ok(
+  ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.durationMs >= 12_000,
+  'Ultimate Rapid Assault keeps a clearly readable sustained window'
 );
-assert.equal(
-  ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.actionProgressMultiplier,
-  TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick /
-    TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick,
-  'Ultimate Rapid Assault uses the same action-speed ratio as the player skill'
+assert.ok(
+  ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.actionProgressMultiplier >= 2,
+  'Ultimate Rapid Assault materially increases enemy action speed'
 );
 assert.equal(
   ENEMY_SUPPORT_SKILL_BALANCE.limitBreak3.ownershipPush,
@@ -2978,10 +3504,15 @@ const enemyLimitBreakCovered = applyCoverToGaugeDelta({
   remainingGaugeCapacity: TACTICAL_SKILL_BALANCE.cover.gaugeCapacity,
 });
 assert.ok(
-  Math.abs(enemyLimitBreakCovered.nextGauge - 13.2) < 0.0001,
-  'a prepared player Cover reduces enemy LB3 from 30 ownership points to 6.6'
+  Math.abs(enemyLimitBreakCovered.nextGauge - 4.8) < 0.0001,
+  'a prepared player Passage reduces enemy LB3 from 30 ownership points to 2.4'
 );
 assert.equal(TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio, 0.4);
+assert.equal(
+  Math.round(6_000_000_000 * TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio),
+  2_400_000_000,
+  'Ultimate critical Capital Boost commits exactly 40% of the 6B market'
+);
 assert.equal(livingDeadSkill.id, 'skill_sns_blitz', 'legacy save-compatible skill id');
 assert.equal(livingDeadSkill.effectType, 'LIVING_DEAD');
 assert.equal(livingDeadSkill.cooldownMs, 0);
@@ -2990,38 +3521,101 @@ assert.equal(TACTICAL_SKILL_BALANCE.livingDead.waitingDurationMs, 10_000);
 assert.equal(TACTICAL_SKILL_BALANCE.livingDead.recoveryDurationMs, 10_000);
 assert.equal(TACTICAL_SKILL_BALANCE.livingDead.minimumOwnership, 1);
 assert.equal(TACTICAL_SKILL_BALANCE.livingDead.recoveryOwnership, 30);
-assert.equal(calculateEraWindCost(1_000_000, 0), 100_000);
-assert.equal(calculateEraWindCost(100_000_000, 0), 2_000_000);
-assert.equal(calculateEraWindCost(100_000_000, 1), 2_000_000);
-assert.equal(TACTICAL_SKILL_BALANCE.eraWind.durationMs, 10_000);
-assert.equal(TACTICAL_SKILL_BALANCE.eraWind.maxUsesPerBattle, 1);
-assert.equal(getEraWindGaugePushPerSecond(0), 1.55);
-assert.equal(getEraWindGaugePushPerSecond(2), 1.55);
-assert.equal(
-  Number(
-    (
-      getEraWindGaugePushPerSecond(0) *
-      (TACTICAL_SKILL_BALANCE.eraWind.durationMs / 1000) /
-      2
-    ).toFixed(1)
-  ),
-  7.8,
-  'the shortened Era Wind still produces a meaningful but bounded push'
-);
-assert.equal(eraWindSkill.oncePerBattle, true);
-assert.match(eraWindSkill.description, /10秒間/);
-assert.match(eraWindSkill.description, /1争奪戦につき1回/);
 assert.match(livingDeadSkill.description, /1争奪戦につき1回/);
 assert.equal(calculateOwnershipFromGauge(98), 1);
 assert.equal(calculateOwnershipFromGauge(40), 30);
+assert.deepEqual(
+  resolveCriticalAutoInterception({
+    currentGauge: 40,
+    candidateGauge: 70,
+    canIntercept: true,
+  }),
+  { shouldIntercept: true, heldGauge: 50 },
+  'critical AUTO holds an enemy push at 25% ownership'
+);
+assert.deepEqual(
+  resolveCriticalAutoInterception({
+    currentGauge: 40,
+    candidateGauge: 120,
+    canIntercept: true,
+  }),
+  { shouldIntercept: true, heldGauge: 50 },
+  'critical AUTO discards a lethal overshoot instead of replaying it after the skill'
+);
+assert.deepEqual(
+  resolveCriticalAutoInterception({
+    currentGauge: 60,
+    candidateGauge: 80,
+    canIntercept: true,
+  }),
+  { shouldIntercept: true, heldGauge: 50 },
+  'an armed critical AUTO recovers a late frame to its held 25% boundary'
+);
+assert.deepEqual(
+  resolveCriticalAutoInterception({
+    currentGauge: 40,
+    candidateGauge: 70,
+    canIntercept: false,
+  }),
+  { shouldIntercept: false, heldGauge: 70 },
+  'an unavailable or already-used critical AUTO cannot alter the enemy push'
+);
+assert.deepEqual(
+  resolveCriticalAutoInterception({
+    currentGauge: 40,
+    candidateGauge: 45,
+    canIntercept: true,
+  }),
+  { shouldIntercept: false, heldGauge: 45 },
+  'critical AUTO does not trigger above the ownership threshold'
+);
+assert.equal(
+  advanceCriticalAutoResolution('idle', 'hold'),
+  'held',
+  'critical AUTO first owns the battle clock at the held boundary'
+);
+assert.equal(
+  advanceCriticalAutoResolution('held', 'release'),
+  'held',
+  'critical AUTO cannot release before its cinematic and effect'
+);
+assert.equal(
+  advanceCriticalAutoResolution('held', 'start_cinematic'),
+  'cinematic'
+);
+assert.equal(
+  advanceCriticalAutoResolution('cinematic', 'commit_effect'),
+  'effect_committed'
+);
+assert.equal(
+  advanceCriticalAutoResolution('effect_committed', 'release'),
+  'effect_committed',
+  'critical AUTO cannot release while its capital presentation is incomplete'
+);
+assert.equal(
+  advanceCriticalAutoResolution(
+    'effect_committed',
+    'complete_presentation'
+  ),
+  'presentation_complete',
+  'critical AUTO records presentation completion as a portable state boundary'
+);
+assert.equal(
+  advanceCriticalAutoResolution('presentation_complete', 'release'),
+  'idle',
+  'critical AUTO releases only after the effect presentation is complete'
+);
+assert.equal(
+  advanceCriticalAutoResolution('cinematic', 'cancel'),
+  'idle',
+  'critical AUTO can be safely cancelled during teardown'
+);
 assert.equal(resolveLivingDeadOutcome('waiting', 50, 1), 'none');
 assert.equal(resolveLivingDeadOutcome('waiting', 0, 10_000), 'triggered');
 assert.equal(resolveLivingDeadOutcome('waiting', 0, 0), 'waiting_expired');
 assert.equal(resolveLivingDeadOutcome('recovery', 29.99, 1), 'none');
 assert.equal(resolveLivingDeadOutcome('recovery', 30, 1), 'recovered');
 assert.equal(resolveLivingDeadOutcome('recovery', 29.99, 0), 'failed');
-assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.durationMs, 14_000);
-assert.equal(TACTICAL_SKILL_BALANCE.battleLitany.pushMultiplier, 1.8);
 assert.deepEqual(BATTLE_SUPPORT_BALANCE, {
   subsidiaryMarketRatio: 0.75,
   subsidiaryImpactBase: 2.5,
@@ -3037,12 +3631,12 @@ assert.deepEqual(BATTLE_LOYALTY_BALANCE, {
   individualRiskIncrease: 12,
   limitBreakRiskIncrease: 8,
   synergyRiskIncrease: 10,
-  celebrationRewardRatio: 0.5,
+  profitShareRewardRatio: 0.5,
   reacquisitionSupportBonusPerLevel: 0.1,
   reacquisitionRiskReductionPerLevel: 2,
   maxReacquisitionLevel: 2,
 });
-assert.deepEqual(CELEBRATION_GIFT_OPTIONS, [
+assert.deepEqual(PROFIT_ALLOCATION_OPTIONS, [
   {
     id: 'keep',
     label: '独占',
@@ -3053,9 +3647,14 @@ assert.deepEqual(CELEBRATION_GIFT_OPTIONS, [
     id: 'share50',
     label: '山分け',
     rate: 0.5,
-    departureProbabilityMultiplier: 0.35,
+    departureProbabilityMultiplier: 0.2,
   },
 ]);
+assert.equal(
+  PROFIT_ALLOCATION_OPTIONS.length,
+  2,
+  'victory settlement exposes only the exclusive and equal-share choices'
+);
 const returningSubsidiary = {
   ...readinessProperty,
   reacquisitionLevel: 1,
@@ -3097,76 +3696,97 @@ assert.equal(
   10
 );
 assert.equal(
-  calculateCelebrationGiftCost(
+  calculateProfitAllocationCost(
     [{ ...readinessProperty, marketPrice: 100_000 }],
     10_000,
-    CELEBRATION_GIFT_OPTIONS[0].rate
+    PROFIT_ALLOCATION_OPTIONS[0].rate
   ),
   0,
-  'keeping the full reward has no celebration cost'
+  'keeping the full reward has no allocation cost'
 );
 assert.equal(
-  calculateCelebrationGiftCost(
+  calculateProfitAllocationCost(
     [{ ...readinessProperty, marketPrice: 100_000 }],
     10_000,
-    CELEBRATION_GIFT_OPTIONS[1].rate
+    PROFIT_ALLOCATION_OPTIONS[1].rate
   ),
   5_000,
-  'equal sharing uses 50% of the earned victory reward in total'
+  'equal sharing uses 50% of the earned victory profit in total'
 );
 assert.equal(
-  calculateCelebrationGiftCost(
+  calculateProfitAllocationCost(
     [
       { ...readinessProperty, id: 'share-a' },
       { ...readinessProperty, id: 'share-b' },
       { ...readinessProperty, id: 'share-c' },
     ],
     10_000,
-    CELEBRATION_GIFT_OPTIONS[1].rate
+    PROFIT_ALLOCATION_OPTIONS[1].rate
   ),
   5_000,
   'the 50% pool is divided across all allies rather than charged once per ally'
 );
 assert.equal(
-  calculateCelebrationGiftCost(
+  calculateProfitAllocationCost(
     [{ ...readinessProperty, marketPrice: 100_000 }],
     300,
-    CELEBRATION_GIFT_OPTIONS[1].rate
+    PROFIT_ALLOCATION_OPTIONS[1].rate
   ),
   150,
   'equal sharing scales with small victory rewards'
 );
 assert.equal(
-  calculateCelebrationGiftCost([], 10_000),
+  calculateProfitAllocationCost([], 10_000),
   0,
-  'there is no gift choice without subsidiaries'
+  'there is no profit allocation cost without subsidiaries'
 );
 assert.equal(
-  calculateCelebrationGiftCost(
+  calculateProfitAllocationCost(
     [{ ...readinessProperty, marketPrice: 100_000 }],
     10_000,
     -0.1
   ),
   0,
-  'a negative gift rate cannot create a credit'
+  'a negative allocation rate cannot create a credit'
 );
 assert.equal(
-  calculateCelebrationGiftCost(
+  calculateProfitAllocationCost(
     [{ ...readinessProperty, marketPrice: 100_000 }],
     10_000,
     Number.NaN
   ),
   0,
-  'a non-finite gift rate cannot charge the player'
+  'a non-finite allocation rate cannot charge the player'
 );
 assert.equal(
-  calculateCelebrationGiftCost(
+  calculateProfitAllocationCost(
     [{ ...readinessProperty, marketPrice: 100_000 }],
     10_000,
     2
   ),
   10_000,
-  'gift cost is capped at the earned reward'
+  'allocation cost is capped at the earned reward'
+);
+const projectedProfitAllocationChoices = getVictoryProfitAllocationChoices(
+  [
+    { ...readinessProperty, id: 'projection-a', loyaltyRisk: 50 },
+    { ...readinessProperty, id: 'projection-b', loyaltyRisk: 50 },
+    { ...readinessProperty, id: 'projection-c', loyaltyRisk: 50 },
+  ],
+  10_000
+);
+assert.deepEqual(
+  projectedProfitAllocationChoices.map(({ id, label, rate, cost }) => ({
+    id,
+    label,
+    rate,
+    cost,
+  })),
+  [
+    { id: 'keep', label: '独占', rate: 0, cost: 0 },
+    { id: 'share50', label: '山分け', rate: 0.5, cost: 5_000 },
+  ],
+  'the pure settlement projection is the sole source for UI choice labels and total costs'
 );
 assert.equal(calculateRebellionProbability(30), 0);
 assert.ok(
@@ -3201,36 +3821,36 @@ const highRiskSettlementProperty = {
 const highRiskDepartureProbability = calculateRebellionProbability(
   highRiskSettlementProperty.loyaltyRisk
 );
-const noGiftLoyaltySettlement = resolvePostVictoryLoyalty(
+const exclusiveLoyaltySettlement = resolvePostVictoryLoyalty(
   [highRiskSettlementProperty],
-  CELEBRATION_GIFT_OPTIONS[0].departureProbabilityMultiplier,
+  PROFIT_ALLOCATION_OPTIONS[0].departureProbabilityMultiplier,
   () => 0.06
 );
-assert.equal(noGiftLoyaltySettlement.leaving.length, 1);
+assert.equal(exclusiveLoyaltySettlement.leaving.length, 1);
 const sharedLoyaltySettlement = resolvePostVictoryLoyalty(
   [highRiskSettlementProperty],
-  CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier,
+  PROFIT_ALLOCATION_OPTIONS[1].departureProbabilityMultiplier,
   () => 0.06
 );
 assert.equal(
   sharedLoyaltySettlement.leaving.length,
   0,
-  '50% sharing strongly reduces only this settlement departure probability'
+  'the 50% share strongly reduces only this settlement departure probability'
 );
 assert.equal(
   sharedLoyaltySettlement.survivors[0].loyaltyRisk,
   highRiskSettlementProperty.loyaltyRisk,
-  '50% sharing never reduces saved loyalty risk'
+  'the 50% share never reduces saved loyalty risk'
 );
 const sharedNonzeroRiskSettlement = resolvePostVictoryLoyalty(
   [highRiskSettlementProperty],
-  CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier,
-  () => 0.02
+  PROFIT_ALLOCATION_OPTIONS[1].departureProbabilityMultiplier,
+  () => 0.01
 );
 assert.equal(
   sharedNonzeroRiskSettlement.leaving.length,
   1,
-  '50% sharing suppresses departure strongly but never guarantees survival'
+  'the 50% share suppresses departure strongly but never guarantees survival'
 );
 assert.equal(
   highRiskSettlementProperty.loyaltyRisk,
@@ -3239,12 +3859,12 @@ assert.equal(
 );
 assert.equal(
   normalizeDepartureProbabilityMultiplier(false),
-  CELEBRATION_GIFT_OPTIONS[0].departureProbabilityMultiplier
+  PROFIT_ALLOCATION_OPTIONS[0].departureProbabilityMultiplier
 );
 assert.equal(
   normalizeDepartureProbabilityMultiplier(true),
-  CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier,
-  'the temporary boolean compatibility path maps true to 50% sharing'
+  PROFIT_ALLOCATION_OPTIONS[1].departureProbabilityMultiplier,
+  'the temporary boolean compatibility path maps true to the strongest allocation'
 );
 assert.equal(normalizeDepartureProbabilityMultiplier(-1), 0);
 assert.equal(normalizeDepartureProbabilityMultiplier(2), 1);
@@ -3266,10 +3886,10 @@ assert.ok(
   Math.abs(
     calculateAtLeastOneDepartureProbability(
       [highRiskSettlementProperty],
-      CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier
+      PROFIT_ALLOCATION_OPTIONS[1].departureProbabilityMultiplier
     ) -
       highRiskDepartureProbability *
-        CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier
+        PROFIT_ALLOCATION_OPTIONS[1].departureProbabilityMultiplier
   ) < Number.EPSILON * 4,
   'one-subsidiary aggregate probability matches its adjusted individual probability'
 );
@@ -3281,7 +3901,7 @@ assert.ok(
   Math.abs(
     calculateAtLeastOneDepartureProbability(
       twoMaximumRiskSubsidiaries,
-      CELEBRATION_GIFT_OPTIONS[0].departureProbabilityMultiplier
+      PROFIT_ALLOCATION_OPTIONS[0].departureProbabilityMultiplier
     ) -
       0.99
   ) < 1e-12,
@@ -3290,13 +3910,13 @@ assert.ok(
 assert.ok(
   calculateAtLeastOneDepartureProbability(
     twoMaximumRiskSubsidiaries,
-    CELEBRATION_GIFT_OPTIONS[1].departureProbabilityMultiplier
+    PROFIT_ALLOCATION_OPTIONS[1].departureProbabilityMultiplier
   ) <
     calculateAtLeastOneDepartureProbability(
       twoMaximumRiskSubsidiaries,
-      CELEBRATION_GIFT_OPTIONS[0].departureProbabilityMultiplier
+      PROFIT_ALLOCATION_OPTIONS[0].departureProbabilityMultiplier
     ),
-  '50% sharing lowers aggregate departure probability for the whole network'
+  'equal sharing lowers aggregate departure probability for the whole network'
 );
 assert.deepEqual(
   resolvePostVictoryLoyalty([], true, () => 0),
@@ -3762,153 +4382,183 @@ assert.deepEqual(
   'terminal battle state freezes cash recovery'
 );
 
-assert.deepEqual(ENEMY_SUPPORT_SKILL_BALANCE.cure, {
-  normalRecoveryRatio: 0.08,
-  highDifficultyRecoveryRatio: 0.1,
-  triggerReserveRatio: 0.35,
-  triggerPlayerOwnership: 55,
-  minimumUsefulRecoveryRatio: 0.03,
+assert.deepEqual(DIVINE_BENISON_BALANCE, {
+  durationMs: 8_000,
+  absorbRatio: 1,
+  gaugeCapacity: 24,
+  triggerPlayerOwnership: 52,
+  maxUsesPerBattle: 1,
 });
-assert.equal(getEnemyCureRecoveryRatio({}), 0.08);
-assert.equal(getEnemyCureRecoveryRatio({ isSavage: true }), 0.1);
-assert.equal(getEnemyCureRecoveryRatio({ isUltimate: true }), 0.1);
 assert.deepEqual(
-  applyEnemyCureRecovery({
-    baselineFunds: recoveryBaseline,
-    availableFunds: 0,
-    cumulativeRecovered: 0,
+  ENEMY_SUPPORT_SKILL_BALANCE.divineBenison,
+  DIVINE_BENISON_BALANCE,
+  'player and enemy Benison share one finite-barrier contract'
+);
+assert.deepEqual(ENEMY_SUPPORT_SKILL_BALANCE.drain, {
+  handCashRatio: 0.18,
+  marketPriceCapRatio: 0.1,
+  maxUsesPerBattle: 1,
+});
+assert.deepEqual(ENEMY_SUPPORT_SKILL_BALANCE.cashRecovery, {
+  passiveRecoveryCapRatio: 0.12,
+});
+assert.deepEqual(
+  applyDivineBenisonToGaugeDelta({
+    currentGauge: 0,
+    nextGauge: -40,
+    protects: 'opponent',
+    remainingGaugeCapacity: 24,
   }),
   {
-    availableFunds: 800,
-    cumulativeRecovered: 800,
-    recoveredThisStep: 800,
-    cumulativeRecoveryRatio: 0.08,
+    nextGauge: -16,
+    absorbedGauge: 24,
+    remainingGaugeCapacity: 0,
   },
-  'normal Cure restores 8% of the enemy opening budget'
+  'enemy Benison fully absorbs up to 12 ownership points and lets overflow through'
 );
 assert.deepEqual(
-  applyEnemyCureRecovery({
-    baselineFunds: recoveryBaseline,
-    availableFunds: 0,
-    cumulativeRecovered: 0,
-    isSavage: true,
+  applyDivineBenisonToGaugeDelta({
+    currentGauge: 0,
+    nextGauge: 18,
+    protects: 'player',
+    remainingGaugeCapacity: 24,
   }),
   {
-    availableFunds: 1_000,
-    cumulativeRecovered: 1_000,
-    recoveredThisStep: 1_000,
-    cumulativeRecoveryRatio: 0.1,
+    nextGauge: 0,
+    absorbedGauge: 18,
+    remainingGaugeCapacity: 6,
   },
-  'Savage Cure restores 10% of the enemy opening budget'
+  'player Benison uses the same gauge-capacity rule in the opposite direction'
 );
 assert.deepEqual(
-  applyEnemyCureRecovery({
-    baselineFunds: recoveryBaseline,
-    availableFunds: 2_500,
-    cumulativeRecovered: 1_500,
+  applyDivineBenisonToGaugeDelta({
+    currentGauge: 0,
+    nextGauge: 10,
+    protects: 'opponent',
+    remainingGaugeCapacity: 24,
   }),
   {
-    availableFunds: 3_000,
-    cumulativeRecovered: 2_000,
-    recoveredThisStep: 500,
-    cumulativeRecoveryRatio: 0.2,
+    nextGauge: 10,
+    absorbedGauge: 0,
+    remainingGaugeCapacity: 24,
   },
-  'Cure shares and cannot exceed the existing cumulative 20% recovery pool'
-);
-assert.deepEqual(
-  applyEnemyCureRecovery({
-    baselineFunds: recoveryBaseline,
-    availableFunds: 9_700,
-    cumulativeRecovered: 0,
-    isUltimate: true,
-  }),
-  {
-    availableFunds: 10_000,
-    cumulativeRecovered: 300,
-    recoveredThisStep: 300,
-    cumulativeRecoveryRatio: 0.03,
-  },
-  'Cure cannot overflow the enemy opening reserve'
+  'Benison ignores pressure moving away from its protected side'
 );
 assert.equal(
-  shouldEnemyUseCure({
-    baselineFunds: recoveryBaseline,
-    availableFunds: 3_500,
-    cumulativeRecovered: 0,
-    playerOwnership: 54.99,
-    terminal: false,
+  getDivineBenisonDisplayPercent({
+    remainingGaugeCapacity: 24,
+    remainingMs: 8_000,
   }),
+  100
+);
+assert.equal(
+  getDivineBenisonDisplayPercent({
+    remainingGaugeCapacity: 12,
+    remainingMs: 8_000,
+  }),
+  50
+);
+assert.equal(
+  getDivineBenisonDisplayPercent({
+    remainingGaugeCapacity: 24,
+    remainingMs: 4_000,
+  }),
+  50,
+  'barrier HUD displays the lower of capacity and remaining time'
+);
+assert.equal(
+  getDivineBenisonDisplayPercent({
+    remainingGaugeCapacity: 24,
+    remainingMs: 0,
+  }),
+  0
+);
+assert.equal(
+  shouldEnemyUseDivineBenison({ playerOwnership: 51.99, terminal: false }),
+  false
+);
+assert.equal(
+  shouldEnemyUseDivineBenison({ playerOwnership: 52, terminal: false }),
   true,
-  'Cure reserve trigger includes the exact 35% boundary'
+  'enemy Benison trigger includes the exact 52% pressure boundary'
 );
 assert.equal(
-  shouldEnemyUseCure({
-    baselineFunds: recoveryBaseline,
-    availableFunds: 3_501,
-    cumulativeRecovered: 0,
-    playerOwnership: 54.99,
-    terminal: false,
-  }),
+  shouldEnemyUseDivineBenison({ playerOwnership: 100, terminal: true }),
   false,
-  'Cure does not trigger above both pressure thresholds'
+  'enemy Benison never starts after terminal settlement'
 );
 assert.equal(
-  shouldEnemyUseCure({
-    baselineFunds: recoveryBaseline,
-    availableFunds: 9_000,
-    cumulativeRecovered: 0,
-    playerOwnership: 55,
-    terminal: false,
-  }),
-  true,
-  'Cure player-pressure trigger includes the exact 55% boundary'
+  calculateEnemyDrainAmount({ playerCash: 10_000, marketPrice: 10_000 }),
+  1_000,
+  'Drain is capped at 10% of target price'
 );
 assert.equal(
-  shouldEnemyUseCure({
-    baselineFunds: recoveryBaseline,
-    availableFunds: 3_500,
-    cumulativeRecovered: 1_700,
-    playerOwnership: 55,
-    terminal: false,
-  }),
-  true,
-  'Cure can consume the final exact 3% of the shared recovery pool'
-);
-assert.equal(
-  shouldEnemyUseCure({
-    baselineFunds: recoveryBaseline,
-    availableFunds: 3_500,
-    cumulativeRecovered: 1_701,
-    playerOwnership: 55,
-    terminal: false,
-  }),
-  false,
-  'Cure skips a visually negligible remainder below 3%'
-);
-assert.equal(
-  shouldEnemyUseCure({
-    baselineFunds: recoveryBaseline,
-    availableFunds: 0,
-    cumulativeRecovered: 0,
-    playerOwnership: 100,
-    terminal: true,
-  }),
-  false,
-  'Cure never starts after terminal settlement'
+  calculateEnemyDrainAmount({ playerCash: 2_000, marketPrice: 10_000 }),
+  360,
+  'Drain takes 18% of the player hand when below its market cap'
 );
 assert.deepEqual(
-  applyEnemyCureRecovery({
-    baselineFunds: 0,
-    availableFunds: Number.NaN,
-    cumulativeRecovered: Number.POSITIVE_INFINITY,
+  resolveEnemyDrainTransfer({
+    playerCash: 10_000,
+    enemyReserve: 4_000,
+    marketPrice: 10_000,
   }),
   {
-    availableFunds: 0,
+    playerCash: 9_000,
+    enemyReserve: 5_000,
+    transferred: 1_000,
+  },
+  'Drain moves the same uncommitted cash amount between both ledgers'
+);
+assert.deepEqual(
+  resolveEnemyDrainTransfer({
+    playerCash: Number.NaN,
+    enemyReserve: Number.POSITIVE_INFINITY,
+    marketPrice: -1,
+  }),
+  {
+    playerCash: 0,
+    enemyReserve: 0,
+    transferred: 0,
+  },
+  'Drain sanitizes invalid inputs without creating capital'
+);
+
+assert.deepEqual(
+  advanceBattleCashRecovery({
+    baselineFunds: recoveryBaseline,
+    availableFunds: 11_000,
+    cumulativeRecovered: 0,
+    elapsedSeconds: 60,
+    timeScale: 1,
+    windMultiplier: 1,
+    terminal: false,
+  }),
+  {
+    availableFunds: 11_000,
     cumulativeRecovered: 0,
     recoveredThisStep: 0,
     cumulativeRecoveryRatio: 0,
   },
-  'Cure sanitizes invalid zero-baseline recovery input'
+  'passive recovery preserves Drain reserve above the opening baseline'
+);
+assert.deepEqual(
+  advanceBattleCashRecovery({
+    baselineFunds: recoveryBaseline,
+    availableFunds: 9_000,
+    cumulativeRecovered: 0,
+    elapsedSeconds: 10,
+    timeScale: 1,
+    windMultiplier: 1,
+    terminal: false,
+  }),
+  {
+    availableFunds: 9_300,
+    cumulativeRecovered: 300,
+    recoveredThisStep: 300,
+    cumulativeRecoveryRatio: 0.03,
+  },
+  'passive recovery resumes normally after the surplus is spent below baseline'
 );
 
 assert.equal(calculateEnemyDrillReserveCost(10_000), 600);
@@ -3916,42 +4566,39 @@ assert.equal(calculateEnemyDrillReserveCost(0), 0);
 assert.equal(canEnemyAffordDrill(599, 10_000), false);
 assert.equal(canEnemyAffordDrill(600, 10_000), true);
 assert.equal(canEnemyAffordDrill(0, 0), false);
-assert.equal(getEnemyDrillOwnershipPush({}), 4);
-assert.equal(getEnemyDrillOwnershipPush({ isSavage: true }), 5);
-assert.equal(getEnemyDrillOwnershipPush({ isUltimate: true }), 6);
+assert.equal(getEnemyDrillOwnershipPush({}), 5);
+assert.equal(getEnemyDrillOwnershipPush({ isSavage: true }), 8);
+assert.equal(getEnemyDrillOwnershipPush({ isUltimate: true }), 10);
 assert.deepEqual(
   getEnemyDrillImpact({
     enemyBudget: 10_000,
   }),
   {
-    baseOwnershipPush: 4,
-    ownershipPush: 4,
-    gaugeDelta: 8,
+    baseOwnershipPush: 5,
+    ownershipPush: 5,
+    gaugeDelta: 10,
     reserveCost: 600,
-    consumesMugMark: false,
   }
 );
 assert.deepEqual(
   getEnemyDrillImpact({
     enemyBudget: 10_000,
     isUltimate: true,
-    hasMugMark: true,
   }),
   {
-    baseOwnershipPush: 6,
-    ownershipPush: 6.3,
-    gaugeDelta: 12.6,
+    baseOwnershipPush: 10,
+    ownershipPush: 10,
+    gaugeDelta: 20,
     reserveCost: 600,
-    consumesMugMark: true,
   },
-  'Mug adds one 5% vulnerability mark and Drill consumes it'
+  'Drill is self-contained and no longer depends on a hidden vulnerability mark'
 );
-assert.equal(getEnemyDivinationDurationMs({}), 3_500);
-assert.equal(getEnemyDivinationDurationMs({ isSavage: true }), 4_000);
-assert.equal(getEnemyDivinationDurationMs({ isUltimate: true }), 4_000);
+assert.equal(getEnemyDivinationDurationMs({}), 4_000);
+assert.equal(getEnemyDivinationDurationMs({ isSavage: true }), 5_000);
+assert.equal(getEnemyDivinationDurationMs({ isUltimate: true }), 5_000);
 assert.equal(
   ENEMY_SUPPORT_SKILL_BALANCE.divination.enemyInvestmentMultiplier,
-  1.35
+  1.42
 );
 
 const enemyOwnershipBeforeReserveRecovery = 48;
@@ -4057,6 +4704,7 @@ const rebelledFirstCityProperties = conqueredFirstCityProperties.map(
           ...property,
           owner: 'independent' as const,
           ownerName: '独立物件',
+          reacquisitionLevel: 1,
         }
       : property
 );
@@ -4065,6 +4713,64 @@ assert.ok(
     firstCampaignCommunity
   ),
   'rebellion removes current regional control'
+);
+assert.ok(
+  getCompletedCommunityNetworkIds(rebelledFirstCityProperties).includes(
+    firstCampaignCommunity
+  ),
+  'a departed contact remains part of the explored city-network record'
+);
+assert.deepEqual(
+  getCommunityNetworkProgress(
+    rebelledFirstCityProperties,
+    firstCampaignCommunity
+  ),
+  { available: 1, connected: 2, total: 2, complete: true },
+  'route discovery and currently callable support remain separate'
+);
+const [firstNetworkContactId, firstNetworkBossId] = Array.from(
+  firstCampaignTargetIds
+);
+const completionWithSameSettlementDeparture =
+  applyNormalBattlePropertyUpdates({
+    properties: INITIAL_PROPERTIES.map((property) =>
+      property.id === firstNetworkContactId
+        ? { ...property, owner: 'player' as const, ownerName: '進行テスト商会' }
+        : property
+    ),
+    winner: 'player',
+    targetPropertyId: firstNetworkBossId,
+    companyName: '進行テスト商会',
+    rebelledProperties: [
+      INITIAL_PROPERTIES.find(
+        (property) => property.id === firstNetworkContactId
+      )!,
+    ],
+    survivingRiskUpdates: [],
+  });
+assert.equal(
+  hasCompletedCommunityNetwork(
+    completionWithSameSettlementDeparture,
+    firstCampaignCommunity
+  ),
+  true,
+  'a contact leaving in the boss settlement cannot erase the route just explored'
+);
+assert.equal(
+  wouldCompleteCommunityNetwork(
+    rebelledFirstCityProperties,
+    firstCampaignCommunity,
+    firstNetworkBossId
+  ),
+  true,
+  'the pre-result victory presentation also recognizes a previously explored departed contact'
+);
+assert.equal(
+  completionWithSameSettlementDeparture.find(
+    (property) => property.id === firstNetworkContactId
+  )?.owner,
+  'independent',
+  'the departed contact is still unavailable for battle support'
 );
 const retainedConquestAfterRebellion = normalizeConqueredCommunityIds({
   properties: rebelledFirstCityProperties,
@@ -4080,6 +4786,29 @@ assert.ok(
     new Set(retainedConquestAfterRebellion)
   ).has(secondCampaignCommunity),
   'the next city remains unlocked after a subsidiary rebels'
+);
+assert.deepEqual(
+  getNormalBattleNavigation({
+    winner: 'player',
+    targetCommunity: firstCampaignCommunity,
+    newlyConquered: true,
+    isReacquisition: true,
+  }),
+  {
+    community: firstCampaignCommunity,
+    mode: 'targets',
+    unlockedCommunity: null,
+  },
+  'Extreme reacquisition returns to the restored city without replaying an acknowledged city unlock'
+);
+assert.equal(
+  getNormalBattleNavigation({
+    winner: 'player',
+    targetCommunity: firstCampaignCommunity,
+    newlyConquered: true,
+  }).unlockedCommunity,
+  secondCampaignCommunity,
+  'a genuine first conquest still announces the next city'
 );
 
 const laterCityHoldingId = getCampaignProperties(
@@ -4204,6 +4933,75 @@ assert.deepEqual(
   },
   'unknown, unequipped and malformed AUTO assignments normalize to null'
 );
+assert.deepEqual(
+  normalizeSavedAbilityLoadout({
+    equippedSkillIds: [
+      'skill_fast_horse',
+      'skill_synergy_push',
+      'skill_demoralize',
+      'skill_capital_boost',
+      'skill_sns_blitz',
+      'skill_sabotage',
+      'skill_fast_horse',
+      'skill_era_wind',
+    ],
+    openingAutoSkillId: 'skill_fast_horse',
+    criticalAutoSkillId: 'skill_sns_blitz',
+    reserveSkillId: 'skill_sabotage',
+  }),
+  {
+    equippedSkillIds: [
+      'skill_fast_horse',
+      'skill_synergy_push',
+      'skill_demoralize',
+      'skill_capital_boost',
+      'skill_sns_blitz',
+      'skill_sabotage',
+    ],
+    openingAutoSkillId: 'skill_fast_horse',
+    criticalAutoSkillId: 'skill_sns_blitz',
+    reserveSkillId: 'skill_sabotage',
+    manualSkillIds: [
+      'skill_synergy_push',
+      'skill_demoralize',
+      'skill_capital_boost',
+    ],
+  },
+  'six-role loadout keeps three manual, two AUTO and one reserve without duplicates'
+);
+assert.deepEqual(
+  normalizeSavedAbilityLoadout({
+    equippedSkillIds: [
+      'skill_fast_horse',
+      'skill_synergy_push',
+      'skill_demoralize',
+      'skill_capital_boost',
+      'skill_sns_blitz',
+      'skill_sabotage',
+      'skill_era_wind',
+    ],
+    openingAutoSkillId: null,
+    criticalAutoSkillId: null,
+    reserveSkillId: null,
+  }),
+  {
+    equippedSkillIds: [
+      'skill_fast_horse',
+      'skill_synergy_push',
+      'skill_demoralize',
+      'skill_capital_boost',
+    ],
+    openingAutoSkillId: null,
+    criticalAutoSkillId: null,
+    reserveSkillId: 'skill_capital_boost',
+    manualSkillIds: [
+      'skill_fast_horse',
+      'skill_synergy_push',
+      'skill_demoralize',
+    ],
+  },
+  'legacy overfilled saves migrate deterministically without auto-equipping unexpected skills'
+);
 savedPayload = JSON.stringify(legacySchemaThreePayload);
 const restoredLegacySave = loadGameSave();
 assert.ok(restoredLegacySave);
@@ -4278,6 +5076,35 @@ assert.equal(restoredAutoLoadout?.criticalAutoSkillId, 'skill_demoralize');
 assert.equal(
   saveGame({
     ...durableTestSave,
+    equippedSkillIds: [
+      'skill_fast_horse',
+      'skill_synergy_push',
+      'skill_demoralize',
+      'skill_capital_boost',
+      'skill_sns_blitz',
+      'skill_sabotage',
+    ],
+    openingAutoSkillId: 'skill_fast_horse',
+    criticalAutoSkillId: 'skill_sns_blitz',
+    reserveSkillId: 'skill_sabotage',
+  }),
+  true
+);
+const restoredSixRoleLoadout = loadGameSave();
+assert.deepEqual(restoredSixRoleLoadout?.equippedSkillIds, [
+  'skill_fast_horse',
+  'skill_synergy_push',
+  'skill_demoralize',
+  'skill_capital_boost',
+  'skill_sns_blitz',
+  'skill_sabotage',
+]);
+assert.equal(restoredSixRoleLoadout?.openingAutoSkillId, 'skill_fast_horse');
+assert.equal(restoredSixRoleLoadout?.criticalAutoSkillId, 'skill_sns_blitz');
+assert.equal(restoredSixRoleLoadout?.reserveSkillId, 'skill_sabotage');
+assert.equal(
+  saveGame({
+    ...durableTestSave,
     grandCompanyEorzeaIntegrated: true,
   }),
   true
@@ -4339,7 +5166,7 @@ assert.equal(restoredSavageSave?.normalEndingSeen, true);
 assert.equal(restoredSavageSave?.trueEndingSeen, false);
 savedPayload = JSON.stringify({
   ...legacySchemaThreePayload,
-  savageClearedPropertyIds: normalCampaignIds,
+  savageClearedPropertyIds: allNormalBusinessIds,
   normalEndingSeen: true,
   trueEndingSeen: true,
 });
@@ -4369,6 +5196,19 @@ assert.equal(
 );
 savedPayload = JSON.stringify({
   ...legacySchemaThreePayload,
+  equippedSkillIds: ['skill_fast_horse', 'skill_era_wind'],
+  savageClearedPropertyIds: savageTargetIds,
+  savageProgressVersion: 3,
+  selectedBattleSynergyId: 'KUGANE_TRADE_GATEWAY',
+});
+const restoredLegacyEraWindSave = loadGameSave();
+assert.equal(
+  restoredLegacyEraWindSave?.selectedBattleSynergyId,
+  'ERA_WIND_SYNERGY',
+  'legacy Era Wind equipment migrates to the unlocked top-tier battle synergy'
+);
+savedPayload = JSON.stringify({
+  ...legacySchemaThreePayload,
   savageClearedPropertyIds: savageTargetIds,
   savageProgressVersion: 3,
   savageEndingSeen: true,
@@ -4386,8 +5226,11 @@ assert.equal(
 );
 Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
 
-const preFinalTargets = COMMUNITY_CAMPAIGN_ORDER.slice(0, 9).flatMap((community) =>
-  getCampaignProperties(INITIAL_PROPERTIES, community)
+const preFinalCommunityIds = new Set(COMMUNITY_CAMPAIGN_ORDER.slice(0, 9));
+const preFinalTargets = INITIAL_PROPERTIES.filter(
+  (property) =>
+    preFinalCommunityIds.has(property.community) &&
+    countsTowardCityConquest(property)
 );
 const preFinalRevenue = preFinalTargets.reduce(
   (total, property) => total + property.annualRevenue * PASSIVE_REVENUE_MULTIPLIER,

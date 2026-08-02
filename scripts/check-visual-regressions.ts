@@ -7,6 +7,7 @@ import {
   CAPITAL_OVERFLOW_RESTACK_BEATS,
   CAPITAL_STACK_BEAT_MS,
   getCapitalOverflowPassCount,
+  getCapitalPresentationRecoveryAction,
   getMechanicalCapitalColumnFrames,
 } from '../src/utils/battlePresentation';
 
@@ -25,11 +26,17 @@ const header = readSource('src/components/Header.tsx');
 const cartelAllianceView = readSource('src/components/CartelAllianceView.tsx');
 const skillsSynergyView = readSource('src/components/SkillsSynergyView.tsx');
 const gameBalance = readSource('src/utils/gameBalance.ts');
+const battleSettlement = readSource('src/utils/battleSettlement.ts');
+const helpText = readSource('src/data/helpText.ts');
+const battleEncounterData = readSource('src/data/battleEncounterData.ts');
 const cruelBattle = readSource('src/utils/cruelBattle.ts');
 const highEndRaidView = readSource('src/components/HighEndRaidView.tsx');
 const highEndRaidCss = readSource('src/high-end-raids.css');
+const marketView = readSource('src/components/MarketView.tsx');
+const indexCss = readSource('src/index.css');
 const saveData = readSource('src/utils/saveData.ts');
 const battleSession = readSource('src/utils/battleSession.ts');
+const cartel = readSource('src/utils/cartel.ts');
 
 assert.match(
   capitalCss,
@@ -119,7 +126,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /getMechanicalCapitalColumnFrames\([\s\S]*strongPresentation \? 5 : 4/,
+  /getMechanicalCapitalColumnFrames\([\s\S]*strongPresentation \? 8 : 7/,
   'funding waves must advance a bounded rack group instead of lifting every column together'
 );
 assert.match(
@@ -219,13 +226,13 @@ assert.match(
 );
 assert.match(
   skillsSynergyView,
-  /SKILL_PROGRESSION_ORDER = \[[\s\S]*skill_synergy_push[\s\S]*skill_era_wind[\s\S]*orderedSkills\.map/,
+  /SKILL_PROGRESSION_ORDER = \[[\s\S]*skill_synergy_push[\s\S]*skill_sabotage[\s\S]*orderedSkills\.map/,
   'the ability catalogue must follow campaign learning order'
 );
 assert.doesNotMatch(
   `${app}\n${battleModal}\n${skillsSynergyView}`,
-  /窮地アビリティ/,
-  'the player-facing auto slot must consistently use 土壇場アビリティ'
+  /窮地アビリティ|土壇場アビリティ/,
+  'the player-facing auto slot must consistently use 瀕死アビリティ'
 );
 assert.match(
   battlePresentation,
@@ -267,7 +274,7 @@ const saturatedReloadFrames = getMechanicalCapitalColumnFrames(
   BATTLE_CAPITAL_COLUMN_COUNT * 36,
   BATTLE_CAPITAL_COLUMN_COUNT * 36,
   30,
-  5,
+  8,
   saturatedReloadPasses,
   CAPITAL_OVERFLOW_RESTACK_BEATS.heavy
 );
@@ -291,7 +298,7 @@ const oneOverflowSweep = getMechanicalCapitalColumnFrames(
   BATTLE_CAPITAL_COLUMN_COUNT * 36,
   BATTLE_CAPITAL_COLUMN_COUNT * 36,
   24,
-  5,
+  8,
   1,
   CAPITAL_OVERFLOW_RESTACK_BEATS.heavy
 )
@@ -339,6 +346,49 @@ assert.match(
   /terminalCapitalHandoffRef\.current[\s\S]*capitalCommitTimersRef\.current\.length > 0[\s\S]*capitalPilePreviewTimersRef\.current\.player\.length > 0/,
   'terminal resolution must wait for every registered capital presentation timer'
 );
+assert.equal(
+  getCapitalPresentationRecoveryAction({
+    ended: false,
+    hasVisiblePresentation: true,
+    runnerActive: false,
+    pendingTimerCount: 0,
+    terminalHandoffPending: false,
+  }),
+  'release_stale',
+  'an orphaned non-terminal capital card must release its input lock'
+);
+assert.equal(
+  getCapitalPresentationRecoveryAction({
+    ended: false,
+    hasVisiblePresentation: false,
+    runnerActive: false,
+    pendingTimerCount: 0,
+    terminalHandoffPending: true,
+  }),
+  'resume_terminal',
+  'a terminal handoff interrupted by refresh must resume once its runner is gone'
+);
+assert.equal(
+  getCapitalPresentationRecoveryAction({
+    ended: false,
+    hasVisiblePresentation: true,
+    runnerActive: true,
+    pendingTimerCount: 0,
+    terminalHandoffPending: true,
+  }),
+  'none',
+  'a live capital runner must retain the full pile and terminal handoff order'
+);
+assert.match(
+  battleModal,
+  /const clearCapitalCommitTimers[\s\S]*setCapitalCommit\(null\)[\s\S]*setCapitalPreviewStage\(null\)/,
+  'capital timer cleanup must release both the runtime and visible commit lock'
+);
+assert.match(
+  battleModal,
+  /terminalCapitalRefreshRecoveryRef\.current\s*=\s*terminalCapitalHandoffRef\.current;[\s\S]*getCapitalPresentationRecoveryAction[\s\S]*resumeTerminal\?\.\(\)/,
+  'Fast Refresh must preserve and resume a pending terminal capital handoff'
+);
 assert.match(
   battleModal,
   /availableSkills\.filter\([\s\S]*!autoSkillIds\.has\(skill\.id\)/,
@@ -360,32 +410,106 @@ assert.match(
   'a terminal direct investment must start its capital runner before victory is latched'
 );
 assert.match(
+  battleModal,
+  /const startCompanyCapitalPresentation[\s\S]*commandRecharge: 'continue'[\s\S]*const investCompanyFunds/,
+  'ordinary direct-investment stacking must advance the command recharge clock'
+);
+const fullCommandPauseBlock = battleModal.slice(
+  battleModal.indexOf('const fullCommandPauseActive'),
+  battleModal.indexOf('const { commandTimeScale }')
+);
+assert.doesNotMatch(
+  fullCommandPauseBlock,
+  /!!capitalCommit/,
+  'direct-investment presentation must not add a second full command-recharge wait'
+);
+assert.match(
   battlePresentation,
   /resolveMs: 900,[\s\S]*totalMs: 2_230/,
   'skill effects must retain a readable result beat'
 );
 assert.ok(
   (
-    battleModal.match(
-      /scheduleSkillCinematicCompletion\((?:timing|skillTiming)\.resolveMs\)/g
-    ) ?? []
+    battleModal.match(/startSkillCinematic\(\{/g) ?? []
   ).length >= 3,
-  'player skills, auto skills and synergies must all auto-complete after their readable resolve beat'
+  'manual group support, battle-only SYNERGY, abilities and AUTO must share the self-advancing cinematic runner'
 );
 assert.match(
   battleModal,
-  /const scheduleSkillCinematicCompletion[\s\S]*capitalCommitActiveRef\.current[\s\S]*capitalPilePreviewActiveRef\.current\.player[\s\S]*capitalPilePreviewActiveRef\.current\.enemy[\s\S]*window\.setTimeout\(\s*finishWhenPresentationIsReady,\s*50\s*\)/,
-  'ability auto-completion must poll at 50ms while either capital presentation is still active'
+  /getSkillCinematicTimelineState\(\s*performance\.now\(\) - startedAtMs,\s*timing\s*\)[\s\S]*getSkillCinematicEventDecision[\s\S]*capitalCommitActiveRef\.current[\s\S]*capitalPilePreviewActiveRef\.current\.player[\s\S]*capitalPilePreviewActiveRef\.current\.enemy[\s\S]*window\.setTimeout\(advance, 50\)/,
+  'the pure elapsed-time runner must hold completion while any capital presentation remains active'
 );
 assert.match(
   battleModal,
-  /const onComplete = skillCinematicCompletionRef\.current;[\s\S]*skillCinematicCompletionRef\.current = null;[\s\S]*onComplete\?\.\(\);/,
-  'ability auto-completion must resume its queued battle action through the completion ref'
+  /runtime\.completionFired = completionDecision\.consumed\.completion;[\s\S]*if \(!completionDecision\.fireCompletion\) return;[\s\S]*skillCinematicRuntimeRef\.current = null;[\s\S]*runtime\.onComplete\?\.\(\);/,
+  'ability auto-completion must consume and resume each queued action exactly once'
+);
+assert.match(
+  battleModal,
+  /sequenceCapitalPresentation[\s\S]*deferCapitalPile: sequenceCapitalPresentation[\s\S]*presentation\(onComplete\)/,
+  'critical capital skills must show their card before the deferred fixed-DOM pile'
+);
+assert.match(
+  battleModal,
+  /criticalAutoResolutionPhaseRef\.current[\s\S]*simulationPausedRef\.current = true;[\s\S]*const releaseCriticalAuto[\s\S]*setDecisionGraceActive\(true\);[\s\S]*setCommandProgress\(100\);[\s\S]*decisionGraceArmedRef\.current = true;[\s\S]*sequenceCapitalPresentation: true[\s\S]*'commit_effect'[\s\S]*'complete_presentation'[\s\S]*releaseCriticalAuto\(false\)/,
+  'critical AUTO must synchronously hold combat until effect and pile completion'
+);
+assert.match(
+  battleModal,
+  /criticalAutoResolutionPhaseRef\.current === 'effect_committed'[\s\S]*'complete_presentation'[\s\S]*releaseCriticalAuto\(false\)/,
+  'Fast Refresh must recover a committed critical AUTO whose pile callback was cleared'
+);
+assert.doesNotMatch(
+  battleModal,
+  /const releaseCriticalAuto[\s\S]{0,1200}applyGaugeCandidate\(/,
+  'critical AUTO completion must not replay the discarded lethal overshoot'
+);
+assert.doesNotMatch(
+  battleModal,
+  /skillCinematicTimersRef|scheduleSkillCinematicCompletion/,
+  'skill progress must not regress to an orphanable fan-out of UI timers'
+);
+const battleCleanupBlock = battleModal.slice(
+  battleModal.indexOf('terminalCapitalHandoffRef.current = null;'),
+  battleModal.indexOf(
+    'soundFx.stopBattleCinematicAudio(80);',
+    battleModal.indexOf('terminalCapitalHandoffRef.current = null;')
+  )
+);
+assert.match(
+  battleCleanupBlock,
+  /clearSkillCinematicTimer\(\)/,
+  'unmount and Fast Refresh cleanup must clear the pending skill timer'
+);
+assert.doesNotMatch(
+  battleCleanupBlock,
+  /skillCinematicRuntimeRef\.current = null|cancelSkillCinematic\(\)/,
+  'Fast Refresh cleanup must preserve the skill runtime so the pure timeline can resume'
 );
 assert.doesNotMatch(
   `${battleModal}\n${capitalCss}`,
   /battle-skill-nameplate__continue|効果を確認して続行/,
   'the removed ability acknowledgement button must not return in JSX or CSS'
+);
+assert.match(
+  battleModal,
+  /skillCinematic\.stage === 'name' \|\|[\s\S]*skillCinematic\.stage === 'cast'[\s\S]*\? '構え'[\s\S]*: skillCinematic\.resultHeadline/,
+  'synergy and ability nameplates must replace the preparation text in place'
+);
+assert.match(
+  capitalCss,
+  /\.battle-skill-nameplate--stage-cast,[\s\S]*\.battle-skill-nameplate--stage-hitstop,[\s\S]*\.battle-skill-nameplate--stage-impact,[\s\S]*\.battle-skill-nameplate--stage-resolve[\s\S]*opacity: 1;[\s\S]*translate: -50% 0;/,
+  'the skill nameplate must remain mounted and visible through impact and resolve'
+);
+assert.doesNotMatch(
+  capitalCss,
+  /\.battle-skill-nameplate--stage-(?:hitstop|impact)[^{]*\{[^}]*opacity:\s*0|\.battle-skill-nameplate--stage-resolve[^{]*\{[^}]*animation:/,
+  'skill resolution must not hide and re-enter the same nameplate'
+);
+assert.match(
+  capitalCss,
+  /\.battle-skill-nameplate__effect--pending,[\s\S]*\.battle-skill-nameplate__duration--pending[\s\S]*visibility: hidden;/,
+  'preparation must reserve a stable result layout while showing only name and stance'
 );
 assert.match(
   battleModal,
@@ -477,14 +601,103 @@ assert.doesNotMatch(
   /@media \(max-width:\s*390px\)[\s\S]*result-celebration-choice > div[\s\S]*grid-template-columns:\s*1fr/,
   'narrow phones must not collapse the two allocation choices into a clipped vertical stack'
 );
+assert.match(
+  battleModal,
+  /profitAllocationChoices\.map\(\(option\) => \{[\s\S]*option\.cost[\s\S]*option\.departureProbability/,
+  'the result modal must only map the pure settlement choice projections'
+);
+assert.match(
+  `${gameBalance}\n${battleSettlement}`,
+  /id:\s*'keep'[\s\S]*label:\s*'独占'[\s\S]*id:\s*'share50'[\s\S]*label:\s*'山分け'[\s\S]*departureProbabilityMultiplier:\s*0\.2/,
+  'the portable settlement contract must define exclusive or 50% sharing with nonzero departure risk'
+);
+assert.doesNotMatch(
+  `${gameBalance}\n${battleSettlement}\n${battleModal}\n${app}\n${helpText}`,
+  /'gift10'|'gift20'|ご祝儀なし|標準のご祝儀|安心のご祝儀/,
+  'the retired three-choice gift contract must not return in logic or player-facing copy'
+);
+assert.match(
+  battleModal,
+  /aria-label="商店戦力の変化"[\s\S]*<small>今回の戦力増減<\/small>/,
+  'the result growth card must identify its signed number as this battle\'s change, not an absolute strength value'
+);
+assert.match(
+  app,
+  /const isExtreme =\s*mode === 'normal' && isExtremeReacquisition\(targetProperty\);[\s\S]*battleMode: isExtreme \? 'extreme' : mode/,
+  'market cards must request the dedicated Extreme readiness assessment'
+);
+assert.match(
+  battleModal,
+  /battleMode: isTraining[\s\S]*isExtremeBattle[\s\S]*\? 'extreme'[\s\S]*: 'normal'/,
+  'the pre-battle modal must use the same Extreme readiness assessment as its market card'
+);
+assert.match(
+  app,
+  /isExtremeReacquisitionBattle[\s\S]*getNormalBattleNavigation\([\s\S]*isReacquisition: isExtremeReacquisitionBattle/,
+  'Extreme settlement must identify itself to navigation so an old city unlock is not replayed'
+);
 assert.ok(
   (header.match(/アライアンス/g) ?? []).length >= 2,
   'desktop and mobile navigation must both call the cooperation tab アライアンス'
 );
 assert.match(
   cartelAllianceView,
-  /EXTERNAL ALLIANCE[\s\S]*相場75%・各争奪戦1回[\s\S]*離反なし[\s\S]*OWNED NETWORK[\s\S]*3回目から減衰[\s\S]*独立リスクあり/,
-  'the alliance screen must contrast risk-free external support with owned networks such as Agora'
+  /EXTERNAL ALLIANCE[\s\S]*相場75%固定（高難度補正なし）[\s\S]*人脈疲労なし[\s\S]*離反なし[\s\S]*OWNED NETWORK[\s\S]*1回目100%、以後1回ごとに10ポイント低下（下限50%）[\s\S]*独立リスクあり/,
+  'the alliance screen must contrast risk-free external support with the reusable but risky owned network'
+);
+assert.match(
+  highEndRaidView,
+  /cartels\.some\(\(cartel\) =>[\s\S]*isCartelFullyPrepared\(cartel, ownedNormalPropertyIds\)[\s\S]*raid\.series === 1 && raid\.layer === 4 && !hasFullyPreparedCartel/,
+  'Savage series 1 layer 4 must keep its preparation warning until one complete cartel is owned'
+);
+assert.match(
+  cartel,
+  /ownedPropertyIds\.has\(cartel\.hqPropertyId\)[\s\S]*cartel\.subsidiaryIds\.every/,
+  'cartel preparation must require its headquarters and every participating company'
+);
+assert.match(
+  highEndRaidCss,
+  /savage-layer-card__preparation button\s*\{[\s\S]*min-height:\s*2\.75rem/,
+  'the direct cartel-preparation action must retain a 44px touch target'
+);
+assert.match(
+  highEndRaidView,
+  /getDefaultOpenSavageSeries[\s\S]*<details[\s\S]*className="savage-series"[\s\S]*<summary className="savage-series__header"/,
+  'the twelve Savage cards stay grouped behind a compact, tappable series disclosure'
+);
+assert.match(
+  highEndRaidCss,
+  /\.savage-series__header\s*\{[\s\S]*min-height:\s*2\.75rem[\s\S]*cursor:\s*pointer/,
+  'each Savage series summary keeps a 44px touch target'
+);
+assert.match(
+  marketView,
+  /campaignMode === 'normal' && !hasStartedCampaign && \([\s\S]*<BeginnerGuide defaultOpen/,
+  'the full beginner guide must leave the main market after the first acquisition'
+);
+assert.match(
+  indexCss,
+  /\.game-legal-notice a\s*\{[\s\S]*display:\s*inline-flex[\s\S]*min-height:\s*2\.75rem/,
+  'legal links remain 44px touch targets on phones'
+);
+assert.match(
+  integratedCss,
+  /@media \(max-width: 639px\)[\s\S]*\.battle-action-strip__action em\s*\{[\s\S]*display:\s*block[\s\S]*font-size:\s*\.48rem/,
+  'compact phone commands retain a visible one-line state badge'
+);
+assert.match(
+  app,
+  /calculateAllianceSupport\(targetProperty\.marketPrice\)/,
+  'market-card readiness must use the fixed external-alliance amount'
+);
+assert.ok(
+  (battleModal.match(/calculateAllianceSupport\(targetProperty\.marketPrice\)/g) ?? []).length >= 2,
+  'the battle display and executed external-alliance request must use the same fixed amount'
+);
+assert.match(
+  battleModal,
+  /高難度支援補正：人脈・通常グループSYNERGY[\s\S]*外部アライアンス・LBは対象外/,
+  'high-difficulty rules must exclude both external alliance and LIMIT BREAK'
 );
 const requestAllianceSource = battleModal.slice(
   battleModal.indexOf('const requestAlliance ='),
@@ -501,8 +714,72 @@ assert.ok(
 );
 assert.match(
   battleModal,
-  /cancelEnemySupportTelegraph\(false\)[\s\S]*aiProgress >= 72[\s\S]*stunInterruptedActionRef\.current = 'standard'/,
-  'Stun must interrupt either a special telegraph or a clearly advanced normal action warning'
+  /commandRecharge: CapitalPileCommandRecharge = 'continue'/,
+  'ordinary capital pile previews must opt into command recharge by default'
+);
+assert.ok(
+  (battleModal.match(/^\s*'pause',?\s*$/gm) ?? []).length >= 5,
+  'limit breaks, effect cards and exceptional enemy capital piles must retain a full pause'
+);
+assert.match(
+  battleModal,
+  /!capitalPilePresentationLocked \|\|[\s\S]*commandTimeScale <= 0[\s\S]*setCommandProgress\([\s\S]*commandProgressPerTick \* commandTimeScale/,
+  'the dedicated pile interval must advance only the player command clock'
+);
+assert.match(
+  battleModal,
+  /const consumeCommand[\s\S]*capitalPilePreviewActiveRef\.current\.player \|\|[\s\S]*capitalPilePreviewActiveRef\.current\.enemy/,
+  'a recharged command must remain unusable until both capital piles finish'
+);
+assert.match(
+  battleModal,
+  /policy === 'unstoppable'[\s\S]*policy === 'delay_only'[\s\S]*stunDelayMs[\s\S]*cancelEnemySupportTelegraph\(false, skillId, true\)/,
+  'Stun must distinguish unstoppable phases, delay-only LB3, and interruptible support actions'
+);
+assert.match(
+  battleModal,
+  /interruptEnemySupportTelegraph\(\)[\s\S]*aiProgress >= 72[\s\S]*stunInterruptedActionRef\.current = 'standard'/,
+  'Stun must still interrupt a clearly advanced ordinary enemy action warning'
+);
+assert.match(
+  battleModal,
+  /enemySupportTelegraphTickerRef = useRef<number \| null>\(null\)[\s\S]*window\.setInterval\([\s\S]*\}, 250\)/,
+  'enemy support telegraphs must use one dedicated 250ms display ticker'
+);
+assert.match(
+  battleModal,
+  /const visibleRemaining = Math\.max\([\s\S]*100,[\s\S]*Math\.ceil\(rawRemaining \/ 100\) \* 100[\s\S]*\)/,
+  'an interruptible telegraph held by capital stacking must never show zero seconds'
+);
+assert.match(
+  battleModal,
+  /const enemySupportCastBlocked =[\s\S]*capitalPilePresentationLocked \|\|[\s\S]*useEffect\(\(\) => \{[\s\S]*resumePendingCast\(\)/,
+  'both capital-pile queues must hold an expired enemy support cast'
+);
+assert.match(
+  battleModal,
+  /const beginCast = \(grantPostPileGrace = false\)[\s\S]*capitalPilePreviewActiveRef\.current\.player[\s\S]*capitalPilePreviewActiveRef\.current\.enemy[\s\S]*beginCast\(grantPostPileGrace \|\| capitalPileBlocked\)[\s\S]*if \(grantPostPileGrace\)[\s\S]*refreshEnemySupportTelegraphDeadline\([\s\S]*ENEMY_SUPPORT_POST_PILE_GRACE_MS[\s\S]*const graceTimer = window\.setTimeout\([\s\S]*beginCast\(false\)[\s\S]*ENEMY_SUPPORT_POST_PILE_GRACE_MS/,
+  'an enemy support cast deferred by stacking must grant a real post-pile stun window'
+);
+assert.match(
+  battleModal,
+  /startEnemySupportTelegraphTicker\(presentation\.telegraphMs\)[\s\S]*const beginCast[\s\S]*updateStage\('cast'\)[\s\S]*clearEnemySupportTelegraphTicker\(\)[\s\S]*setEnemySupportTelegraphRemainingMs\(null\)/,
+  'the stun countdown must start with the warning and stop only when the actual cast starts'
+);
+assert.match(
+  battleModal,
+  /const clearEnemySupportTimers[\s\S]*clearEnemySupportTelegraphTicker\(\)[\s\S]*setEnemySupportTelegraphRemainingMs\(null\)[\s\S]*const cancelEnemySupportTelegraph[\s\S]*clearEnemySupportTimers\(\)[\s\S]*useEffect\(\(\) => \(\) => \{[\s\S]*clearEnemySupportTimers\(\)/,
+  'cancel and unmount paths must both clear the stun countdown ticker'
+);
+assert.match(
+  battleModal,
+  /enemy-support-actor__stun-window[\s\S]*enemySupportInterruptibility === 'unstoppable'[\s\S]*中断不能[\s\S]*delay_only[\s\S]*スタンで遅延[\s\S]*スタン可能[\s\S]*enemySupportTelegraphRemainingMs \/ 1000[\s\S]*toFixed\(1\)[\s\S]*秒/,
+  'the enemy support actor must expose both interrupt policy and readable remaining time'
+);
+assert.match(
+  capitalCss,
+  /\.enemy-support-actor__stun-window[\s\S]*min-width: max-content[\s\S]*white-space: nowrap/,
+  'the stun window must stay legible beside the enemy support name'
 );
 assert.doesNotMatch(
   battleModal,
@@ -511,8 +788,8 @@ assert.doesNotMatch(
 );
 assert.match(
   battleModal,
-  /calculateSubsidiarySupportAmount\([\s\S]*subRequestCounts\[property\.id\]/,
-  'the network drawer must preview the battle-local decayed support amount'
+  /calculateSubsidiarySupportAmount\([\s\S]*networkRequestCount/,
+  'the network drawer must preview battle-wide network fatigue across companies'
 );
 assert.match(
   battleModal,
@@ -566,8 +843,8 @@ assert.match(
 );
 assert.match(
   highEndRaidView,
-  /万象資本化[\s\S]*4～5秒[\s\S]*スタンまたは防御/,
-  'the Cruel card must disclose the response window and its counters'
+  /万象資本化[\s\S]*開始約15秒後[\s\S]*所有率10%[\s\S]*第二査定[\s\S]*75%以上/,
+  'the Cruel card must disclose its two recovery checks without implying a required loadout'
 );
 assert.match(
   highEndRaidCss,
@@ -575,23 +852,28 @@ assert.match(
   'the Cruel action remains a clear 402px portrait control'
 );
 assert.match(
+  battleEncounterData,
+  /firstTriggerActiveMs:\s*15_000[\s\S]*firstImpactPlayerOwnership:\s*10[\s\S]*secondTriggerPlayerOwnership:\s*50[\s\S]*forcedSecondTriggerRecoveryMs:\s*35_000[\s\S]*successPlayerOwnership:\s*75[\s\S]*secondFailureOutcome:\s*'player_defeat'[\s\S]*secondFailureDisplayedOwnership:\s*0/,
+  'Cruel must retain the authored first collapse, recovery trigger, timeout, and second check'
+);
+assert.match(
   cruelBattle,
-  /triggerPlayerOwnership:\s*75[\s\S]*telegraphMs:\s*4_500[\s\S]*maximumOwnershipPush:\s*40/,
-  'Omnicapitalization keeps its 75% trigger, readable telegraph and 40pt cap'
+  /resolveCruelFirstImpact[\s\S]*Math\.min\([\s\S]*firstImpactPlayerOwnership[\s\S]*resolveCruelSecondImpact[\s\S]*outcome:\s*'defeat'[\s\S]*secondFailureDisplayedOwnership/,
+  'Cruel preserves first-phase capital while a failed final assessment resolves deterministically'
 );
 assert.match(
   battleModal,
-  /remainingReserve\s*=\s*Math\.max\(0, enemyReserveRef\.current\)[\s\S]*commitEnemyCapital\(remainingReserve\)[\s\S]*startCapitalPilePreview\([\s\S]*applyGaugeCandidate/,
-  'Cruel snapshots and commits its real reserve before resolving the held terminal candidate'
+  /cruelSecondFailurePendingRef[\s\S]*updateCruelScriptPhase\('second_failed'\)[\s\S]*skillId === 'cruel_reckoning'[\s\S]*finishBattle\([\s\S]*'CRUEL_RECKONING_FAILED'/,
+  'a failed Cruel assessment must finish its support-card timeline before one terminal defeat'
 );
 assert.match(
   battleModal,
-  /万象資本化を中断[\s\S]*予備資金は残存/,
-  'Stun consumes Omnicapitalization without spending the preserved enemy reserve'
+  /スタン無効――この宣告は戦闘フェーズそのものを変える/,
+  'Cruel scripted declarations must explain that they are phase changes rather than stunnable LB attacks'
 );
 assert.match(
   battleModal,
-  /cancelEnemySupportTelegraph\(false\)/,
+  /cancelEnemySupportTelegraph\(false, skillId, true\)/,
   'Stun uses the authored enemy-telegraph cancellation path'
 );
 assert.match(

@@ -7,10 +7,11 @@ import {
   Sparkles,
   Swords,
 } from 'lucide-react';
-import type { BattleMode, GroupSynergy, Property } from '../types';
+import type { BattleMode, Cartel, GroupSynergy, Property } from '../types';
 import { FANKIT_ART } from '../data/fankitAssets';
 import { formatCurrency } from '../utils/formatter';
 import type { BattleReadinessResult } from '../utils/battleReadiness';
+import { isCartelFullyPrepared } from '../utils/cartel';
 import { StrengthComparison } from './StrengthComparison';
 import {
   SAVAGE_GROUP_MULTIPLIER_BASE,
@@ -21,11 +22,15 @@ import {
   SAVAGE_YIELD_BONUS_PER_RANK,
   CRUEL_RAID_DEFINITION,
   ULTIMATE_RAID_DEFINITION,
+  getDefaultOpenSavageSeries,
+  type SavageSeries,
 } from '../utils/savage';
 import '../high-end-raids.css';
 
 interface HighEndRaidViewProps {
   savageProperties: Property[];
+  properties: Property[];
+  cartels: Cartel[];
   savageClearedIds: ReadonlySet<string>;
   savageUnlockedIds: ReadonlySet<string>;
   groupSynergies: GroupSynergy[];
@@ -44,10 +49,13 @@ interface HighEndRaidViewProps {
   onStartUltimate: (property: Property) => void;
   onStartCruel: (property: Property) => void;
   onReplayEnding: () => void;
+  onOpenCartels: () => void;
 }
 
 export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
   savageProperties,
+  properties,
+  cartels,
   savageClearedIds,
   savageUnlockedIds,
   groupSynergies,
@@ -63,6 +71,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
   onStartUltimate,
   onStartCruel,
   onReplayEnding,
+  onOpenCartels,
 }) => {
   const propertyMap = new Map(
     savageProperties.map((property) => [property.id, property])
@@ -80,6 +89,27 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
   );
   const cruelFee = Math.round(cruelProperty.marketPrice * 0.03);
   const cruelAffordable = totalFunds >= cruelFee;
+  const ownedNormalPropertyIds = new Set(
+    properties
+      .filter((property) => property.owner === 'player')
+      .map((property) => property.id)
+  );
+  const hasFullyPreparedCartel = cartels.some((cartel) =>
+    isCartelFullyPrepared(cartel, ownedNormalPropertyIds)
+  );
+  const defaultOpenSeries = getDefaultOpenSavageSeries({
+    clearedIds: [...savageClearedIds],
+    unlockedIds: [...savageUnlockedIds],
+  });
+  const [openSeries, setOpenSeries] = React.useState<SavageSeries | null>(
+    defaultOpenSeries
+  );
+  const previousDefaultOpenSeries = React.useRef(defaultOpenSeries);
+  React.useEffect(() => {
+    if (previousDefaultOpenSeries.current === defaultOpenSeries) return;
+    previousDefaultOpenSeries.current = defaultOpenSeries;
+    setOpenSeries(defaultOpenSeries);
+  }, [defaultOpenSeries]);
 
   return (
     <div className="high-end-raids">
@@ -119,19 +149,26 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
             savageClearedIds.has(raid.id)
           ).length;
           return (
-          <section
+          <details
             key={series.series}
             className="savage-series"
             aria-label={`第${series.series}編 ${series.name} 1層から4層`}
+            open={series.series === openSeries}
+            onToggle={(event) => {
+              const isOpen = event.currentTarget.open;
+              setOpenSeries((current) =>
+                isOpen ? series.series : current === series.series ? null : current
+              );
+            }}
           >
-            <header className="savage-series__header">
+            <summary className="savage-series__header">
               <span>第{series.series}編</span>
               <div>
                 <h2>{series.name}</h2>
                 <p>{series.subtitle}</p>
               </div>
               <strong>{seriesCleared}/4 踏破</strong>
-            </header>
+            </summary>
             <div className="savage-layer-grid">
         {seriesRaids.map((raid) => {
           const raidIndex = SAVAGE_RAID_DEFINITIONS.findIndex(
@@ -152,6 +189,8 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
           const rewards = raid.rewardSynergyIds
             .map((id) => synergyMap.get(id))
             .filter((synergy): synergy is GroupSynergy => !!synergy);
+          const needsCartelPreparation =
+            raid.series === 1 && raid.layer === 4 && !hasFullyPreparedCartel;
 
           return (
             <article
@@ -196,6 +235,18 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
               </dl>
 
               <StrengthComparison result={strengthComparison} compact />
+
+              {needsCartelPreparation && (
+                <aside className="savage-layer-card__preparation" role="note">
+                  <b>第1編4層前の準備</b>
+                  <p>
+                    第1編4層は、企業連合の参加企業と本部を整えた戦力が目安です。ガーロンド等の外部支援だけでは足りません。
+                  </p>
+                  <button type="button" onClick={onOpenCartels}>
+                    企業連合の準備へ
+                  </button>
+                </aside>
+              )}
 
               <section className="savage-layer-card__reward">
                 <span><Sparkles />初回踏破報酬：通常編の事業・連携強化</span>
@@ -256,7 +307,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
           );
         })}
             </div>
-          </section>
+          </details>
           );
         })}
       </div>
@@ -349,9 +400,9 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
               AI LEVEL 6・強化かばう・通常事業と進行は保護
             </span>
             <div className="cruel-raid-card__warning" role="note">
-              <b>特殊技「万象資本化」</b>
+              <b>二段階フェーズ「万象資本化」</b>
               <p>
-                残る予備資金を全投入します。4～5秒の予告を読み、スタンまたは防御で対処してください。
+                開始約15秒後に所有率10%へ。資本・資金・LBを保ったまま50%へ盛り返し、第二査定では75%以上が必須です。未達は敗北、宣告中も行動できます。
               </p>
             </div>
             <StrengthComparison result={cruelStrengthComparison} compact />

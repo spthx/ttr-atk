@@ -36,7 +36,7 @@ const getAdvice = ({
   }
 
   if (conqueredCommunityCount === totalCommunityCount && totalCommunityCount > 0) {
-    return '全都市の商圏を押さえたでっす！ 零式レイドで交易網の限界へ挑むでっす！';
+    return '十都市の人脈がすべてつながったでっす！ 零式レイドで交易網の限界へ挑むでっす！';
   }
 
   if (ownedCount === 0) {
@@ -44,7 +44,7 @@ const getAdvice = ({
   }
 
   if (activeTab === 'market') {
-    return '都市ごとの交渉対象数と相場を比べて、制覇までの残りが少ない市場から狙うでっす。';
+    return '都市ごとの人脈数と相場を比べて、必要な人脈をそろえながら次の交易路を開くでっす。';
   }
   if (activeTab === 'portfolio') {
     return '人脈の独立危険度を点検するでっす。支援を求めすぎた相手にはネマワシが必要でっす。';
@@ -87,7 +87,7 @@ export const TatarAdvisor: React.FC<TatarAdvisorProps> = (props) => (
       <div className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950/75 px-3 py-2 text-xs">
         <Building2 className="h-4 w-4 text-cyan-400" />
         <div>
-          <span className="block text-slate-500">都市制覇</span>
+          <span className="block text-slate-500">人脈開通</span>
           <strong className="font-mono text-cyan-300">
             {props.conqueredCommunityCount}/{props.totalCommunityCount}
           </strong>
