@@ -642,7 +642,7 @@ assert.ok(
 );
 assert.match(
   cartelAllianceView,
-  /EXTERNAL ALLIANCE[\s\S]*通常は相場75%、高難度はさらに×1\.70[\s\S]*離反なし[\s\S]*OWNED NETWORK[\s\S]*3回目から減衰[\s\S]*独立リスクあり/,
+  /EXTERNAL ALLIANCE[\s\S]*相場75%固定（高難度補正なし）[\s\S]*人脈疲労なし[\s\S]*離反なし[\s\S]*OWNED NETWORK[\s\S]*1回目100%、以後1回ごとに10ポイント低下（下限50%）[\s\S]*独立リスクあり/,
   'the alliance screen must contrast risk-free external support with the reusable but risky owned network'
 );
 assert.match(

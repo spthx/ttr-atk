@@ -693,7 +693,7 @@ export const BATTLE_SUPPORT_BALANCE = {
  */
 export const REPEATED_NETWORK_SUPPORT_BALANCE = {
   fullStrengthUses: 1,
-  multiplierPerPreviousUse: 0.9,
+  reductionPerPreviousUse: 0.1,
   minimumMultiplier: 0.5,
 } as const;
 
@@ -707,7 +707,7 @@ export const getRepeatedNetworkSupportMultiplier = (previousUses: number) => {
   );
   return Math.max(
     REPEATED_NETWORK_SUPPORT_BALANCE.minimumMultiplier,
-    REPEATED_NETWORK_SUPPORT_BALANCE.multiplierPerPreviousUse ** decaySteps
+    1 - REPEATED_NETWORK_SUPPORT_BALANCE.reductionPerPreviousUse * decaySteps
   );
 };
 
