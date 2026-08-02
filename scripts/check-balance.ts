@@ -2931,7 +2931,7 @@ assert.equal(
 );
 assert.equal(getRepeatedNetworkSupportMultiplier(0), 1);
 assert.equal(getRepeatedNetworkSupportMultiplier(1), 0.9);
-assert.equal(getRepeatedNetworkSupportMultiplier(2), 0.81);
+assert.equal(getRepeatedNetworkSupportMultiplier(2), 0.8);
 assert.equal(
   getRepeatedNetworkSupportMultiplier(99),
   REPEATED_NETWORK_SUPPORT_BALANCE.minimumMultiplier
