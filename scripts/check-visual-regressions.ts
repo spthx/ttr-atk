@@ -554,8 +554,8 @@ assert.doesNotMatch(
 );
 assert.match(
   capitalCss,
-  /gil-column-field\s*\{[\s\S]*translate:\s*0 var\(--capital-rack-sink, 0rem\)/,
-  'the fixed rack must apply its overflow sink as persistent layout state'
+  /gil-column-field\s*\{[\s\S]*--capital-rack-compression:\s*0rem;[\s\S]*translate:\s*0 calc\([\s\S]*var\(--capital-rack-sink, 0rem\) \+ var\(--capital-rack-compression\)[\s\S]*\)/,
+  'the fixed rack must combine its persistent overflow sink with the loading-time descent'
 );
 for (const tier of [1, 2, 3]) {
   assert.match(
@@ -566,10 +566,20 @@ for (const tier of [1, 2, 3]) {
     `overflow tier ${tier} must keep a persistent downward rack offset`
   );
 }
-assert.doesNotMatch(
+assert.match(
   capitalCss,
-  /--capital-rack-compression/,
-  'overflow completion must not remove a temporary compression offset and pop the rack root back up'
+  /gil-column-field\[data-rack-compressed="true"\]\s*\{[\s\S]*?--capital-rack-compression:\s*\.55rem;/,
+  'an exceptional funding frame must visibly lower the fixed rack while coins are loaded'
+);
+assert.match(
+  capitalCss,
+  /@media \(max-width: 430px\)[\s\S]*gil-column-field\[data-rack-compressed="true"\]\s*\{[\s\S]*?--capital-rack-compression:\s*\.62rem;/,
+  'portrait phones must retain the stronger loading-time rack descent'
+);
+assert.match(
+  battleModal,
+  /data-rack-compressed=\{frame\.rackCompressed \? 'true' : 'false'\}/,
+  'the mechanical overflow frame must remain connected to the rack descent CSS'
 );
 assert.doesNotMatch(
   capitalCss,

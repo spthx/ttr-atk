@@ -3432,6 +3432,7 @@
   --coin-light: #fff4ad;
   --coin-mid: #e6a90b;
   --coin-dark: #704006;
+  --capital-rack-compression: 0rem;
   position: absolute;
   z-index: 1;
   inset: 0;
@@ -3439,8 +3440,21 @@
   overflow: visible;
   pointer-events: none;
   contain: layout style;
-  translate: 0 var(--capital-rack-sink, 0rem);
-  transition: translate 180ms steps(4, end);
+  translate: 0 calc(
+    var(--capital-rack-sink, 0rem) + var(--capital-rack-compression)
+  );
+  transition: translate 220ms cubic-bezier(.2, .72, .22, 1);
+}
+
+/* Exceptional funding reuses the fixed twenty-two columns as a lowered
+ * loading tray. The frame signal survived the overflow rewrite, so reconnect
+ * it here instead of adding amount-proportional coins. Keeping the final
+ * overflow frame compressed through its afterglow makes the return a smooth
+ * transition rather than the old one-frame root snap. */
+.integrated-battlefield
+  .gil-column-field[data-rack-compressed="true"] {
+  --capital-rack-compression: .55rem;
+  will-change: translate;
 }
 
 .integrated-battlefield .gil-column-field--enemy {
@@ -3670,6 +3684,11 @@
 
   .integrated-battlefield .capital-fixed-column {
     left: var(--column-phone-x);
+  }
+
+  .integrated-battlefield
+    .gil-column-field[data-rack-compressed="true"] {
+    --capital-rack-compression: .62rem;
   }
 
   .integrated-battlefield .capital-overflow-stamp > i {
