@@ -77,6 +77,39 @@ export const BATTLE_HIT_STOP_TIMING = {
   reducedMotionReleaseMs: 150,
 } as const;
 
+export type BattleImpactStopPhase = 'hitstop' | 'release';
+
+export const isBattleImpactPresentationActive = (
+  phase: BattleImpactStopPhase | null | undefined
+) => phase === 'hitstop' || phase === 'release';
+
+export const advanceEnemySupportTelegraphClock = ({
+  remainingMs,
+  elapsedMs,
+  blocked,
+}: {
+  remainingMs: number;
+  elapsedMs: number;
+  blocked: boolean;
+}) => {
+  const normalizedRemaining = Math.max(
+    0,
+    Number.isFinite(remainingMs) ? remainingMs : 0
+  );
+  const normalizedElapsed = Math.max(
+    0,
+    Number.isFinite(elapsedMs) ? elapsedMs : 0
+  );
+  const nextRemainingMs = blocked
+    ? normalizedRemaining
+    : Math.max(0, normalizedRemaining - normalizedElapsed);
+
+  return {
+    remainingMs: nextRemainingMs,
+    castDue: !blocked && nextRemainingMs <= 0,
+  };
+};
+
 export const getBattleHitStopTiming = (
   heavy = false,
   reducedMotion = false

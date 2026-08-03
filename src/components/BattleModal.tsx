@@ -73,6 +73,7 @@ import {
   BATTLE_STATE_UPDATE_INTERVAL_MS,
   BATTLE_STATUS_MESSAGE_DURATION_MS,
   ENEMY_SUPPORT_POST_PILE_GRACE_MS,
+  advanceEnemySupportTelegraphClock,
   canConfirmBattleResult,
   enqueueBattleStatusMessage,
   getBattleHitStopTiming,
@@ -87,6 +88,7 @@ import {
   getCapitalPresentationRecoveryAction,
   getCapitalDropParticleCount,
   getBattleClockScales,
+  isBattleImpactPresentationActive,
   getNextBattleSkillId,
   getSkillCinematicEventDecision,
   getSkillCinematicTimelineState,
@@ -98,6 +100,7 @@ import {
   shouldProcessGaugeFrame,
   shouldInertBattleFooter,
   TERMINAL_CINEMATIC_TIMING,
+  type BattleImpactStopPhase,
   type BattleStatusMessageTone,
   type CapitalCommitStage,
   type MechanicalCapitalColumnFrame,
@@ -275,7 +278,7 @@ type ImpactStopSide = 'player' | 'opponent';
 type CapitalPileSide = 'player' | 'enemy';
 type CapitalPileCommandRecharge = 'continue' | 'pause';
 type CapitalLedger = 'company' | 'support';
-type ImpactStopPhase = 'hitstop' | 'release';
+type ImpactStopPhase = BattleImpactStopPhase;
 interface ImpactStop {
   side: ImpactStopSide;
   phase: ImpactStopPhase;
@@ -1278,7 +1281,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const enemySupportSerialRef = useRef(0);
   const enemySupportTimersRef = useRef<number[]>([]);
   const enemySupportTelegraphTickerRef = useRef<number | null>(null);
-  const enemySupportTelegraphDeadlineRef = useRef(0);
+  const enemySupportTelegraphClockRef = useRef(0);
+  const enemySupportTelegraphLastTickRef = useRef(0);
   const enemySupportActiveRef = useRef(false);
   const enemySupportPendingCastRef = useRef<(() => void) | null>(null);
   const enemySupportRetryNotBeforeRef = useRef(0);
@@ -1486,38 +1490,61 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       window.clearInterval(enemySupportTelegraphTickerRef.current);
       enemySupportTelegraphTickerRef.current = null;
     }
-    enemySupportTelegraphDeadlineRef.current = 0;
+    enemySupportTelegraphClockRef.current = 0;
+    enemySupportTelegraphLastTickRef.current = 0;
   }, []);
 
-  const refreshEnemySupportTelegraphDeadline = useCallback(
+  const resetEnemySupportTelegraphClock = useCallback(
     (durationMs: number) => {
       const readableDuration = Math.max(100, durationMs);
-      enemySupportTelegraphDeadlineRef.current =
-        performance.now() + readableDuration;
+      enemySupportTelegraphClockRef.current = readableDuration;
+      enemySupportTelegraphLastTickRef.current = performance.now();
       setEnemySupportTelegraphRemainingMs(readableDuration);
     },
     []
   );
 
   const startEnemySupportTelegraphTicker = useCallback(
-    (durationMs: number) => {
+    (durationMs: number, onElapsed: () => void) => {
       clearEnemySupportTelegraphTicker();
-      refreshEnemySupportTelegraphDeadline(durationMs);
+      resetEnemySupportTelegraphClock(durationMs);
       enemySupportTelegraphTickerRef.current = window.setInterval(() => {
-        const rawRemaining =
-          enemySupportTelegraphDeadlineRef.current - performance.now();
-        // A telegraph can remain interruptible while capital stacking finishes.
+        const now = performance.now();
+        const elapsedMs = Math.max(
+          0,
+          now - enemySupportTelegraphLastTickRef.current
+        );
+        enemySupportTelegraphLastTickRef.current = now;
+        const clock = advanceEnemySupportTelegraphClock({
+          remainingMs: enemySupportTelegraphClockRef.current,
+          elapsedMs,
+          blocked:
+            enemySupportCastBlockedRef.current ||
+            skillCinematicRuntimeRef.current !== null ||
+            capitalCommitActiveRef.current ||
+            capitalPilePreviewActiveRef.current.player ||
+            capitalPilePreviewActiveRef.current.enemy,
+        });
+        enemySupportTelegraphClockRef.current = clock.remainingMs;
+        if (clock.castDue) {
+          if (enemySupportTelegraphTickerRef.current !== null) {
+            window.clearInterval(enemySupportTelegraphTickerRef.current);
+            enemySupportTelegraphTickerRef.current = null;
+          }
+          onElapsed();
+          return;
+        }
         // Keep a non-zero affordance until the cast actually begins.
         const visibleRemaining = Math.max(
           100,
-          Math.ceil(rawRemaining / 100) * 100
+          Math.ceil(clock.remainingMs / 100) * 100
         );
         setEnemySupportTelegraphRemainingMs((current) =>
           current === visibleRemaining ? current : visibleRemaining
         );
       }, 250);
     },
-    [clearEnemySupportTelegraphTicker, refreshEnemySupportTelegraphDeadline]
+    [clearEnemySupportTelegraphTicker, resetEnemySupportTelegraphClock]
   );
 
   const clearEnemySupportTimers = useCallback(() => {
@@ -2548,27 +2575,31 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const capitalPilePresentationLocked =
     playerCapitalPilePreviewStage !== null ||
     enemyCapitalPilePreviewStage !== null;
-  const capitalPileAllowsCommandRecharge =
+  const capitalPresentationActive =
+    capitalCommit !== null || capitalPilePresentationLocked;
+  const capitalPresentationAllowsCommandRecharge =
+    capitalPreviewStage?.commandRecharge !== 'pause' &&
     playerCapitalPilePreviewStage?.commandRecharge !== 'pause' &&
     enemyCapitalPilePreviewStage?.commandRecharge !== 'pause';
   const presentationLocked =
     !!battleAnnouncement ||
     !!conditionAnnouncement ||
     !!skillCinematic ||
-    !!capitalCommit ||
-    capitalPilePresentationLocked ||
+    capitalPresentationActive ||
     openingAutoPending ||
     !!criticalAutoPending ||
     ultimateCriticalGatePending ||
     enemyOpeningCoverPending ||
     enemySupportPresentationLocked;
   const decisiveLocked = !!terminalRef.current || !!decisiveBlow;
+  const impactPresentationActive =
+    isBattleImpactPresentationActive(impactStop?.phase);
   const actionsLocked =
     !!winner ||
     battlePhase !== 'active' ||
     presentationLocked ||
     decisiveLocked ||
-    !!impactStop ||
+    impactPresentationActive ||
     showHelp ||
     showLog;
   const primarySkillActionLocked = actionsLocked;
@@ -2589,7 +2620,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     battlePhase !== 'active' ||
     presentationLocked ||
     decisiveLocked ||
-    !!impactStop;
+    impactPresentationActive;
   const playerCoverGuardPercent = getCoverGuardDisplayPercent({
     remainingGaugeCapacity: playerCoverCapacity,
     maximumGaugeCapacity: TACTICAL_SKILL_BALANCE.cover.gaugeCapacity,
@@ -2645,6 +2676,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     !!criticalAutoPending ||
     ultimateCriticalGatePending ||
     presentationLocked ||
+    impactPresentationActive ||
     decisiveLocked ||
     showHelp ||
     showLog ||
@@ -2659,8 +2691,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     : openingAutoPending || criticalAutoPending
       ? 0
     : capitalCommit
-      ? 0
-    : impactStop?.phase === 'hitstop'
       ? 0
     : terminalCinematicStage
       ? 0
@@ -2691,16 +2721,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ultimateCriticalGatePending ||
     enemyOpeningCoverPending ||
     decisiveLocked ||
-    impactStop?.phase === 'hitstop' ||
+    impactPresentationActive ||
     showHelp ||
     showLog ||
     panel !== 'capital';
   const { commandTimeScale } = getBattleClockScales({
     baseTimeScale: baseCommandTimeScale,
-    simulationPaused:
-      presentationPauseActive || impactStop?.phase === 'hitstop',
-    capitalPileActive: capitalPilePresentationLocked,
-    capitalPileAllowsCommandRecharge,
+    simulationPaused: presentationPauseActive,
+    capitalPileActive: capitalPresentationActive,
+    capitalPileAllowsCommandRecharge:
+      capitalPresentationAllowsCommandRecharge,
     fullPresentationActive: fullCommandPauseActive,
   });
   const enemySupportCastBlocked =
@@ -2712,7 +2742,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     openingAutoPending ||
     !!criticalAutoPending ||
     ultimateCriticalGatePending ||
-    !!impactStop ||
+    impactPresentationActive ||
     limitImpactActive ||
     !!terminalCinematicStage ||
     showHelp ||
@@ -4943,7 +4973,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       stage: 'telegraph',
       serial,
     });
-    startEnemySupportTelegraphTicker(presentation.telegraphMs);
     setStatusText(`${presentation.telegraphText}――次の行動を予告`);
     setAiText(`${presentation.telegraphText} / 次の行動を予告`);
     soundFx.playSkillCast(
@@ -4993,16 +5022,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       enemySupportPendingCastRef.current = null;
       if (grantPostPileGrace) {
         // The warning can expire while a large capital pile owns the stage.
-        // Keep the existing ticker and reopen a short, real input window once
-        // stacking is clear instead of casting on the same frame.
-        refreshEnemySupportTelegraphDeadline(
-          ENEMY_SUPPORT_POST_PILE_GRACE_MS
+        // Reopen a short, real input window once stacking is clear. This
+        // countdown uses active battle time, so another presentation freezes it.
+        startEnemySupportTelegraphTicker(
+          ENEMY_SUPPORT_POST_PILE_GRACE_MS,
+          () => beginCast(false)
         );
-        const graceTimer = window.setTimeout(
-          () => beginCast(false),
-          ENEMY_SUPPORT_POST_PILE_GRACE_MS
-        );
-        enemySupportTimersRef.current = [graceTimer];
+        enemySupportTimersRef.current = [];
         return;
       }
       if (!updateStage('cast')) return;
@@ -5067,11 +5093,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       ];
     };
 
-    const castTimer = window.setTimeout(
-      () => beginCast(false),
-      presentation.telegraphMs
+    startEnemySupportTelegraphTicker(
+      presentation.telegraphMs,
+      () => beginCast(false)
     );
-    enemySupportTimersRef.current = [castTimer];
+    enemySupportTimersRef.current = [];
     return true;
   };
 
@@ -5410,7 +5436,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   useEffect(() => {
     if (
-      !capitalPilePresentationLocked ||
+      !capitalPresentationActive ||
       commandTimeScale <= 0 ||
       timeScale > 0 ||
       winner ||
@@ -5432,7 +5458,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return () => window.clearInterval(interval);
   }, [
     battlePhase,
-    capitalPilePresentationLocked,
+    capitalPresentationActive,
     commandProgressPerTick,
     commandTimeScale,
     timeScale,

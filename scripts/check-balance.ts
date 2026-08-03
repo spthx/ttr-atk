@@ -33,6 +33,7 @@ import {
   BATTLE_STATE_UPDATE_INTERVAL_MS,
   BATTLE_HIT_STOP_TIMING,
   BATTLE_STATUS_MESSAGE_DURATION_MS,
+  advanceEnemySupportTelegraphClock,
   canConfirmBattleResult,
   enqueueBattleStatusMessage,
   getBattleCapitalVisualBundleCount,
@@ -60,6 +61,7 @@ import {
   getInvestmentStakeVisualPieceCount,
   getBattleHitStopTiming,
   getBattleClockScales,
+  isBattleImpactPresentationActive,
   getSkillCinematicEventDecision,
   getSkillCinematicTimelineState,
   getSkillCinematicTiming,
@@ -455,6 +457,59 @@ assert.equal(
   'the settled footer must stay interactive so the result analysis can open'
 );
 assert.equal(RESULT_CONFIRM_ARM_DELAY_MS, 1_200);
+assert.equal(
+  isBattleImpactPresentationActive(undefined),
+  false,
+  'battle clocks run when no impact presentation is active'
+);
+assert.equal(
+  isBattleImpactPresentationActive('hitstop'),
+  true,
+  'the impact hitstop locks every battle clock'
+);
+assert.equal(
+  isBattleImpactPresentationActive('release'),
+  true,
+  'the impact release keeps every battle clock locked while controls say presentation wait'
+);
+const heldEnemyTelegraph = advanceEnemySupportTelegraphClock({
+  remainingMs: 2_400,
+  elapsedMs: 2_208,
+  blocked: true,
+});
+assert.deepEqual(
+  heldEnemyTelegraph,
+  { remainingMs: 2_400, castDue: false },
+  'enemy telegraphs do not consume their warning window during a presentation'
+);
+const resumedEnemyTelegraph = advanceEnemySupportTelegraphClock({
+  remainingMs: heldEnemyTelegraph.remainingMs,
+  elapsedMs: 800,
+  blocked: false,
+});
+assert.deepEqual(
+  resumedEnemyTelegraph,
+  { remainingMs: 1_600, castDue: false },
+  'enemy telegraphs resume from the same warning time after a presentation'
+);
+assert.deepEqual(
+  advanceEnemySupportTelegraphClock({
+    remainingMs: resumedEnemyTelegraph.remainingMs,
+    elapsedMs: 1_600,
+    blocked: false,
+  }),
+  { remainingMs: 0, castDue: true },
+  'enemy support casts only after its full active-time warning has elapsed'
+);
+assert.deepEqual(
+  advanceEnemySupportTelegraphClock({
+    remainingMs: 100,
+    elapsedMs: 1_000,
+    blocked: true,
+  }),
+  { remainingMs: 100, castDue: false },
+  'a presentation cannot consume the final readable telegraph beat'
+);
 assert.equal(
   BATTLE_GAUGE_VISUAL_COMMIT_MS,
   100,
