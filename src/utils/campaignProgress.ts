@@ -6,10 +6,11 @@ const validCommunityIds = new Set<CommunityType>(COMMUNITY_CAMPAIGN_ORDER);
 const legacyFeatureConquestDepth: Readonly<Record<string, number>> = {
   market_wind: 1,
   rival_wind: 2,
-  turbulent_wind: 3,
-  trade_alliance: 3,
-  opening_auto: 5,
-  critical_auto: 7,
+  turbulent_wind: 5,
+  trade_alliance: 6,
+  // Both AUTO tutorials imply that the ten-city story was already complete.
+  opening_auto: 10,
+  critical_auto: 10,
 };
 
 const hasConnectedNetworkContact = (property: Property) =>

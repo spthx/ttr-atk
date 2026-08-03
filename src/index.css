@@ -231,6 +231,9 @@ body {
 }
 
 .city-unlock {
+  align-items: safe center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding:
     calc(1rem + var(--game-safe-top))
     calc(1rem + var(--game-safe-right))
@@ -240,6 +243,10 @@ body {
 }
 
 .city-unlock__card {
+  max-height: calc(100dvh - 2rem - var(--game-safe-top) - var(--game-safe-bottom));
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scrollbar-gutter: stable;
   animation: city-unlock-card .65s cubic-bezier(.16,.9,.22,1);
 }
 

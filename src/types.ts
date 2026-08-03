@@ -69,12 +69,13 @@ export interface TacticalSkill {
   cooldownMs: number;
   description: string;
   effectType:
-    | 'COOLDOWN_REDUCTION' // 疾風怒濤の計
+    | 'COOLDOWN_REDUCTION' // 疾風怒濤
     | 'NEMAWASHI' // Legacy effect type retained for older saves/content.
-    | 'INDEPENDENCE_SABOTAGE' // スタン（旧IDを維持。敵の予告を1回中断）
-    | 'COVER' // パッセージ・オブ・アームズ（旧skill_demoralize IDを維持）
-    | 'BARRIER' // ディヴァインベニゾン（旧skill_synergy_push IDを維持）
-    | 'CAPITAL_BOOST' // 意気衝天
+    | 'FEINT' // 牽制（旧skill_sabotage IDを維持）
+    | 'INDEPENDENCE_SABOTAGE' // Legacy STUN effect kept only for older saved/content values.
+    | 'COVER' // パッセ（旧skill_demoralize IDを維持）
+    | 'BARRIER' // ブラックナイト（旧skill_synergy_push IDを維持）
+    | 'CAPITAL_BOOST' // ぶんどる（旧skill_capital_boost IDを維持）
     | 'LIVING_DEAD' // リビングデッド（旧skill_sns_blitz IDを維持）
     | 'SYNERGY_PUSH' // Legacy presentation value kept for older saved content.
     | 'ERA_WIND'; // Legacy presentation value kept for older saved content.
@@ -84,6 +85,10 @@ export interface TacticalSkill {
   requiredAllPropertyIds?: string[];
   requiredAssetValue?: number;
   requiresActiveSynergy?: boolean;
+  /** Permanent normal-route milestone; avoids order-dependent asset unlocks. */
+  unlockAfterCommunity?: CommunityType;
+  /** Permanent high-end clear milestone. */
+  unlockAfterSavageRaidId?: string;
   oncePerBattle?: boolean;
 }
 
@@ -108,6 +113,8 @@ export interface GroupSynergy {
    */
   battleOnly?: boolean;
   unlockAfterCommunity?: CommunityType;
+  /** Unlocks after every authored alliance/cartel HQ in requiredPropertyIds is owned. */
+  unlockAfterAllCartelHqs?: boolean;
   /** Optional high-end milestone; derived from the existing Savage clear IDs. */
   unlockAfterSavageRaidId?: string;
   selectionPriority?: number;

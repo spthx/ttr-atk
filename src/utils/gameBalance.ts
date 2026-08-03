@@ -1,8 +1,11 @@
 import type { BattleMode, CommunityType, Property, TacticalSkill } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
 import {
+  BLACKEST_NIGHT_BALANCE,
+  CAPITAL_REVERSAL_BALANCE,
   DIVINE_BENISON_BALANCE,
   ENEMY_SUPPORT_SKILL_BALANCE,
+  FORCED_LIQUIDATION_BALANCE,
   SAVAGE_ENEMY_AUTO_PROFILES,
   SAVAGE_ENEMY_SUPPORT_PROFILES,
   ULTIMATE_ENEMY_AUTO_PATTERNS,
@@ -14,8 +17,11 @@ import {
 } from '../data/campaignEncounterData';
 
 export {
+  BLACKEST_NIGHT_BALANCE,
+  CAPITAL_REVERSAL_BALANCE,
   DIVINE_BENISON_BALANCE,
   ENEMY_SUPPORT_SKILL_BALANCE,
+  FORCED_LIQUIDATION_BALANCE,
   ULTIMATE_ENEMY_AUTO_PATTERNS,
 };
 export type { EnemySupportSkillId };
@@ -251,7 +257,7 @@ export const getBattleCashRecoveryWindMultipliers = (
   windType: BattleCashRecoveryWindType
 ) => BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS[windType];
 
-export interface DivineBenisonGaugeInput {
+export interface BlackestNightGaugeInput {
   currentGauge: number;
   nextGauge: number;
   protects: 'player' | 'opponent';
@@ -262,12 +268,12 @@ export interface DivineBenisonGaugeInput {
  * Shared player/enemy finite barrier resolver. It deliberately contains no
  * React state or timers so the same contract can be exported to Unity.
  */
-export const applyDivineBenisonToGaugeDelta = ({
+export const applyBlackestNightToGaugeDelta = ({
   currentGauge,
   nextGauge,
   protects,
   remainingGaugeCapacity,
-}: DivineBenisonGaugeInput) => {
+}: BlackestNightGaugeInput) => {
   const current = Number.isFinite(currentGauge) ? currentGauge : 0;
   const candidate = Number.isFinite(nextGauge) ? nextGauge : current;
   const capacity = finiteNonNegative(remainingGaugeCapacity);
@@ -275,9 +281,10 @@ export const applyDivineBenisonToGaugeDelta = ({
   const incoming =
     protects === 'player' ? Math.max(0, delta) : Math.max(0, -delta);
   const absorbedGauge = Math.min(
-    incoming * DIVINE_BENISON_BALANCE.absorbRatio,
+    incoming * BLACKEST_NIGHT_BALANCE.absorbRatio,
     capacity
   );
+  const nextCapacity = Math.max(0, capacity - absorbedGauge);
 
   return {
     nextGauge:
@@ -285,11 +292,12 @@ export const applyDivineBenisonToGaugeDelta = ({
         ? candidate - absorbedGauge
         : candidate + absorbedGauge,
     absorbedGauge,
-    remainingGaugeCapacity: Math.max(0, capacity - absorbedGauge),
+    remainingGaugeCapacity: nextCapacity,
+    didFullyBreak: capacity > 0 && incoming > 0 && nextCapacity === 0,
   };
 };
 
-export const getDivineBenisonDisplayPercent = ({
+export const getBlackestNightDisplayPercent = ({
   remainingGaugeCapacity,
   remainingMs,
 }: {
@@ -299,14 +307,14 @@ export const getDivineBenisonDisplayPercent = ({
   if (remainingGaugeCapacity <= 0 || remainingMs <= 0) return 0;
   const capacityRatio =
     finiteNonNegative(remainingGaugeCapacity) /
-    DIVINE_BENISON_BALANCE.gaugeCapacity;
+    BLACKEST_NIGHT_BALANCE.gaugeCapacity;
   const timeRatio =
-    finiteNonNegative(remainingMs) / DIVINE_BENISON_BALANCE.durationMs;
+    finiteNonNegative(remainingMs) / BLACKEST_NIGHT_BALANCE.durationMs;
   const rawPercent = Math.max(0, Math.min(1, capacityRatio, timeRatio)) * 100;
   return Math.max(5, Math.min(100, Math.ceil(rawPercent / 5) * 5));
 };
 
-export const shouldEnemyUseDivineBenison = ({
+export const shouldEnemyUseBlackestNight = ({
   playerOwnership,
   terminal,
 }: {
@@ -315,7 +323,77 @@ export const shouldEnemyUseDivineBenison = ({
 }) =>
   !terminal &&
   normalizeBattleOwnership(playerOwnership) >=
-    DIVINE_BENISON_BALANCE.triggerPlayerOwnership;
+    BLACKEST_NIGHT_BALANCE.triggerPlayerOwnership;
+
+export const getBlackestNightDarkWaveGaugeDelta = (
+  protects: 'player' | 'opponent'
+) =>
+  protects === 'player'
+    ? -BLACKEST_NIGHT_BALANCE.darkWaveGaugeDelta
+    : BLACKEST_NIGHT_BALANCE.darkWaveGaugeDelta;
+
+/** Resolves the one direct-investment hit consumed by 資本反転. */
+export const resolveCapitalReversal = (
+  intendedOwnershipPush: number,
+  reflectedOwnershipCap: number = CAPITAL_REVERSAL_BALANCE.reflectedOwnershipCap
+) => {
+  const intended = finiteNonNegative(intendedOwnershipPush);
+  const normalizedReflectionCap = Number.isFinite(reflectedOwnershipCap)
+    ? finiteNonNegative(reflectedOwnershipCap)
+    : Number.POSITIVE_INFINITY;
+  const retainedOwnershipPush =
+    intended * CAPITAL_REVERSAL_BALANCE.retainedDirectInvestmentRatio;
+  const reflectedOwnershipPush = Math.min(
+    intended * CAPITAL_REVERSAL_BALANCE.reflectedOwnershipRatio,
+    normalizedReflectionCap
+  );
+  return {
+    retainedOwnershipPush,
+    reflectedOwnershipPush,
+    netPlayerOwnershipPush: retainedOwnershipPush - reflectedOwnershipPush,
+    gaugeDelta: (reflectedOwnershipPush - retainedOwnershipPush) * 2,
+  };
+};
+
+/** Unmitigated 強制清算 pressure; mitigation and barriers apply afterwards. */
+export const calculateForcedLiquidationGaugeDelta = (
+  currentPlayerOwnership: number
+) =>
+  Math.max(
+    0,
+    normalizeBattleOwnership(currentPlayerOwnership) -
+      FORCED_LIQUIDATION_BALANCE.unmitigatedTargetPlayerOwnership
+  ) * 2;
+
+/**
+ * Resolves the continuous ownership velocity during 強制清算 recovery.
+ *
+ * Enemy pressure remains suspended for the whole authored grace. Player-side
+ * pressure is also suspended until the first manual counter-command, so a
+ * pre-cast continuous effect cannot settle the battle before the player acts.
+ */
+export const resolveForcedLiquidationContinuousVelocity = ({
+  velocity,
+  recoveryRemaining,
+  awaitingManualCounter,
+}: {
+  velocity: number;
+  recoveryRemaining: number;
+  awaitingManualCounter: boolean;
+}) => {
+  if (recoveryRemaining <= 0) return velocity;
+  if (awaitingManualCounter) return 0;
+  return Math.min(0, velocity);
+};
+
+/** @deprecated Use the Blackest Night names in current runtime code. */
+export type DivineBenisonGaugeInput = BlackestNightGaugeInput;
+/** @deprecated Use applyBlackestNightToGaugeDelta. */
+export const applyDivineBenisonToGaugeDelta = applyBlackestNightToGaugeDelta;
+/** @deprecated Use getBlackestNightDisplayPercent. */
+export const getDivineBenisonDisplayPercent = getBlackestNightDisplayPercent;
+/** @deprecated Use shouldEnemyUseBlackestNight. */
+export const shouldEnemyUseDivineBenison = shouldEnemyUseBlackestNight;
 
 export const calculateEnemyDrainAmount = ({
   playerCash,
@@ -455,7 +533,8 @@ export const getEnemyDivinationDurationMs = ({
 export const TACTICAL_SKILL_BALANCE = {
   fastAction: {
     durationMs: 15_000,
-    cooldownMs: 18_000,
+    cooldownMs: 0,
+    maxUsesPerBattle: 1,
     baseCommandProgressPerTick: 2.8,
     boostedCommandProgressPerTick: 5.2,
   },
@@ -463,12 +542,17 @@ export const TACTICAL_SKILL_BALANCE = {
     loyaltyRiskDivisor: 2,
   },
   disruption: {
-    /** Legacy key retained for equipped-save compatibility; the action is now STUN. */
+    /** Legacy STUN data retained only for older authored content. */
     durationMs: 0,
     interruptChance: 1,
     collapseMarketRatio: 0,
     requiresEnemyTelegraph: true,
     maxInterruptsPerUse: 1,
+  },
+  feint: {
+    durationMs: 10_000,
+    enemyPushMultiplier: 0.9,
+    maxUsesPerBattle: 1,
   },
   cover: {
     durationMs: 18_000,
@@ -582,16 +666,19 @@ export const advanceCriticalAutoResolution = (
  * interrupt still restores the held 25% boundary instead of firing uselessly
  * at 7% immediately before defeat. The caller must arm this transition before
  * combat pressure begins; it must not become available dynamically below the
- * threshold.
+ * threshold. Named mechanics that have already resolved all mitigation may
+ * opt into preserving their candidate value while still triggering the AUTO.
  */
 export const resolveCriticalAutoInterception = ({
   currentGauge,
   candidateGauge,
   canIntercept,
+  preserveResolvedCandidate = false,
 }: {
   currentGauge: number;
   candidateGauge: number;
   canIntercept: boolean;
+  preserveResolvedCandidate?: boolean;
 }): CriticalAutoInterception => {
   if (
     !canIntercept ||
@@ -608,7 +695,9 @@ export const resolveCriticalAutoInterception = ({
     100 - CRITICAL_AUTO_OWNERSHIP_THRESHOLD * 2;
   return {
     shouldIntercept: true,
-    heldGauge: thresholdGauge,
+    heldGauge: preserveResolvedCandidate
+      ? candidateGauge
+      : thresholdGauge,
   };
 };
 
@@ -791,7 +880,7 @@ export const getExtremeReacquisitionOpeningSkill = (
   const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(property.community);
   // Extreme reacquisition is a payoff battle. It may present a small barrier,
   // but never takes permanent cash through Drain.
-  if (campaignIndex <= 2) return 'divine_benison';
+  if (campaignIndex <= 2) return 'blackest_night';
   if (campaignIndex <= 6) return 'divination';
   return 'drill';
 };
@@ -977,6 +1066,8 @@ interface SkillUnlockContext {
   ownedProperties: Property[];
   totalFunds: number;
   activeSynergyCount: number;
+  conqueredCommunityIds?: ReadonlySet<CommunityType>;
+  savageClearedRaidIds?: ReadonlySet<string>;
 }
 
 export const countsTowardCityConquest = (property: Property) =>
@@ -1153,9 +1244,9 @@ export const getSavageSeries = (targetProperty: Property) => {
 };
 
 const NO_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [];
-const BENISON_ONLY: readonly EnemySupportSkillId[] = ['divine_benison'];
+const BENISON_ONLY: readonly EnemySupportSkillId[] = ['blackest_night'];
 const BENISON_DRAIN: readonly EnemySupportSkillId[] = [
-  'divine_benison',
+  'blackest_night',
   'drain',
 ];
 const DRAIN_ONLY: readonly EnemySupportSkillId[] = ['drain'];
@@ -1166,17 +1257,23 @@ const DRAIN_DIVINATION: readonly EnemySupportSkillId[] = [
 const DRAIN_DRILL: readonly EnemySupportSkillId[] = ['drain', 'drill'];
 const DIVINATION_ONLY: readonly EnemySupportSkillId[] = ['divination'];
 const BENISON_DIVINATION: readonly EnemySupportSkillId[] = [
-  'divine_benison',
+  'blackest_night',
   'divination',
 ];
+const BENISON_RAPID_ASSAULT: readonly EnemySupportSkillId[] = [
+  'blackest_night',
+  'rapid_assault',
+];
 const ALL_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [
-  'divine_benison',
+  'blackest_night',
   'drain',
   'drill',
   'divination',
+  'capital_reversal',
+  'forced_liquidation',
 ];
 const CRUEL_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [
-  'divine_benison',
+  'blackest_night',
   'drill',
   'divination',
   'rapid_assault',
@@ -1241,8 +1338,8 @@ export const getEnemySupportSkillProfile = ({
     targetProperty.community
   );
   if (campaignIndex === 2) return DRAIN_ONLY;
-  if (campaignIndex === 3) return DRAIN_ONLY;
-  if (campaignIndex === 4) return BENISON_DRAIN;
+  if (campaignIndex === 3) return BENISON_ONLY;
+  if (campaignIndex === 4) return BENISON_RAPID_ASSAULT;
   if (campaignIndex === 5) return BENISON_ONLY;
   if (campaignIndex === 6) return DRAIN_ONLY;
   if (campaignIndex === 7) return DRAIN_DRILL;
@@ -1287,7 +1384,7 @@ export const getEnemySupportAutoProfile = ({
   if (targetProperty.isCartelHQ) {
     return targetProperty.cartelId === 'cartel_abyss'
       ? { opening: 'divination', critical: 'drill' }
-      : { opening: 'drain', critical: 'divine_benison' };
+      : { opening: 'drain', critical: 'blackest_night' };
   }
   return {
     opening: null,
@@ -1573,6 +1670,8 @@ export const isSkillUnlocked = ({
   ownedProperties,
   totalFunds,
   activeSynergyCount,
+  conqueredCommunityIds = new Set<CommunityType>(),
+  savageClearedRaidIds = new Set<string>(),
 }: SkillUnlockContext) => {
   const ownedPropertyIds = new Set(
     ownedProperties.map((property) => property.id)
@@ -1609,6 +1708,18 @@ export const isSkillUnlocked = ({
     return false;
   }
   if (skill.requiresActiveSynergy && activeSynergyCount <= 0) {
+    return false;
+  }
+  if (
+    skill.unlockAfterCommunity &&
+    !conqueredCommunityIds.has(skill.unlockAfterCommunity)
+  ) {
+    return false;
+  }
+  if (
+    skill.unlockAfterSavageRaidId &&
+    !savageClearedRaidIds.has(skill.unlockAfterSavageRaidId)
+  ) {
     return false;
   }
   return true;

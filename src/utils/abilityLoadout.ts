@@ -1,21 +1,18 @@
 export const MANUAL_ABILITY_SLOT_COUNT = 3;
 export const AUTO_ABILITY_SLOT_COUNT = 2;
-export const RESERVE_ABILITY_SLOT_COUNT = 1;
 export const TOTAL_ABILITY_LOADOUT_SLOTS =
-  MANUAL_ABILITY_SLOT_COUNT +
-  AUTO_ABILITY_SLOT_COUNT +
-  RESERVE_ABILITY_SLOT_COUNT;
+  MANUAL_ABILITY_SLOT_COUNT + AUTO_ABILITY_SLOT_COUNT;
 
 export type AbilityActivationMode =
   | 'manual'
   | 'opening_auto'
-  | 'critical_auto'
-  | 'reserve';
+  | 'critical_auto';
 
 export interface AbilityLoadout {
   equippedSkillIds: string[];
   openingAutoSkillId: string | null;
   criticalAutoSkillId: string | null;
+  /** Legacy save compatibility only. There is no reserve/waiting slot. */
   reserveSkillId: string | null;
   manualSkillIds: string[];
 }
@@ -34,8 +31,8 @@ const uniqueKnownIds = (
 /**
  * A deterministic, JSON-friendly loadout boundary shared by save migration,
  * the React UI and a future Unity importer. AUTO slots take precedence, the
- * manual row is capped at three, and one remaining learned ability may wait
- * in reserve without leaking into battle.
+ * manual row is capped at three. Learned abilities outside the three manual
+ * and two unlocked AUTO roles are simply unequipped; there is no waiting slot.
  */
 export const normalizeAbilityLoadout = ({
   equippedSkillIds,
@@ -65,33 +62,27 @@ export const normalizeAbilityLoadout = ({
     criticalAutoSkillId !== opening
       ? criticalAutoSkillId
       : null;
-  const explicitReserve =
+  const legacyReserve =
     validEquippedId(reserveSkillId) &&
     reserveSkillId !== opening &&
     reserveSkillId !== critical
       ? reserveSkillId
       : null;
-
   const manualCandidates = knownIds.filter(
     (skillId) =>
       skillId !== opening &&
       skillId !== critical &&
-      skillId !== explicitReserve
+      skillId !== legacyReserve
   );
   const manualSkillIds = manualCandidates.slice(
     0,
     MANUAL_ABILITY_SLOT_COUNT
   );
-  const reserve =
-    explicitReserve ??
-    manualCandidates[MANUAL_ABILITY_SLOT_COUNT] ??
-    null;
   const activeIds = new Set(
     [
       ...manualSkillIds,
       opening,
       critical,
-      reserve,
     ].filter((skillId): skillId is string => !!skillId)
   );
 
@@ -99,7 +90,8 @@ export const normalizeAbilityLoadout = ({
     equippedSkillIds: knownIds.filter((skillId) => activeIds.has(skillId)),
     openingAutoSkillId: opening,
     criticalAutoSkillId: critical,
-    reserveSkillId: reserve,
+    // A legacy reserve id is intentionally discarded during normalization.
+    reserveSkillId: null,
     manualSkillIds,
   };
 };

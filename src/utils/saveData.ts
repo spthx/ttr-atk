@@ -25,10 +25,10 @@ export interface GameSaveData {
   totalFunds: number;
   properties: SavedPropertyState[];
   equippedSkillIds: string[];
-  /** Optional schema-v3 additions. AUTO skills consume the six-role loadout. */
+  /** Optional schema-v3 additions. AUTO skills consume the five active slots. */
   openingAutoSkillId?: string | null;
   criticalAutoSkillId?: string | null;
-  /** One learned ability kept outside the five battle-active slots. */
+  /** Legacy only. Reserve/waiting slots were removed; normalized to null. */
   reserveSkillId?: string | null;
   alliance: AllianceState;
   /** Optional so schema v3 saves created before staged unlocks stay compatible. */

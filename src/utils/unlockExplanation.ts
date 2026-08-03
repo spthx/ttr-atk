@@ -20,19 +20,15 @@ const formatDuration = (durationMs: number) => {
 export const getSkillUnlockExplanation = (
   skill: TacticalSkill
 ): UnlockExplanation => {
-  const usageLimit = skill.oncePerBattle
-    ? '使用回数は1争奪戦につき1回。'
-    : `リキャストタイムは${formatDuration(skill.cooldownMs)}。`;
-
   return {
     key: `skill:${skill.id}`,
     kind: 'skill',
     kicker: 'NEW ABILITY',
     title: `${skill.name} 修得`,
-    dialogue: `${skill.name}を修得したでっす！ 商戦前に装備して、ここぞという場面で使うでっす。`,
-    detail: `${skill.description} ${usageLimit}`,
+    dialogue: `${skill.name}を修得したでっす！ 次の商戦用に装備を決めるでっす。`,
+    detail: skill.description,
     operation:
-      '「アビリティ」画面でアビリティ装備を設定します。開幕アビリティ・瀕死アビリティに設定した技は、手動発動の一覧から外れます。控えの技は商戦中に使えません。',
+      '「アビリティ」画面で手動3枠へ装備します。零式で開幕・瀕死枠を解放すると、その枠へ設定した技は条件を満たした時に自動発動します。',
   };
 };
 

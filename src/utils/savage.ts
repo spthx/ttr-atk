@@ -148,7 +148,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     rewardSynergyIds: ['ISHGARD_DEFENSE_INDUSTRY'],
     marketPrice: 3_400_000_000,
     description:
-      '生産拠点が一体となる第2層。パッセージ・オブ・アームズを挟む集中防衛を崩します。',
+      '生産拠点が一体となる第2層。パッセを挟む集中防衛を崩します。',
   },
   {
     id: 'savage_raid_2_layer_3',
@@ -204,7 +204,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     rewardSynergyIds: ['EORZEA_FOOD_ROUTE'],
     marketPrice: 3_700_000_000,
     description:
-      '学術予測と港湾防衛が同期する第2層。パッセージ・オブ・アームズの後隙へ商流を集中させます。',
+      '学術予測と港湾防衛が同期する第2層。パッセの後隙へ商流を集中させます。',
   },
   {
     id: 'savage_raid_3_layer_3',

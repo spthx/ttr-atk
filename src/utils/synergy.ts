@@ -19,6 +19,10 @@ export const isGroupSynergyUnlocked = ({
   savageClearedRaidIds?: ReadonlySet<string>;
 }) => {
   if (isProgressionBattleSynergy(synergy)) {
+    if (synergy.unlockAfterAllCartelHqs) {
+      return synergy.requiredPropertyIds.length > 0 &&
+        synergy.requiredPropertyIds.every((id) => ownedPropertyIds.has(id));
+    }
     if (synergy.unlockAfterSavageRaidId) {
       return savageClearedRaidIds.has(synergy.unlockAfterSavageRaidId);
     }

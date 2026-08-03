@@ -94,7 +94,10 @@ export const getWindProgressionStage = (
 ): WindProgressionStage => {
   if (connectedCommunityCount < 1) return 0;
   if (connectedCommunityCount < 2) return 1;
-  if (connectedCommunityCount < 3) return 2;
+  // Rival tailwind arrives after Limsa. Ul'dah and Ishgard add encounter
+  // mechanics without adding another wind rule; headwind and crosswind wait
+  // until Kugane is conquered (the fifth connected community).
+  if (connectedCommunityCount < 5) return 2;
   return 3;
 };
 
@@ -103,7 +106,7 @@ export const getWindPool = (
 ): WindType[] => {
   if (stage === 1) return ['TAILWIND_PLAYER'];
   if (stage === 2) {
-    return ['TAILWIND_PLAYER', 'TAILWIND_PLAYER', 'TAILWIND_ENEMY'];
+    return ['TAILWIND_PLAYER', 'TAILWIND_ENEMY'];
   }
   if (stage === 3) {
     return [
