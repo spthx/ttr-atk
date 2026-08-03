@@ -17,8 +17,8 @@ import {
 } from '../src/data/battleEncounterData';
 import {
   advanceBattleCashRecovery,
+  applyNormalClosingMomentum,
   applyTrainingGaugeSpeed,
-  BATTLE_GAUGE_SPEED_FACTOR,
   BATTLE_SUPPORT_BALANCE,
   BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO,
   BOSS_COVER_BALANCE,
@@ -41,11 +41,13 @@ import {
   getEnemySupportSkillProfile,
   getBossAbilityTier,
   getCampaignProperties,
+  INITIAL_BATTLE_COMMAND_PROGRESS,
   LIMIT_BREAK_OWNERSHIP_CAPS,
   resolveEnemyDrainTransfer,
   resolveCapitalReversal,
   calculateForcedLiquidationGaugeDelta,
   resolveForcedLiquidationContinuousVelocity,
+  resolveBattleGaugeSpeedFactor,
   shouldEnemyUseBlackestNight,
   shouldForceUltimateCriticalBeforeVictory,
   TACTICAL_SKILL_BALANCE,
@@ -221,6 +223,8 @@ const getForcedLiquidationSimulationGraceMs = (
 
 const runForcedLiquidationManualCounterProbe = () => {
   let gauge = -99;
+  // Forced Liquidation itself grants a ready counter-command; keep this probe
+  // independent from the normal battle opener.
   let commandProgress = 100;
   let awaitingManualCounter = true;
   const recoveryRemaining =
@@ -348,7 +352,7 @@ const simulateBattle = (
   let enemyReserve = enemyBudget - initialEnemyCommitment;
   let playerRecovered = 0;
   let enemyRecovered = 0;
-  let commandProgress = 100;
+  let commandProgress = INITIAL_BATTLE_COMMAND_PROGRESS;
   let aiProgress = 0;
   let aiCycle = 0;
   let lastPlayerAction: PlayerBattleAction | null = null;
@@ -1349,16 +1353,25 @@ const simulateBattle = (
         marketPrice,
         1 + (scenario.influenceBonus ?? 0)
       ) *
-        BATTLE_GAUGE_SPEED_FACTOR *
+        resolveBattleGaugeSpeedFactor({
+          isTraining,
+          isHighEndRaid: isSavage || isUltimate || isCruel,
+        }) *
         leverage *
         deadZone -
         continuousSynergyGaugePushPerSecond,
       isTraining
     );
+    const closingAdjustedVelocity = applyNormalClosingMomentum({
+      velocity: rawVelocity,
+      gauge,
+      isTraining,
+      isHighEndRaid: isSavage || isUltimate || isCruel,
+    });
     const limitAdjustedVelocity =
       enemyLimitBreakHoldRemainingSeconds > 0
-        ? Math.max(0, rawVelocity)
-        : rawVelocity;
+        ? Math.max(0, closingAdjustedVelocity)
+        : closingAdjustedVelocity;
     const forcedLiquidationAdjustedVelocity =
       resolveForcedLiquidationContinuousVelocity({
       velocity: limitAdjustedVelocity,
