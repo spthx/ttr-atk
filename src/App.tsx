@@ -47,7 +47,6 @@ import {
 } from './utils/saveData';
 import {
   MANUAL_ABILITY_SLOT_COUNT,
-  TOTAL_ABILITY_LOADOUT_SLOTS,
   type AbilityActivationMode,
 } from './utils/abilityLoadout';
 import {
@@ -120,24 +119,37 @@ import {
   getSynergyUnlockExplanation,
   type UnlockExplanation,
 } from './utils/unlockExplanation';
+import { calculateCruelEntryRequirement } from './utils/cruelBattle';
 
 export { PASSIVE_REVENUE_MULTIPLIER };
 
 const BATTLE_FRAME_RATE_STORAGE_KEY = 'ttr-battle-frame-rate';
 const LEGACY_LIGHTWEIGHT_MODE_STORAGE_KEY = 'ttr-lightweight-mode';
 type BattleFrameRate = 30 | 60;
+const FIRST_SAVAGE_FIRST_LAYER_ID =
+  SAVAGE_RAID_DEFINITIONS.find(
+    (raid) => raid.series === 1 && raid.layer === 1
+  )?.id ?? 'prop_starter_farm';
 const FIRST_SAVAGE_FOURTH_LAYER_ID =
   SAVAGE_RAID_DEFINITIONS.find(
     (raid) => raid.series === 1 && raid.layer === 4
   )?.id ?? 'prop_abyss_heavy';
+const INITIAL_FEINT_SKILL_ID =
+  INITIAL_SKILLS.find((skill) => skill.effectType === 'FEINT')?.id ??
+  'skill_sabotage';
+const LIVING_DEAD_SKILL_ID =
+  INITIAL_SKILLS.find((skill) => skill.effectType === 'LIVING_DEAD')?.id ??
+  'skill_sns_blitz';
 
 const ENEMY_MECHANIC_NAMES = {
-  divine_benison: 'ディヴァインベニゾン',
+  blackest_night: 'ブラックナイト',
   drain: 'ドレイン',
   drill: 'ドリル',
   divination: 'ディヴィネーション',
-  rapid_assault: '疾風怒濤の陣',
+  rapid_assault: '疾風怒濤',
   limit_break_3: '敵LIMIT BREAK 3',
+  capital_reversal: '資本反転',
+  forced_liquidation: '強制清算',
   omnicapitalization: '星海資本の宣告',
   cruel_reckoning: '終極資本査定',
 } as const;
@@ -149,7 +161,6 @@ type FeatureUnlockId =
   | 'subsidiary_support'
   | 'light_party_limit_break'
   | 'guild_synergy'
-  | 'living_dead_skill'
   | 'full_party'
   | 'trade_alliance'
   | 'opening_auto'
@@ -169,12 +180,12 @@ const FEATURE_UNLOCKS: Record<
     kicker: 'RIVAL WIND',
     title: '競合の追い風 解放',
     dialogue: 'リムサ・ロミンサの人脈開通後は、競合にも赤い追い風が届くでっす。赤い間は温存も立派な一手でっす！',
-    detail: '競合追い風の10秒間は敵防衛が1.35倍。静穏へ戻ると補正は消え、全画面演出による停止もありません。',
+    detail: '競合追い風の7～9秒間は敵防衛が1.35倍。静穏へ戻ると補正は消え、全画面演出中は残り時間が減りません。',
   },
   turbulent_wind: {
     kicker: 'MARKET TURBULENCE',
     title: '向かい風・乱旋風 解放',
-    dialogue: 'ウルダハの人脈開通で、すべての風を読む商戦へ進むでっす。倍率を見て、積むか待つか決めるでっす！',
+    dialogue: 'クガネの人脈開通で、向かい風と乱旋風も起きるでっす。倍率を見て、積むか待つか決めるでっす！',
     detail: '自社向かい風は自社効果0.72倍。乱旋風は双方1.12倍・所有率速度1.45倍。味方追い風とSYNERGYが重なるとBURST TIMEです。',
   },
   subsidiary_support: {
@@ -195,12 +206,6 @@ const FEATURE_UNLOCKS: Record<
     dialogue: '必要な事業・契約がつながり、ひとつの商流になったでっす！',
     detail: '指定された事業・契約を揃えると毎秒収益が自動で強化されます。戦闘では選んだ1連携だけを使用し、地域・業界補正やLIMIT BREAKとは別に働きます。',
   },
-  living_dead_skill: {
-    kicker: 'DARK KNIGHT ACTION',
-    title: 'リビングデッド 解放',
-    dialogue: '総資産100万ギル達成で、敗北寸前から立て直す暗黒騎士のかけひきが使えるでっす。',
-    detail: '「アビリティ」画面で装備してください。使用後10秒以内に所有率0%へ落ちると1%で踏みとどまり、さらに10秒以内に30%まで戻せば生存します。1争奪戦につき1回です。',
-  },
   full_party: {
     kicker: 'FULL PARTY',
     title: 'フルパーティ結成',
@@ -210,20 +215,20 @@ const FEATURE_UNLOCKS: Record<
   trade_alliance: {
     kicker: 'ENTERPRISE ALLIANCE',
     title: 'アライアンス解放',
-    dialogue: 'ウルダハでの実績が認められたでっす。ここからは複数組織が組む企業連合へ挑めるでっす！',
+    dialogue: 'クリスタリウムまで交易路を広げた実績で、企業連合との大商戦が開いたでっす！',
     detail: '段階式の企業連合戦、外部企業との協力協定、グランドカンパニーへの公的後援申請が解放されます。',
   },
   opening_auto: {
     kicker: 'OPENING ABILITY',
     title: '開幕アビリティ 解放',
-    dialogue: '零式へ挑む準備として、開幕の段取りも整えたでっす！ 最初に使うアビリティを一つ、戦う前に決めておけるでっす。',
+    dialogue: '最初の零式1層を越えたので、開幕の段取りも組めるでっす！',
     detail: '装備中のアビリティ一つを開幕アビリティへ設定できます。設定したアビリティは手動選択から外れ、開始演出の後に一度だけ自動発動します。',
   },
   critical_auto: {
     kicker: 'CRITICAL ABILITY',
-    title: '瀕死アビリティ 解放',
-    dialogue: '最初の零式4層を越えた今なら、瀕死時の切り札も先に決めておけるでっす！',
-    detail: '装備中のアビリティ一つを瀕死アビリティへ設定できます。設定した技は手動選択から外れ、所有率が危険域へ入った時に一度だけ自動発動します。',
+    title: 'リビングデッド／瀕死アビリティ 解放',
+    dialogue: '最初の零式4層を越えた報酬で、瀕死の切り札を用意したでっす！',
+    detail: 'リビングデッドを修得し、瀕死アビリティへ自動装備します。所有率が危険域へ入った時に一度だけ自動発動し、他の修得済みアビリティへ付け替えることもできます。',
   },
 };
 
@@ -293,7 +298,8 @@ export default function App() {
   );
   const [skills, setSkills] = useState<TacticalSkill[]>(INITIAL_SKILLS);
   const initialAbilityLoadout = normalizeSavedAbilityLoadout({
-    equippedSkillIds: initialSave?.equippedSkillIds ?? [],
+    equippedSkillIds:
+      initialSave?.equippedSkillIds ?? [INITIAL_FEINT_SKILL_ID],
     openingAutoSkillId: initialSave?.openingAutoSkillId,
     criticalAutoSkillId: initialSave?.criticalAutoSkillId,
     reserveSkillId: initialSave?.reserveSkillId,
@@ -306,9 +312,6 @@ export default function App() {
   );
   const [criticalAutoSkillId, setCriticalAutoSkillId] = useState<string | null>(
     initialAbilityLoadout.criticalAutoSkillId
-  );
-  const [reserveSkillId, setReserveSkillId] = useState<string | null>(
-    initialAbilityLoadout.reserveSkillId
   );
   const [cartels, setCartels] = useState<Cartel[]>(INITIAL_CARTELS);
   const [alliance, setAlliance] = useState<AllianceState>(
@@ -418,8 +421,11 @@ export default function App() {
     mode: 'map' | 'targets';
     community: CommunityType | 'ALL';
   } | null>(null);
-  const [marketReturnCommunity, setMarketReturnCommunity] =
-    useState<CommunityType | null>(null);
+  const [skillsStoryReturn, setSkillsStoryReturn] = useState<
+    | { destination: 'market'; community: CommunityType }
+    | { destination: 'savage' }
+    | null
+  >(null);
   const deferredBattleIncomeRef = useRef(0);
   const highEndViewRef = useRef<HTMLDivElement | null>(null);
   const highEndBattlePlaceholderHeightRef = useRef(0);
@@ -506,7 +512,7 @@ export default function App() {
   );
 
   const tradeAllianceUnlocked = !!communityProgress.find(
-    (community) => community.id === 'ウルダハ'
+    (community) => community.id === 'クリスタリウム'
   )?.conquered;
   const normalCampaignComplete =
     conqueredCommunityCount === COMMUNITY_CAMPAIGN_ORDER.length;
@@ -515,7 +521,9 @@ export default function App() {
     () => new Set(savageClearedPropertyIds),
     [savageClearedPropertyIds]
   );
-  const openingAutoUnlocked = savageUnlocked;
+  const openingAutoUnlocked = savageClearedSet.has(
+    FIRST_SAVAGE_FIRST_LAYER_ID
+  );
   const criticalAutoUnlocked = savageClearedSet.has(
     FIRST_SAVAGE_FOURTH_LAYER_ID
   );
@@ -797,10 +805,41 @@ export default function App() {
 
   const acknowledgeFeatureUnlock = () => {
     if (!featureUnlockNoticeId) return;
-    setSeenUnlockIds((current) =>
-      current.includes(featureUnlockNoticeId) ? current : [...current, featureUnlockNoticeId]
-    );
+    const opensAbilitySetup =
+      featureUnlockNoticeId === 'opening_auto' ||
+      featureUnlockNoticeId === 'critical_auto';
+    setSeenUnlockIds((current) => {
+      const additions =
+        featureUnlockNoticeId === 'critical_auto'
+          ? [featureUnlockNoticeId, `skill:${LIVING_DEAD_SKILL_ID}`]
+          : [featureUnlockNoticeId];
+      return Array.from(new Set([...current, ...additions]));
+    });
     setFeatureUnlockNoticeId(null);
+    if (opensAbilitySetup) {
+      if (featureUnlockNoticeId === 'critical_auto') {
+        const nextEquippedSkillIds = equippedSkillIds.includes(
+          LIVING_DEAD_SKILL_ID
+        )
+          ? equippedSkillIds
+          : [...equippedSkillIds, LIVING_DEAD_SKILL_ID];
+        const loadout = normalizeSavedAbilityLoadout({
+          equippedSkillIds: nextEquippedSkillIds,
+          openingAutoSkillId:
+            openingAutoSkillId === LIVING_DEAD_SKILL_ID
+              ? null
+              : openingAutoSkillId,
+          criticalAutoSkillId: LIVING_DEAD_SKILL_ID,
+          reserveSkillId: null,
+          validSkillIds: unlockedSkillIds,
+        });
+        setEquippedSkillIds(loadout.equippedSkillIds);
+        setOpeningAutoSkillId(loadout.openingAutoSkillId);
+        setCriticalAutoSkillId(loadout.criticalAutoSkillId);
+      }
+      setSkillsStoryReturn({ destination: 'savage' });
+      setActiveTab('skills');
+    }
     soundFx.playCoin();
   };
 
@@ -867,11 +906,25 @@ export default function App() {
       new Set(
         skills
           .filter((skill) =>
-            isSkillUnlocked({ skill, ownedProperties, totalFunds, activeSynergyCount: activeSynergiesCount })
+            isSkillUnlocked({
+              skill,
+              ownedProperties,
+              totalFunds,
+              activeSynergyCount: activeSynergiesCount,
+              conqueredCommunityIds: conqueredCommunityIdSet,
+              savageClearedRaidIds: savageClearedSet,
+            })
           )
           .map((skill) => skill.id)
       ),
-    [activeSynergiesCount, ownedProperties, skills, totalFunds]
+    [
+      activeSynergiesCount,
+      conqueredCommunityIdSet,
+      ownedProperties,
+      savageClearedSet,
+      skills,
+      totalFunds,
+    ]
   );
   const previousUnlockedSkillIdsRef = useRef<Set<string> | null>(null);
 
@@ -880,7 +933,15 @@ export default function App() {
     if (previousIds) {
       const newlyLearned = skills.filter(
         (skill) =>
-          unlockedSkillIds.has(skill.id) && !previousIds.has(skill.id)
+          unlockedSkillIds.has(skill.id) &&
+          !previousIds.has(skill.id) &&
+          // Layer 4 presents Living Dead and the critical AUTO role as one
+          // reward instead of stacking two consecutive unlock dialogs.
+          !(
+            criticalAutoUnlocked &&
+            !seenUnlockIds.includes('critical_auto') &&
+            skill.id === LIVING_DEAD_SKILL_ID
+          )
       );
       if (newlyLearned.length > 0) {
         setUnlockExplanationQueue((current) => {
@@ -897,7 +958,7 @@ export default function App() {
       }
     }
     previousUnlockedSkillIdsRef.current = new Set(unlockedSkillIds);
-  }, [seenUnlockIds, skills, unlockedSkillIds]);
+  }, [criticalAutoUnlocked, seenUnlockIds, skills, unlockedSkillIds]);
 
   const unlockExplanationNotice = unlockExplanationQueue[0] ?? null;
   const unlockExplanationVisible =
@@ -944,7 +1005,7 @@ export default function App() {
         criticalAutoSkillId: criticalAutoUnlocked
           ? criticalAutoSkillId
           : null,
-        reserveSkillId,
+        reserveSkillId: null,
         validSkillIds: unlockedSkillIds,
       }),
     [
@@ -953,7 +1014,6 @@ export default function App() {
       equippedSkillIds,
       openingAutoSkillId,
       openingAutoUnlocked,
-      reserveSkillId,
       unlockedSkillIds,
     ]
   );
@@ -979,15 +1039,11 @@ export default function App() {
         effectiveAbilityLoadout.criticalAutoSkillId
       );
     }
-    if (effectiveAbilityLoadout.reserveSkillId !== reserveSkillId) {
-      setReserveSkillId(effectiveAbilityLoadout.reserveSkillId);
-    }
   }, [
     criticalAutoSkillId,
     effectiveAbilityLoadout,
     equippedSkillIds,
     openingAutoSkillId,
-    reserveSkillId,
   ]);
 
   // Total Passive Revenue Yield per second (I_net)
@@ -1011,7 +1067,9 @@ export default function App() {
       equippedSkillIds,
       openingAutoSkillId: effectiveAbilityLoadout.openingAutoSkillId,
       criticalAutoSkillId: effectiveAbilityLoadout.criticalAutoSkillId,
-      reserveSkillId: effectiveAbilityLoadout.reserveSkillId,
+      // Older saves may contain this field; persisting null completes the
+      // migration to the five active slots without exposing a waiting slot.
+      reserveSkillId: null,
       alliance,
       seenUnlockIds,
       limitBreakCharge,
@@ -1097,7 +1155,6 @@ export default function App() {
     savageEndingSeen,
     seenUnlockIds,
     selectedBattleSynergyId,
-    reserveSkillId,
     grandCompanyEorzeaIntegrated,
     showLaunchIntro,
     totalFunds,
@@ -1133,7 +1190,7 @@ export default function App() {
     }
     if (!hasBattleBrokerageFunds(property)) return;
     soundFx.playCoin();
-    setMarketReturnCommunity(null);
+    setSkillsStoryReturn(null);
     persistGameState();
     persistPendingBattleSession('normal', property);
     setBattleTimeScale(0);
@@ -1145,7 +1202,7 @@ export default function App() {
     if (!savageUnlocked || !savageUnlockedIds.has(property.id)) return;
     if (!hasBattleBrokerageFunds(property)) return;
     soundFx.playCoin();
-    setMarketReturnCommunity(null);
+    setSkillsStoryReturn(null);
     highEndBattlePlaceholderHeightRef.current =
       highEndViewRef.current?.getBoundingClientRect().height ?? 0;
     persistGameState();
@@ -1159,7 +1216,7 @@ export default function App() {
     if (!ultimateUnlocked) return;
     if (!hasBattleBrokerageFunds(property)) return;
     soundFx.playCoin();
-    setMarketReturnCommunity(null);
+    setSkillsStoryReturn(null);
     highEndBattlePlaceholderHeightRef.current =
       highEndViewRef.current?.getBoundingClientRect().height ?? 0;
     persistGameState();
@@ -1171,9 +1228,17 @@ export default function App() {
 
   const handleStartCruelBuyout = (property: Property) => {
     if (!cruelUnlocked) return;
-    if (!hasBattleBrokerageFunds(property)) return;
+    const entryRequirement = calculateCruelEntryRequirement(property.marketPrice);
+    if (totalFunds < entryRequirement) {
+      soundFx.playWarning();
+      addGameLog(
+        `【資金不足】${property.name}への挑戦には、参加手数料と自己資本署名の原資を合わせて ${formatCurrency(entryRequirement)} が必要です。`,
+        'warning'
+      );
+      return;
+    }
     soundFx.playWarning();
-    setMarketReturnCommunity(null);
+    setSkillsStoryReturn(null);
     highEndBattlePlaceholderHeightRef.current =
       highEndViewRef.current?.getBoundingClientRect().height ?? 0;
     persistGameState();
@@ -1304,7 +1369,6 @@ export default function App() {
       activeGroupSynergies.map((synergy) => synergy.id)
     );
     const gainsAbilityExplanation =
-      isNormalBattle &&
       winner === 'player' &&
       (
         skills.some(
@@ -1316,6 +1380,10 @@ export default function App() {
               ownedProperties: projectedOwnedProperties,
               totalFunds: settledTotalFunds,
               activeSynergyCount: projectedActiveSynergies.length,
+              conqueredCommunityIds: projectedConqueredCommunityIdSet,
+              savageClearedRaidIds: new Set(
+                projectedSavageClearedPropertyIds
+              ),
             })
         ) ||
         projectedActiveSynergies.some(
@@ -1393,6 +1461,9 @@ export default function App() {
       if (rebelledProperties.length > 0) {
         addGameLog('【零式保護規定】記録戦中の離反判定は通常市場へ持ち越されません。', 'info');
       }
+      if (gainsAbilityExplanation) {
+        setSkillsStoryReturn({ destination: 'savage' });
+      }
       setActiveTab('savage');
     } else if (activeBattleMode === 'ultimate') {
       if (winner === 'player') {
@@ -1409,6 +1480,9 @@ export default function App() {
       }
       if (rebelledProperties.length > 0) {
         addGameLog('【絶保護規定】記録戦中の離反判定は通常市場へ持ち越されません。', 'info');
+      }
+      if (gainsAbilityExplanation) {
+        setSkillsStoryReturn({ destination: 'savage' });
       }
       setActiveTab('savage');
     } else if (activeBattleMode === 'cruel') {
@@ -1430,6 +1504,9 @@ export default function App() {
           'info'
         );
       }
+      if (gainsAbilityExplanation) {
+        setSkillsStoryReturn({ destination: 'savage' });
+      }
       setActiveTab('savage');
     } else if (winner === 'player') {
       if (normalBattleNavigation?.unlockedCommunity) {
@@ -1441,8 +1518,13 @@ export default function App() {
           mode: normalBattleNavigation.mode,
           community: normalBattleNavigation.community,
         }));
-        setMarketReturnCommunity(
-          gainsAbilityExplanation ? normalBattleNavigation.community : null
+        setSkillsStoryReturn(
+          gainsAbilityExplanation
+            ? {
+                destination: 'market',
+                community: normalBattleNavigation.community,
+              }
+            : null
         );
       }
       setActiveTab('market');
@@ -1480,7 +1562,7 @@ export default function App() {
           community: normalBattleNavigation.community,
         }));
       }
-      setMarketReturnCommunity(null);
+      setSkillsStoryReturn(null);
       setActiveTab('market');
     }
 
@@ -1573,8 +1655,12 @@ export default function App() {
     setEquippedSkillIds(loadout.equippedSkillIds);
     setOpeningAutoSkillId(loadout.openingAutoSkillId);
     setCriticalAutoSkillId(loadout.criticalAutoSkillId);
-    setReserveSkillId(loadout.reserveSkillId);
   };
+
+  const availableAbilitySlotCount =
+    MANUAL_ABILITY_SLOT_COUNT +
+    (openingAutoUnlocked ? 1 : 0) +
+    (criticalAutoUnlocked ? 1 : 0);
 
   const handleToggleEquipSkill = (skillId: string) => {
     if (equippedSkillIds.includes(skillId)) {
@@ -1585,7 +1671,7 @@ export default function App() {
             openingAutoSkillId === skillId ? null : openingAutoSkillId,
           criticalAutoSkillId:
             criticalAutoSkillId === skillId ? null : criticalAutoSkillId,
-          reserveSkillId: reserveSkillId === skillId ? null : reserveSkillId,
+          reserveSkillId: null,
           validSkillIds: unlockedSkillIds,
         })
       );
@@ -1593,7 +1679,7 @@ export default function App() {
     }
     if (
       !unlockedSkillIds.has(skillId) ||
-      equippedSkillIds.length >= TOTAL_ABILITY_LOADOUT_SLOTS
+      equippedSkillIds.length >= availableAbilitySlotCount
     ) {
       return;
     }
@@ -1601,13 +1687,10 @@ export default function App() {
       equippedSkillIds,
       openingAutoSkillId,
       criticalAutoSkillId,
-      reserveSkillId,
+      reserveSkillId: null,
       validSkillIds: unlockedSkillIds,
     });
-    if (
-      current.manualSkillIds.length >= MANUAL_ABILITY_SLOT_COUNT &&
-      current.reserveSkillId
-    ) {
+    if (current.manualSkillIds.length >= MANUAL_ABILITY_SLOT_COUNT) {
       return;
     }
     applyAbilityLoadoutState(
@@ -1615,7 +1698,7 @@ export default function App() {
         equippedSkillIds: [...equippedSkillIds, skillId],
         openingAutoSkillId,
         criticalAutoSkillId,
-        reserveSkillId,
+        reserveSkillId: null,
         validSkillIds: unlockedSkillIds,
       })
     );
@@ -1635,7 +1718,7 @@ export default function App() {
       equippedSkillIds,
       openingAutoSkillId,
       criticalAutoSkillId,
-      reserveSkillId,
+      reserveSkillId: null,
       validSkillIds: unlockedSkillIds,
     });
     if (mode === 'manual') {
@@ -1656,7 +1739,7 @@ export default function App() {
             openingAutoSkillId === skillId ? null : openingAutoSkillId,
           criticalAutoSkillId:
             criticalAutoSkillId === skillId ? null : criticalAutoSkillId,
-          reserveSkillId: reserveSkillId === skillId ? null : reserveSkillId,
+          reserveSkillId: null,
           validSkillIds: unlockedSkillIds,
         })
       );
@@ -1670,7 +1753,7 @@ export default function App() {
           openingAutoSkillId: skillId,
           criticalAutoSkillId:
             criticalAutoSkillId === skillId ? null : criticalAutoSkillId,
-          reserveSkillId: reserveSkillId === skillId ? null : reserveSkillId,
+          reserveSkillId: null,
           validSkillIds: unlockedSkillIds,
         })
       );
@@ -1684,23 +1767,11 @@ export default function App() {
           openingAutoSkillId:
             openingAutoSkillId === skillId ? null : openingAutoSkillId,
           criticalAutoSkillId: skillId,
-          reserveSkillId: reserveSkillId === skillId ? null : reserveSkillId,
+          reserveSkillId: null,
           validSkillIds: unlockedSkillIds,
         })
       );
-      return;
     }
-    applyAbilityLoadoutState(
-      normalizeSavedAbilityLoadout({
-        equippedSkillIds,
-        openingAutoSkillId:
-          openingAutoSkillId === skillId ? null : openingAutoSkillId,
-        criticalAutoSkillId:
-          criticalAutoSkillId === skillId ? null : criticalAutoSkillId,
-        reserveSkillId: skillId,
-        validSkillIds: unlockedSkillIds,
-      })
-    );
   };
 
   // Trade-party cooperation management
@@ -1763,13 +1834,7 @@ export default function App() {
           !!skill && unlockedSkillIds.has(skill.id)
       );
   }, [skills, equippedSkillIds, unlockedSkillIds]);
-  const battleEquippedSkills = useMemo(
-    () =>
-      equippedSkills.filter(
-        (skill) => skill.id !== effectiveAbilityLoadout.reserveSkillId
-      ),
-    [effectiveAbilityLoadout.reserveSkillId, equippedSkills]
-  );
+  const battleEquippedSkills = equippedSkills;
   const availableSkills = useMemo(
     () => skills.filter((skill) => unlockedSkillIds.has(skill.id)),
     [skills, unlockedSkillIds]
@@ -1850,7 +1915,7 @@ export default function App() {
       bossAbilityTier === 'invincible'
         ? 'インビンシブル5秒→有限パッセ6秒'
         : bossAbilityTier === 'enhanced_cover'
-          ? 'パッセージ・オブ・アームズ'
+          ? 'パッセ'
           : bossAbilityTier === 'cover'
             ? 'かばう'
             : bossAbilityTier === 'boss'
@@ -1914,6 +1979,22 @@ export default function App() {
     });
   };
 
+  const returnFromAbilitySetup = () => {
+    if (!skillsStoryReturn) return;
+    if (skillsStoryReturn.destination === 'savage') {
+      setActiveTab('savage');
+    } else {
+      setActiveTab('market');
+      setMarketNavigationRequest((previous) => ({
+        id: (previous?.id || 0) + 1,
+        mode: 'targets',
+        community: skillsStoryReturn.community,
+      }));
+    }
+    setSkillsStoryReturn(null);
+    soundFx.playCoin();
+  };
+
   return (
     <div className="game-app-shell min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950 flex flex-col">
       {showLaunchIntro && (
@@ -1930,18 +2011,28 @@ export default function App() {
         conqueredCommunityCount={conqueredCommunityCount}
         totalCommunityCount={TRADE_COMMUNITIES.length}
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={(tab) => {
+          if (activeTab === 'skills' && tab !== 'skills') {
+            setSkillsStoryReturn(null);
+          }
+          setActiveTab(tab);
+        }}
         marketReturnAttention={
-          activeTab === 'skills' && marketReturnCommunity !== null
+          activeTab === 'skills' &&
+          skillsStoryReturn?.destination === 'market'
         }
         onOpenMap={() => {
+          const returnCommunity =
+            skillsStoryReturn?.destination === 'market'
+              ? skillsStoryReturn.community
+              : null;
           setActiveTab('market');
           setMarketNavigationRequest((previous) => ({
             id: (previous?.id || 0) + 1,
-            mode: marketReturnCommunity ? 'targets' : 'map',
-            community: marketReturnCommunity ?? 'ALL',
+            mode: returnCommunity ? 'targets' : 'map',
+            community: returnCommunity ?? 'ALL',
           }));
-          setMarketReturnCommunity(null);
+          setSkillsStoryReturn(null);
         }}
         activeAllianceName={alliance.active ? alliance.allyName : null}
         activeSynergiesCount={activeSynergiesCount}
@@ -2058,9 +2149,18 @@ export default function App() {
             criticalAutoSkillId={
               effectiveAbilityLoadout.criticalAutoSkillId
             }
-            reserveSkillId={effectiveAbilityLoadout.reserveSkillId}
             savageClearedRaidIds={savageClearedSet}
             selectedBattleSynergyId={selectedBattleSynergyId}
+            storyReturnLabel={
+              skillsStoryReturn?.destination === 'savage'
+                ? '零式の攻略一覧へ戻る'
+                : skillsStoryReturn?.destination === 'market'
+                  ? `${skillsStoryReturn.community}の交渉先へ戻る`
+                  : undefined
+            }
+            onReturnToStory={
+              skillsStoryReturn ? returnFromAbilitySetup : undefined
+            }
             onToggleEquipSkill={handleToggleEquipSkill}
             onSetSkillActivationMode={handleSetSkillActivationMode}
             onSelectBattleSynergy={setSelectedBattleSynergyId}

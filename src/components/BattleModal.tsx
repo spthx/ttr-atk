@@ -39,8 +39,11 @@ import {
   getFankitTrainingDummyArt,
 } from '../data/fankitAssets';
 import {
+  BLACKEST_NIGHT_BALANCE,
+  CAPITAL_REVERSAL_BALANCE,
   CRUEL_SCRIPTED_BATTLE,
   ENEMY_SUPPORT_ACTIONS as ENEMY_SUPPORT_PRESENTATION,
+  FORCED_LIQUIDATION_BALANCE,
   getEnemyActionInterruptibility,
   type CruelScriptPhase,
 } from '../data/battleEncounterData';
@@ -106,7 +109,9 @@ import { getTrainingDummyDefinition } from '../utils/trainingDummy';
 import { getSavageRaidDefinition } from '../utils/savage';
 import { getBattleResultCta } from '../utils/progressionNavigation';
 import {
+  calculateCruelSignatureRequirement,
   resolveCruelFirstImpact,
+  resolveCruelRecoveryContinuousVelocity,
   resolveCruelSecondImpact,
   shouldHoldCruelVictory,
   shouldTriggerCruelFirstPhase,
@@ -126,7 +131,7 @@ import {
   applyTrainingGaugeSpeed,
   advanceBattleCashRecovery,
   applyCoverToGaugeDelta,
-  applyDivineBenisonToGaugeDelta,
+  applyBlackestNightToGaugeDelta,
   BOSS_COVER_BALANCE,
   BATTLE_LOYALTY_BALANCE,
   BATTLE_SUPPORT_BALANCE,
@@ -147,6 +152,7 @@ import {
   calculateLimitBreakOwnershipAfterDefense,
   calculateLimitBreakOwnershipPush,
   calculateLimitBreakPushGilEquivalent,
+  calculateForcedLiquidationGaugeDelta,
   consumeLimitBreakCharge,
   ENEMY_BALANCE_FACTOR,
   ENEMY_INITIAL_COMMITMENT_RATIO,
@@ -164,7 +170,8 @@ import {
   getBattleCashRecoveryWindMultipliers,
   getBattleTerminalWinner,
   getCoverGuardDisplayPercent,
-  getDivineBenisonDisplayPercent,
+  getBlackestNightDarkWaveGaugeDelta,
+  getBlackestNightDisplayPercent,
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
   isExtremeReacquisition,
@@ -179,12 +186,13 @@ import {
   holdTrainingGaugeAboveDefeat,
   resolveCriticalAutoInterception,
   resolveEnemyDrainTransfer,
+  resolveCapitalReversal,
+  resolveForcedLiquidationContinuousVelocity,
   resolveLivingDeadOutcome,
-  shouldEnemyUseDivineBenison,
+  shouldEnemyUseBlackestNight,
   shouldForceUltimateCriticalBeforeVictory,
   sortSubsidiariesBySupport,
   TACTICAL_SKILL_BALANCE,
-  DIVINE_BENISON_BALANCE,
   ULTIMATE_ENEMY_AUTO_PATTERNS,
   type BossAbilityTier,
   type CriticalAutoResolutionPhase,
@@ -308,12 +316,14 @@ interface EnemySupportCinematic {
   serial: number;
 }
 const ENEMY_SUPPORT_ACTOR_CLASS: Record<EnemySupportSkillId, string> = {
-  divine_benison: 'white-mage',
+  blackest_night: 'dark-knight',
   drain: 'black-mage',
   drill: 'machinist',
   divination: 'astrologian',
   rapid_assault: 'bard',
   limit_break_3: 'limit-break',
+  capital_reversal: 'astrologian',
+  forced_liquidation: 'limit-break',
   omnicapitalization: 'dark-tataru',
   cruel_reckoning: 'dark-tataru',
 };
@@ -321,7 +331,7 @@ const ENEMY_SUPPORT_ART: Record<
   (typeof ENEMY_SUPPORT_PRESENTATION)[EnemySupportSkillId]['artKey'],
   string
 > = {
-  whiteMage: FANKIT_ART.whiteMage,
+  darkKnight: FANKIT_ART.darkKnight,
   blackMage: FANKIT_ART.blackMage,
   machinist: FANKIT_ART.machinist,
   astrologian: FANKIT_ART.astrologian,
@@ -374,8 +384,7 @@ interface PendingCriticalGaugeCandidate {
 type SkillActivationSource =
   | 'manual'
   | 'opening-auto'
-  | 'critical-auto'
-  | 'reaction';
+  | 'critical-auto';
 
 interface SkillActivationOptions {
   source?: SkillActivationSource;
@@ -506,7 +515,7 @@ interface DecisiveBlow {
 }
 
 const isRivalOnlySkill = (skill: TacticalSkill) =>
-  skill.effectType === 'INDEPENDENCE_SABOTAGE';
+  skill.effectType === 'FEINT';
 
 const isSkillUsableInBattle = ({
   skill,
@@ -540,8 +549,10 @@ const getQuickSkillSummary = (
       return 'リキャストタイム 約47%短縮・15秒';
     case 'NEMAWASHI':
       return '全人脈の独立危険度を半減';
-    case 'INDEPENDENCE_SABOTAGE':
-      return '中断可能な予告中の競合行動を1回中断';
+    case 'FEINT':
+      return `競合の押し込みを10%軽減・${Math.round(
+        TACTICAL_SKILL_BALANCE.feint.durationMs / 1000
+      )}秒・1回`;
     case 'COVER':
       return `パッセ：押し込み${Math.round(
         TACTICAL_SKILL_BALANCE.cover.absorbRatio * 100
@@ -549,7 +560,7 @@ const getQuickSkillSummary = (
         TACTICAL_SKILL_BALANCE.cover.durationMs / 1000
       )}秒・1回`;
     case 'BARRIER':
-      return `ベニゾン：所有率${DIVINE_BENISON_BALANCE.gaugeCapacity / 2}%分を吸収・${Math.round(DIVINE_BENISON_BALANCE.durationMs / 1000)}秒・1回`;
+      return `ブラックナイト：所有率${BLACKEST_NIGHT_BALANCE.gaugeCapacity / 2}%分を吸収・完全破壊で暗黒波動・${Math.round(BLACKEST_NIGHT_BALANCE.durationMs / 1000)}秒・1回`;
     case 'CAPITAL_BOOST':
       return '相場40%を即時支援';
     case 'LIVING_DEAD':
@@ -571,7 +582,7 @@ const getSkillCinematicResult = (
   if (isTraining && isRivalOnlySkill(skill)) {
     return {
       resultHeadline: '対象なし',
-      effectSummary: '木人では競合行動を中断できません',
+      effectSummary: '木人には競合の押し込みがないため対象外',
       durationLabel: '即時効果',
     };
   }
@@ -590,11 +601,13 @@ const getSkillCinematicResult = (
         effectSummary: '全人脈の独立危険度を半減',
         durationLabel: '即時効果',
       };
-    case 'INDEPENDENCE_SABOTAGE':
+    case 'FEINT':
       return {
-        resultHeadline: 'スタン判定！',
-        effectSummary: '中断可能な予告中の競合行動を1回中断',
-        durationLabel: '即時効果',
+        resultHeadline: '牽制を付与！',
+        effectSummary: '競合から受ける押し込みを10%軽減',
+        durationLabel: `${Math.round(
+          TACTICAL_SKILL_BALANCE.feint.durationMs / 1000
+        )}秒`,
       };
     case 'COVER':
       return {
@@ -609,8 +622,8 @@ const getSkillCinematicResult = (
     case 'BARRIER':
       return {
         resultHeadline: '有限障壁を付与！',
-        effectSummary: `次の押し込みを所有率${DIVINE_BENISON_BALANCE.gaugeCapacity / 2}%分まで吸収`,
-        durationLabel: `${Math.round(DIVINE_BENISON_BALANCE.durationMs / 1000)}秒`,
+        effectSummary: `所有率${BLACKEST_NIGHT_BALANCE.gaugeCapacity / 2}%分を吸収・完全破壊で暗黒波動`,
+        durationLabel: `${Math.round(BLACKEST_NIGHT_BALANCE.durationMs / 1000)}秒`,
       };
     case 'CAPITAL_BOOST':
       return {
@@ -1019,6 +1032,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   );
   const [gaugeSpeed, setGaugeSpeed] = useState(0);
   const [companyInvested, setCompanyInvested] = useState(0);
+  const [reflectedCompanyInvested, setReflectedCompanyInvested] =
+    useState(0);
   const [demandInvested, setDemandInvested] = useState(0);
   const [enemyInvested, setEnemyInvested] = useState(initialEnemyCommitment);
   const playerCommittedCapitalRef = useRef(0);
@@ -1072,6 +1087,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   );
   const [commandProgress, setCommandProgress] = useState(0);
   const [fastHorseRemaining, setFastHorseRemaining] = useState(0);
+  const [feintRemaining, setFeintRemaining] = useState(0);
   const [enemyRapidAssaultRemaining, setEnemyRapidAssaultRemaining] =
     useState(0);
   const [enemyLimitBreakHoldRemaining, setEnemyLimitBreakHoldRemaining] =
@@ -1084,6 +1100,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [enemyBarrierRemaining, setEnemyBarrierRemaining] = useState(0);
   const [playerBarrierCapacity, setPlayerBarrierCapacity] = useState(0);
   const [enemyBarrierCapacity, setEnemyBarrierCapacity] = useState(0);
+  const [capitalReversalRemaining, setCapitalReversalRemaining] = useState(0);
+  const [forcedLiquidationRecoveryRemaining, setForcedLiquidationRecoveryRemaining] =
+    useState(0);
   const [playerCoverKnightPhase, setPlayerCoverKnightPhase] =
     useState<CoverKnightPhase>('absent');
   const [enemyCoverKnightPhase, setEnemyCoverKnightPhase] =
@@ -1092,7 +1111,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     useState<BossAbilityTier>('none');
   const [progressionSynergyRemaining, setProgressionSynergyRemaining] =
     useState(0);
-  const [usedProgressionSynergyIds, setUsedProgressionSynergyIds] =
+  const [usedBattleSynergyIds, setUsedBattleSynergyIds] =
     useState<Set<string>>(() => new Set());
   const [enemyMarketWindRemaining, setEnemyMarketWindRemaining] = useState(0);
   const [enemySupportCinematic, setEnemySupportCinematic] =
@@ -1174,6 +1193,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     useState<PendingCruelGaugeCandidate | null>(null);
   const [cruelScriptPhase, setCruelScriptPhaseState] =
     useState<CruelScriptPhase>(isCruel ? 'awaiting_first' : 'inactive');
+  const [cruelSecondSignatureInvested, setCruelSecondSignatureInvested] =
+    useState(0);
   const [decisionGraceActive, setDecisionGraceActive] = useState(false);
   const [companyGrowthRevealed, setCompanyGrowthRevealed] = useState(false);
   const revealCompanyGrowth = useCallback(
@@ -1206,14 +1227,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const skillCinematicTimerRef = useRef<number | null>(null);
   const skillCinematicRunIdRef = useRef(0);
   const skillCinematicRuntimeRef = useRef<SkillCinematicRuntime | null>(null);
-  const stunInterruptedActionRef = useRef<
-    | EnemySupportSkillId
-    | 'standard'
-    | 'limit_break_delay'
-    | 'unstoppable'
-    | null
-    | undefined
-  >(undefined);
   const openingSlowTimerRef = useRef<number | null>(null);
   const decisiveImpactTimerRef = useRef<number | null>(null);
   const decisiveReleaseTimerRef = useRef<number | null>(null);
@@ -1252,6 +1265,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const enemyBarrierRemainingRef = useRef(0);
   const playerBarrierCapacityRef = useRef(0);
   const enemyBarrierCapacityRef = useRef(0);
+  const feintRemainingRef = useRef(0);
+  const capitalReversalRemainingRef = useRef(0);
+  const forcedLiquidationRecoveryRemainingRef = useRef(0);
+  const forcedLiquidationAwaitingManualCounterRef = useRef(false);
+  const pendingDarkWavesRef = useRef<Array<'player' | 'enemy'>>([]);
   const enemyActiveCoverTierRef = useRef<BossAbilityTier>('none');
   const playerCoverActivatedAtRef = useRef(0);
   const enemyCoverActivatedAtRef = useRef(0);
@@ -1289,11 +1307,26 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const cruelOmnicapitalizationPendingRef =
     useRef<PendingCruelGaugeCandidate | null>(null);
   const cruelSecondFailurePendingRef = useRef(false);
+  const cruelSecondFailureSnapshotRef = useRef<{
+    ownership: number;
+    directInvestment: number;
+  } | null>(null);
   const cruelScriptPhaseRef = useRef<CruelScriptPhase>(
     isCruel ? 'awaiting_first' : 'inactive'
   );
   const cruelActiveElapsedMsRef = useRef(0);
   const cruelRecoveryElapsedMsRef = useRef(0);
+  const cruelSecondSignatureInvestedRef = useRef(0);
+  const formatCruelReckoningFailureRequirements = () => {
+    const snapshot = cruelSecondFailureSnapshotRef.current;
+    if (!snapshot) {
+      return '所有率（必要75%）・査定中の自社直接出資（必要10%）';
+    }
+    const directInvestmentRatio =
+      (snapshot.directInvestment / Math.max(1, targetProperty.marketPrice)) *
+      100;
+    return `所有率${snapshot.ownership.toFixed(1)}%（必要75%）・査定中の自社直接出資${directInvestmentRatio.toFixed(1)}%（必要10%）`;
+  };
   const lastAnnouncedWindRef = useRef<WindCondition['type']>('CALM');
   const lastTelegraphedWindRef = useRef<WindCondition['type'] | null>(null);
   const livingDeadPhaseRef = useRef<LivingDeadPhase>('inactive');
@@ -1358,19 +1391,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       stage: 'name',
     });
     return true;
-  };
-
-  const useReactionStun = () => {
-    if (!stunSkill || !stunOpportunity) return;
-    if (enemySupportInterruptibility === 'unstoppable') {
-      soundFx.playWarning();
-      setStatusText('このフェーズ技はスタンで中断できません');
-      return;
-    }
-    useSkill(stunSkill, {
-      source: 'reaction',
-      commandAlreadyConsumed: true,
-    });
   };
 
   useEffect(() => {
@@ -1447,7 +1467,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         setSkillCinematic((current) =>
           current?.runId === runId ? null : current
         );
-        stunInterruptedActionRef.current = undefined;
         runtime.onComplete?.();
         return;
       }
@@ -1541,29 +1560,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setEnemySupportUsed(new Set(enemySupportUsedRef.current));
     }
     return skillId;
-  };
-
-  const interruptEnemySupportTelegraph = () => {
-    if (
-      !enemySupportCinematic ||
-      enemySupportCinematic.stage !== 'telegraph'
-    ) {
-      return null;
-    }
-    const skillId = enemySupportCinematic.skillId;
-    const policy = getEnemyActionInterruptibility(skillId);
-    if (policy === 'unstoppable') return 'unstoppable' as const;
-    if (policy === 'delay_only') {
-      cancelEnemySupportTelegraph(true, skillId, true);
-      enemySupportRetryNotBeforeRef.current =
-        performance.now() + ENEMY_SUPPORT_SKILL_BALANCE.limitBreak3.stunDelayMs;
-      const retryTimer = window.setTimeout(() => {
-        setAiCycle((cycle) => cycle + 1);
-      }, ENEMY_SUPPORT_SKILL_BALANCE.limitBreak3.stunDelayMs);
-      enemySupportTimersRef.current = [retryTimer];
-      return 'limit_break_delay' as const;
-    }
-    return cancelEnemySupportTelegraph(false, skillId, true);
   };
 
   const commitPlayerCapital = useCallback(
@@ -1952,6 +1948,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       selectedBattleSynergyMembers.length ===
         selectedBattleSynergy.requiredPropertyIds.length
     );
+  const battleSynergyUsed =
+    !!selectedBattleSynergy &&
+    usedBattleSynergyIds.has(selectedBattleSynergy.id);
 
   const totalPlayerInvested = companyInvested + demandInvested;
   const rawOwnership = (100 - gauge) / 2;
@@ -2238,10 +2237,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       (skill) => skill.id === skillSelection.selectedSkillId
     ) ??
     null;
-  const stunSkill =
-    battleSkillPool.find(
-      (skill) => skill.effectType === 'INDEPENDENCE_SABOTAGE'
-    ) ?? null;
   const usingSkillFallback = skillSelection.usingFallback;
   const primarySkillCooldown = primarySkill
     ? skillCooldowns[primarySkill.id] || 0
@@ -2298,21 +2293,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   );
   const enemyCanCommit =
     isTraining || enemyReserve >= enemyMinimumCommitment;
-  const enemySupportInterruptibility =
-    enemySupportCinematic?.stage === 'telegraph'
-      ? getEnemyActionInterruptibility(enemySupportCinematic.skillId)
-      : null;
-  const stunOpportunity =
-    !!stunSkill &&
-    (
-      enemySupportCinematic?.stage === 'telegraph' ||
-      (aiProgress >= 72 && enemyCanCommit && !resolvingAiActionRef.current)
-    );
-  const stunQuickUnavailable =
-    !stunSkill ||
-    (skillCooldowns[stunSkill.id] || 0) > 0 ||
-    (!!stunSkill.oncePerBattle && usedSkillIds.has(stunSkill.id)) ||
-    enemySupportInterruptibility === 'unstoppable';
   const enemyReservePercent = enemyReserve <= 0
     ? 0
     : Math.min(100, (enemyReserve / enemyReserveCapacity) * 100);
@@ -2481,7 +2461,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   if (bossAbilityTier === 'invincible') {
     readinessMechanics.push('インビンシブル5秒→有限パッセ6秒');
   } else if (bossAbilityTier === 'enhanced_cover') {
-    readinessMechanics.push('パッセージ・オブ・アームズ');
+    readinessMechanics.push('パッセ');
   } else if (bossAbilityTier === 'cover') {
     readinessMechanics.push('かばう');
   } else if (bossAbilityTier === 'boss') {
@@ -2616,7 +2596,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     remainingMs: playerCoverRemaining,
     durationMs: TACTICAL_SKILL_BALANCE.cover.durationMs,
   });
-  const playerBarrierPercent = getDivineBenisonDisplayPercent({
+  const playerBarrierPercent = getBlackestNightDisplayPercent({
     remainingGaugeCapacity: playerBarrierCapacity,
     remainingMs: playerBarrierRemaining,
   });
@@ -2639,7 +2619,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     remainingMs: enemyCoverRemaining,
     durationMs: enemyCoverBalance.durationMs,
   });
-  const enemyBarrierPercent = getDivineBenisonDisplayPercent({
+  const enemyBarrierPercent = getBlackestNightDisplayPercent({
     remainingGaugeCapacity: enemyBarrierCapacity,
     remainingMs: enemyBarrierRemaining,
   });
@@ -3209,8 +3189,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ultimateCriticalGatePendingRef.current = false;
     cruelOmnicapitalizationPendingRef.current = null;
     cruelSecondFailurePendingRef.current = false;
+    cruelSecondFailureSnapshotRef.current = null;
     cruelActiveElapsedMsRef.current = 0;
     cruelRecoveryElapsedMsRef.current = 0;
+    cruelSecondSignatureInvestedRef.current = 0;
+    setCruelSecondSignatureInvested(0);
     updateCruelScriptPhase(isCruel ? 'awaiting_first' : 'inactive');
     setCriticalAutoPending(null);
     setUltimateCriticalGatePending(false);
@@ -3350,6 +3333,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     }
     setDecisionGraceActive(false);
     decisionGraceArmedRef.current = true;
+    if (forcedLiquidationRecoveryRemainingRef.current > 0) {
+      forcedLiquidationAwaitingManualCounterRef.current = false;
+    }
     setCommandProgress(0);
     return true;
   };
@@ -3428,7 +3414,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     }
   };
 
-  const releaseDivineBenison = (
+  const releaseBlackestNight = (
     side: 'player' | 'enemy',
     broke: boolean
   ) => {
@@ -3439,7 +3425,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const capacityRef = isPlayer
       ? playerBarrierCapacityRef
       : enemyBarrierCapacityRef;
-    if (remainingRef.current <= 0 && capacityRef.current <= 0) return;
+    if (remainingRef.current <= 0 && capacityRef.current <= 0) return false;
     remainingRef.current = 0;
     capacityRef.current = 0;
     if (isPlayer) {
@@ -3452,11 +3438,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const breakLabel = broke ? 'BARRIER BREAK' : 'BARRIER FADE';
     const text = isPlayer
       ? broke
-        ? 'ディヴァインベニゾンの障壁が砕けた！'
-        : 'ディヴァインベニゾンの効果が終了'
+        ? 'ブラックナイトが完全破壊――暗黒波動を即時発動！'
+        : 'ブラックナイトは割れずに終了――暗黒波動は発動しない'
       : broke
-        ? '競合のディヴァインベニゾンを破壊！'
-        : '競合のディヴァインベニゾンが消滅';
+        ? '競合のブラックナイトを完全破壊――敵の暗黒波動が来る！'
+        : '競合のブラックナイトは割れずに終了';
     setStatusText(text);
     showFloater(
       breakLabel,
@@ -3468,7 +3454,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         : 'notice'
     );
     addLog(text, 'skill');
-    if (broke) soundFx.playCapitalImpact(isPlayer ? 'opponent' : 'player', 0.45);
+    if (broke) {
+      pendingDarkWavesRef.current.push(side);
+      soundFx.playCapitalImpact(isPlayer ? 'opponent' : 'player', 0.45);
+    }
+    return broke;
   };
 
   const clearPlayerDefenseForCriticalAuto = () => {
@@ -3500,7 +3490,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return hadCover || hadBarrier;
   };
 
-  const activateDivineBenison = (side: 'player' | 'enemy') => {
+  const activateBlackestNight = (side: 'player' | 'enemy') => {
     const isPlayer = side === 'player';
     if (
       (isPlayer
@@ -3513,15 +3503,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return false;
     }
     if (isPlayer) {
-      playerBarrierRemainingRef.current = DIVINE_BENISON_BALANCE.durationMs;
-      playerBarrierCapacityRef.current = DIVINE_BENISON_BALANCE.gaugeCapacity;
-      setPlayerBarrierRemaining(DIVINE_BENISON_BALANCE.durationMs);
-      setPlayerBarrierCapacity(DIVINE_BENISON_BALANCE.gaugeCapacity);
+      playerBarrierRemainingRef.current = BLACKEST_NIGHT_BALANCE.durationMs;
+      playerBarrierCapacityRef.current = BLACKEST_NIGHT_BALANCE.gaugeCapacity;
+      setPlayerBarrierRemaining(BLACKEST_NIGHT_BALANCE.durationMs);
+      setPlayerBarrierCapacity(BLACKEST_NIGHT_BALANCE.gaugeCapacity);
     } else {
-      enemyBarrierRemainingRef.current = DIVINE_BENISON_BALANCE.durationMs;
-      enemyBarrierCapacityRef.current = DIVINE_BENISON_BALANCE.gaugeCapacity;
-      setEnemyBarrierRemaining(DIVINE_BENISON_BALANCE.durationMs);
-      setEnemyBarrierCapacity(DIVINE_BENISON_BALANCE.gaugeCapacity);
+      enemyBarrierRemainingRef.current = BLACKEST_NIGHT_BALANCE.durationMs;
+      enemyBarrierCapacityRef.current = BLACKEST_NIGHT_BALANCE.gaugeCapacity;
+      setEnemyBarrierRemaining(BLACKEST_NIGHT_BALANCE.durationMs);
+      setEnemyBarrierCapacity(BLACKEST_NIGHT_BALANCE.gaugeCapacity);
     }
     return true;
   };
@@ -3608,7 +3598,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       tier === 'invincible'
         ? 'インビンシブル'
         : tier === 'enhanced_cover'
-          ? 'パッセージ・オブ・アームズ'
+          ? 'パッセ'
           : 'かばう';
     announceCondition({
       kind: 'enemy',
@@ -3701,8 +3691,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setTerminalCapitalSnapshot(null);
     }
     cancelSkillCinematic();
-    stunInterruptedActionRef.current = undefined;
     setSkillCinematic(null);
+    pendingDarkWavesRef.current = [];
     clearEnemySupportTimers();
     setEnemySupportCinematic(null);
     setLimitImpactActive(false);
@@ -3759,7 +3749,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           : resolvedDefeatReason === 'WALKING_DEAD_FAILED'
             ? `リビングデッドの蘇生猶予中に所有率30%へ戻せず、${companyName}は敗北しました。`
             : resolvedDefeatReason === 'CRUEL_RECKONING_FAILED'
-              ? `終極資本査定の終了時に所有率75%へ届かず、${companyName}は攻略失敗となりました。`
+              ? `終極資本査定は${formatCruelReckoningFailureRequirements()}で未達となり、${companyName}は攻略失敗となりました。`
               : `${companyName}は競合に所有率を押し切られました。`,
       'result'
     );
@@ -3822,8 +3812,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setCapitalCommit(null);
     }
     cancelSkillCinematic();
-    stunInterruptedActionRef.current = undefined;
     setSkillCinematic(null);
+    pendingDarkWavesRef.current = [];
     clearEnemySupportTimers();
     setEnemySupportCinematic(null);
     setEnemyMarketWindRemaining(0);
@@ -4021,6 +4011,23 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return true;
   };
 
+  const applyFeintToEnemyGaugeCandidate = (
+    nextGauge: number,
+    currentGauge: number
+  ) => {
+    if (
+      feintRemainingRef.current <= 0 ||
+      nextGauge <= currentGauge
+    ) {
+      return nextGauge;
+    }
+    return (
+      currentGauge +
+      (nextGauge - currentGauge) *
+        TACTICAL_SKILL_BALANCE.feint.enemyPushMultiplier
+    );
+  };
+
   const applyCoverToGaugeCandidate = (
     nextGauge: number,
     cause: TerminalCause,
@@ -4066,7 +4073,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       playerBarrierRemainingRef.current > 0 &&
       nextGauge > currentGauge
     ) {
-      const barrier = applyDivineBenisonToGaugeDelta({
+      const barrier = applyBlackestNightToGaugeDelta({
         currentGauge,
         nextGauge,
         protects: 'player',
@@ -4079,7 +4086,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setPlayerBarrierCapacity(barrier.remainingGaugeCapacity);
       if (barrier.absorbedGauge >= 1) {
         showFloater(
-          `ベニゾン 約${formatCurrency(
+          `ブラックナイト 約${formatCurrency(
             calculateLimitBreakPushGilEquivalent(
               targetProperty.marketPrice,
               barrier.absorbedGauge / 2
@@ -4090,7 +4097,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         );
       }
       if (barrier.remainingGaugeCapacity <= 0) {
-        releaseDivineBenison('player', true);
+        releaseBlackestNight('player', true);
       }
     } else if (cause !== 'enemy' && nextGauge < currentGauge) {
       const predictedPlayerOwnership = calculateOwnershipFromGauge(nextGauge);
@@ -4143,7 +4150,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         }
       }
       if (enemyBarrierRemainingRef.current > 0 && nextGauge < currentGauge) {
-        const barrier = applyDivineBenisonToGaugeDelta({
+        const barrier = applyBlackestNightToGaugeDelta({
           currentGauge,
           nextGauge,
           protects: 'opponent',
@@ -4156,7 +4163,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         setEnemyBarrierCapacity(barrier.remainingGaugeCapacity);
         if (barrier.absorbedGauge >= 1) {
           showFloater(
-            `ベニゾン 約${formatCurrency(
+            `ブラックナイト 約${formatCurrency(
               calculateLimitBreakPushGilEquivalent(
                 targetProperty.marketPrice,
                 barrier.absorbedGauge / 2
@@ -4167,7 +4174,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           );
         }
         if (barrier.remainingGaugeCapacity <= 0) {
-          releaseDivineBenison('enemy', true);
+          releaseBlackestNight('enemy', true);
         }
       }
     }
@@ -4179,7 +4186,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     cause: TerminalCause,
     method: FinishMethod = 'NORMAL',
     commitVisual = true,
-    coverAlreadyResolved = false
+    coverAlreadyResolved = false,
+    criticalAutoKeepsResolvedImpact = false
   ) => {
     if (
       endedRef.current ||
@@ -4194,11 +4202,95 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (cause !== 'enemy') {
       lastPressureCauseRef.current = cause;
     }
-    // Resolve Cover once before testing the critical line. Previewing Cover
-    // here used to leave its capacity untouched when AUTO intercepted.
+    // 牽制 is percentage mitigation and therefore resolves before finite
+    // barriers. Presentation/coin-pile pauses also stop its active timer.
     if (!coverAlreadyResolved) {
+      if (cause === 'enemy') {
+        nextGauge = applyFeintToEnemyGaugeCandidate(
+          nextGauge,
+          gaugeRef.current
+        );
+      }
       nextGauge = applyCoverToGaugeCandidate(nextGauge, cause).nextGauge;
       coverAlreadyResolved = true;
+    }
+
+    // A fully broken Blackest Night queues exactly one automatic Dark Wave.
+    // Drain the short FIFO inside this gauge transaction so terminal checks
+    // cannot run between barrier break and counterattack. Barrier refs are
+    // cleared before enqueueing, preventing duplicate or recursive procs.
+    let darkWaveCount = 0;
+    while (pendingDarkWavesRef.current.length > 0 && darkWaveCount < 4) {
+      darkWaveCount += 1;
+      const side = pendingDarkWavesRef.current.shift();
+      if (!side) break;
+      const waveCause: TerminalCause = side === 'player' ? 'skill' : 'enemy';
+      const waveStartGauge = nextGauge;
+      let waveCandidate =
+        waveStartGauge +
+        getBlackestNightDarkWaveGaugeDelta(
+          side === 'player' ? 'player' : 'opponent'
+        );
+      if (waveCause === 'enemy') {
+        waveCandidate = applyFeintToEnemyGaugeCandidate(
+          waveCandidate,
+          waveStartGauge
+        );
+      }
+      nextGauge = applyCoverToGaugeCandidate(
+        waveCandidate,
+        waveCause,
+        waveStartGauge
+      ).nextGauge;
+      const text =
+        side === 'player'
+          ? '暗黒波動――競合の所有率を10%押し返した！'
+          : '敵の暗黒波動――自社の所有率へ10%の反撃！';
+      setStatusText(text);
+      showFloater(
+        '暗黒波動 10%',
+        side === 'player' ? 'enemy' : 'player',
+        side === 'player' ? 'positive' : 'negative'
+      );
+      addLog(text, side === 'player' ? 'skill' : 'enemy');
+      soundFx.playCapitalImpact(
+        side === 'player' ? 'player' : 'opponent',
+        0.82
+      );
+    }
+    if (pendingDarkWavesRef.current.length > 0) {
+      pendingDarkWavesRef.current = [];
+    }
+
+    const candidateOwnership = calculateOwnershipFromGauge(nextGauge);
+    const capitalReversalRequired =
+      (isUltimate || (isSavage && savageLayer >= 3)) &&
+      cause !== 'enemy' &&
+      candidateOwnership >= CAPITAL_REVERSAL_BALANCE.triggerPlayerOwnership &&
+      !enemySupportUsedRef.current.has('capital_reversal');
+    if (capitalReversalRequired) {
+      const heldGauge =
+        100 - CAPITAL_REVERSAL_BALANCE.triggerPlayerOwnership * 2;
+      updateGauge(heldGauge, true);
+      setGaugeSpeed(0);
+      startEnemySupportSkill('capital_reversal');
+      return false;
+    }
+
+    const forcedLiquidationRequired =
+      (isUltimate || (isSavage && savageLayer >= 4)) &&
+      cause !== 'enemy' &&
+      candidateOwnership >= FORCED_LIQUIDATION_BALANCE.triggerPlayerOwnership &&
+      enemySupportUsedRef.current.has('capital_reversal') &&
+      capitalReversalRemainingRef.current <= 0 &&
+      !enemySupportUsedRef.current.has('forced_liquidation');
+    if (forcedLiquidationRequired) {
+      const heldGauge =
+        100 - FORCED_LIQUIDATION_BALANCE.triggerPlayerOwnership * 2;
+      updateGauge(heldGauge, true);
+      setGaugeSpeed(0);
+      startEnemySupportSkill('forced_liquidation');
+      return false;
     }
     const criticalInterception = resolveCriticalAutoInterception({
       currentGauge: gaugeRef.current,
@@ -4207,8 +4299,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         criticalAutoArmedRef.current &&
         !criticalAutoTriggeredRef.current &&
         cause === 'enemy',
+      preserveResolvedCandidate: criticalAutoKeepsResolvedImpact,
     });
     if (criticalInterception.shouldIntercept) {
+      // Forced Liquidation is a named high-end mechanic, not ordinary chip
+      // pressure. Its hit has already passed through Feint and any active
+      // manual defense, so a critical AUTO may react at the resolved value but
+      // must not erase the attack by restoring the generic 25% safety line.
       const pendingCandidate: PendingCriticalGaugeCandidate = {
         nextGauge: criticalInterception.heldGauge,
         cause,
@@ -4227,7 +4324,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       enemySupportCastBlockedRef.current = true;
       setCriticalAutoPending(pendingCandidate);
       setGaugeSpeed(0);
-      updateGauge(criticalInterception.heldGauge);
+      updateGauge(criticalInterception.heldGauge, commitVisual);
       setStatusText(
         `瀕死アビリティ――${criticalAutoSkill.name}を割り込み予約`
       );
@@ -4240,6 +4337,26 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return false;
     }
     const terminalWinner = getBattleTerminalWinner(nextGauge);
+    const mandatoryEnemyMechanicPending =
+      enemySupportCinematic?.skillId === 'capital_reversal' ||
+      enemySupportCinematic?.skillId === 'forced_liquidation';
+    if (terminalWinner === 'player' && mandatoryEnemyMechanicPending) {
+      updateGauge(-98, commitVisual);
+      setGaugeSpeed(0);
+      setStatusText(
+        `${ENEMY_SUPPORT_PRESENTATION[enemySupportCinematic.skillId].actionName}の解決まで、決着は保留されている`
+      );
+      return false;
+    }
+    if (
+      terminalWinner === 'player' &&
+      capitalReversalRemainingRef.current > 0
+    ) {
+      updateGauge(-98, commitVisual);
+      setGaugeSpeed(0);
+      setStatusText('資本反転の契約が解決するまで、決着は保留されている');
+      return false;
+    }
     if (
       terminalWinner === 'player' &&
       shouldHoldCruelVictory(isCruel, cruelScriptPhaseRef.current)
@@ -4475,8 +4592,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
     if (skillId === 'cruel_reckoning') {
       const currentOwnership = calculateOwnershipFromGauge(gaugeRef.current);
-      const resolution = resolveCruelSecondImpact(currentOwnership);
+      const resolution = resolveCruelSecondImpact(
+        currentOwnership,
+        cruelSecondSignatureInvestedRef.current,
+        targetProperty.marketPrice
+      );
       if (resolution.outcome === 'break') {
+        cruelSecondFailureSnapshotRef.current = null;
         const brokenCapital = Math.round(
           enemyCommittedCapitalRef.current *
             CRUEL_SCRIPTED_BATTLE.bossBreakCapitalRatio
@@ -4489,21 +4611,27 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         setAiText('BREAK / 最終押し込みへ');
         showFloater('PHASE BREAK', 'enemy', 'positive');
         addLog(
-          `第二査定を所有率${currentOwnership.toFixed(1)}%で突破。競合資本${formatCurrency(brokenCapital)}を崩し、最終局面へ移行。`,
+          `第二査定を所有率${currentOwnership.toFixed(1)}%・自己資本署名${formatCurrency(resolution.signaturePaid)}で突破。競合資本${formatCurrency(brokenCapital)}を崩し、最終局面へ移行。`,
           'skill'
         );
       } else {
+        cruelSecondFailureSnapshotRef.current = {
+          ownership: resolution.ownershipBefore,
+          directInvestment: resolution.signaturePaid,
+        };
         updateGauge(
           100 - CRUEL_SCRIPTED_BATTLE.secondFailureDisplayedOwnership * 2,
           true
         );
         updateCruelScriptPhase('second_failed');
         cruelSecondFailurePendingRef.current = true;
-        setStatusText('終極資本査定 未達――余韻の後、攻略失敗が確定');
-        setAiText('RECKONING FAILED / 所有率75%未達');
+        setStatusText(
+          `査定未達――所有 ${currentOwnership.toFixed(1)}/75%・直接 ${((resolution.signaturePaid / Math.max(1, targetProperty.marketPrice)) * 100).toFixed(1)}/10%`
+        );
+        setAiText('RECKONING FAILED / 所有75%＋直接出資10%未達');
         showFloater('ASSESSMENT FAILED', 'player', 'negative');
         addLog(
-          `第二査定終了時の所有率${currentOwnership.toFixed(1)}%。必要な75%へ届かず、終極資本査定の失敗が確定。`,
+          `第二査定終了時は所有率${currentOwnership.toFixed(1)}%（必要75%）・自己資本署名${formatCurrency(resolution.signaturePaid)}（必要${formatCurrency(resolution.signatureRequired)}／相場10%）。人脈・LB・SYNERGY・外部アライアンスは署名対象外のため、攻略失敗が確定。`,
           'enemy'
         );
       }
@@ -4513,23 +4641,75 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return;
     }
 
-    if (skillId === 'divine_benison') {
-      if (!activateDivineBenison('enemy')) return;
+    if (skillId === 'blackest_night') {
+      if (!activateBlackestNight('enemy')) return;
       setStatusText(
-        `ディヴァインベニゾン――競合に所有率${DIVINE_BENISON_BALANCE.gaugeCapacity / 2}%分の有限障壁`
+        `ブラックナイト――競合に所有率${BLACKEST_NIGHT_BALANCE.gaugeCapacity / 2}%分の有限障壁。完全破壊で暗黒波動`
       );
       showFloater(
-        `BENISON / ${DIVINE_BENISON_BALANCE.gaugeCapacity / 2}%吸収`,
+        `BLACK NIGHT / ${BLACKEST_NIGHT_BALANCE.gaugeCapacity / 2}%`,
         'enemy',
         'negative'
       );
       soundFx.playSkillImpact('BARRIER', 'opponent');
       addLog(
-        `白魔道士がディヴァインベニゾンを実行。${Math.round(
-          DIVINE_BENISON_BALANCE.durationMs / 1000
-        )}秒間、直接出資・人脈・LB・SYNERGY・継続圧力を同じ有限障壁で吸収する。`,
+        `暗黒騎士がブラックナイトを実行。${Math.round(
+          BLACKEST_NIGHT_BALANCE.durationMs / 1000
+        )}秒間、所有率${BLACKEST_NIGHT_BALANCE.gaugeCapacity / 2}%分を吸収し、完全破壊時だけ暗黒波動で10%反撃する。`,
         'enemy'
       );
+      return;
+    }
+
+    if (skillId === 'capital_reversal') {
+      capitalReversalRemainingRef.current = CAPITAL_REVERSAL_BALANCE.durationMs;
+      setCapitalReversalRemaining(CAPITAL_REVERSAL_BALANCE.durationMs);
+      setStatusText(
+        `資本反転――${Math.round(
+          CAPITAL_REVERSAL_BALANCE.durationMs / 1000
+        )}秒以内の次の直接出資を70%取得・30%反射へ分割`
+      );
+      setAiText('資本反転 ACTIVE / 小口で消費・待機で回避');
+      showFloater('資本反転 / 次の直接出資', 'player', 'negative');
+      soundFx.playSkillImpact('ERA_WIND', 'opponent');
+      addLog(
+        '資本反転が発動。次の直接出資だけ70%を自社資本、30%を競合圧力として処理する。投入した全額が戦後精算の対象。人脈・LB・SYNERGYは対象外で、待機すれば失効する。',
+        'enemy'
+      );
+      return;
+    }
+
+    if (skillId === 'forced_liquidation') {
+      const currentOwnership = calculateOwnershipFromGauge(gaugeRef.current);
+      const liquidationGaugeDelta = calculateForcedLiquidationGaugeDelta(
+        currentOwnership
+      );
+      setStatusText('強制清算――所有率3%まで崩す大規模攻撃！');
+      setAiText('FORCED LIQUIDATION / 防御後に反撃猶予');
+      showFloater('強制清算 / 3%寸前', 'player', 'negative');
+      playMotion('enemy');
+      soundFx.playCapitalImpact('opponent', 1);
+      triggerImpactStop('opponent', true);
+      addLog(
+        '強制清算が発動。牽制→防御アビリティ→致死回避の順で判定し、攻撃後は自社だけが動ける反撃猶予へ入る。',
+        'enemy'
+      );
+      applyGaugeCandidate(
+        gaugeRef.current + liquidationGaugeDelta,
+        'enemy',
+        'NORMAL',
+        true,
+        false,
+        true
+      );
+      const recoveryMs =
+        isSavage && savageSeries === 1
+          ? FORCED_LIQUIDATION_BALANCE.firstClearRecoveryGraceMs
+          : FORCED_LIQUIDATION_BALANCE.repeatRecoveryGraceMs;
+      forcedLiquidationRecoveryRemainingRef.current = recoveryMs;
+      forcedLiquidationAwaitingManualCounterRef.current = true;
+      setForcedLiquidationRecoveryRemaining(recoveryMs);
+      setCommandProgress(100);
       return;
     }
 
@@ -4563,7 +4743,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         setStatusText('ドレイン不発――手元資金を投入済みのため吸収なし');
         showFloater('DRAIN 0 / 回避', 'player', 'positive');
       }
-      soundFx.playSkillImpact('INDEPENDENCE_SABOTAGE', 'opponent');
+      soundFx.playSkillImpact('FEINT', 'opponent');
       addLog(
         transfer.transferred > 0
           ? `敵術師がドレインを実行。未投入の手元資金${formatCurrency(
@@ -4601,7 +4781,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         'negative'
       );
       playMotion('enemy');
-      soundFx.playSkillImpact('INDEPENDENCE_SABOTAGE', 'opponent');
+      soundFx.playSkillImpact('FEINT', 'opponent');
       soundFx.playCapitalImpact('opponent', 0.72);
       triggerImpactStop('opponent', true);
       addLog(
@@ -4623,7 +4803,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.durationMs
       );
       setStatusText(
-        `疾風怒濤の陣――${Math.round(
+        `疾風怒濤――${Math.round(
           ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.durationMs / 1000
         )}秒間、競合の行動準備速度が約${ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.actionProgressMultiplier.toFixed(
           1
@@ -4638,7 +4818,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       );
       soundFx.playSkillImpact('FAST_ACTION', 'opponent');
       addLog(
-        `吟遊詩人が疾風怒濤の陣を実行。競合の行動準備速度が${Math.round(
+        `吟遊詩人が疾風怒濤を実行。競合の行動準備速度が${Math.round(
           ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.durationMs / 1000
         )}秒間加速。`,
         'enemy'
@@ -4743,7 +4923,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return false;
     }
     if (
-      skillId === 'divine_benison' &&
+      skillId === 'blackest_night' &&
       (enemyCoverRemainingRef.current > 0 ||
         enemyBarrierRemainingRef.current > 0)
     ) {
@@ -4773,8 +4953,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           ? 'FAST_ACTION'
           : skillId === 'divination'
             ? 'ERA_WIND'
-            : skillId === 'drain' || skillId === 'drill'
-              ? 'INDEPENDENCE_SABOTAGE'
+            : skillId === 'drain' ||
+                skillId === 'drill' ||
+                skillId === 'capital_reversal' ||
+                skillId === 'forced_liquidation'
+              ? 'FEINT'
               : 'COVER'
     );
 
@@ -4834,9 +5017,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             ? 'FAST_ACTION'
             : skillId === 'divination'
               ? 'ERA_WIND'
-              : skillId === 'divine_benison'
+              : skillId === 'blackest_night'
                 ? 'BARRIER'
-                : 'INDEPENDENCE_SABOTAGE'
+                : 'FEINT'
         );
       }
 
@@ -4945,6 +5128,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         }) &&
         startEnemySupportSkill(CRUEL_SCRIPTED_BATTLE.secondActionId)
       ) {
+        cruelSecondSignatureInvestedRef.current = 0;
+        setCruelSecondSignatureInvested(0);
         updateCruelScriptPhase('second_countdown');
         setCommandProgress(100);
         setStatusText(
@@ -4953,7 +5138,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             : '「待つのは終わりでっす」――終極資本査定を強制開始'
         );
         addLog(
-          `終極資本査定のカウント開始。現在所有率${currentOwnership.toFixed(1)}%、75%以上で完全突破。`,
+          `終極資本査定の12秒カウント開始。所有率75%以上に加え、査定中の自社直接出資${formatCurrency(calculateCruelSignatureRequirement(targetProperty.marketPrice))}（相場10%）が必要。人脈・LB・SYNERGY・外部アライアンスは署名対象外。`,
           'enemy'
         );
       }
@@ -4986,6 +5171,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       showHelp ||
       showLog ||
       panel !== 'capital' ||
+      forcedLiquidationRecoveryRemaining > 0 ||
       enemyCoverKnightPhase !== 'absent'
     ) {
       return;
@@ -5003,6 +5189,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     conditionAnnouncementQueue.length,
     enemyCoverKnightPhase,
     enemySupportAutoProfile,
+    forcedLiquidationRecoveryRemaining,
     impactStop,
     limitImpactActive,
     openingSlowActive,
@@ -5074,6 +5261,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       showHelp ||
       showLog ||
       panel !== 'capital' ||
+      forcedLiquidationRecoveryRemaining > 0 ||
       enemyCoverKnightPhase !== 'absent'
     ) {
       return;
@@ -5106,10 +5294,23 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       )
         ? enemySupportAutoProfile.critical
         : null;
-      const nextSkill =
-        openingAutoSkill ??
-        criticalAutoSkill ??
-        enemySupportProfile.find((skillId) => {
+    const mandatoryThresholdSkill: EnemySupportSkillId | null =
+      enemySupportProfile.includes('capital_reversal') &&
+      ownership >= CAPITAL_REVERSAL_BALANCE.triggerPlayerOwnership &&
+      !enemySupportUsedRef.current.has('capital_reversal')
+        ? 'capital_reversal'
+        : enemySupportProfile.includes('forced_liquidation') &&
+            ownership >= FORCED_LIQUIDATION_BALANCE.triggerPlayerOwnership &&
+            enemySupportUsedRef.current.has('capital_reversal') &&
+            capitalReversalRemainingRef.current <= 0 &&
+            !enemySupportUsedRef.current.has('forced_liquidation')
+          ? 'forced_liquidation'
+          : null;
+    const nextSkill =
+      mandatoryThresholdSkill ??
+      openingAutoSkill ??
+      criticalAutoSkill ??
+      enemySupportProfile.find((skillId) => {
         if (enemySupportUsedRef.current.has(skillId)) return false;
         if (
           skillId === enemySupportAutoProfile.critical &&
@@ -5117,13 +5318,27 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ) {
           return false;
         }
-        if (skillId === 'divine_benison') {
+        if (skillId === 'capital_reversal') {
+          return (
+            ownership >= CAPITAL_REVERSAL_BALANCE.triggerPlayerOwnership &&
+            !enemySupportUsedRef.current.has('capital_reversal')
+          );
+        }
+        if (skillId === 'forced_liquidation') {
+          return (
+            ownership >= FORCED_LIQUIDATION_BALANCE.triggerPlayerOwnership &&
+            enemySupportUsedRef.current.has('capital_reversal') &&
+            capitalReversalRemainingRef.current <= 0 &&
+            !enemySupportUsedRef.current.has('forced_liquidation')
+          );
+        }
+        if (skillId === 'blackest_night') {
           return (
             enemyCoverRemainingRef.current <= 0 &&
             enemyBarrierRemainingRef.current <= 0 &&
-            shouldEnemyUseDivineBenison({
-            playerOwnership: ownership,
-            terminal: false,
+            shouldEnemyUseBlackestNight({
+              playerOwnership: ownership,
+              terminal: false,
             })
           );
         }
@@ -5145,7 +5360,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         );
       });
     if (
-      nextSkill === 'divine_benison' &&
+      nextSkill === 'blackest_night' &&
       (enemyCoverRemainingRef.current > 0 ||
         enemyBarrierRemainingRef.current > 0)
     ) {
@@ -5178,6 +5393,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     enemySupportProfile,
     enemySupportUsed,
     eraWindActive,
+    forcedLiquidationRecoveryRemaining,
     impactStop,
     isSavage,
     isCruel,
@@ -5255,6 +5471,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         return changed ? next : current;
       });
       setFastHorseRemaining((value) => Math.max(0, value - elapsed));
+      if (feintRemainingRef.current > 0) {
+        const nextFeint = Math.max(0, feintRemainingRef.current - elapsed);
+        feintRemainingRef.current = nextFeint;
+        setFeintRemaining(nextFeint);
+        if (nextFeint <= 0) {
+          addLog('牽制の10%軽減効果が終了。', 'skill');
+        }
+      }
       setEnemyRapidAssaultRemaining((value) =>
         Math.max(0, value - elapsed)
       );
@@ -5295,7 +5519,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               'インビンシブル終了――同じナイトが有限パッセへ移行。防御ゲージを割れ！'
             );
             addLog(
-              '完全無敵が終了し、ナイトは6秒の有限パッセージ・オブ・アームズへ移行。',
+              '完全無敵が終了し、ナイトは6秒の有限パッセへ移行。',
               'enemy'
             );
           } else {
@@ -5310,7 +5534,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         );
         playerBarrierRemainingRef.current = nextPlayerBarrier;
         setPlayerBarrierRemaining(nextPlayerBarrier);
-        if (nextPlayerBarrier <= 0) releaseDivineBenison('player', false);
+        if (nextPlayerBarrier <= 0) releaseBlackestNight('player', false);
       }
       if (enemyBarrierRemainingRef.current > 0) {
         const nextEnemyBarrier = Math.max(
@@ -5319,7 +5543,34 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         );
         enemyBarrierRemainingRef.current = nextEnemyBarrier;
         setEnemyBarrierRemaining(nextEnemyBarrier);
-        if (nextEnemyBarrier <= 0) releaseDivineBenison('enemy', false);
+        if (nextEnemyBarrier <= 0) releaseBlackestNight('enemy', false);
+      }
+      if (capitalReversalRemainingRef.current > 0) {
+        const nextReversal = Math.max(
+          0,
+          capitalReversalRemainingRef.current - elapsed
+        );
+        capitalReversalRemainingRef.current = nextReversal;
+        setCapitalReversalRemaining(nextReversal);
+        if (nextReversal <= 0) {
+          setStatusText('資本反転は不発――次の直接出資を待たずに契約が失効');
+          setAiText('競合が次の防衛資金を準備中');
+          showFloater('資本反転 回避', 'player', 'positive');
+          addLog('直接出資を待ったため、資本反転は何も反射せず失効した。', 'skill');
+        }
+      }
+      if (forcedLiquidationRecoveryRemainingRef.current > 0) {
+        const nextRecovery = Math.max(
+          0,
+          forcedLiquidationRecoveryRemainingRef.current - elapsed
+        );
+        forcedLiquidationRecoveryRemainingRef.current = nextRecovery;
+        setForcedLiquidationRecoveryRemaining(nextRecovery);
+        if (nextRecovery <= 0) {
+          forcedLiquidationAwaitingManualCounterRef.current = false;
+          setAiText('競合が次の防衛資金を準備中');
+          addLog('強制清算後の反撃猶予が終了。競合が行動を再開。', 'enemy');
+        }
       }
       setProgressionSynergyRemaining((value) =>
         Math.max(0, value - elapsed)
@@ -5448,7 +5699,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       winner ||
       battlePhase !== 'active' ||
       terminalRef.current ||
-      !enemyCanCommit
+      !enemyCanCommit ||
+      forcedLiquidationRecoveryRemaining > 0
     ) {
       return;
     }
@@ -5471,6 +5723,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     enemyDecision.waitMs,
     enemyCanCommit,
     enemyRapidAssaultRemaining,
+    forcedLiquidationRecoveryRemaining,
     isTraining,
     timeScale,
     winner,
@@ -5482,6 +5735,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       return;
     }
     if (enemySupportActiveRef.current) {
+      resolvingAiActionRef.current = false;
+      return;
+    }
+    if (forcedLiquidationRecoveryRemainingRef.current > 0) {
       resolvingAiActionRef.current = false;
       return;
     }
@@ -5587,10 +5844,21 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           (eraWindActive ? eraWindPushPerSecond : 0),
         isTraining
       );
-      const velocity =
+      const cruelAdjustedVelocity = resolveCruelRecoveryContinuousVelocity({
+        velocity: rawVelocity,
+        isCruel,
+        phase: cruelScriptPhaseRef.current,
+      });
+      const limitAdjustedVelocity =
         enemyLimitBreakHoldRemaining > 0
-          ? Math.max(0, rawVelocity)
-          : rawVelocity;
+          ? Math.max(0, cruelAdjustedVelocity)
+          : cruelAdjustedVelocity;
+      const velocity = resolveForcedLiquidationContinuousVelocity({
+        velocity: limitAdjustedVelocity,
+        recoveryRemaining: forcedLiquidationRecoveryRemainingRef.current,
+        awaitingManualCounter:
+          forcedLiquidationAwaitingManualCounterRef.current,
+      });
       const commitVisual =
         now - lastGaugeVisualCommitRef.current >=
         BATTLE_GAUGE_VISUAL_COMMIT_MS;
@@ -5616,7 +5884,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [battleFrameRate, criticalAutoReadyForTrigger, currentWind.playerMultiplier, currentWind.speedMultiplier, effectiveCapitalGap, enemyCapitalMultiplier, enemyInvested, enemyLimitBreakHoldRemaining, eraWindActive, eraWindPushPerSecond, influenceBonus, isTraining, progressionSynergyMultiplier, targetProperty.marketPrice, timeScale, totalPlayerInvested, updateGauge, winner]);
+  }, [battleFrameRate, criticalAutoReadyForTrigger, currentWind.playerMultiplier, currentWind.speedMultiplier, effectiveCapitalGap, enemyCapitalMultiplier, enemyInvested, enemyLimitBreakHoldRemaining, eraWindActive, eraWindPushPerSecond, influenceBonus, isCruel, isTraining, progressionSynergyMultiplier, targetProperty.marketPrice, timeScale, totalPlayerInvested, updateGauge, winner]);
 
   const startCompanyCapitalPresentation = (
     snapshot: CapitalCommitSnapshot,
@@ -5820,6 +6088,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const investCompanyFunds = () => {
+    if (
+      enemySupportCinematic?.skillId === 'capital_reversal' &&
+      capitalReversalRemainingRef.current <= 0
+    ) {
+      soundFx.playWarning();
+      setStatusText('資本反転の契約準備中――発動後に小口で消費するか、10秒待ってください');
+      return;
+    }
     if (cash < selectedCost) {
       soundFx.playWarning();
       setStatusText(`自社資金不足。必要額は${formatCurrency(selectedCost)}`);
@@ -5833,8 +6109,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const reducedMotion =
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ??
       false;
+    const reversalActive = capitalReversalRemainingRef.current > 0;
+    const retainedCapital = reversalActive
+      ? Math.round(
+          selectedCost *
+            CAPITAL_REVERSAL_BALANCE.retainedDirectInvestmentRatio
+        )
+      : selectedCost;
+    const reflectedCapital = reversalActive
+      ? Math.max(0, selectedCost - retainedCapital)
+      : 0;
     const presentationSnapshot: CapitalCommitSnapshot = {
-      amount: selectedCost,
+      amount: retainedCapital,
       level: selectedLevel,
       previousCapital,
       previousOwnership,
@@ -5848,11 +6134,54 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         currentWind.playerMultiplier * progressionSynergyMultiplier,
       trainingLevel: trainingDummyDefinition?.level,
     });
-    const rawGaugeAfter = gaugeRef.current - impact;
+    const reversal = reversalActive
+      ? resolveCapitalReversal(
+          impact / 2,
+          isSavage && savageSeries === 1
+            ? CAPITAL_REVERSAL_BALANCE.reflectedOwnershipCap
+            : Number.POSITIVE_INFINITY
+        )
+      : null;
+    const rawGaugeAfter = reversal
+      ? gaugeRef.current + reversal.gaugeDelta
+      : gaugeRef.current - impact;
     updateCash((value) => value - selectedCost);
-    commitPlayerCapital('company', selectedCost);
-    chargeLimitBreak(selectedCost * currentWind.playerMultiplier);
-    addLog(`${companyName}が自社資金${formatCurrency(selectedCost)}を直接投入。`, 'player');
+    if (isCruel && cruelScriptPhaseRef.current === 'second_countdown') {
+      const nextSignature =
+        cruelSecondSignatureInvestedRef.current + selectedCost;
+      cruelSecondSignatureInvestedRef.current = nextSignature;
+      setCruelSecondSignatureInvested(nextSignature);
+    }
+    commitPlayerCapital('company', retainedCapital);
+    let reflectedEnemyCapital:
+      | ReturnType<typeof commitEnemyCapital>
+      | null = null;
+    if (reflectedCapital > 0) {
+      reflectedEnemyCapital = commitEnemyCapital(reflectedCapital);
+      // Reflection changes which side receives the capital pressure, but the
+      // full amount was still paid by the company. Keep that 30% out of the
+      // player pressure ledger while retaining it for post-battle settlement.
+      setReflectedCompanyInvested(
+        (current) => current + reflectedCapital
+      );
+    }
+    chargeLimitBreak(retainedCapital * currentWind.playerMultiplier);
+    if (reversalActive) {
+      capitalReversalRemainingRef.current = 0;
+      setCapitalReversalRemaining(0);
+      setAiText('資本反転 RESOLVED / 競合が次の防衛を準備中');
+      showFloater(
+        `資本反転 70%取得 / 30%反射`,
+        'center',
+        'negative'
+      );
+      addLog(
+        `${companyName}が${formatCurrency(selectedCost)}を直接投入。資本反転により${formatCurrency(retainedCapital)}を自社へ積み、${formatCurrency(reflectedCapital)}が競合圧力へ反射された。`,
+        'enemy'
+      );
+    } else {
+      addLog(`${companyName}が自社資金${formatCurrency(selectedCost)}を直接投入。`, 'player');
+    }
     const action: PlayerBattleAction =
       selectedLevel === 1 ? 'SMALL' :
         selectedLevel === 2 ? 'STEADY' :
@@ -5872,6 +6201,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       presentationSnapshot,
       ownershipGain
     );
+    if (reflectedEnemyCapital) {
+      startCapitalPilePreview(
+        'enemy',
+        reflectedEnemyCapital.previous,
+        reflectedEnemyCapital.next,
+        true,
+        true,
+        'pause'
+      );
+    }
     const terminalInvestment = applyGaugeCandidate(
       rawGaugeAfter,
       'company',
@@ -6131,7 +6470,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           ? ` / ${coverResultLabel} 約${formatCurrency(coverGilEquivalent)}防御`
           : '') +
         (barrierOwnershipPushback > 0
-          ? ` / ベニゾン 約${formatCurrency(barrierGilEquivalent)}吸収`
+          ? ` / ブラックナイト 約${formatCurrency(barrierGilEquivalent)}吸収`
           : '');
       addLog(limitBreakResultText, 'skill');
       soundFx.playLimitBreakImpact(limitBreakTier);
@@ -6201,15 +6540,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const demandFromGroup = (
+    synergyId: string,
     name: string,
     members: Property[],
     groupMultiplier: number
   ) => {
     if (
+      usedBattleSynergyIds.has(synergyId) ||
       skillCinematic ||
       skillCinematicRuntimeRef.current ||
       !consumeCommand()
     ) return;
+    setUsedBattleSynergyIds((current) => new Set(current).add(synergyId));
     setPanel('capital');
     setLastPlayerAction('SYNERGY');
     let amount = 0;
@@ -6333,7 +6675,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const effect = synergy.battleEffect;
     if (
       !effect ||
-      usedProgressionSynergyIds.has(synergy.id) ||
+      usedBattleSynergyIds.has(synergy.id) ||
       skillCinematic ||
       skillCinematicRuntimeRef.current ||
       !consumeCommand()
@@ -6345,7 +6687,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     lastPressureCauseRef.current = 'synergy';
     enemySupportCastBlockedRef.current = true;
     simulationPausedRef.current = true;
-    setUsedProgressionSynergyIds((current) =>
+    setUsedBattleSynergyIds((current) =>
       new Set(current).add(synergy.id)
     );
     const rallyOwnershipPush = Math.max(0, effect.ownershipPush ?? 0);
@@ -6504,7 +6846,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const targetsRival = isRivalOnlySkill(skill);
     if (skill.effectType === 'COOLDOWN_REDUCTION') {
       setFastHorseRemaining(TACTICAL_SKILL_BALANCE.fastAction.durationMs);
-      setStatusText('疾風怒濤の計――15秒間、行動のリキャストタイムを約47%短縮');
+      setStatusText('疾風怒濤――15秒間、行動のリキャストタイムを約47%短縮');
       showFloater('リキャスト短縮 47% / 15秒', 'player');
     } else if (skill.effectType === 'NEMAWASHI') {
       setBattleSubs((current) => current.map((item) => ({
@@ -6515,34 +6857,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       })));
       setStatusText('ネマワシ――全人脈の独立危険度が半減');
       showFloater('独立危険度 半減', 'player');
-    } else if (skill.effectType === 'INDEPENDENCE_SABOTAGE') {
-      const interruptedSkillId = stunInterruptedActionRef.current ?? null;
-      stunInterruptedActionRef.current = undefined;
-      if (interruptedSkillId === 'limit_break_delay') {
-        setStatusText('スタン成功――敵LIMIT BREAK 3の発動を2.4秒遅延');
-        showFloater('STUN / LB3 遅延', 'enemy', 'notice');
-        addLog(
-          'スタンで敵LIMIT BREAK 3の集約を2.4秒遅らせた。最強技そのものは取り消せない。',
-          'skill'
-        );
-      } else if (interruptedSkillId === 'unstoppable') {
-        setStatusText('スタン無効――この宣告は戦闘フェーズそのものを変える');
-        showFloater('INTERRUPT IMMUNE', 'enemy', 'negative');
-        addLog(
-          'スタンを試みたが、闇タタルの宣告は中断不能。通常行動へのスタンは引き続き有効。',
-          'skill'
-        );
-      } else if (interruptedSkillId) {
-        const interruptedAction =
-          interruptedSkillId === 'standard'
-            ? '追加防衛'
-            : ENEMY_SUPPORT_PRESENTATION[interruptedSkillId].actionName;
-        setStatusText(`スタン成功――競合の「${interruptedAction}」を中断`);
-        showFloater(`STUN / ${interruptedAction}中断`, 'enemy', 'negative');
-      } else {
-        setStatusText('スタン不発――競合は行動を予告していなかった');
-        showFloater('STUN / 不発', 'enemy', 'notice');
-      }
+    } else if (skill.effectType === 'FEINT') {
+      feintRemainingRef.current = TACTICAL_SKILL_BALANCE.feint.durationMs;
+      setFeintRemaining(TACTICAL_SKILL_BALANCE.feint.durationMs);
+      setStatusText('牽制――10秒間、競合から受ける押し込みを10%軽減');
+      showFloater('牽制 / 被押し込み -10%', 'player', 'notice');
     } else if (skill.effectType === 'COVER') {
       if (replaceActiveDefense) {
         replacedActiveDefense = clearPlayerDefenseForCriticalAuto();
@@ -6550,10 +6869,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       if (activatePlayerCover()) {
         setStatusText(
           replacedActiveDefense
-            ? `瀕死防御更新――パッセージ・オブ・アームズへ入れ替え、ナイトが${Math.round(
+            ? `瀕死防御更新――パッセへ入れ替え、ナイトが${Math.round(
                 TACTICAL_SKILL_BALANCE.cover.durationMs / 1000
               )}秒間、自社の防衛線へ入る`
-            : `パッセージ・オブ・アームズ――ナイトが${Math.round(
+            : `パッセ――ナイトが${Math.round(
                 TACTICAL_SKILL_BALANCE.cover.durationMs / 1000
               )}秒間、自社の防衛線へ入る`
         );
@@ -6569,18 +6888,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       if (replaceActiveDefense) {
         replacedActiveDefense = clearPlayerDefenseForCriticalAuto();
       }
-      if (activateDivineBenison('player')) {
+      if (activateBlackestNight('player')) {
         setStatusText(
           replacedActiveDefense
-            ? `瀕死防御更新――ディヴァインベニゾンへ入れ替え、${Math.round(
-                DIVINE_BENISON_BALANCE.durationMs / 1000
-              )}秒間、所有率${DIVINE_BENISON_BALANCE.gaugeCapacity / 2}%分の有限障壁`
-            : `ディヴァインベニゾン――${Math.round(
-                DIVINE_BENISON_BALANCE.durationMs / 1000
-              )}秒間、所有率${DIVINE_BENISON_BALANCE.gaugeCapacity / 2}%分の有限障壁`
+            ? `瀕死防御更新――ブラックナイトへ入れ替え、${Math.round(
+                BLACKEST_NIGHT_BALANCE.durationMs / 1000
+              )}秒間、所有率${BLACKEST_NIGHT_BALANCE.gaugeCapacity / 2}%分の有限障壁`
+            : `ブラックナイト――${Math.round(
+                BLACKEST_NIGHT_BALANCE.durationMs / 1000
+              )}秒間、所有率${BLACKEST_NIGHT_BALANCE.gaugeCapacity / 2}%分を吸収。完全破壊で暗黒波動`
         );
         showFloater(
-          `BENISON / ${DIVINE_BENISON_BALANCE.gaugeCapacity / 2}%吸収`,
+          `BLACK NIGHT / ${BLACKEST_NIGHT_BALANCE.gaugeCapacity / 2}%`,
           'player',
           'notice'
         );
@@ -6607,9 +6926,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         presentCommittedCapital();
       }
       chargeLimitBreak(amount * currentWind.playerMultiplier);
-      setStatusText(`意気衝天――無料支援資金${formatCurrency(amount)}を即時投入`);
+      setStatusText(`味方がぶんどる――無料支援資金${formatCurrency(amount)}を即時投入`);
       showFloater(
-        `支援 +${formatCurrency(amount)}`,
+        `ALLY ぶんどる +${formatCurrency(amount)}`,
         'player',
         'positive',
         'support'
@@ -6665,7 +6984,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         playerCoverRemainingRef.current > 0)
     ) {
       soundFx.playWarning();
-      setStatusText('防御効果の発動中は、ベニゾンを重ねられません');
+      setStatusText('防御効果の発動中は、ブラックナイトを重ねられません');
       return false;
     }
     if (
@@ -6684,25 +7003,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       }
     }
 
-    if (skill.effectType === 'INDEPENDENCE_SABOTAGE') {
-      const interruptedSupportAction = interruptEnemySupportTelegraph();
-      if (interruptedSupportAction) {
-        stunInterruptedActionRef.current = interruptedSupportAction;
-      } else if (
-        aiProgress >= 72 &&
-        enemyCanCommit &&
-        !resolvingAiActionRef.current
-      ) {
-        setAiProgress(0);
-        setAiCycle((cycle) => cycle + 1);
-        stunInterruptedActionRef.current = 'standard';
-      } else {
-        stunInterruptedActionRef.current = null;
-      }
-    } else {
-      stunInterruptedActionRef.current = undefined;
-    }
-
     setPanel('capital');
     enemySupportCastBlockedRef.current = true;
     simulationPausedRef.current = true;
@@ -6713,20 +7013,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
     const targetsRival = isRivalOnlySkill(skill);
     const cinematicResult = getSkillCinematicResult(skill, isTraining);
-    if (skill.effectType === 'INDEPENDENCE_SABOTAGE') {
-      cinematicResult.resultHeadline = stunInterruptedActionRef.current
-        ? stunInterruptedActionRef.current === 'unstoppable'
-          ? 'スタン無効'
-          : 'スタン成功！'
-        : 'スタン不発';
-      cinematicResult.effectSummary = stunInterruptedActionRef.current
-        ? stunInterruptedActionRef.current === 'limit_break_delay'
-          ? '敵LB3を2.4秒遅延'
-          : stunInterruptedActionRef.current === 'unstoppable'
-            ? 'フェーズ技は中断不能'
-            : '競合の予告行動を1回中断'
-        : '中断できる予告行動なし';
-    }
     const baseCinematic: SkillCinematicBase = {
       skillId: skill.id,
       skillName: skill.name,
@@ -6752,7 +7038,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       cinematic: baseCinematic,
       timing: skillTiming,
       onCast: () => {
-        playMotion('player');
+        if (skill.effectType !== 'CAPITAL_BOOST') {
+          playMotion('player');
+        }
         soundFx.playSkillWhoosh(skill.effectType);
       },
       onEffect: () => {
@@ -6934,10 +7222,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     winner,
   ]);
 
+  const companyCapitalAtRisk =
+    companyInvested + reflectedCompanyInvested;
   const resultSettlementCost = isTraining
     ? 0
     : Math.round(
-        companyInvested * (winner === 'player' ? 0.35 : 0.75)
+        companyCapitalAtRisk * (winner === 'player' ? 0.35 : 0.75)
       );
   const resultVictoryReward = isTraining
     ? 0
@@ -7185,7 +7475,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const committed = onBattleEnd({
       winner,
       targetProperty,
-      companyFundsInvested: companyInvested,
+      companyFundsInvested: companyCapitalAtRisk,
       demandFundsInvested: demandInvested,
       brokerageFee,
       settlementCost: resultSettlementCost,
@@ -7268,9 +7558,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             )}の支援が競り値を押し上げたでっす。`
           : `最後まで資金差を維持できたのが勝因でっす！ 競合の防衛を崩し、${FINISH_LABELS[finishMethod]}で押し切ったでっす。`
       : defeatReason === 'WALKING_DEAD_FAILED'
-        ? 'リビングデッドは発動したものの、10秒以内に所有率30%へ戻せなかったでっす。次は意気衝天や大口出資を温存しておくでっす。'
+        ? 'リビングデッドは発動したものの、10秒以内に所有率30%へ戻せなかったでっす。次はぶんどるや大口出資を温存しておくでっす。'
         : defeatReason === 'CRUEL_RECKONING_FAILED'
-          ? '終極資本査定の終了時に所有率75%へ届かなかったでっす。第一宣告後の資本とLBを温存し、12秒の査定中にまとめて積むでっす。'
+          ? `終極資本査定は${formatCruelReckoningFailureRequirements()}で未達だったでっす。第一宣告後の資本とLBを温存し、12秒の査定中に自社資金も直接積むでっす。`
         : rebelled.length > 0
           ? isHighEndRaid
             ? `${rebelled.length}件が記録戦中に一時離脱し、支援の山が崩れたでっす。事業・契約は保護されるので、資金要求の順番を組み直すでっす。`
@@ -7484,7 +7774,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               {Array.from({ length: 8 }, (_, index) => <i key={index} />)}
             </span>
             <div
-              className={`battle-skill-nameplate battle-skill-nameplate--${skillCinematic.targetsRival ? 'enemy' : 'ally'} battle-skill-nameplate--stage-${skillCinematic.stage}`}
+              className={`battle-skill-nameplate battle-skill-nameplate--${skillCinematic.targetsRival ? 'enemy' : 'ally'} battle-skill-nameplate--stage-${skillCinematic.stage} ${skillCinematic.effectType === 'CAPITAL_BOOST' ? 'battle-skill-nameplate--ally-actor' : ''}`}
               data-action-kind={
                 skillCinematic.effectType === 'SYNERGY_PUSH'
                   ? 'synergy'
@@ -7494,8 +7784,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               aria-live="polite"
               aria-atomic="true"
             >
+              {skillCinematic.effectType === 'CAPITAL_BOOST' && (
+                <span className="battle-skill-nameplate__ally-actor">
+                  <img src={FANKIT_ART.ninja} alt="ぶんどるを使う味方の忍者" />
+                </span>
+              )}
               <small>
-                {skillCinematic.effectType === 'SYNERGY_PUSH'
+                {skillCinematic.effectType === 'CAPITAL_BOOST'
+                  ? 'ALLY ABILITY'
+                  : skillCinematic.effectType === 'SYNERGY_PUSH'
                   ? 'SYNERGY'
                   : 'ABILITY'}
               </small>
@@ -7739,7 +8036,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     aria-label={
                       playerCoverKnightPhase === 'breaking'
                         ? 'パッセを終え、防御を解除するナイト'
-                        : 'パッセージ・オブ・アームズを実行中のナイト'
+                        : 'パッセを実行中のナイト'
                     }
                   >
                     <img src={FANKIT_ART.paladin} alt="" aria-hidden="true" />
@@ -7768,15 +8065,20 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   />
                   <div className="battle-status-rail battle-status-rail--player" aria-label="自社の継続効果">
                     {fastHorseRemaining > 0 && (
-                      <span role="img" aria-label={`疾風怒濤の計 残り${Math.ceil(fastHorseRemaining / 1000)}秒`} title={`疾風怒濤の計 残り${Math.ceil(fastHorseRemaining / 1000)}秒`}>
+                      <span role="img" aria-label={`疾風怒濤 残り${Math.ceil(fastHorseRemaining / 1000)}秒`} title={`疾風怒濤 残り${Math.ceil(fastHorseRemaining / 1000)}秒`}>
                         <Zap /><b>{Math.ceil(fastHorseRemaining / 1000)}</b>
+                      </span>
+                    )}
+                    {feintRemaining > 0 && (
+                      <span role="img" aria-label={`牽制 残り${Math.ceil(feintRemaining / 1000)}秒・競合の押し込み10%軽減`} title={`牽制 残り${Math.ceil(feintRemaining / 1000)}秒`}>
+                        <ShieldAlert /><b>{Math.ceil(feintRemaining / 1000)}</b>
                       </span>
                     )}
                     {playerCoverRemaining > 0 && (
                       <span
                         role="img"
-                        aria-label={`パッセージ・オブ・アームズ 残り${Math.ceil(playerCoverRemaining / 1000)}秒`}
-                        title={`パッセージ・オブ・アームズ 残り${Math.ceil(playerCoverRemaining / 1000)}秒`}
+                        aria-label={`パッセ 残り${Math.ceil(playerCoverRemaining / 1000)}秒`}
+                        title={`パッセ 残り${Math.ceil(playerCoverRemaining / 1000)}秒`}
                       >
                         <ShieldAlert />
                         <b>{Math.ceil(playerCoverRemaining / 1000)}</b>
@@ -7786,8 +8088,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                       <span
                         className="battle-status-rail__barrier"
                         role="img"
-                        aria-label={`ディヴァインベニゾン 残り${Math.ceil(playerBarrierRemaining / 1000)}秒・障壁${playerBarrierPercent}%`}
-                        title={`ディヴァインベニゾン：障壁${playerBarrierPercent}%`}
+                        aria-label={`ブラックナイト 残り${Math.ceil(playerBarrierRemaining / 1000)}秒・障壁${playerBarrierPercent}%・完全破壊で暗黒波動`}
+                        title={`ブラックナイト：障壁${playerBarrierPercent}%`}
                       >
                         <ShieldAlert /><b>{playerBarrierPercent}%</b>
                       </span>
@@ -7805,6 +8107,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     {(livingDeadPhase === 'waiting' || livingDeadPhase === 'recovery') && (
                       <span role="img" aria-label={`リビングデッド 残り${Math.ceil(livingDeadRemaining / 1000)}秒`} className="battle-status-rail__living" title={`リビングデッド 残り${Math.ceil(livingDeadRemaining / 1000)}秒`}>
                         <ShieldAlert /><b>{Math.ceil(livingDeadRemaining / 1000)}</b>
+                      </span>
+                    )}
+                    {forcedLiquidationRecoveryRemaining > 0 && (
+                      <span role="img" aria-label={`強制清算後の反撃猶予 残り${Math.ceil(forcedLiquidationRecoveryRemaining / 1000)}秒`} title="自社だけが行動できる反撃猶予">
+                        <Zap /><b>{Math.ceil(forcedLiquidationRecoveryRemaining / 1000)}</b>
                       </span>
                     )}
                   </div>
@@ -7876,15 +8183,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     {enemySupportCinematic.stage === 'telegraph' &&
                       enemySupportTelegraphRemainingMs !== null && (
                         <span
-                          className="enemy-support-actor__stun-window"
+                          className="enemy-support-actor__countdown"
                           aria-hidden="true"
                         >
-                          {enemySupportInterruptibility === 'unstoppable'
-                            ? '中断不能'
-                            : enemySupportInterruptibility === 'delay_only'
-                              ? 'スタンで遅延'
-                              : 'スタン可能'}{' '}
-                          残
+                          発動まで 残
                           {(enemySupportTelegraphRemainingMs / 1000).toFixed(1)}
                           秒
                         </span>
@@ -7904,7 +8206,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                             enemyActiveCoverTier === 'invincible'
                               ? 'インビンシブル'
                               : enemyActiveCoverTier === 'enhanced_cover'
-                                ? 'パッセージ・オブ・アームズ'
+                                ? 'パッセ'
                                 : 'かばう'
                           }を実行中のナイト`
                     }
@@ -7979,18 +8281,28 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     {enemyRapidAssaultRemaining > 0 && (
                       <span
                         role="img"
-                        aria-label={`疾風怒濤の陣 残り${Math.ceil(enemyRapidAssaultRemaining / 1000)}秒`}
-                        title={`疾風怒濤の陣 残り${Math.ceil(enemyRapidAssaultRemaining / 1000)}秒`}
+                        aria-label={`疾風怒濤 残り${Math.ceil(enemyRapidAssaultRemaining / 1000)}秒`}
+                        title={`疾風怒濤 残り${Math.ceil(enemyRapidAssaultRemaining / 1000)}秒`}
                       >
                         <Zap />
                         <b>{Math.ceil(enemyRapidAssaultRemaining / 1000)}</b>
                       </span>
                     )}
+                    {capitalReversalRemaining > 0 && (
+                      <span
+                        role="img"
+                        aria-label={`資本反転 残り${Math.ceil(capitalReversalRemaining / 1000)}秒・次の直接出資だけ対象`}
+                        title="資本反転：小口で消費、待機で回避"
+                      >
+                        <RefreshCw />
+                        <b>{Math.ceil(capitalReversalRemaining / 1000)}</b>
+                      </span>
+                    )}
                     {enemyCoverRemaining > 0 && (
                       <span
                         role="img"
-                        aria-label={`${enemyActiveCoverTier === 'invincible' ? 'インビンシブル' : enemyActiveCoverTier === 'enhanced_cover' ? 'パッセージ・オブ・アームズ' : 'かばう'} 残り${Math.ceil(enemyCoverRemaining / 1000)}秒`}
-                        title={`${enemyActiveCoverTier === 'invincible' ? 'インビンシブル' : enemyActiveCoverTier === 'enhanced_cover' ? 'パッセージ・オブ・アームズ' : 'かばう'} 残り${Math.ceil(enemyCoverRemaining / 1000)}秒`}
+                        aria-label={`${enemyActiveCoverTier === 'invincible' ? 'インビンシブル' : enemyActiveCoverTier === 'enhanced_cover' ? 'パッセ' : 'かばう'} 残り${Math.ceil(enemyCoverRemaining / 1000)}秒`}
+                        title={`${enemyActiveCoverTier === 'invincible' ? 'インビンシブル' : enemyActiveCoverTier === 'enhanced_cover' ? 'パッセ' : 'かばう'} 残り${Math.ceil(enemyCoverRemaining / 1000)}秒`}
                       >
                         <ShieldAlert /><b>{Math.ceil(enemyCoverRemaining / 1000)}</b>
                       </span>
@@ -7999,8 +8311,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                       <span
                         className="battle-status-rail__barrier"
                         role="img"
-                        aria-label={`ディヴァインベニゾン 残り${Math.ceil(enemyBarrierRemaining / 1000)}秒・障壁${enemyBarrierPercent}%`}
-                        title={`ディヴァインベニゾン：障壁${enemyBarrierPercent}%`}
+                        aria-label={`ブラックナイト 残り${Math.ceil(enemyBarrierRemaining / 1000)}秒・障壁${enemyBarrierPercent}%・完全破壊で暗黒波動`}
+                        title={`ブラックナイト：障壁${enemyBarrierPercent}%`}
                       >
                         <ShieldAlert /><b>{enemyBarrierPercent}%</b>
                       </span>
@@ -8046,10 +8358,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 </>
               ) : (
                 <>
-                  <span>「その盛り返し、本当に価値があるか査定するでっす！」</span>
-                  <span>「75%まで積めば、この帳簿を破れるでっす！」</span>
-                  <em>75%以上で完全突破 / 未達は攻略失敗</em>
-                  <b>中断不能フェーズ技 / カウント中も行動可能</b>
+                  <span>「最後の署名は、自分の元手で入れるでっす！」</span>
+                  <em aria-live="off">
+                    所有率 {normalizedOwnership.toFixed(1)} / 75%　直接出資{' '}
+                    {((cruelSecondSignatureInvested /
+                      Math.max(1, targetProperty.marketPrice)) *
+                      100).toFixed(1)}{' '}
+                    / 10%
+                  </em>
+                  <b>12秒・人脈／LB／SYNERGY／外部アライアンスは対象外</b>
                 </>
               )}
               <i aria-hidden="true"><u /></i>
@@ -8101,27 +8418,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           aria-label="LIMIT BREAK、SYNERGY、アビリティ、人脈"
           inert={panel !== 'capital' || showHelp || showLog || decisiveLocked}
         >
-          {stunOpportunity && stunSkill && (
-            <button
-              type="button"
-              className={`battle-action-strip__action battle-action-strip__action--skill-execute battle-action-strip__action--stun ${stunQuickUnavailable ? 'is-unavailable' : 'is-ready'}`}
-              onClick={useReactionStun}
-              disabled={stunQuickUnavailable || actionsLocked}
-              aria-label={`スタンで競合の予告行動を中断。${enemySupportInterruptibility === 'unstoppable' ? 'この行動は中断不能' : '今すぐ発動可能。自社リキャストタイムを消費しない'}`}
-              title="予告中だけ使える即応スタン（通常行動のリキャストタイムは消費しません）"
-            >
-              <Zap />
-              <span>
-                <b>STUN CHANCE</b>
-                <small>{enemySupportCinematic?.stage === 'telegraph'
-                  ? ENEMY_SUPPORT_PRESENTATION[enemySupportCinematic.skillId].actionName
-                  : '追加防衛の予告'}</small>
-              </span>
-              <em>{enemySupportInterruptibility === 'unstoppable'
-                ? '中断不能'
-                : '今すぐ発動'}</em>
-            </button>
-          )}
           {limitBreakCapacityTier > 0 && (
             <button
               type="button"
@@ -8178,11 +8474,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           {selectedBattleSynergy && (
             <button
               type="button"
-              className={`battle-action-strip__action battle-action-strip__action--synergy ${battleSynergyReady && commandReady && !actionsLocked && !usedProgressionSynergyIds.has(selectedBattleSynergy.id) ? 'is-ready' : 'is-waiting'}`}
+              className={`battle-action-strip__action battle-action-strip__action--synergy ${battleSynergyReady && commandReady && !actionsLocked && !battleSynergyUsed ? 'is-ready' : 'is-waiting'}`}
               onClick={() =>
                 selectedBattleSynergy.battleOnly
                   ? activateProgressionBattleSynergy(selectedBattleSynergy)
                   : demandFromGroup(
+                      selectedBattleSynergy.id,
                       selectedBattleSynergy.name,
                       selectedBattleSynergyMembers,
                       selectedBattleSynergy.battleGroupMultiplier ??
@@ -8193,10 +8490,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 !commandReady ||
                 !battleSynergyReady ||
                 actionsLocked ||
-                (
-                  selectedBattleSynergy.battleOnly &&
-                  usedProgressionSynergyIds.has(selectedBattleSynergy.id)
-                )
+                battleSynergyUsed
               }
               aria-label={`${selectedBattleSynergy.name}（SYNERGY）。効果 ${selectedBattleSynergyEffectLabel}。${battleSynergyReady ? '選択中の事業連携を発動' : '必要な事業・契約が不足'}`}
               title={`${selectedBattleSynergy.name}：${selectedBattleSynergyEffectLabel}`}
@@ -8211,8 +8505,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <b><MarqueeText text={selectedBattleSynergy.name} /></b>
                 <small>{selectedBattleSynergyEffectLabel}</small>
               </span>
-              <em>{selectedBattleSynergy.battleOnly &&
-                usedProgressionSynergyIds.has(selectedBattleSynergy.id)
+              <em>{battleSynergyUsed
                 ? '使用済み'
                 : !battleSynergyReady
                 ? '連携崩壊'
@@ -8572,7 +8865,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <h3><Swords />{isTraining ? '商戦木人ルール' : isCruel ? '酷・記録戦ルール' : isUltimate ? '絶商戦ルール' : '零式ルール'}</h3>
                 <p>{isTraining ? '参加費・報酬・精算・清算はすべて0。通常事業・契約の保有状態、独立危険度、零式・絶の進行は変化せず、同じLEVELへ何度でも再挑戦できます。' : isCruel ? '絶踏破後の単独記録戦です。通常事業・人脈・独立危険度・通常進行は保護され、敗北・撤退後も何度でも再挑戦できます。' : '通常編の地域・業界・交易網補正は無効。通常事業・契約の保有状態・収益・独立危険度は変化せず、失敗後も同じ戦いへ再挑戦できます。'}</p>
                 {!isTraining && <p>人脈・通常グループSYNERGYの支援額は高難度補正で×{HIGH_DIFFICULTY_SUPPORT_MULTIPLIER.toFixed(2)}。外部アライアンスとLIMIT BREAKの威力は変わりません。</p>}
-                {isCruel && <p>開始約15秒後の第一宣告は所有率を10%へ下げますが、投入済み資本・資金・LBは残ります。50%まで盛り返すと第二査定が始まり、75%以上なら完全突破、未達は余韻の後に攻略失敗となります。二つの宣告は中断不能ですが、カウント中も通常行動は使えます。</p>}
+                {isCruel && <p>開始約15秒後の第一宣告は所有率を10%へ下げますが、投入資本・資金・LBは残ります。復帰中だけ自社へ進む継続速度を50%に抑え、50%まで戻すと12秒の第二査定。終了時に所有率75%以上かつ査定中の自社直接出資{formatCurrency(calculateCruelSignatureRequirement(targetProperty.marketPrice))}（相場10%）が必要です。人脈・LB・SYNERGY・外部アライアンスは署名に含みません。</p>}
                   </section>
                 )}
                 <section className="briefing-section">
@@ -8663,10 +8956,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               </li>
               <li><b>未投入資金</b><span>通常商戦へ持ち込める自社現金は対象相場と同額まで。超過分は商会に安全資金として残り、戦後も失われません。木人訓練は制限対象外です。</span></li>
               <li><b>商流リジェネ</b><span>自社は開始時の持込資金、競合は開始時の総予算を基準に、双方0.3%/秒で手元資金だけを回復します。現在値は基準100%まで、累積は1戦20%まで。風は回復速度だけを変え、所有率へ直接加算しません。</span></li>
-              <li><b>市場の風を読む</b><span>{isTraining ? '木人訓練では風は発生せず、自社・木人双方への補正もありません。' : `グリダニアは風なし。進行後も開始から最低10秒は静穏です。その後は低頻度の市場気配、${BATTLE_WIND_TELEGRAPH_SECONDS}秒の予兆を経て${BATTLE_WIND_ACTIVE_MIN_SECONDS}～${BATTLE_WIND_ACTIVE_MAX_SECONDS}秒だけ風が吹き、終了後は最低18秒の静穏を挟みます。`}</span></li>
-              {!isTraining && <li><b>時代の風</b><span>零式 第2編2層の突破後、グランドカンパニー・エオルゼアから更新される上位SYNERGYです。18秒間、資本圧力×2.05・LB蓄積×1.25・継続圧力+0.75/秒となり、敵の相場風を解除して再発を防ぎます。1争奪戦につき1回です。</span></li>}
+              <li><b>市場の風を読む</b><span>{isTraining ? '木人訓練では風は発生せず、自社・木人双方への補正もありません。' : `グリダニア制覇後は自社の追い風だけ、リムサ制覇後は自社／競合の追い風が半々、クガネ制覇後は自社の向かい風と乱旋風も加わります。開始から最低10秒は静穏で、${BATTLE_WIND_TELEGRAPH_SECONDS}秒の予兆後に${BATTLE_WIND_ACTIVE_MIN_SECONDS}～${BATTLE_WIND_ACTIVE_MAX_SECONDS}秒だけ発生します。`}</span></li>
+              {!isTraining && <li><b>時代の風</b><span>二つの企業連合本部をすべて制覇すると修得する上位SYNERGYです。16秒間、資本圧力×2.18・LB蓄積×1.25・継続圧力+0.85/秒となり、敵の相場風を解除して再発を防ぎます。1争奪戦につき1回です。</span></li>}
               <li><b>LIMIT BREAK</b><span>攻防の資金衝突で通常比20%速く蓄積し、動員資金も20%増加。自社＋人脈が合計4/8/16枠で1/2/3本まで解放され、LB1/2の集約資金は対象相場の80%/120%が上限です。発動のたび全ゲージを0にし、同じ戦闘でも再蓄積すれば再発動できます。</span></li>
               <li><b>特殊アクション</b><span>商戦フィールド直下のアイコンからLB・選択中のSYNERGY・主要アビリティを1タップで実行できます。未解放の枠は表示せず、人脈はドロワーで開きます。アビリティの選択だけは演出待ち中も変更できます。</span></li>
+              <li><b>牽制とブラックナイト</b><span>牽制は発動から10秒間、競合の押し込みを10%軽減します。ブラックナイトは7秒・所有率25%分のバリアで、時間切れでは何も起きず、完全に割れた時だけ暗黒波動を自動発動します。演出やコイン積載中は残り時間が止まります。</span></li>
+              {isHighEndRaid && <li><b>零式3・4層ギミック</b><span>資本反転は次の直接出資だけを70%取得・30%反射にし、投入全額を精算対象にします。小口で消費するか10秒待てば回避できます。強制清算は牽制→バリア／パッセ→致死回避の順に判定し、着弾後は短い反撃猶予があります。</span></li>}
               <li><b>効果通知</b><span>味方への良い効果は青く上昇し、競合への妨害や悪い効果は赤く下降します。詳しい履歴は戦局ログで後から確認できます。</span></li>
               <li><b>リビングデッド</b><span>10秒の待機中に所有率0%へ到達すると表示上1%で耐えます。攻防の内部値は進み続け、その後10秒以内に30%以上へ戻せなければ敗北。1争奪戦につき1回です。</span></li>
               <li><b>協力協定</b><span>外部協力先から1争奪戦につき1回の支援です。LBの参加件数や投入額には含みません。</span></li>
@@ -8826,6 +9121,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     <div>
                       <dt>ドレイン被害</dt>
                       <dd>-{formatCurrency(enemyDrainStolen)}</dd>
+                    </div>
+                  )}
+                  {reflectedCompanyInvested > 0 && (
+                    <div>
+                      <dt>資本反転された直接出資</dt>
+                      <dd>{formatCurrency(reflectedCompanyInvested)}（精算対象）</dd>
                     </div>
                   )}
                   {resultLiquidationCashback > 0 && (

@@ -92,8 +92,6 @@ import {
 import {
   getWindPool,
   getWindProgressionStage,
-  WIND_ACTIVE_SECONDS,
-  WIND_CALM_SECONDS,
 } from '../src/components/WindIndicator';
 import {
   calculateOfflineIncome,
@@ -139,18 +137,23 @@ import {
   ULTIMATE_RAID_DEFINITION,
 } from '../src/utils/savage';
 import {
+  calculateCruelEntryRequirement,
+  calculateCruelSignatureRequirement,
   resolveCruelFirstImpact,
+  resolveCruelRecoveryContinuousVelocity,
   resolveCruelSecondImpact,
   shouldHoldCruelVictory,
   shouldTriggerCruelFirstPhase,
   shouldTriggerCruelSecondPhase,
 } from '../src/utils/cruelBattle';
 import {
+  BLACKEST_NIGHT_BALANCE,
   BATTLE_CONTENT_MANIFEST,
   BATTLE_CONTENT_SCHEMA_VERSION,
+  CAPITAL_REVERSAL_BALANCE,
   CRUEL_SCRIPTED_BATTLE,
-  DIVINE_BENISON_BALANCE,
   ENEMY_SUPPORT_ACTIONS,
+  FORCED_LIQUIDATION_BALANCE,
 } from '../src/data/battleEncounterData';
 import {
   ERA_WIND_SYNERGY_ID,
@@ -174,7 +177,7 @@ import {
 } from '../src/utils/trainingDummy';
 import {
   advanceBattleCashRecovery,
-  applyDivineBenisonToGaugeDelta,
+  applyBlackestNightToGaugeDelta,
   applyCoverToGaugeDelta,
   applyTrainingGaugeSpeed,
   BOSS_COVER_BALANCE,
@@ -247,7 +250,8 @@ import {
   SAVAGE_SERIES_BUDGET_MULTIPLIERS,
   ULTIMATE_ENEMY_BUDGET_MULTIPLIER,
   getEnemyDifficultyLevel,
-  getDivineBenisonDisplayPercent,
+  getBlackestNightDarkWaveGaugeDelta,
+  getBlackestNightDisplayPercent,
   getEnemyDivinationDurationMs,
   getEnemyDrillImpact,
   getEnemyDrillOwnershipPush,
@@ -262,7 +266,10 @@ import {
   ENEMY_SUPPORT_SKILL_BALANCE,
   ULTIMATE_ENEMY_AUTO_PATTERNS,
   resolveEnemyDrainTransfer,
-  shouldEnemyUseDivineBenison,
+  resolveCapitalReversal,
+  calculateForcedLiquidationGaugeDelta,
+  resolveForcedLiquidationContinuousVelocity,
+  shouldEnemyUseBlackestNight,
 } from '../src/utils/gameBalance';
 import {
   advanceBattleWind,
@@ -328,13 +335,18 @@ assert.equal(
 assert.deepEqual(getWindPool(1), ['TAILWIND_PLAYER']);
 assert.equal(getWindProgressionStage(2), 2);
 assert.ok(getWindPool(2).includes('TAILWIND_ENEMY'));
-assert.equal(getWindProgressionStage(3), 3);
+assert.equal(
+  getWindProgressionStage(3),
+  2,
+  'Ul\'dah and Ishgard add enemy mechanics without adding a new wind rule'
+);
+assert.equal(
+  getWindProgressionStage(5),
+  3,
+  'Kugane conquest unlocks player headwind and crosswind'
+);
 assert.ok(getWindPool(3).includes('HEADWIND_PLAYER'));
 assert.ok(getWindPool(3).includes('CROSSWIND'));
-assert.ok(
-  WIND_ACTIVE_SECONDS + WIND_CALM_SECONDS >= 26,
-  'non-calm wind events are separated by a readable calm interval'
-);
 let battleWind = createBattleWindState();
 assert.equal(battleWind.phase, 'grace');
 assert.equal(battleWind.windType, 'CALM');
@@ -366,8 +378,8 @@ assert.ok(
   Math.abs(battleWind.secondsRemaining - BATTLE_WIND_TELEGRAPH_SECONDS) < 1e-9
 );
 assert.equal(BATTLE_WIND_TELEGRAPH_SECONDS, 2);
-assert.equal(BATTLE_WIND_ACTIVE_MIN_SECONDS, 10);
-assert.equal(BATTLE_WIND_ACTIVE_MAX_SECONDS, 13);
+assert.equal(BATTLE_WIND_ACTIVE_MIN_SECONDS, 7);
+assert.equal(BATTLE_WIND_ACTIVE_MAX_SECONDS, 9);
 const telegraphedWind = battleWind.pendingWindType;
 battleWind = advanceBattleWind(
   battleWind,
@@ -1813,7 +1825,7 @@ assert.ok(
 );
 assert.ok(
   lbReadiness.capitalComponents.some(
-    (component) => component.label === '意気衝天1回'
+    (component) => component.label === 'ぶんどる1回'
   ),
   'readiness states the capital boost assumption'
 );
@@ -1870,13 +1882,13 @@ const expectedNormalEnemySupportProfiles = [
   [],
   [],
   ['drain'],
-  ['drain'],
-  ['divine_benison', 'drain'],
-  ['divine_benison'],
+  ['blackest_night'],
+  ['blackest_night', 'rapid_assault'],
+  ['blackest_night'],
   ['drain'],
   ['drain', 'drill'],
   ['divination'],
-  ['divine_benison', 'divination'],
+  ['blackest_night', 'divination'],
 ] as const;
 COMMUNITY_CAMPAIGN_ORDER.forEach((community, index) => {
   const targets = getCampaignProperties(INITIAL_PROPERTIES, community);
@@ -1918,7 +1930,7 @@ assert.deepEqual(
     targetProperty: firstCartelMember,
     isCityBoss: false,
   }),
-  ['divine_benison', 'drain']
+  ['blackest_night', 'drain']
 );
 assert.deepEqual(
   getEnemySupportSkillProfile({
@@ -1960,7 +1972,7 @@ assert.deepEqual(
     targetProperty: firstCartelHeadquarters,
     isCityBoss: false,
   }),
-  { opening: 'drain', critical: 'divine_benison' }
+  { opening: 'drain', critical: 'blackest_night' }
 );
 assert.deepEqual(
   getEnemySupportAutoProfile({
@@ -2027,9 +2039,9 @@ assert.deepEqual(
     })
   ),
   [
-    ['divine_benison'], ['drain', 'divination'], ['divination'], ['divine_benison', 'drill', 'divination'],
-    ['drain'], ['divine_benison', 'divination'], ['drain', 'rapid_assault'], ['divine_benison', 'divination', 'rapid_assault', 'limit_break_3'],
-    ['divine_benison', 'divination'], ['drill'], ['drain', 'rapid_assault'], ['drill', 'divination', 'limit_break_3'],
+    ['blackest_night'], ['drain', 'divination'], ['divination', 'capital_reversal'], ['blackest_night', 'drill', 'divination', 'capital_reversal', 'forced_liquidation'],
+    ['drain'], ['blackest_night', 'divination'], ['drain', 'rapid_assault', 'capital_reversal'], ['blackest_night', 'divination', 'rapid_assault', 'limit_break_3', 'capital_reversal', 'forced_liquidation'],
+    ['blackest_night', 'divination'], ['drill'], ['drain', 'rapid_assault', 'capital_reversal'], ['drill', 'divination', 'limit_break_3', 'capital_reversal', 'forced_liquidation'],
   ],
   'the twelve Savage layers must use the authored progression-specific support pattern'
 );
@@ -2056,7 +2068,7 @@ assert.deepEqual(
     { opening: null, critical: null },
     { opening: null, critical: null },
     { opening: 'rapid_assault', critical: null },
-    { opening: 'divine_benison', critical: 'drill' },
+    { opening: 'blackest_night', critical: 'drill' },
     { opening: null, critical: null },
     { opening: null, critical: null },
     { opening: 'divination', critical: null },
@@ -2241,7 +2253,9 @@ assert.equal(fastHorseExplanation.key, 'skill:skill_fast_horse');
 assert.match(fastHorseExplanation.detail, /15秒間/);
 assert.match(fastHorseExplanation.detail, /リキャストタイム/);
 assert.doesNotMatch(fastHorseExplanation.detail, /再使用まで/);
-assert.match(fastHorseExplanation.operation, /アビリティ装備/);
+assert.match(fastHorseExplanation.operation, /手動3枠/);
+assert.match(fastHorseExplanation.operation, /開幕・瀕死枠/);
+assert.doesNotMatch(fastHorseExplanation.operation, /控え|待機/);
 const forestSynergyExplanation = getSynergyUnlockExplanation(
   INITIAL_GROUP_SYNERGIES[0]
 );
@@ -2252,8 +2266,8 @@ assert.equal(
 assert.match(forestSynergyExplanation.detail, /25%上昇/);
 assert.match(forestSynergyExplanation.operation, /SYNERGY枠/);
 const lightOfHopeExplanation = getSynergyUnlockExplanation(lightOfHope);
-assert.match(lightOfHopeExplanation.detail, /16秒/);
-assert.match(lightOfHopeExplanation.detail, /1.62倍/);
+assert.match(lightOfHopeExplanation.detail, /12秒/);
+assert.match(lightOfHopeExplanation.detail, /1.95倍/);
 assert.match(lightOfHopeExplanation.operation, /手動発動/);
 assert.equal(crystalBraves.battleEffect?.capitalPressureMultiplier, 1.16);
 assert.equal(crystalBraves.battleEffect?.durationMs, 8_000);
@@ -2264,26 +2278,36 @@ assert.ok(
   'Light of Hope is explicitly stronger than the Ul dah synergy'
 );
 assert.equal(lightOfHope.battleEffect?.ownershipPush, 8);
+assert.deepEqual(
+  [
+    crystalBraves.battleEffect?.durationMs,
+    lightOfHope.battleEffect?.durationMs,
+    grandCompanyEorzea.battleEffect?.durationMs,
+    eraWindSynergy.battleEffect?.durationMs,
+  ],
+  [8_000, 12_000, 16_000, 16_000],
+  'progression battle synergies use compressed 8-to-16-second windows'
+);
 assert.ok(
   (grandCompanyEorzea.battleEffect?.capitalPressureMultiplier ?? 0) >
     (lightOfHope.battleEffect?.capitalPressureMultiplier ?? 0),
-  'Grand Company Eorzea is the strongest progression battle synergy'
+  'Grand Company Eorzea remains stronger than Light of Hope'
 );
 assert.equal(grandCompanyEorzea.battleEffect?.ownershipPush, 12);
 assert.equal(eraWindSynergy.id, ERA_WIND_SYNERGY_ID);
 assert.equal(
-  eraWindSynergy.unlockAfterSavageRaidId,
-  'savage_raid_2_layer_2',
-  'Era Wind moves from the ability list to a mid-Savage progression SYNERGY'
+  eraWindSynergy.unlockAfterAllCartelHqs,
+  true,
+  'Era Wind unlocks after every enterprise-alliance headquarters is conquered'
 );
 assert.ok(
   (eraWindSynergy.battleEffect?.capitalPressureMultiplier ?? 0) >
     (grandCompanyEorzea.battleEffect?.capitalPressureMultiplier ?? 0),
   'Era Wind is the direct upgrade above Grand Company Eorzea'
 );
-assert.equal(eraWindSynergy.battleEffect?.capitalPressureMultiplier, 2.05);
+assert.equal(eraWindSynergy.battleEffect?.capitalPressureMultiplier, 2.18);
 assert.equal(eraWindSynergy.battleEffect?.limitBreakChargeMultiplier, 1.25);
-assert.equal(eraWindSynergy.battleEffect?.continuousGaugePushPerSecond, 0.75);
+assert.equal(eraWindSynergy.battleEffect?.continuousGaugePushPerSecond, 0.85);
 assert.equal(eraWindSynergy.battleEffect?.countersMarketWind, true);
 assert.equal(
   isGroupSynergyUnlocked({
@@ -2297,12 +2321,12 @@ assert.equal(
 assert.equal(
   isGroupSynergyUnlocked({
     synergy: eraWindSynergy,
-    ownedPropertyIds: noOwnedPropertyIds,
+    ownedPropertyIds: new Set(eraWindSynergy.requiredPropertyIds),
     conqueredCommunityIds: new Set(),
-    savageClearedRaidIds: new Set(['savage_raid_2_layer_2']),
+    savageClearedRaidIds: new Set(),
   }),
   true,
-  'the authored mid-Savage clear unlocks Era Wind'
+  'owning every authored alliance HQ unlocks Era Wind without a Savage gate'
 );
 const grandCompanyReadinessEquivalent =
   calculateBattleSynergyReadinessEquivalent({
@@ -2584,7 +2608,7 @@ assert.deepEqual(
     isCityBoss: false,
     isUltimate: true,
   }),
-  ['divine_benison', 'drain', 'drill', 'divination'],
+  ['blackest_night', 'drain', 'drill', 'divination', 'capital_reversal', 'forced_liquidation'],
   'Ultimate exposes the complete sequential enemy support kit'
 );
 assert.deepEqual(
@@ -2692,7 +2716,7 @@ assert.deepEqual(
     isCityBoss: false,
     isCruel: true,
   }),
-  ['divine_benison', 'drill', 'divination', 'rapid_assault', 'limit_break_3'],
+  ['blackest_night', 'drill', 'divination', 'rapid_assault', 'limit_break_3'],
   'Cruel deliberately excludes Drain so its two capital assessments stay legible'
 );
 assert.deepEqual(
@@ -2756,20 +2780,89 @@ assert.equal(
   true,
   'the second declaration is forced before a two-minute mud fight'
 );
-assert.deepEqual(resolveCruelSecondImpact(75), {
+const cruelSignatureRequirement = calculateCruelSignatureRequirement(
+  cruelProperty.marketPrice
+);
+assert.equal(cruelSignatureRequirement, 750_000_000);
+assert.equal(
+  calculateCruelEntryRequirement(cruelProperty.marketPrice),
+  975_000_000,
+  'Cruel entry reserves its 3% brokerage fee and 10% self-capital signature'
+);
+assert.equal(
+  resolveCruelRecoveryContinuousVelocity({
+    velocity: -8,
+    isCruel: true,
+    phase: 'recovery',
+  }),
+  -4,
+  'only player-favorable continuous pressure is halved during Cruel recovery'
+);
+assert.equal(
+  resolveCruelRecoveryContinuousVelocity({
+    velocity: 8,
+    isCruel: true,
+    phase: 'recovery',
+  }),
+  8,
+  'enemy-favorable continuous pressure stays unchanged during Cruel recovery'
+);
+assert.equal(
+  resolveCruelRecoveryContinuousVelocity({
+    velocity: -8,
+    isCruel: true,
+    phase: 'second_countdown',
+  }),
+  -8,
+  'the second assessment countdown uses normal continuous pressure'
+);
+assert.equal(
+  resolveCruelRecoveryContinuousVelocity({
+    velocity: -8,
+    isCruel: false,
+    phase: 'recovery',
+  }),
+  -8,
+  'the recovery modifier never leaks into another difficulty'
+);
+assert.deepEqual(resolveCruelSecondImpact(
+  75,
+  cruelSignatureRequirement,
+  cruelProperty.marketPrice
+), {
   outcome: 'break',
   ownershipBefore: 75,
   ownershipAfter: 75,
+  ownershipSatisfied: true,
+  signatureSatisfied: true,
+  signaturePaid: cruelSignatureRequirement,
+  signatureRequired: cruelSignatureRequirement,
 });
-assert.deepEqual(resolveCruelSecondImpact(50), {
+assert.deepEqual(resolveCruelSecondImpact(
+  50,
+  cruelSignatureRequirement,
+  cruelProperty.marketPrice
+), {
   outcome: 'defeat',
   ownershipBefore: 50,
   ownershipAfter: 0,
+  ownershipSatisfied: false,
+  signatureSatisfied: true,
+  signaturePaid: cruelSignatureRequirement,
+  signatureRequired: cruelSignatureRequirement,
 });
-assert.deepEqual(resolveCruelSecondImpact(74.999), {
+assert.deepEqual(resolveCruelSecondImpact(
+  75,
+  cruelSignatureRequirement - 1,
+  cruelProperty.marketPrice
+), {
   outcome: 'defeat',
-  ownershipBefore: 74.999,
+  ownershipBefore: 75,
   ownershipAfter: 0,
+  ownershipSatisfied: true,
+  signatureSatisfied: false,
+  signaturePaid: cruelSignatureRequirement - 1,
+  signatureRequired: cruelSignatureRequirement,
 });
 assert.equal(shouldHoldCruelVictory(true, 'second_failed'), true);
 assert.equal(shouldHoldCruelVictory(true, 'second_countdown'), true);
@@ -3156,12 +3249,12 @@ const fullyUpgradedGrandCompanyEorzea = upgradedSynergies.find(
 )!;
 assert.equal(
   fullyUpgradedGrandCompanyEorzea.battleEffect?.capitalPressureMultiplier,
-  1.84,
+  2.06,
   'three Savage layer-four clears add 0.02 each'
 );
 assert.equal(
   getBattleOnlySynergyMultiplier(fullyUpgradedGrandCompanyEorzea, true),
-  1.91,
+  2.13,
   'all-business integration adds the permanent final 0.07'
 );
 const absoluteSavageBudgets = savageProperties.map((targetProperty) =>
@@ -3306,9 +3399,11 @@ assert.equal(isSkillUnlocked({ skill: livingDeadSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: fastHorseSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: capitalBoostSkill, ...noAssets }), false);
 assert.equal(isSkillUnlocked({ skill: synergyPushSkill, ...noAssets }), false);
-assert.equal(isSkillUnlocked({ skill: capitalBoostSkill, ...noAssets, totalFunds: 1_000_000 }), true);
-assert.equal(isSkillUnlocked({ skill: livingDeadSkill, ...noAssets, totalFunds: 999_999 }), false);
-assert.equal(isSkillUnlocked({ skill: livingDeadSkill, ...noAssets, totalFunds: 1_000_000 }), true);
+assert.equal(
+  isSkillUnlocked({ skill: disruptionSkill, ...noAssets }),
+  true,
+  'Feint is the useful initial manual ability'
+);
 assert.equal(
   isSkillUnlocked({
     skill: synergyPushSkill,
@@ -3316,24 +3411,44 @@ assert.equal(
     activeSynergyCount: 1,
   }),
   false,
-  'Divine Benison no longer unlocks from an unrelated active SYNERGY count'
+  'Blackest Night does not unlock from an unrelated active SYNERGY count'
 );
 assert.equal(
   isSkillUnlocked({
     skill: synergyPushSkill,
     ...noAssets,
-    ownedProperties: [
-      INITIAL_PROPERTIES.find((property) => property.id === 'prop_brewery_beer')!,
-    ],
+    conqueredCommunityIds: conqueredThrough('イシュガルド'),
   }),
   true,
-  'Divine Benison unlocks from the authored Limsa contract'
+  'Blackest Night unlocks after Ishgard conquest'
 );
-assert.equal(isSkillUnlocked({
-  skill: fastHorseSkill,
-  ...noAssets,
-  ownedProperties: [INITIAL_PROPERTIES.find((property) => property.id === 'prop_ranch_1')!],
-}), true);
+assert.equal(
+  isSkillUnlocked({
+    skill: fastHorseSkill,
+    ...noAssets,
+    conqueredCommunityIds: conqueredThrough('リムサ・ロミンサ'),
+  }),
+  true,
+  '疾風怒濤 unlocks after Limsa conquest'
+);
+assert.equal(
+  isSkillUnlocked({
+    skill: capitalBoostSkill,
+    ...noAssets,
+    conqueredCommunityIds: conqueredThrough('クガネ'),
+  }),
+  true,
+  'ぶんどる unlocks after Kugane conquest'
+);
+assert.equal(
+  isSkillUnlocked({
+    skill: livingDeadSkill,
+    ...noAssets,
+    savageClearedRaidIds: new Set(['prop_abyss_heavy']),
+  }),
+  true,
+  'Living Dead unlocks with the first Savage fourth-floor clear'
+);
 assert.equal(capitalBoostSkill.oncePerBattle, true);
 assert.deepEqual(
   INITIAL_SKILLS.map((skill) => skill.id),
@@ -3347,12 +3462,15 @@ assert.deepEqual(
   ],
   'manual abilities keep six stable legacy IDs after Era Wind becomes SYNERGY'
 );
-assert.equal(fastHorseSkill.cooldownMs, TACTICAL_SKILL_BALANCE.fastAction.cooldownMs);
-assert.equal(
-  fastHorseSkill.cooldownMs - TACTICAL_SKILL_BALANCE.fastAction.durationMs,
-  3_000,
-  '疾風怒濤の計 cannot maintain permanent uptime'
+assert.ok(
+  INITIAL_SKILLS.every(
+    (skill) => skill.cooldownMs === 0 && skill.oncePerBattle === true
+  ),
+  'every player ability is limited to exactly one use per battle'
 );
+assert.equal(fastHorseSkill.cooldownMs, TACTICAL_SKILL_BALANCE.fastAction.cooldownMs);
+assert.equal(fastHorseSkill.oncePerBattle, true);
+assert.equal(TACTICAL_SKILL_BALANCE.fastAction.maxUsesPerBattle, 1);
 const fastActionRatio =
   TACTICAL_SKILL_BALANCE.fastAction.boostedCommandProgressPerTick /
   TACTICAL_SKILL_BALANCE.fastAction.baseCommandProgressPerTick;
@@ -3360,18 +3478,22 @@ assert.ok(fastActionRatio > 1.85 && fastActionRatio < 1.86);
 assert.match(fastHorseSkill.description, /リキャストタイム/);
 assert.match(fastHorseSkill.description, /約47%短縮/);
 assert.equal(INITIAL_SKILLS.some((skill) => skill.id === 'skill_nemawashi'), false);
-assert.equal(disruptionSkill.name, 'スタン');
-assert.equal(TACTICAL_SKILL_BALANCE.disruption.interruptChance, 1);
-assert.equal(TACTICAL_SKILL_BALANCE.disruption.durationMs, 0);
-assert.equal(TACTICAL_SKILL_BALANCE.disruption.collapseMarketRatio, 0);
-assert.equal(TACTICAL_SKILL_BALANCE.disruption.requiresEnemyTelegraph, true);
-assert.equal(TACTICAL_SKILL_BALANCE.disruption.maxInterruptsPerUse, 1);
-assert.match(disruptionSkill.description, /行動予告中/);
-assert.match(disruptionSkill.description, /予告外.*不発/);
+assert.equal(disruptionSkill.name, '牽制');
+assert.equal(disruptionSkill.effectType, 'FEINT');
+assert.equal(disruptionSkill.oncePerBattle, true);
+assert.deepEqual(TACTICAL_SKILL_BALANCE.feint, {
+  durationMs: 10_000,
+  enemyPushMultiplier: 0.9,
+  maxUsesPerBattle: 1,
+});
+assert.match(disruptionSkill.description, /10秒間/);
+assert.match(disruptionSkill.description, /10%軽減/);
+assert.match(disruptionSkill.description, /演出中は残り時間が減らない/);
+assert.doesNotMatch(disruptionSkill.description, /予告|中断|予約/);
 assert.equal(coverSkill.id, 'skill_demoralize', 'legacy equipped ability id remains valid');
 assert.equal(coverSkill.effectType, 'COVER');
 assert.equal(coverSkill.oncePerBattle, true);
-assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 18_000);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 16_000);
 assert.equal(HIGH_DIFFICULTY_SUPPORT_MULTIPLIER, 1.7);
 assert.equal(TACTICAL_SKILL_BALANCE.cover.absorbRatio, 0.92);
 assert.equal(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity, 84);
@@ -3385,13 +3507,13 @@ assert.deepEqual(
   'player Passage and enemy Passage share the same defensive contract'
 );
 assert.equal(BOSS_COVER_BALANCE.cover.durationMs, 18_000);
-assert.equal(BOSS_COVER_BALANCE.enhancedCover.durationMs, 18_000);
+assert.equal(BOSS_COVER_BALANCE.enhancedCover.durationMs, 16_000);
 assert.equal(BOSS_COVER_BALANCE.invincible.durationMs, 5_000);
 assert.equal(BOSS_COVER_BALANCE.cover.gaugeCapacity, 58);
 assert.equal(BOSS_COVER_BALANCE.enhancedCover.gaugeCapacity, 84);
 assert.equal(BOSS_COVER_BALANCE.invincible.followupDurationMs, 6_000);
 assert.equal(BOSS_COVER_BALANCE.invincible.followupGaugeCapacity, 44);
-assert.match(coverSkill.description, /18秒間/);
+assert.match(coverSkill.description, /16秒間/);
 assert.deepEqual(
   applyCoverToGaugeDelta({
     currentGauge: 0,
@@ -3424,8 +3546,8 @@ assert.equal(
   getCoverGuardDisplayPercent({
     remainingGaugeCapacity: 84,
     maximumGaugeCapacity: 84,
-    remainingMs: 18_000,
-    durationMs: 18_000,
+    remainingMs: 16_000,
+    durationMs: 16_000,
   }),
   100,
   'a fresh Cover guard starts with a full display gauge'
@@ -3435,7 +3557,7 @@ assert.equal(
     remainingGaugeCapacity: 42,
     maximumGaugeCapacity: 84,
     remainingMs: 14_000,
-    durationMs: 18_000,
+    durationMs: 16_000,
   }),
   50,
   'the display gauge follows the lower of absorption capacity and duration'
@@ -3455,7 +3577,7 @@ assert.equal(
     remainingGaugeCapacity: 0,
     maximumGaugeCapacity: 84,
     remainingMs: 14_000,
-    durationMs: 18_000,
+    durationMs: 16_000,
   }),
   0,
   'a depleted guard reaches zero before the knight is blown away'
@@ -3541,6 +3663,26 @@ assert.deepEqual(
   }),
   { shouldIntercept: true, heldGauge: 50 },
   'critical AUTO discards a lethal overshoot instead of replaying it after the skill'
+);
+assert.deepEqual(
+  resolveCriticalAutoInterception({
+    currentGauge: 40,
+    candidateGauge: 94,
+    canIntercept: true,
+    preserveResolvedCandidate: false,
+  }),
+  { shouldIntercept: true, heldGauge: 50 },
+  'ordinary enemy pressure explicitly keeps the generic 25% critical AUTO boundary'
+);
+assert.deepEqual(
+  resolveCriticalAutoInterception({
+    currentGauge: 40,
+    candidateGauge: 94,
+    canIntercept: true,
+    preserveResolvedCandidate: true,
+  }),
+  { shouldIntercept: true, heldGauge: 94 },
+  'Forced Liquidation may trigger critical AUTO without erasing its resolved 3% impact'
 );
 assert.deepEqual(
   resolveCriticalAutoInterception({
@@ -4382,17 +4524,20 @@ assert.deepEqual(
   'terminal battle state freezes cash recovery'
 );
 
-assert.deepEqual(DIVINE_BENISON_BALANCE, {
-  durationMs: 8_000,
+assert.deepEqual(BLACKEST_NIGHT_BALANCE, {
+  durationMs: 7_000,
   absorbRatio: 1,
-  gaugeCapacity: 24,
+  gaugeCapacity: 50,
   triggerPlayerOwnership: 52,
   maxUsesPerBattle: 1,
+  darkWaveOwnershipPush: 10,
+  darkWaveGaugeDelta: 20,
+  procOnlyOnFullBreak: true,
 });
 assert.deepEqual(
-  ENEMY_SUPPORT_SKILL_BALANCE.divineBenison,
-  DIVINE_BENISON_BALANCE,
-  'player and enemy Benison share one finite-barrier contract'
+  ENEMY_SUPPORT_SKILL_BALANCE.blackestNight,
+  BLACKEST_NIGHT_BALANCE,
+  'player and enemy Blackest Night share one finite-barrier contract'
 );
 assert.deepEqual(ENEMY_SUPPORT_SKILL_BALANCE.drain, {
   handCashRatio: 0.18,
@@ -4403,89 +4548,157 @@ assert.deepEqual(ENEMY_SUPPORT_SKILL_BALANCE.cashRecovery, {
   passiveRecoveryCapRatio: 0.12,
 });
 assert.deepEqual(
-  applyDivineBenisonToGaugeDelta({
+  applyBlackestNightToGaugeDelta({
     currentGauge: 0,
-    nextGauge: -40,
+    nextGauge: -64,
     protects: 'opponent',
-    remainingGaugeCapacity: 24,
+    remainingGaugeCapacity: 50,
   }),
   {
-    nextGauge: -16,
-    absorbedGauge: 24,
+    nextGauge: -14,
+    absorbedGauge: 50,
     remainingGaugeCapacity: 0,
+    didFullyBreak: true,
   },
-  'enemy Benison fully absorbs up to 12 ownership points and lets overflow through'
+  'enemy Blackest Night absorbs 25 ownership points, lets overflow through and marks a full break'
 );
 assert.deepEqual(
-  applyDivineBenisonToGaugeDelta({
+  applyBlackestNightToGaugeDelta({
     currentGauge: 0,
     nextGauge: 18,
     protects: 'player',
-    remainingGaugeCapacity: 24,
+    remainingGaugeCapacity: 50,
   }),
   {
     nextGauge: 0,
     absorbedGauge: 18,
-    remainingGaugeCapacity: 6,
+    remainingGaugeCapacity: 32,
+    didFullyBreak: false,
   },
-  'player Benison uses the same gauge-capacity rule in the opposite direction'
+  'player Blackest Night uses the same gauge-capacity rule in the opposite direction'
 );
 assert.deepEqual(
-  applyDivineBenisonToGaugeDelta({
+  applyBlackestNightToGaugeDelta({
     currentGauge: 0,
     nextGauge: 10,
     protects: 'opponent',
-    remainingGaugeCapacity: 24,
+    remainingGaugeCapacity: 50,
   }),
   {
     nextGauge: 10,
     absorbedGauge: 0,
-    remainingGaugeCapacity: 24,
+    remainingGaugeCapacity: 50,
+    didFullyBreak: false,
   },
-  'Benison ignores pressure moving away from its protected side'
+  'Blackest Night ignores pressure moving away from its protected side'
 );
 assert.equal(
-  getDivineBenisonDisplayPercent({
-    remainingGaugeCapacity: 24,
-    remainingMs: 8_000,
+  getBlackestNightDisplayPercent({
+    remainingGaugeCapacity: 50,
+    remainingMs: 7_000,
   }),
   100
 );
 assert.equal(
-  getDivineBenisonDisplayPercent({
-    remainingGaugeCapacity: 12,
-    remainingMs: 8_000,
+  getBlackestNightDisplayPercent({
+    remainingGaugeCapacity: 25,
+    remainingMs: 7_000,
   }),
   50
 );
 assert.equal(
-  getDivineBenisonDisplayPercent({
-    remainingGaugeCapacity: 24,
-    remainingMs: 4_000,
+  getBlackestNightDisplayPercent({
+    remainingGaugeCapacity: 50,
+    remainingMs: 3_500,
   }),
   50,
   'barrier HUD displays the lower of capacity and remaining time'
 );
 assert.equal(
-  getDivineBenisonDisplayPercent({
-    remainingGaugeCapacity: 24,
+  getBlackestNightDisplayPercent({
+    remainingGaugeCapacity: 50,
     remainingMs: 0,
   }),
   0
 );
 assert.equal(
-  shouldEnemyUseDivineBenison({ playerOwnership: 51.99, terminal: false }),
+  shouldEnemyUseBlackestNight({ playerOwnership: 51.99, terminal: false }),
   false
 );
 assert.equal(
-  shouldEnemyUseDivineBenison({ playerOwnership: 52, terminal: false }),
+  shouldEnemyUseBlackestNight({ playerOwnership: 52, terminal: false }),
   true,
-  'enemy Benison trigger includes the exact 52% pressure boundary'
+  'enemy Blackest Night trigger includes the exact 52% pressure boundary'
 );
 assert.equal(
-  shouldEnemyUseDivineBenison({ playerOwnership: 100, terminal: true }),
+  shouldEnemyUseBlackestNight({ playerOwnership: 100, terminal: true }),
   false,
-  'enemy Benison never starts after terminal settlement'
+  'enemy Blackest Night never starts after terminal settlement'
+);
+assert.equal(getBlackestNightDarkWaveGaugeDelta('player'), -20);
+assert.equal(getBlackestNightDarkWaveGaugeDelta('opponent'), 20);
+assert.deepEqual(CAPITAL_REVERSAL_BALANCE, {
+  durationMs: 10_000,
+  triggerPlayerOwnership: 55,
+  retainedDirectInvestmentRatio: 0.7,
+  reflectedOwnershipRatio: 0.3,
+  reflectedOwnershipCap: 8,
+  maxUsesPerBattle: 1,
+  requiresResolutionBeforeSettlement: true,
+});
+assert.deepEqual(resolveCapitalReversal(40), {
+  retainedOwnershipPush: 28,
+  reflectedOwnershipPush: 8,
+  netPlayerOwnershipPush: 20,
+  gaugeDelta: -40,
+});
+assert.deepEqual(FORCED_LIQUIDATION_BALANCE, {
+  triggerPlayerOwnership: 75,
+  unmitigatedTargetPlayerOwnership: 3,
+  firstClearRecoveryGraceMs: 3_000,
+  repeatRecoveryGraceMs: 1_800,
+  maxUsesPerBattle: 1,
+});
+assert.equal(
+  calculateForcedLiquidationGaugeDelta(75),
+  144,
+  'unmitigated liquidation falls from 75% ownership to the authored 3% target'
+);
+assert.equal(
+  resolveForcedLiquidationContinuousVelocity({
+    velocity: -6,
+    recoveryRemaining: 1_800,
+    awaitingManualCounter: true,
+  }),
+  0,
+  'pre-cast player and friendly continuous pressure cannot win before a manual counter-command'
+);
+assert.equal(
+  resolveForcedLiquidationContinuousVelocity({
+    velocity: -6,
+    recoveryRemaining: 1_800,
+    awaitingManualCounter: false,
+  }),
+  -6,
+  'the first genuine manual command releases player continuous pressure during the grace'
+);
+assert.equal(
+  resolveForcedLiquidationContinuousVelocity({
+    velocity: -6,
+    recoveryRemaining: 0,
+    awaitingManualCounter: true,
+  }),
+  -6,
+  'grace expiry releases player continuous pressure even without a manual command'
+);
+assert.equal(
+  resolveForcedLiquidationContinuousVelocity({
+    velocity: 6,
+    recoveryRemaining: 1_800,
+    awaitingManualCounter: false,
+  }),
+  0,
+  'enemy continuous pressure stays suspended for the full authored grace'
 );
 assert.equal(
   calculateEnemyDrainAmount({ playerCash: 10_000, marketPrice: 10_000 }),
@@ -4840,16 +5053,16 @@ assert.deepEqual(
     properties: rebelledFirstCityProperties,
     seenUnlockIds: ['opening_auto'],
   }),
-  COMMUNITY_CAMPAIGN_ORDER.slice(0, 5),
-  'the opening AUTO tutorial preserves progress through Kugane'
+  COMMUNITY_CAMPAIGN_ORDER,
+  'a legacy opening AUTO tutorial implies the completed normal story needed to reach Savage'
 );
 assert.deepEqual(
   normalizeConqueredCommunityIds({
     properties: rebelledFirstCityProperties,
     seenUnlockIds: ['critical_auto'],
   }),
-  COMMUNITY_CAMPAIGN_ORDER.slice(0, 7),
-  'the critical ability tutorial preserves progress through Old Sharlayan'
+  COMMUNITY_CAMPAIGN_ORDER,
+  'a legacy critical AUTO tutorial implies the completed normal story needed to reach Savage'
 );
 assert.equal(
   normalizeConqueredCommunityIds({
@@ -4956,18 +5169,17 @@ assert.deepEqual(
       'skill_demoralize',
       'skill_capital_boost',
       'skill_sns_blitz',
-      'skill_sabotage',
     ],
     openingAutoSkillId: 'skill_fast_horse',
     criticalAutoSkillId: 'skill_sns_blitz',
-    reserveSkillId: 'skill_sabotage',
+    reserveSkillId: null,
     manualSkillIds: [
       'skill_synergy_push',
       'skill_demoralize',
       'skill_capital_boost',
     ],
   },
-  'six-role loadout keeps three manual, two AUTO and one reserve without duplicates'
+  'legacy reserve saves migrate to three manual and two AUTO slots without a waiting ability'
 );
 assert.deepEqual(
   normalizeSavedAbilityLoadout({
@@ -4989,11 +5201,10 @@ assert.deepEqual(
       'skill_fast_horse',
       'skill_synergy_push',
       'skill_demoralize',
-      'skill_capital_boost',
     ],
     openingAutoSkillId: null,
     criticalAutoSkillId: null,
-    reserveSkillId: 'skill_capital_boost',
+    reserveSkillId: null,
     manualSkillIds: [
       'skill_fast_horse',
       'skill_synergy_push',
@@ -5097,11 +5308,10 @@ assert.deepEqual(restoredSixRoleLoadout?.equippedSkillIds, [
   'skill_demoralize',
   'skill_capital_boost',
   'skill_sns_blitz',
-  'skill_sabotage',
 ]);
 assert.equal(restoredSixRoleLoadout?.openingAutoSkillId, 'skill_fast_horse');
 assert.equal(restoredSixRoleLoadout?.criticalAutoSkillId, 'skill_sns_blitz');
-assert.equal(restoredSixRoleLoadout?.reserveSkillId, 'skill_sabotage');
+assert.equal(restoredSixRoleLoadout?.reserveSkillId, null);
 assert.equal(
   saveGame({
     ...durableTestSave,

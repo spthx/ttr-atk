@@ -633,7 +633,7 @@
   white-space: nowrap;
 }
 
-.enemy-support-actor__stun-window {
+.enemy-support-actor__countdown {
   position: absolute;
   z-index: 3;
   top: 1.42rem;
@@ -837,7 +837,7 @@
     font-size: .5rem;
   }
 
-  .enemy-support-actor__stun-window {
+  .enemy-support-actor__countdown {
     top: 1.25rem;
     padding: .1rem .26rem;
     font-size: .47rem;
@@ -1803,13 +1803,13 @@
   animation: skill-field-flash .22s ease-out both;
 }
 
-.battle-skill-field--independence-sabotage::before {
+.battle-skill-field--feint::before {
   background:
     radial-gradient(circle at 79% 56%, rgba(244, 63, 94, .58), transparent 24%),
     repeating-linear-gradient(112deg, transparent 0 1.4rem, rgba(251, 113, 133, .13) 1.45rem 1.58rem);
 }
 
-.battle-skill-field--independence-sabotage > i {
+.battle-skill-field--feint > i {
   right: -24%;
   left: auto;
   background: linear-gradient(90deg, transparent, #fb7185, #fff, transparent);
@@ -1904,6 +1904,31 @@
   letter-spacing: .2em;
 }
 
+.battle-skill-nameplate--ally-actor {
+  padding-left: 3.4rem;
+}
+
+.battle-skill-nameplate__ally-actor {
+  position: absolute;
+  left: -.9rem;
+  bottom: -.18rem;
+  display: grid;
+  width: 4.2rem;
+  height: 4.8rem;
+  place-items: end center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.battle-skill-nameplate__ally-actor img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  filter: drop-shadow(0 .28rem .32rem rgba(0, 0, 0, .72));
+}
+
 .battle-skill-nameplate strong {
   max-width: 100%;
   overflow: hidden;
@@ -1949,11 +1974,21 @@
   animation: skill-actor-step .32s cubic-bezier(.16, .72, .22, 1) both;
 }
 
+.integrated-battlefield--skill-capital-boost.integrated-battlefield--skill-stage-cast
+  .ownership-fighter--player,
+.integrated-battlefield--skill-capital-boost.integrated-battlefield--skill-stage-hitstop
+  .ownership-fighter--player,
+.integrated-battlefield--skill-capital-boost.integrated-battlefield--skill-stage-impact
+  .ownership-fighter--player {
+  translate: 0 0;
+  animation: none;
+}
+
 .integrated-battlefield--skill-stage-hitstop .ownership-fighter--player {
   translate: clamp(2.4rem, 9vw, 6.5rem) -.2rem;
 }
 
-.integrated-battlefield--skill-stage-hitstop.integrated-battlefield--skill-independence-sabotage
+.integrated-battlefield--skill-stage-hitstop.integrated-battlefield--skill-feint
   .ownership-fighter--enemy {
   translate: .8rem -.1rem;
 }
@@ -1962,7 +1997,7 @@
   animation: skill-actor-lunge .28s cubic-bezier(.12, .8, .2, 1) both;
 }
 
-.integrated-battlefield--skill-stage-impact.integrated-battlefield--skill-independence-sabotage .ownership-fighter--enemy {
+.integrated-battlefield--skill-stage-impact.integrated-battlefield--skill-feint .ownership-fighter--enemy {
   animation: skill-target-hit .28s ease-out both;
 }
 
@@ -2812,6 +2847,84 @@
   }
 }
 
+/* At the 402px portrait baseline, the result and profit-sharing copy was only
+ * one line taller than the former 88dvh dialog. Use the safe-area viewport and
+ * allow borderline labels to wrap instead of hiding the final line. */
+@media (max-width: 430px) {
+  .buyout-screen .buyout-result-overlay {
+    padding:
+      max(.5rem, var(--game-safe-top))
+      max(.5rem, var(--game-safe-right))
+      max(.5rem, var(--game-safe-bottom))
+      max(.5rem, var(--game-safe-left));
+  }
+
+  .buyout-screen .buyout-result-overlay .buyout-result {
+    max-height: calc(
+      100dvh - var(--game-safe-top) - var(--game-safe-bottom) - 1rem
+    );
+    padding-bottom: .35rem;
+    scroll-padding-block-end: .75rem;
+  }
+
+  .buyout-screen
+    :is(
+      .result-company-growth,
+      .result-settlement-summary,
+      .result-celebration-choice,
+      .result-celebration-gift,
+      .result-battle-details,
+      .result-return-map
+    ) {
+    width: calc(100% - 1.1rem);
+    max-width: calc(100% - 1.1rem);
+    margin-inline: .55rem;
+    box-sizing: border-box;
+  }
+
+  .buyout-screen .tataru-analysis {
+    margin-inline: .55rem;
+  }
+
+  .buyout-screen .tataru-analysis p,
+  .buyout-screen .result-celebration-gift > span,
+  .buyout-screen .result-celebration-choice > header span {
+    min-width: 0;
+  }
+
+  .buyout-screen .result-company-growth > header,
+  .buyout-screen .result-settlement-summary > header {
+    flex-wrap: wrap;
+  }
+
+  .buyout-screen .result-settlement-summary dl > div {
+    align-items: flex-start;
+  }
+
+  .buyout-screen .result-settlement-summary dt,
+  .buyout-screen .result-celebration-gift small,
+  .buyout-screen .result-celebration-choice > header small,
+  .buyout-screen .result-return-map > span {
+    min-width: 0;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .buyout-screen .result-settlement-summary dd {
+    flex: 0 0 auto;
+  }
+
+  .buyout-screen .result-celebration-gift {
+    align-items: flex-start;
+  }
+
+  .buyout-screen .result-return-map {
+    min-height: 3.6rem !important;
+    padding: .62rem .72rem;
+    line-height: 1.35;
+  }
+}
+
 /*
  * Post-Ultimate CRUEL presentation. This recolours the existing fixed
  * twenty-two-column rack; it does not add amount-proportional nodes or an idle
@@ -3432,6 +3545,7 @@
   --coin-light: #fff4ad;
   --coin-mid: #e6a90b;
   --coin-dark: #704006;
+  --capital-rack-compression: 0rem;
   position: absolute;
   z-index: 1;
   inset: 0;
@@ -3439,8 +3553,21 @@
   overflow: visible;
   pointer-events: none;
   contain: layout style;
-  translate: 0 var(--capital-rack-sink, 0rem);
-  transition: translate 180ms steps(4, end);
+  translate: 0 calc(
+    var(--capital-rack-sink, 0rem) + var(--capital-rack-compression)
+  );
+  transition: translate 220ms cubic-bezier(.2, .72, .22, 1);
+}
+
+/* Exceptional funding reuses the fixed twenty-two columns as a lowered
+ * loading tray. The frame signal survived the overflow rewrite, so reconnect
+ * it here instead of adding amount-proportional coins. Keeping the final
+ * overflow frame compressed through its afterglow makes the return a smooth
+ * transition rather than the old one-frame root snap. */
+.integrated-battlefield
+  .gil-column-field[data-rack-compressed="true"] {
+  --capital-rack-compression: .55rem;
+  will-change: translate;
 }
 
 .integrated-battlefield .gil-column-field--enemy {
@@ -3670,6 +3797,11 @@
 
   .integrated-battlefield .capital-fixed-column {
     left: var(--column-phone-x);
+  }
+
+  .integrated-battlefield
+    .gil-column-field[data-rack-compressed="true"] {
+    --capital-rack-compression: .62rem;
   }
 
   .integrated-battlefield .capital-overflow-stamp > i {

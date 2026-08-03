@@ -588,6 +588,7 @@ class SoundEffects {
       if (!ctx) return;
       const now = ctx.currentTime;
       const hostile =
+        effectType === 'FEINT' ||
         effectType === 'INDEPENDENCE_SABOTAGE';
       const wind = effectType === 'ERA_WIND' || effectType === 'COOLDOWN_REDUCTION';
       const notes = hostile
@@ -692,6 +693,7 @@ class SoundEffects {
       if (!ctx) return;
       const now = ctx.currentTime;
       const hostile =
+        effectType === 'FEINT' ||
         effectType === 'INDEPENDENCE_SABOTAGE';
       const wind = effectType === 'ERA_WIND' || effectType === 'COOLDOWN_REDUCTION';
       const master = ctx.createGain();

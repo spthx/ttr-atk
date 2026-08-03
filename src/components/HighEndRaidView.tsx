@@ -12,6 +12,10 @@ import { FANKIT_ART } from '../data/fankitAssets';
 import { formatCurrency } from '../utils/formatter';
 import type { BattleReadinessResult } from '../utils/battleReadiness';
 import { isCartelFullyPrepared } from '../utils/cartel';
+import {
+  calculateCruelEntryRequirement,
+  calculateCruelSignatureRequirement,
+} from '../utils/cruelBattle';
 import { StrengthComparison } from './StrengthComparison';
 import {
   SAVAGE_GROUP_MULTIPLIER_BASE,
@@ -88,7 +92,14 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
     'cruel'
   );
   const cruelFee = Math.round(cruelProperty.marketPrice * 0.03);
-  const cruelAffordable = totalFunds >= cruelFee;
+  const cruelSignatureCapital = calculateCruelSignatureRequirement(
+    cruelProperty.marketPrice
+  );
+  const cruelEntryRequirement = calculateCruelEntryRequirement(
+    cruelProperty.marketPrice,
+    cruelFee
+  );
+  const cruelAffordable = totalFunds >= cruelEntryRequirement;
   const ownedNormalPropertyIds = new Set(
     properties
       .filter((property) => property.owner === 'player')
@@ -397,12 +408,17 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
             </span>
             <span>
               <ShieldAlert />
+              挑戦最低資金 {formatCurrency(cruelEntryRequirement)}（署名原資{' '}
+              {formatCurrency(cruelSignatureCapital)}を含む）
+            </span>
+            <span>
+              <ShieldAlert />
               AI LEVEL 6・強化かばう・通常事業と進行は保護
             </span>
             <div className="cruel-raid-card__warning" role="note">
               <b>二段階フェーズ「万象資本化」</b>
               <p>
-                開始約15秒後に所有率10%へ。資本・資金・LBを保ったまま50%へ盛り返し、第二査定では75%以上が必須です。未達は敗北、宣告中も行動できます。
+                開始約15秒後に所有率10%へ（投入資本・資金・LBは維持）。復帰中は自社へ進む継続速度が50%になります。50%へ戻すと12秒の第二査定が始まり、所有率75%以上＋査定中の自社直接出資{formatCurrency(cruelSignatureCapital)}（相場10%）が必須。人脈・LB・SYNERGY・外部アライアンスは署名対象外です。
               </p>
             </div>
             <StrengthComparison result={cruelStrengthComparison} compact />
@@ -414,7 +430,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
               >
                 <Crown />
                 {!cruelAffordable
-                  ? '参加手数料が不足'
+                  ? '手数料＋署名原資が不足'
                   : cruelCleared
                     ? '酷へ再挑戦'
                     : '酷へ挑戦'}
