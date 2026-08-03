@@ -348,7 +348,7 @@ export const INITIAL_SKILLS: TacticalSkill[] = [
     name: 'パッセ',
     costType: 'high',
     cooldownMs: 0,
-    description: '1争奪戦につき1回、ナイトが18秒間援護に入り、競合から受ける所有率への押し込みを92%軽減する。防御容量は内部84（所有率42%分相当）。',
+    description: '1争奪戦につき1回、ナイトが16秒間援護に入り、競合から受ける所有率への押し込みを92%軽減する。防御容量は内部84（所有率42%分相当）。',
     effectType: 'COVER',
     unlockRequirements: '企業連合本部を1つ制覇',
     requiredPropertyIds: ['prop_dofor_hq', 'prop_abyss_hq'],
@@ -468,8 +468,8 @@ export const INITIAL_GROUP_SYNERGIES: GroupSynergy[] = [
     selectionPriority: 200,
     battleEffect: {
       kind: 'timed_capital_buff',
-      durationMs: 16_000,
-      capitalPressureMultiplier: 1.62,
+      durationMs: 12_000,
+      capitalPressureMultiplier: 1.95,
       ownershipPush: 8,
       oncePerBattle: true,
     },
@@ -488,8 +488,8 @@ export const INITIAL_GROUP_SYNERGIES: GroupSynergy[] = [
     selectionPriority: 300,
     battleEffect: {
       kind: 'timed_capital_buff',
-      durationMs: 18_000,
-      capitalPressureMultiplier: 1.78,
+      durationMs: 16_000,
+      capitalPressureMultiplier: 2,
       ownershipPush: 12,
       oncePerBattle: true,
     },
@@ -508,13 +508,13 @@ export const INITIAL_GROUP_SYNERGIES: GroupSynergy[] = [
     selectionPriority: 400,
     battleEffect: {
       kind: 'timed_capital_buff',
-      durationMs: 18_000,
-      // Full Savage upgrades can lift GCE to 1.91. Era Wind must remain the
-      // unmistakable higher-tier manual choice after its later unlock.
-      capitalPressureMultiplier: 2.05,
+      durationMs: 16_000,
+      // The shorter 16-second window keeps the former total pressure in a
+      // decisive burst and remains the clear upgrade above Grand Company.
+      capitalPressureMultiplier: 2.18,
       ownershipPush: 12,
       limitBreakChargeMultiplier: 1.25,
-      continuousGaugePushPerSecond: 0.75,
+      continuousGaugePushPerSecond: 0.85,
       countersMarketWind: true,
       oncePerBattle: true,
     },

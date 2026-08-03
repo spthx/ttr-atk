@@ -92,8 +92,6 @@ import {
 import {
   getWindPool,
   getWindProgressionStage,
-  WIND_ACTIVE_SECONDS,
-  WIND_CALM_SECONDS,
 } from '../src/components/WindIndicator';
 import {
   calculateOfflineIncome,
@@ -349,10 +347,6 @@ assert.equal(
 );
 assert.ok(getWindPool(3).includes('HEADWIND_PLAYER'));
 assert.ok(getWindPool(3).includes('CROSSWIND'));
-assert.ok(
-  WIND_ACTIVE_SECONDS + WIND_CALM_SECONDS >= 26,
-  'non-calm wind events are separated by a readable calm interval'
-);
 let battleWind = createBattleWindState();
 assert.equal(battleWind.phase, 'grace');
 assert.equal(battleWind.windType, 'CALM');
@@ -384,8 +378,8 @@ assert.ok(
   Math.abs(battleWind.secondsRemaining - BATTLE_WIND_TELEGRAPH_SECONDS) < 1e-9
 );
 assert.equal(BATTLE_WIND_TELEGRAPH_SECONDS, 2);
-assert.equal(BATTLE_WIND_ACTIVE_MIN_SECONDS, 10);
-assert.equal(BATTLE_WIND_ACTIVE_MAX_SECONDS, 13);
+assert.equal(BATTLE_WIND_ACTIVE_MIN_SECONDS, 7);
+assert.equal(BATTLE_WIND_ACTIVE_MAX_SECONDS, 9);
 const telegraphedWind = battleWind.pendingWindType;
 battleWind = advanceBattleWind(
   battleWind,
@@ -2272,8 +2266,8 @@ assert.equal(
 assert.match(forestSynergyExplanation.detail, /25%上昇/);
 assert.match(forestSynergyExplanation.operation, /SYNERGY枠/);
 const lightOfHopeExplanation = getSynergyUnlockExplanation(lightOfHope);
-assert.match(lightOfHopeExplanation.detail, /16秒/);
-assert.match(lightOfHopeExplanation.detail, /1.62倍/);
+assert.match(lightOfHopeExplanation.detail, /12秒/);
+assert.match(lightOfHopeExplanation.detail, /1.95倍/);
 assert.match(lightOfHopeExplanation.operation, /手動発動/);
 assert.equal(crystalBraves.battleEffect?.capitalPressureMultiplier, 1.16);
 assert.equal(crystalBraves.battleEffect?.durationMs, 8_000);
@@ -2284,10 +2278,20 @@ assert.ok(
   'Light of Hope is explicitly stronger than the Ul dah synergy'
 );
 assert.equal(lightOfHope.battleEffect?.ownershipPush, 8);
+assert.deepEqual(
+  [
+    crystalBraves.battleEffect?.durationMs,
+    lightOfHope.battleEffect?.durationMs,
+    grandCompanyEorzea.battleEffect?.durationMs,
+    eraWindSynergy.battleEffect?.durationMs,
+  ],
+  [8_000, 12_000, 16_000, 16_000],
+  'progression battle synergies use compressed 8-to-16-second windows'
+);
 assert.ok(
   (grandCompanyEorzea.battleEffect?.capitalPressureMultiplier ?? 0) >
     (lightOfHope.battleEffect?.capitalPressureMultiplier ?? 0),
-  'Grand Company Eorzea is the strongest progression battle synergy'
+  'Grand Company Eorzea remains stronger than Light of Hope'
 );
 assert.equal(grandCompanyEorzea.battleEffect?.ownershipPush, 12);
 assert.equal(eraWindSynergy.id, ERA_WIND_SYNERGY_ID);
@@ -2301,9 +2305,9 @@ assert.ok(
     (grandCompanyEorzea.battleEffect?.capitalPressureMultiplier ?? 0),
   'Era Wind is the direct upgrade above Grand Company Eorzea'
 );
-assert.equal(eraWindSynergy.battleEffect?.capitalPressureMultiplier, 2.05);
+assert.equal(eraWindSynergy.battleEffect?.capitalPressureMultiplier, 2.18);
 assert.equal(eraWindSynergy.battleEffect?.limitBreakChargeMultiplier, 1.25);
-assert.equal(eraWindSynergy.battleEffect?.continuousGaugePushPerSecond, 0.75);
+assert.equal(eraWindSynergy.battleEffect?.continuousGaugePushPerSecond, 0.85);
 assert.equal(eraWindSynergy.battleEffect?.countersMarketWind, true);
 assert.equal(
   isGroupSynergyUnlocked({
@@ -3245,12 +3249,12 @@ const fullyUpgradedGrandCompanyEorzea = upgradedSynergies.find(
 )!;
 assert.equal(
   fullyUpgradedGrandCompanyEorzea.battleEffect?.capitalPressureMultiplier,
-  1.84,
+  2.06,
   'three Savage layer-four clears add 0.02 each'
 );
 assert.equal(
   getBattleOnlySynergyMultiplier(fullyUpgradedGrandCompanyEorzea, true),
-  1.91,
+  2.13,
   'all-business integration adds the permanent final 0.07'
 );
 const absoluteSavageBudgets = savageProperties.map((targetProperty) =>
@@ -3489,7 +3493,7 @@ assert.doesNotMatch(disruptionSkill.description, /予告|中断|予約/);
 assert.equal(coverSkill.id, 'skill_demoralize', 'legacy equipped ability id remains valid');
 assert.equal(coverSkill.effectType, 'COVER');
 assert.equal(coverSkill.oncePerBattle, true);
-assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 18_000);
+assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 16_000);
 assert.equal(HIGH_DIFFICULTY_SUPPORT_MULTIPLIER, 1.7);
 assert.equal(TACTICAL_SKILL_BALANCE.cover.absorbRatio, 0.92);
 assert.equal(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity, 84);
@@ -3503,13 +3507,13 @@ assert.deepEqual(
   'player Passage and enemy Passage share the same defensive contract'
 );
 assert.equal(BOSS_COVER_BALANCE.cover.durationMs, 18_000);
-assert.equal(BOSS_COVER_BALANCE.enhancedCover.durationMs, 18_000);
+assert.equal(BOSS_COVER_BALANCE.enhancedCover.durationMs, 16_000);
 assert.equal(BOSS_COVER_BALANCE.invincible.durationMs, 5_000);
 assert.equal(BOSS_COVER_BALANCE.cover.gaugeCapacity, 58);
 assert.equal(BOSS_COVER_BALANCE.enhancedCover.gaugeCapacity, 84);
 assert.equal(BOSS_COVER_BALANCE.invincible.followupDurationMs, 6_000);
 assert.equal(BOSS_COVER_BALANCE.invincible.followupGaugeCapacity, 44);
-assert.match(coverSkill.description, /18秒間/);
+assert.match(coverSkill.description, /16秒間/);
 assert.deepEqual(
   applyCoverToGaugeDelta({
     currentGauge: 0,
@@ -3542,8 +3546,8 @@ assert.equal(
   getCoverGuardDisplayPercent({
     remainingGaugeCapacity: 84,
     maximumGaugeCapacity: 84,
-    remainingMs: 18_000,
-    durationMs: 18_000,
+    remainingMs: 16_000,
+    durationMs: 16_000,
   }),
   100,
   'a fresh Cover guard starts with a full display gauge'
@@ -3553,7 +3557,7 @@ assert.equal(
     remainingGaugeCapacity: 42,
     maximumGaugeCapacity: 84,
     remainingMs: 14_000,
-    durationMs: 18_000,
+    durationMs: 16_000,
   }),
   50,
   'the display gauge follows the lower of absorption capacity and duration'
@@ -3573,7 +3577,7 @@ assert.equal(
     remainingGaugeCapacity: 0,
     maximumGaugeCapacity: 84,
     remainingMs: 14_000,
-    durationMs: 18_000,
+    durationMs: 16_000,
   }),
   0,
   'a depleted guard reaches zero before the knight is blown away'

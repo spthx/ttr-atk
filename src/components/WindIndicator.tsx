@@ -86,9 +86,6 @@ export const WIND_CONDITIONS: Record<WindType, WindCondition> = {
   },
 };
 
-export const WIND_ACTIVE_SECONDS = 10;
-export const WIND_CALM_SECONDS = 16;
-
 export const getWindProgressionStage = (
   connectedCommunityCount: number
 ): WindProgressionStage => {
