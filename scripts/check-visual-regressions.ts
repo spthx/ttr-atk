@@ -221,13 +221,43 @@ assert.match(
 );
 assert.match(
   app,
-  /const openingAutoUnlocked = savageUnlocked;[\s\S]*const criticalAutoUnlocked = savageClearedSet\.has\([\s\S]*FIRST_SAVAGE_FOURTH_LAYER_ID/,
-  'opening and last-stand abilities must unlock at Savage and its first fourth floor'
+  /const openingAutoUnlocked = savageClearedSet\.has\([\s\S]*FIRST_SAVAGE_FIRST_LAYER_ID[\s\S]*const criticalAutoUnlocked = savageClearedSet\.has\([\s\S]*FIRST_SAVAGE_FOURTH_LAYER_ID/,
+  'opening and last-stand roles must unlock after the first Savage floor and first fourth floor'
+);
+assert.match(
+  app,
+  /const tradeAllianceUnlocked = !!communityProgress\.find\([\s\S]*community\.id === 'クリスタリウム'/,
+  'enterprise Alliance must wait until the Crystarium route is conquered'
+);
+assert.doesNotMatch(
+  app,
+  /living_dead_skill|総資産100万ギル達成/,
+  'the retired asset-value Living Dead tutorial must not survive the layer-four unlock migration'
+);
+assert.match(
+  indexCss,
+  /\.city-unlock__card\s*\{[\s\S]*max-height: calc\(100dvh[\s\S]*overflow-y: auto !important/,
+  'unlock explanations must scroll within the 402x874 safe viewport'
 );
 assert.match(
   skillsSynergyView,
-  /SKILL_PROGRESSION_ORDER = \[[\s\S]*skill_synergy_push[\s\S]*skill_sabotage[\s\S]*orderedSkills\.map/,
+  /SKILL_PROGRESSION_ORDER = \[[\s\S]*skill_sabotage[\s\S]*skill_fast_horse[\s\S]*skill_synergy_push[\s\S]*skill_capital_boost[\s\S]*skill_demoralize[\s\S]*skill_sns_blitz[\s\S]*orderedSkills/,
   'the ability catalogue must follow campaign learning order'
+);
+assert.doesNotMatch(
+  skillsSynergyView,
+  /控えアビリティ|待機アビリティ|reserveSkillId|mode:\s*'reserve'/,
+  'the removed reserve/waiting slot must not return to the ability UI'
+);
+assert.match(
+  skillsSynergyView,
+  /onReturnToStory && \([\s\S]*onClick=\{onReturnToStory\}[\s\S]*MapPinned[\s\S]*storyReturnLabel/,
+  'ability setup opened by progression must expose one obvious return-to-story action'
+);
+assert.match(
+  app,
+  /const returnFromAbilitySetup[\s\S]*destination === 'savage'[\s\S]*setActiveTab\('savage'\)[\s\S]*mode: 'targets'[\s\S]*community: skillsStoryReturn\.community/,
+  'the return action must restore either the high-end list or the exact story enemy list'
 );
 assert.doesNotMatch(
   `${app}\n${battleModal}\n${skillsSynergyView}`,
@@ -436,6 +466,21 @@ assert.ok(
 );
 assert.match(
   battleModal,
+  /const \[usedBattleSynergyIds, setUsedBattleSynergyIds\][\s\S]*const battleSynergyUsed =[\s\S]*usedBattleSynergyIds\.has\(selectedBattleSynergy\.id\)/,
+  'regular and progression SYNERGY must share one per-battle usage ledger'
+);
+assert.match(
+  battleModal,
+  /const demandFromGroup = \(\s*synergyId: string,[\s\S]*usedBattleSynergyIds\.has\(synergyId\)[\s\S]*setUsedBattleSynergyIds\(\(current\) => new Set\(current\)\.add\(synergyId\)\)/,
+  'regular group SYNERGY must reject and record repeat use in the same battle'
+);
+assert.match(
+  battleModal,
+  /disabled=\{[\s\S]*!battleSynergyReady[\s\S]*battleSynergyUsed[\s\S]*<em>\{battleSynergyUsed\s*\? '使用済み'/,
+  'the SYNERGY action must disable and visibly report every used synergy type'
+);
+assert.match(
+  battleModal,
   /getSkillCinematicTimelineState\(\s*performance\.now\(\) - startedAtMs,\s*timing\s*\)[\s\S]*getSkillCinematicEventDecision[\s\S]*capitalCommitActiveRef\.current[\s\S]*capitalPilePreviewActiveRef\.current\.player[\s\S]*capitalPilePreviewActiveRef\.current\.enemy[\s\S]*window\.setTimeout\(advance, 50\)/,
   'the pure elapsed-time runner must hold completion while any capital presentation remains active'
 );
@@ -612,6 +657,16 @@ assert.doesNotMatch(
   'narrow phones must not collapse the two allocation choices into a clipped vertical stack'
 );
 assert.match(
+  capitalCss,
+  /@media \(max-width: 430px\)[\s\S]*buyout-result-overlay[\s\S]*max-height: calc\([\s\S]*100dvh[\s\S]*result-celebration-choice[\s\S]*overflow-wrap: anywhere/,
+  '402px portrait results and profit-sharing copy must retain the last line inside the safe viewport'
+);
+assert.match(
+  capitalCss,
+  /result-return-map[\s\S]*min-height: 3\.6rem[\s\S]*line-height: 1\.35/,
+  'the post-victory return action must allow a readable wrapped label'
+);
+assert.match(
   battleModal,
   /profitAllocationChoices\.map\(\(option\) => \{[\s\S]*option\.cost[\s\S]*option\.departureProbability/,
   'the result modal must only map the pure settlement choice projections'
@@ -743,13 +798,83 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /policy === 'unstoppable'[\s\S]*policy === 'delay_only'[\s\S]*stunDelayMs[\s\S]*cancelEnemySupportTelegraph\(false, skillId, true\)/,
-  'Stun must distinguish unstoppable phases, delay-only LB3, and interruptible support actions'
+  /const \[feintRemaining, setFeintRemaining\][\s\S]*TACTICAL_SKILL_BALANCE\.feint\.enemyPushMultiplier/,
+  'Feint must own one timed 10% enemy-pressure reduction instead of a reactive interrupt state'
 );
 assert.match(
   battleModal,
-  /interruptEnemySupportTelegraph\(\)[\s\S]*aiProgress >= 72[\s\S]*stunInterruptedActionRef\.current = 'standard'/,
-  'Stun must still interrupt a clearly advanced ordinary enemy action warning'
+  /skill\.effectType === 'FEINT'[\s\S]*feintRemainingRef\.current = TACTICAL_SKILL_BALANCE\.feint\.durationMs[\s\S]*setFeintRemaining/,
+  'pressing Feint must activate its full duration immediately'
+);
+assert.doesNotMatch(
+  battleModal,
+  /interruptEnemySupportTelegraph|stunInterruptedActionRef|スタン可能|スタンで遅延|発動予約|牽制待機/,
+  'the retired Stun/activation-reservation behavior and copy must not return'
+);
+assert.match(
+  battleModal,
+  /applyFeintToEnemyGaugeCandidate[\s\S]*applyCoverToGaugeCandidate[\s\S]*pendingDarkWavesRef\.current\.length[\s\S]*getBlackestNightDarkWaveGaugeDelta/,
+  'enemy pressure must resolve Feint, finite defenses, then same-transaction Dark Wave'
+);
+assert.match(
+  battleModal,
+  /barrier\.remainingGaugeCapacity <= 0[\s\S]*releaseBlackestNight\('player', true\)[\s\S]*releaseBlackestNight\('enemy', true\)/,
+  'Blackest Night must queue Dark Wave only when the finite barrier fully breaks'
+);
+assert.match(
+  battleModal,
+  /capitalReversalRequired[\s\S]*triggerPlayerOwnership[\s\S]*startEnemySupportSkill\('capital_reversal'\)[\s\S]*forcedLiquidationRequired[\s\S]*triggerPlayerOwnership[\s\S]*startEnemySupportSkill\('forced_liquidation'\)/,
+  'Savage layer three and four mechanics must hold their authored ownership thresholds before settlement'
+);
+assert.match(
+  battleModal,
+  /const reversalActive = capitalReversalRemainingRef\.current > 0[\s\S]*resolveCapitalReversal\([\s\S]*reflectedOwnershipCap[\s\S]*capitalReversalRemainingRef\.current = 0/,
+  'only direct investment must consume 資本反転 with the first-series reflection cap'
+);
+assert.match(
+  battleModal,
+  /if \(skillId === 'forced_liquidation'\)[\s\S]*forcedLiquidationRecoveryRemainingRef\.current = recoveryMs;[\s\S]*forcedLiquidationAwaitingManualCounterRef\.current = true/,
+  '強制清算 impact must arm a manual-counter gate for pre-existing player continuous pressure'
+);
+assert.match(
+  battleModal,
+  /const consumeCommand = \(\) => \{[\s\S]*forcedLiquidationRecoveryRemainingRef\.current > 0[\s\S]*forcedLiquidationAwaitingManualCounterRef\.current = false[\s\S]*setCommandProgress\(0\)/,
+  'the first successfully consumed manual command must release player continuous pressure'
+);
+assert.match(
+  battleModal,
+  /if \(nextRecovery <= 0\) \{[\s\S]*forcedLiquidationAwaitingManualCounterRef\.current = false/,
+  '強制清算 grace expiry must release player continuous pressure without requiring a command'
+);
+assert.match(
+  battleModal,
+  /resolveForcedLiquidationContinuousVelocity\(\{[\s\S]*velocity: limitAdjustedVelocity,[\s\S]*recoveryRemaining: forcedLiquidationRecoveryRemainingRef\.current,[\s\S]*awaitingManualCounter:[\s\S]*forcedLiquidationAwaitingManualCounterRef\.current/,
+  'the live gauge loop must resolve both sides through the 強制清算 continuous-pressure gate'
+);
+assert.match(
+  gameBalance,
+  /if \(recoveryRemaining <= 0\) return velocity;[\s\S]*if \(awaitingManualCounter\) return 0;[\s\S]*return Math\.min\(0, velocity\);/,
+  'the gate must freeze both sides before a counter, then keep only enemy pressure frozen for the remaining grace'
+);
+assert.match(
+  battleModal,
+  /const applyGaugeCandidate = \([\s\S]*criticalAutoKeepsResolvedImpact = false[\s\S]*preserveResolvedCandidate: criticalAutoKeepsResolvedImpact/,
+  'ordinary enemy pressure must default to the generic 25% critical AUTO boundary'
+);
+assert.match(
+  battleModal,
+  /if \(skillId === 'forced_liquidation'\)[\s\S]*applyGaugeCandidate\([\s\S]*gaugeRef\.current \+ liquidationGaugeDelta,[\s\S]*'enemy',[\s\S]*'NORMAL',[\s\S]*true,[\s\S]*false,[\s\S]*true[\s\S]*forcedLiquidationRecoveryRemainingRef\.current = recoveryMs/,
+  'Forced Liquidation must preserve its already-mitigated impact while triggering critical AUTO'
+);
+assert.match(
+  battleModal,
+  /const \[companyInvested, setCompanyInvested\] = useState\(0\);[\s\S]*const \[reflectedCompanyInvested, setReflectedCompanyInvested\][\s\S]*const totalPlayerInvested = companyInvested \+ demandInvested;[\s\S]*const displayedCompanyInvested = companyInvested;[\s\S]*commitPlayerCapital\('company', retainedCapital\);[\s\S]*setReflectedCompanyInvested\([\s\S]*current \+ reflectedCapital[\s\S]*const companyCapitalAtRisk =[\s\S]*companyInvested \+ reflectedCompanyInvested;[\s\S]*const resultSettlementCost =[\s\S]*companyCapitalAtRisk \* \(winner === 'player' \? 0\.35 : 0\.75\)[\s\S]*companyFundsInvested: companyCapitalAtRisk/,
+  'capital reflected to the enemy must stay out of player pressure while remaining in settlement risk and BattleResult'
+);
+assert.doesNotMatch(
+  battleModal,
+  /commitPlayerCapital\('company', reflectedCapital\)|setCompanyInvested\([\s\S]{0,180}reflectedCapital|const totalPlayerInvested\s*=\s*companyCapitalAtRisk/,
+  'reflected company capital must never leak back into the player pressure ledger'
 );
 assert.match(
   battleModal,
@@ -759,7 +884,7 @@ assert.match(
 assert.match(
   battleModal,
   /const visibleRemaining = Math\.max\([\s\S]*100,[\s\S]*Math\.ceil\(rawRemaining \/ 100\) \* 100[\s\S]*\)/,
-  'an interruptible telegraph held by capital stacking must never show zero seconds'
+  'an enemy telegraph held by capital stacking must never show zero seconds'
 );
 assert.match(
   battleModal,
@@ -769,27 +894,27 @@ assert.match(
 assert.match(
   battleModal,
   /const beginCast = \(grantPostPileGrace = false\)[\s\S]*capitalPilePreviewActiveRef\.current\.player[\s\S]*capitalPilePreviewActiveRef\.current\.enemy[\s\S]*beginCast\(grantPostPileGrace \|\| capitalPileBlocked\)[\s\S]*if \(grantPostPileGrace\)[\s\S]*refreshEnemySupportTelegraphDeadline\([\s\S]*ENEMY_SUPPORT_POST_PILE_GRACE_MS[\s\S]*const graceTimer = window\.setTimeout\([\s\S]*beginCast\(false\)[\s\S]*ENEMY_SUPPORT_POST_PILE_GRACE_MS/,
-  'an enemy support cast deferred by stacking must grant a real post-pile stun window'
+  'an enemy support cast deferred by stacking must grant a readable post-pile action window'
 );
 assert.match(
   battleModal,
   /startEnemySupportTelegraphTicker\(presentation\.telegraphMs\)[\s\S]*const beginCast[\s\S]*updateStage\('cast'\)[\s\S]*clearEnemySupportTelegraphTicker\(\)[\s\S]*setEnemySupportTelegraphRemainingMs\(null\)/,
-  'the stun countdown must start with the warning and stop only when the actual cast starts'
+  'the enemy countdown must start with the warning and stop only when the actual cast starts'
 );
 assert.match(
   battleModal,
   /const clearEnemySupportTimers[\s\S]*clearEnemySupportTelegraphTicker\(\)[\s\S]*setEnemySupportTelegraphRemainingMs\(null\)[\s\S]*const cancelEnemySupportTelegraph[\s\S]*clearEnemySupportTimers\(\)[\s\S]*useEffect\(\(\) => \(\) => \{[\s\S]*clearEnemySupportTimers\(\)/,
-  'cancel and unmount paths must both clear the stun countdown ticker'
+  'cancel and unmount paths must both clear the enemy countdown ticker'
 );
 assert.match(
   battleModal,
-  /enemy-support-actor__stun-window[\s\S]*enemySupportInterruptibility === 'unstoppable'[\s\S]*中断不能[\s\S]*delay_only[\s\S]*スタンで遅延[\s\S]*スタン可能[\s\S]*enemySupportTelegraphRemainingMs \/ 1000[\s\S]*toFixed\(1\)[\s\S]*秒/,
-  'the enemy support actor must expose both interrupt policy and readable remaining time'
+  /enemy-support-actor__countdown[\s\S]*発動まで[\s\S]*enemySupportTelegraphRemainingMs \/ 1000[\s\S]*toFixed\(1\)[\s\S]*秒/,
+  'the enemy support actor must expose a readable remaining time without Stun instructions'
 );
 assert.match(
   capitalCss,
-  /\.enemy-support-actor__stun-window[\s\S]*min-width: max-content[\s\S]*white-space: nowrap/,
-  'the stun window must stay legible beside the enemy support name'
+  /\.enemy-support-actor__countdown[\s\S]*min-width: max-content[\s\S]*white-space: nowrap/,
+  'the cast countdown must stay legible beside the enemy support name'
 );
 assert.doesNotMatch(
   battleModal,
@@ -878,13 +1003,33 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /スタン無効――この宣告は戦闘フェーズそのものを変える/,
-  'Cruel scripted declarations must explain that they are phase changes rather than stunnable LB attacks'
+  /中断不能フェーズ技 \/ カウント中も行動可能/,
+  'Cruel scripted declarations must explain their phase-changing role without retired Stun copy'
 );
 assert.match(
   battleModal,
-  /cancelEnemySupportTelegraph\(false, skillId, true\)/,
-  'Stun uses the authored enemy-telegraph cancellation path'
+  /<em aria-live="off">[\s\S]{0,240}normalizedOwnership[\s\S]{0,240}cruelSecondSignatureInvested/,
+  'Cruel keeps its static appraisal alert while continuous ownership progress stays out of the live region'
+);
+assert.match(
+  battleModal,
+  /cruelSecondFailureSnapshotRef\.current = \{[\s\S]{0,180}ownership: resolution\.ownershipBefore[\s\S]{0,180}directInvestment: resolution\.signaturePaid/,
+  'Cruel must retain both measured appraisal values for the final defeat explanation'
+);
+assert.match(
+  battleModal,
+  /formatCruelReckoningFailureRequirements[\s\S]{0,900}必要75%[\s\S]{0,900}必要10%/,
+  'Cruel failure copy must state the ownership and direct-investment requirements together'
+);
+assert.ok(
+  (battleModal.match(/formatCruelReckoningFailureRequirements\(\)/g) ?? [])
+    .length >= 2,
+  'Cruel must reuse its measured two-condition explanation in both the terminal log and Tatar analysis'
+);
+assert.doesNotMatch(
+  battleModal,
+  /終極資本査定の終了時に所有率75%へ届か/,
+  'Cruel must not falsely describe a signature-only failure as an ownership-only miss'
 );
 assert.match(
   battleModal,

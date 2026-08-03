@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
 import {
   getBattleResultCta,
@@ -6,6 +9,13 @@ import {
   getTrainingReturnLevel,
 } from '../src/utils/progressionNavigation';
 import { isCartelFullyPrepared } from '../src/utils/cartel';
+
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const appSource = readFileSync(resolve(repositoryRoot, 'src/App.tsx'), 'utf8');
+const abilityViewSource = readFileSync(
+  resolve(repositoryRoot, 'src/components/SkillsSynergyView.tsx'),
+  'utf8'
+);
 
 const firstCommunity = COMMUNITY_CAMPAIGN_ORDER[0];
 const secondCommunity = COMMUNITY_CAMPAIGN_ORDER[1];
@@ -232,6 +242,22 @@ assert.equal(
   ),
   true,
   'Completing one cartel must be sufficient; preparation must not require every cartel.'
+);
+
+assert.match(
+  appSource,
+  /const returnFromAbilitySetup[\s\S]*destination === 'savage'[\s\S]*setActiveTab\('savage'\)[\s\S]*mode: 'targets'[\s\S]*community: skillsStoryReturn\.community/,
+  'Ability setup must return to either the Savage list or the exact story enemy-selection screen.'
+);
+assert.match(
+  abilityViewSource,
+  /onReturnToStory && \([\s\S]*onClick=\{onReturnToStory\}[\s\S]*storyReturnLabel/,
+  'A progression-opened ability screen must display a direct story-return control.'
+);
+assert.doesNotMatch(
+  abilityViewSource,
+  /控えアビリティ|待機アビリティ|reserveSkillId/,
+  'Navigation and loadout copy must not imply a removed waiting ability slot.'
 );
 
 console.log('Progression navigation checks passed.');

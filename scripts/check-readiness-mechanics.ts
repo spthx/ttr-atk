@@ -224,5 +224,9 @@ assert.equal(
   normalLimitReadiness.supportCapital,
   'the high-difficulty support multiplier must not increase LIMIT BREAK'
 );
+assert.match(highDifficultyLimitReadiness.mechanicWarning ?? '', /12秒/);
+assert.match(highDifficultyLimitReadiness.mechanicWarning ?? '', /所有率75%以上/);
+assert.match(highDifficultyLimitReadiness.mechanicWarning ?? '', /自社直接出資/);
+assert.match(highDifficultyLimitReadiness.mechanicWarning ?? '', /人脈・LB・SYNERGY・外部アライアンス/);
 
 console.log('readiness mechanic checks passed');

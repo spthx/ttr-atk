@@ -1,5 +1,6 @@
 import type { BattleMode, GroupSynergy, Property } from '../types';
 import { calculateRebellionProbability } from './formatter';
+import { calculateCruelSignatureRequirement } from './cruelBattle';
 import {
   BATTLE_LOYALTY_BALANCE,
   BATTLE_SUPPORT_BALANCE,
@@ -467,7 +468,7 @@ export const calculateBattleReadiness = ({
     : ratio;
   const builtInMechanicWarning =
     battleMode === 'cruel'
-      ? '酷は実戦約15秒で中断不能の第一宣告が発動し、投入資本とLBを保ったまま所有率10%から立て直します。50%まで戻すと12秒の第二宣告が始まり、その間も行動可能。75%以上で突破し、未達ならその場で敗北します。特定アビリティは必須ではありません。'
+      ? `酷は約15秒後、投入資本・資金・LBを維持して所有率10%から立て直します。復帰中は自社へ進む継続速度が50%。50%へ戻すと12秒の第二査定。終了時に所有率75%以上＋査定中の自社直接出資${Math.round(calculateCruelSignatureRequirement(targetMarketPrice) / 1_000_000)}M（相場10%）が必要です。人脈・LB・SYNERGY・外部アライアンスは署名対象外です。`
       : battleMode === 'ultimate'
       ? '絶は開幕・瀕死アビリティを決着前に必ず解決します。戦力が足りても、構えへの対応を誤ると敗北します。'
       : battleMode === 'savage'
@@ -534,7 +535,7 @@ export const calculateBattleReadiness = ({
   if (capitalBoost > 0) {
     capitalComponents.push({
       key: 'capital_boost',
-      label: '意気衝天1回',
+      label: 'ぶんどる1回',
       amount: capitalBoost,
     });
   }

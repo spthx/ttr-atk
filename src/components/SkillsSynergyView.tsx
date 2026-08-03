@@ -6,7 +6,7 @@ import {
   CommunityType,
 } from '../types';
 import { soundFx } from '../utils/audio';
-import { Zap, Check, Lock, Layers, Swords } from 'lucide-react';
+import { Zap, Check, Lock, Layers, Swords, MapPinned } from 'lucide-react';
 import { HelpTip } from './HelpTip';
 import { HELP_TEXT } from '../data/helpText';
 import {
@@ -21,23 +21,25 @@ import {
 } from '../utils/synergy';
 import {
   MANUAL_ABILITY_SLOT_COUNT,
-  TOTAL_ABILITY_LOADOUT_SLOTS,
   type AbilityActivationMode,
 } from '../utils/abilityLoadout';
 
 const SKILL_PROGRESSION_ORDER = [
+  'skill_sabotage',
   'skill_fast_horse',
   'skill_synergy_push',
-  'skill_demoralize',
   'skill_capital_boost',
+  'skill_demoralize',
   'skill_sns_blitz',
-  'skill_sabotage',
 ] as const;
 const SKILL_PROGRESSION_RANK = new Map<string, number>(
   SKILL_PROGRESSION_ORDER.map((skillId, index) => [skillId, index])
 );
 
 const formatSavageUnlockLabel = (raidId: string) => {
+  if (raidId === 'prop_abyss_heavy') {
+    return '零式 第1編 第4層クリア';
+  }
   const match = /^savage_raid_(\d+)_layer_(\d+)$/.exec(raidId);
   return match
     ? `零式 第${match[1]}編 ${match[2]}層クリア`
@@ -56,9 +58,10 @@ interface SkillsSynergyViewProps {
   criticalAutoUnlocked: boolean;
   openingAutoSkillId: string | null;
   criticalAutoSkillId: string | null;
-  reserveSkillId: string | null;
   savageClearedRaidIds: ReadonlySet<string>;
   selectedBattleSynergyId: string | null;
+  storyReturnLabel?: string;
+  onReturnToStory?: () => void;
   onToggleEquipSkill: (skillId: string) => void;
   onSetSkillActivationMode: (
     skillId: string,
@@ -80,9 +83,10 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
   criticalAutoUnlocked,
   openingAutoSkillId,
   criticalAutoSkillId,
-  reserveSkillId,
   savageClearedRaidIds,
   selectedBattleSynergyId,
+  storyReturnLabel,
+  onReturnToStory,
   onSetSkillActivationMode,
   onSelectBattleSynergy,
 }) => {
@@ -132,20 +136,23 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
   const manualSkillIds = equippedSkillIds.filter(
     (skillId) =>
       skillId !== openingAutoSkillId &&
-      skillId !== criticalAutoSkillId &&
-      skillId !== reserveSkillId
+      skillId !== criticalAutoSkillId
   );
   const manualSlotsFull =
     manualSkillIds.length >= MANUAL_ABILITY_SLOT_COUNT;
+  const availableLoadoutSlotCount =
+    MANUAL_ABILITY_SLOT_COUNT +
+    (openingAutoUnlocked ? 1 : 0) +
+    (criticalAutoUnlocked ? 1 : 0);
   const canEquipAnother =
-    equippedSkillIds.length < TOTAL_ABILITY_LOADOUT_SLOTS &&
-    (!manualSlotsFull || !reserveSkillId);
+    equippedSkillIds.length < availableLoadoutSlotCount &&
+    !manualSlotsFull;
 
   const handleToggle = (skill: TacticalSkill) => {
     const isEquipped = equippedSkillIds.includes(skill.id);
     if (
       !isEquipped &&
-      equippedSkillIds.length >= TOTAL_ABILITY_LOADOUT_SLOTS
+      equippedSkillIds.length >= availableLoadoutSlotCount
     ) {
       return;
     }
@@ -163,10 +170,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
   };
 
   const handleRoleSlotChange = (
-    mode: Extract<
-      AbilityActivationMode,
-      'opening_auto' | 'critical_auto' | 'reserve'
-    >,
+    mode: Extract<AbilityActivationMode, 'opening_auto' | 'critical_auto'>,
     currentSkillId: string | null,
     nextSkillId: string
   ) => {
@@ -182,6 +186,17 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
 
   return (
     <div className="space-y-8">
+      {onReturnToStory && (
+        <button
+          type="button"
+          onClick={onReturnToStory}
+          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-emerald-300/70 bg-emerald-500/15 px-4 py-3 text-sm font-black text-emerald-100 shadow-[0_0_20px_rgba(52,211,153,.16)] transition-colors hover:bg-emerald-500/25"
+        >
+          <MapPinned className="h-5 w-5 shrink-0" />
+          <span>{storyReturnLabel ?? 'ストーリーの交渉先へ戻る'}</span>
+        </button>
+      )}
+
       {/* 1. Tactical Skills (かけひき技) Section */}
       <div className="space-y-4">
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -189,11 +204,11 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
             <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
               <Zap className="w-5 h-5 text-amber-400" />
               アビリティ装備
-              <HelpTip term="アビリティ" description="手動3枠、開幕1枠、瀕死1枠、控え1枠へ装備します。開幕と瀕死は条件を満たした時に自動発動し、控えは商戦中に使用できません。" />
+              <HelpTip term="アビリティ" description="手動3枠に装備します。零式攻略で開幕1枠と瀕死1枠が増え、条件を満たした時に自動発動します。枠外の修得済みアビリティは未装備です。" />
             </h2>
-            <p className="mt-1 text-xs text-slate-400">事業・契約や業界の条件を満たすと修得できます。手動枠のアビリティは使用後にリキャストタイムが必要です。</p>
+            <p className="mt-1 text-xs text-slate-400">物語の進行で修得できます。手動枠は3つまで。枠に入れなかった技は未装備となり、商戦には持ち込みません。</p>
             <p className="mt-1 text-xs text-amber-200/80">
-              開幕・瀕死・控えへ設定した技は、商戦中の手動一覧から外れます。控えは次の商戦に備える待機枠です。
+              開幕・瀕死へ設定した技は、商戦中の手動一覧から外れます。
             </p>
             <p className="mt-1 text-xs text-cyan-300/80">主な名称はFFXIVのアクションをモチーフにし、交易戦での効果は本作独自にアレンジしています。</p>
           </div>
@@ -203,14 +218,14 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
               手動 {manualSkillIds.length} / {MANUAL_ABILITY_SLOT_COUNT}
             </span>
             <span className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-300">
-              全体 {equippedSkillIds.length} / {TOTAL_ABILITY_LOADOUT_SLOTS}
+              装備 {equippedSkillIds.length} / {availableLoadoutSlotCount}
             </span>
           </div>
         </div>
 
         <section
-          className="grid gap-3 rounded-xl border border-slate-700 bg-slate-950/80 p-4 md:grid-cols-3"
-          aria-label="開幕・瀕死・控えアビリティ設定"
+          className="grid gap-3 rounded-xl border border-slate-700 bg-slate-950/80 p-4 md:grid-cols-2"
+          aria-label="開幕・瀕死アビリティ設定"
         >
           {openingAutoUnlocked ? (
             <label className="grid gap-2 rounded-lg border border-cyan-500/35 bg-cyan-950/25 p-3">
@@ -247,7 +262,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
           ) : (
             <div className="grid content-center gap-1 rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-slate-500">
               <b className="text-sm text-slate-300">開幕アビリティ</b>
-              <small className="text-[11px] leading-relaxed">零式の解放後に使用できます。</small>
+              <small className="text-[11px] leading-relaxed">最初の零式1層を制覇すると使用できます。</small>
             </div>
           )}
 
@@ -290,60 +305,32 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
             </div>
           )}
 
-          <label className="grid gap-2 rounded-lg border border-violet-500/35 bg-violet-950/25 p-3">
-            <span>
-              <b className="block text-sm text-violet-100">控えアビリティ</b>
-              <small className="text-[11px] leading-relaxed text-violet-200/70">
-                装備を保持する待機枠です。この枠の技は商戦中に使用できません。
-              </small>
-            </span>
-            <select
-              value={reserveSkillId ?? ''}
-              onChange={(event) =>
-                handleRoleSlotChange(
-                  'reserve',
-                  reserveSkillId,
-                  event.target.value
-                )
-              }
-              className="min-h-11 w-full rounded-lg border border-violet-400/45 bg-slate-900 px-3 text-sm font-bold text-violet-50"
-              aria-label="控えへ設定するアビリティ"
-            >
-              <option value="" disabled={!!reserveSkillId && manualSlotsFull}>
-                {reserveSkillId && manualSlotsFull
-                  ? '手動枠に空きを作って解除'
-                  : '設定なし（手動へ戻す）'}
-              </option>
-              {equippedSkills.map((skill) => (
-                <option key={skill.id} value={skill.id}>
-                  {skill.name}
-                </option>
-              ))}
-            </select>
-          </label>
         </section>
 
         {/* Skills Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {orderedSkills.map((skill) => {
-            const unlocked = isSkillUnlocked({ skill, ownedProperties, totalFunds, activeSynergyCount });
+            const unlocked = isSkillUnlocked({
+              skill,
+              ownedProperties,
+              totalFunds,
+              activeSynergyCount,
+              conqueredCommunityIds,
+              savageClearedRaidIds,
+            });
             const isEquipped = equippedSkillIds.includes(skill.id);
             const activationMode: AbilityActivationMode =
               openingAutoSkillId === skill.id
                 ? 'opening_auto'
                 : criticalAutoSkillId === skill.id
                   ? 'critical_auto'
-                  : reserveSkillId === skill.id
-                    ? 'reserve'
-                    : 'manual';
+                  : 'manual';
             const activationModeLabel =
               activationMode === 'opening_auto'
                 ? '開幕アビリティ'
                 : activationMode === 'critical_auto'
                   ? '瀕死アビリティ'
-                  : activationMode === 'reserve'
-                    ? '控え（戦闘外）'
-                    : '手動';
+                  : '手動';
 
             return (
               <div
@@ -406,14 +393,10 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                           className={`rounded-lg border px-3 py-2 text-[11px] font-bold ${
                             activationMode === 'opening_auto'
                               ? 'border-cyan-400/35 bg-cyan-950/35 text-cyan-100'
-                              : activationMode === 'critical_auto'
-                                ? 'border-rose-400/35 bg-rose-950/35 text-rose-100'
-                                : 'border-violet-400/35 bg-violet-950/35 text-violet-100'
+                              : 'border-rose-400/35 bg-rose-950/35 text-rose-100'
                           }`}
                         >
-                          {activationMode === 'reserve'
-                            ? '控えへ設定中。このアビリティは商戦中に使用できません。'
-                            : `${activationModeLabel}へ設定中。商戦中の手動一覧には表示されません。`}
+                          {activationModeLabel}へ設定中。商戦中の手動一覧には表示されません。
                           <button
                             type="button"
                             onClick={() =>
@@ -455,8 +438,8 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                     >
                       {!canEquipAnother ? (
                         <span>
-                          {equippedSkillIds.length >= TOTAL_ABILITY_LOADOUT_SLOTS
-                            ? `装備枠が満杯（${TOTAL_ABILITY_LOADOUT_SLOTS}/${TOTAL_ABILITY_LOADOUT_SLOTS}）`
+                          {equippedSkillIds.length >= availableLoadoutSlotCount
+                            ? `装備枠が満杯（${availableLoadoutSlotCount}/${availableLoadoutSlotCount}）`
                             : '先に手動技を開幕・瀕死へ移動'}
                         </span>
                       ) : (
@@ -585,7 +568,19 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                     {synergy.battleOnly ? '修得条件:' : '必要な事業・契約:'}
                   </span>
                   <div className="flex flex-wrap gap-2">
-                    {synergy.battleOnly && synergy.unlockAfterCommunity && (
+                    {synergy.battleOnly && synergy.unlockAfterAllCartelHqs && (
+                      <span
+                        className={`text-xs px-2.5 py-1 rounded-md border flex items-center gap-1 font-medium ${
+                          isActive
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : 'bg-slate-900 text-slate-500 border-slate-800'
+                        }`}
+                      >
+                        {isActive ? <Check className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                        企業連合本部をすべて制覇
+                      </span>
+                    )}
+                    {synergy.battleOnly && !synergy.unlockAfterAllCartelHqs && synergy.unlockAfterCommunity && (
                       <span
                         className={`text-xs px-2.5 py-1 rounded-md border flex items-center gap-1 font-medium ${
                           isActive
@@ -613,7 +608,7 @@ export const SkillsSynergyView: React.FC<SkillsSynergyViewProps> = ({
                         {formatSavageUnlockLabel(synergy.unlockAfterSavageRaidId)}
                       </span>
                     )}
-                    {synergy.requiredPropertyIds.map((propId) => {
+                    {!synergy.unlockAfterAllCartelHqs && synergy.requiredPropertyIds.map((propId) => {
                       const isOwned = ownedPropertyIds.has(propId);
 
                       return (

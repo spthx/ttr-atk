@@ -599,14 +599,6 @@
   background: linear-gradient(135deg, rgba(6, 78, 59, .9), rgba(3, 31, 28, .98));
 }
 .battle-action-strip__action--synergy > svg { color: #6ee7b7; }
-.battle-action-strip__action--stun {
-  grid-column: 1 / -1;
-  min-height: 2.75rem;
-  border-color: rgba(248, 113, 113, .78);
-  background: linear-gradient(135deg, rgba(127, 29, 29, .94), rgba(32, 10, 18, .98));
-  box-shadow: inset 0 0 .9rem rgba(248, 113, 113, .12), 0 0 .55rem rgba(239, 68, 68, .18);
-}
-.battle-action-strip__action--stun > svg { color: #fca5a5; }
 .battle-action-strip__action--skill.is-living-dead {
   border-color: rgba(216, 180, 254, .58);
   background: linear-gradient(135deg, rgba(65, 22, 99, .92), rgba(23, 10, 37, .98));

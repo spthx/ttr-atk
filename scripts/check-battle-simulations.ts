@@ -6,9 +6,11 @@ import {
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
 import { decideEnemyAction } from '../src/utils/enemyAi';
 import {
+  BLACKEST_NIGHT_BALANCE,
+  CAPITAL_REVERSAL_BALANCE,
   CRUEL_SCRIPTED_BATTLE,
-  DIVINE_BENISON_BALANCE,
   ENEMY_SUPPORT_ACTIONS,
+  FORCED_LIQUIDATION_BALANCE,
   SAVAGE_ENEMY_AUTO_PROFILES,
   SAVAGE_ENEMY_SUPPORT_PROFILES,
   type CruelScriptPhase,
@@ -27,7 +29,7 @@ import {
   calculateSubsidiarySupportAmount,
   ENEMY_INITIAL_COMMITMENT_RATIO,
   ENEMY_SUPPORT_SKILL_BALANCE,
-  applyDivineBenisonToGaugeDelta,
+  applyBlackestNightToGaugeDelta,
   applyCoverToGaugeDelta,
   canEnemyAffordDrill,
   getEnemyDivinationDurationMs,
@@ -41,7 +43,10 @@ import {
   getCampaignProperties,
   LIMIT_BREAK_OWNERSHIP_CAPS,
   resolveEnemyDrainTransfer,
-  shouldEnemyUseDivineBenison,
+  resolveCapitalReversal,
+  calculateForcedLiquidationGaugeDelta,
+  resolveForcedLiquidationContinuousVelocity,
+  shouldEnemyUseBlackestNight,
   shouldForceUltimateCriticalBeforeVictory,
   TACTICAL_SKILL_BALANCE,
   HIGH_DIFFICULTY_SUPPORT_MULTIPLIER,
@@ -58,9 +63,12 @@ import {
   buildCruelProperty,
   buildSavageProperties,
   buildUltimateProperty,
+  SAVAGE_RAID_DEFINITIONS,
 } from '../src/utils/savage';
 import {
+  calculateCruelSignatureRequirement,
   resolveCruelFirstImpact,
+  resolveCruelRecoveryContinuousVelocity,
   resolveCruelSecondImpact,
   shouldHoldCruelVictory,
   shouldTriggerCruelFirstPhase,
@@ -101,6 +109,7 @@ interface SimulationScenario {
   openingCapitalBoostRatio?: number;
   openingAllianceSupportRatio?: number;
   openingPlayerPassage?: boolean;
+  playerPassageOnLimitBreak?: boolean;
   influenceBonus?: number;
   supportSources?: readonly Property[];
   supportAfterDirectActions?: (supportIndex: number, seed: number) => number;
@@ -118,6 +127,8 @@ interface SimulationScenario {
     triggerAfterSupportActions: number;
     participants: readonly Property[];
   };
+  allowDirectInvestment?: boolean;
+  preferDirectInvestmentActions?: number;
 }
 
 type EnemySupportActivationCounts = Record<EnemySupportSkillId, number>;
@@ -136,16 +147,20 @@ interface SimulationResult {
   enemyBossDefenseActivations: number;
   enemyBossDefenseAbsorbedGauge: number;
   timedCapitalBuffActivations: number;
+  cruelSecondSignatureInvested: number;
+  cruelSecondStartOwnership: number | null;
 }
 
 const createEnemySupportActivationCounts =
   (): EnemySupportActivationCounts => ({
-    divine_benison: 0,
+    blackest_night: 0,
     drain: 0,
     drill: 0,
     divination: 0,
     rapid_assault: 0,
     limit_break_3: 0,
+    capital_reversal: 0,
+    forced_liquidation: 0,
     omnicapitalization: 0,
     cruel_reckoning: 0,
   });
@@ -190,6 +205,59 @@ const getAffordableInvestment = (cash: number, marketPrice: number) =>
         Math.max(10, Math.round(marketPrice * ratio)) <= cash
     ) ??
   null;
+
+const getForcedLiquidationSimulationGraceMs = (
+  scenario: SimulationScenario
+) => {
+  const savageSeries = scenario.isSavage
+    ? SAVAGE_RAID_DEFINITIONS.find(
+        (definition) => definition.id === scenario.target.id
+      )?.series
+    : undefined;
+  return savageSeries === 1
+    ? FORCED_LIQUIDATION_BALANCE.firstClearRecoveryGraceMs
+    : FORCED_LIQUIDATION_BALANCE.repeatRecoveryGraceMs;
+};
+
+const runForcedLiquidationManualCounterProbe = () => {
+  let gauge = -99;
+  let commandProgress = 100;
+  let awaitingManualCounter = true;
+  const recoveryRemaining =
+    FORCED_LIQUIDATION_BALANCE.repeatRecoveryGraceMs;
+  const waitingVelocity = resolveForcedLiquidationContinuousVelocity({
+    velocity: -6,
+    recoveryRemaining,
+    awaitingManualCounter,
+  });
+  gauge += waitingVelocity * STEP_SECONDS;
+  const winnerBeforeManual = gauge <= -100 ? 'player' : null;
+
+  const manualCommandConsumed = commandProgress >= 100;
+  if (manualCommandConsumed) {
+    awaitingManualCounter = false;
+    commandProgress = 0;
+    gauge -= 2;
+  }
+  const winnerAfterManual =
+    recoveryRemaining > 0 && awaitingManualCounter
+      ? null
+      : gauge <= -100
+        ? 'player'
+        : gauge >= 100
+          ? 'opponent'
+          : null;
+
+  return {
+    recoveryRemaining,
+    waitingVelocity,
+    winnerBeforeManual,
+    manualCommandConsumed,
+    awaitingManualCounter,
+    commandProgress,
+    winnerAfterManual,
+  };
+};
 
 const simulateBattle = (
   scenario: SimulationScenario,
@@ -290,8 +358,11 @@ const simulateBattle = (
   let supportActions = 0;
   const supportUseCounts: Record<string, number> = {};
   let wallSeconds = 0;
-  let enemyBenisonRemainingSeconds = 0;
-  let enemyBenisonCapacity = 0;
+  let enemyBlackestNightRemainingSeconds = 0;
+  let enemyBlackestNightCapacity = 0;
+  let capitalReversalRemainingSeconds = 0;
+  let forcedLiquidationRecoveryRemainingSeconds = 0;
+  let forcedLiquidationAwaitingManualCounter = false;
   let playerPassageRemainingSeconds = scenario.openingPlayerPassage
     ? TACTICAL_SKILL_BALANCE.cover.durationMs / 1_000
     : 0;
@@ -306,6 +377,8 @@ const simulateBattle = (
     : 'inactive';
   let cruelActiveSeconds = 0;
   let cruelRecoverySeconds = 0;
+  let cruelSecondSignatureInvested = 0;
+  let cruelSecondStartOwnership: number | null = null;
   let maximumPlayerRecoveryRatio = 0;
   let maximumEnemyRecoveryRatio = 0;
   let minimumEnemyReserve = enemyReserve;
@@ -388,7 +461,8 @@ const simulateBattle = (
       enemyBossDefenseBalance &&
       !enemyBossDefenseUsed &&
       enemyBossDefenseRemainingSeconds <= 0 &&
-      (enemyBenisonRemainingSeconds <= 0 || enemyBenisonCapacity <= 0) &&
+      (enemyBlackestNightRemainingSeconds <= 0 ||
+        enemyBlackestNightCapacity <= 0) &&
       predictedPlayerOwnership >=
         BOSS_COVER_BALANCE.triggerPlayerOwnership
     ) {
@@ -423,26 +497,64 @@ const simulateBattle = (
       }
     }
     if (
-      enemyBenisonRemainingSeconds > 0 &&
-      enemyBenisonCapacity > 0
+      enemyBlackestNightRemainingSeconds > 0 &&
+      enemyBlackestNightCapacity > 0
     ) {
-      const barrier = applyDivineBenisonToGaugeDelta({
+      const barrier = applyBlackestNightToGaugeDelta({
         currentGauge: gauge,
         nextGauge,
         protects: 'opponent',
-        remainingGaugeCapacity: enemyBenisonCapacity,
+        remainingGaugeCapacity: enemyBlackestNightCapacity,
       });
       nextGauge = barrier.nextGauge;
-      enemyBenisonCapacity = barrier.remainingGaugeCapacity;
-      if (enemyBenisonCapacity <= 0) {
-        enemyBenisonRemainingSeconds = 0;
+      enemyBlackestNightCapacity = barrier.remainingGaugeCapacity;
+      if (enemyBlackestNightCapacity <= 0) {
+        enemyBlackestNightRemainingSeconds = 0;
+        if (barrier.didFullyBreak) {
+          // Dark Wave is part of the same gauge transaction and may itself be
+          // mitigated by the player's active defensive state.
+          applyEnemyGaugeCandidate(
+            nextGauge + BLACKEST_NIGHT_BALANCE.darkWaveGaugeDelta
+          );
+          nextGauge = gauge;
+        }
       }
     }
     gauge = nextGauge;
   };
 
   const finish = (): SimulationResult | null => {
+    if (
+      forcedLiquidationRecoveryRemainingSeconds > 0 &&
+      forcedLiquidationAwaitingManualCounter
+    ) {
+      gauge = Math.max(-98, Math.min(98, gauge));
+      return null;
+    }
+    if (
+      (isSavage || isUltimate) &&
+      enemySupportProfile.includes('capital_reversal') &&
+      !usedEnemySupportSkills.has('capital_reversal') &&
+      gauge <= 100 - CAPITAL_REVERSAL_BALANCE.triggerPlayerOwnership * 2
+    ) {
+      gauge = 100 - CAPITAL_REVERSAL_BALANCE.triggerPlayerOwnership * 2;
+      return null;
+    }
+    if (
+      (isSavage || isUltimate) &&
+      enemySupportProfile.includes('forced_liquidation') &&
+      usedEnemySupportSkills.has('capital_reversal') &&
+      !usedEnemySupportSkills.has('forced_liquidation') &&
+      gauge <= 100 - FORCED_LIQUIDATION_BALANCE.triggerPlayerOwnership * 2
+    ) {
+      gauge = 100 - FORCED_LIQUIDATION_BALANCE.triggerPlayerOwnership * 2;
+      return null;
+    }
     if (gauge <= -100) {
+      if (capitalReversalRemainingSeconds > 0) {
+        gauge = -98;
+        return null;
+      }
       if (shouldHoldCruelVictory(isCruel, cruelPhase)) {
         gauge = -98;
         return null;
@@ -478,6 +590,8 @@ const simulateBattle = (
         enemyBossDefenseActivations,
         enemyBossDefenseAbsorbedGauge,
         timedCapitalBuffActivations,
+        cruelSecondSignatureInvested,
+        cruelSecondStartOwnership,
       };
     }
     if (!isTraining && gauge >= 100) {
@@ -495,6 +609,8 @@ const simulateBattle = (
         enemyBossDefenseActivations,
         enemyBossDefenseAbsorbedGauge,
         timedCapitalBuffActivations,
+        cruelSecondSignatureInvested,
+        cruelSecondStartOwnership,
       };
     }
     if (isTraining) gauge = Math.min(gauge, 98);
@@ -504,10 +620,10 @@ const simulateBattle = (
   const resolveEnemySupportImpact = (
     skill: EnemySupportSkillId
   ) => {
-    if (skill === 'divine_benison') {
-      enemyBenisonRemainingSeconds =
-        DIVINE_BENISON_BALANCE.durationMs / 1_000;
-      enemyBenisonCapacity = DIVINE_BENISON_BALANCE.gaugeCapacity;
+    if (skill === 'blackest_night') {
+      enemyBlackestNightRemainingSeconds =
+        BLACKEST_NIGHT_BALANCE.durationMs / 1_000;
+      enemyBlackestNightCapacity = BLACKEST_NIGHT_BALANCE.gaugeCapacity;
     } else if (skill === 'drain') {
       const transfer = resolveEnemyDrainTransfer({
         playerCash,
@@ -538,6 +654,15 @@ const simulateBattle = (
       rapidAssaultRemainingSeconds =
         ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.durationMs / 1_000;
     } else if (skill === 'limit_break_3') {
+      if (
+        scenario.playerPassageOnLimitBreak &&
+        playerPassageRemainingSeconds <= 0 &&
+        playerPassageCapacity <= 0
+      ) {
+        playerPassageRemainingSeconds =
+          TACTICAL_SKILL_BALANCE.cover.durationMs / 1_000;
+        playerPassageCapacity = TACTICAL_SKILL_BALANCE.cover.gaugeCapacity;
+      }
       const capitalSupport = Math.min(
         enemyReserve,
         Math.round(
@@ -552,6 +677,18 @@ const simulateBattle = (
       );
       enemyLimitBreakHoldRemainingSeconds =
         ENEMY_SUPPORT_SKILL_BALANCE.limitBreak3.momentumHoldMs / 1_000;
+    } else if (skill === 'capital_reversal') {
+      capitalReversalRemainingSeconds =
+        CAPITAL_REVERSAL_BALANCE.durationMs / 1_000;
+    } else if (skill === 'forced_liquidation') {
+      const currentPlayerOwnership = (100 - gauge) / 2;
+      applyEnemyGaugeCandidate(
+        gauge + calculateForcedLiquidationGaugeDelta(currentPlayerOwnership)
+      );
+      forcedLiquidationRecoveryRemainingSeconds =
+        getForcedLiquidationSimulationGraceMs(scenario) / 1_000;
+      forcedLiquidationAwaitingManualCounter = true;
+      commandProgress = 100;
     } else if (skill === 'omnicapitalization') {
       const ownership = (100 - gauge) / 2;
       gauge = 100 - resolveCruelFirstImpact(ownership) * 2;
@@ -559,7 +696,11 @@ const simulateBattle = (
       cruelRecoverySeconds = 0;
     } else if (skill === 'cruel_reckoning') {
       const ownership = (100 - gauge) / 2;
-      const result = resolveCruelSecondImpact(ownership);
+      const result = resolveCruelSecondImpact(
+        ownership,
+        cruelSecondSignatureInvested,
+        marketPrice
+      );
       gauge = 100 - result.ownershipAfter * 2;
       if (result.outcome === 'break') {
         enemyInvested *= 1 - CRUEL_SCRIPTED_BATTLE.bossBreakCapitalRatio;
@@ -660,14 +801,25 @@ const simulateBattle = (
         divinationRemainingSeconds - STEP_SECONDS
       );
     }
-    if (enemyBenisonRemainingSeconds > 0) {
-      enemyBenisonRemainingSeconds = Math.max(
+    if (enemyBlackestNightRemainingSeconds > 0) {
+      enemyBlackestNightRemainingSeconds = Math.max(
         0,
-        enemyBenisonRemainingSeconds - STEP_SECONDS
+        enemyBlackestNightRemainingSeconds - STEP_SECONDS
       );
-      if (enemyBenisonRemainingSeconds <= 0) {
-        enemyBenisonCapacity = 0;
+      if (enemyBlackestNightRemainingSeconds <= 0) {
+        enemyBlackestNightCapacity = 0;
       }
+    }
+    capitalReversalRemainingSeconds = Math.max(
+      0,
+      capitalReversalRemainingSeconds - STEP_SECONDS
+    );
+    forcedLiquidationRecoveryRemainingSeconds = Math.max(
+      0,
+      forcedLiquidationRecoveryRemainingSeconds - STEP_SECONDS
+    );
+    if (forcedLiquidationRecoveryRemainingSeconds <= 0) {
+      forcedLiquidationAwaitingManualCounter = false;
     }
     if (playerPassageRemainingSeconds > 0) {
       playerPassageRemainingSeconds = Math.max(
@@ -717,10 +869,15 @@ const simulateBattle = (
         ? CRUEL_SCRIPTED_BATTLE.secondActionId
         : null;
     if (cruelAction && !pendingEnemySupport) {
+      if (cruelAction === CRUEL_SCRIPTED_BATTLE.secondActionId) {
+        cruelSecondSignatureInvested = 0;
+        cruelSecondStartOwnership = currentCruelOwnership;
+      }
       cruelPhase =
         cruelAction === CRUEL_SCRIPTED_BATTLE.firstActionId
           ? 'first_countdown'
           : 'second_countdown';
+      commandProgress = 100;
       const presentation = ENEMY_SUPPORT_PRESENTATION[cruelAction];
       const impactRemainingSeconds =
         presentation.telegraphSeconds + presentation.castSeconds;
@@ -747,6 +904,7 @@ const simulateBattle = (
     if (
       (!isCruel ||
         (cruelPhase as CruelScriptPhase) === 'resolved') &&
+      forcedLiquidationRecoveryRemainingSeconds <= 0 &&
       !bossGuardNeedsPriority &&
       enemyBossDefenseRemainingSeconds <= 0
     ) {
@@ -777,11 +935,17 @@ const simulateBattle = (
         ) {
           return false;
         }
-        if (candidate === 'divine_benison') {
-          return shouldEnemyUseDivineBenison({
+        if (candidate === 'blackest_night') {
+          return shouldEnemyUseBlackestNight({
             playerOwnership,
             terminal: false,
           });
+        }
+        if (candidate === 'capital_reversal') {
+          return playerOwnership >= CAPITAL_REVERSAL_BALANCE.triggerPlayerOwnership;
+        }
+        if (candidate === 'forced_liquidation') {
+          return playerOwnership >= FORCED_LIQUIDATION_BALANCE.triggerPlayerOwnership;
         }
         if (candidate === 'drain') {
           return aiCycle >= 1 || playerOwnership >= 52;
@@ -867,14 +1031,23 @@ const simulateBattle = (
     );
 
     if (commandProgress >= 100 && reactionDelaySeconds <= 0) {
+      const cruelSignaturePending =
+        isCruel &&
+        (cruelPhase as CruelScriptPhase) === 'second_countdown' &&
+        cruelSecondSignatureInvested <
+          calculateCruelSignatureRequirement(marketPrice);
       const timedCapitalBuff = scenario.timedCapitalBuff;
       if (
         timedCapitalBuff &&
         !timedCapitalBuffUsed &&
+        !cruelSignaturePending &&
         directActions >= timedCapitalBuff.triggerAfterDirectActions &&
         supportActions >=
           (timedCapitalBuff.triggerAfterSupportActions ?? 0)
       ) {
+        const releasedForcedLiquidationCounter =
+          forcedLiquidationAwaitingManualCounter;
+        forcedLiquidationAwaitingManualCounter = false;
         timedCapitalBuffUsed = true;
         timedCapitalBuffActivations += 1;
         timedCapitalBuffRemainingSeconds =
@@ -887,6 +1060,10 @@ const simulateBattle = (
         commandProgress = 100;
         presentationLockSeconds = 1.8;
         lastPlayerAction = 'SYNERGY';
+        if (releasedForcedLiquidationCounter) {
+          const terminal = finish();
+          if (terminal) return terminal;
+        }
         continue;
       }
       const playerCapitalMultiplier =
@@ -897,10 +1074,12 @@ const simulateBattle = (
       if (
         preparedLimitBreak &&
         !preparedLimitBreakUsed &&
+        !cruelSignaturePending &&
         supportActions >= preparedLimitBreak.triggerAfterSupportActions &&
         enemyBossDefenseUsed &&
         enemyBossDefenseRemainingSeconds <= 0
       ) {
+        forcedLiquidationAwaitingManualCounter = false;
         preparedLimitBreakUsed = true;
         const amount = calculateLimitBreakAmount(
           marketPrice,
@@ -956,12 +1135,17 @@ const simulateBattle = (
         if (terminal) return terminal;
         continue;
       }
-      const supportSource = scenario.supportSources?.[supportActions];
+      const preferDirectInvestment =
+        directActions < (scenario.preferDirectInvestmentActions ?? 0);
+      const supportSource = cruelSignaturePending || preferDirectInvestment
+        ? undefined
+        : scenario.supportSources?.[supportActions];
       const supportThreshold =
         scenario.supportAfterDirectActions?.(supportActions, seed) ??
         Number.POSITIVE_INFINITY;
 
       if (supportSource && directActions >= supportThreshold) {
+        forcedLiquidationAwaitingManualCounter = false;
         const previousSupportUses = supportActions;
         const amount = Math.round(
           calculateSubsidiarySupportAmount(
@@ -989,32 +1173,43 @@ const simulateBattle = (
         lastPlayerAction = 'FUNDS';
         presentationLockSeconds = 0.23;
       } else {
-        const investment = getAffordableInvestment(
-          playerCash,
-          marketPrice
-        );
+        const investment =
+          scenario.allowDirectInvestment === false
+            ? null
+            : getAffordableInvestment(playerCash, marketPrice);
         if (investment) {
+          forcedLiquidationAwaitingManualCounter = false;
           const amount = Math.max(
             10,
             Math.round(marketPrice * investment.ratio)
           );
           playerCash -= amount;
           playerInvested += amount;
-          applyPlayerGaugeCandidate(
-            gauge -
-              calculateDirectInvestmentGaugeImpact({
-                investmentAmount: amount,
-                marketPrice,
-                windMultiplier: playerCapitalMultiplier,
-                trainingLevel: isTraining
-                  ? Number(
-                      scenario.target.id.match(
-                        /training_dummy_level_(\d+)/
-                      )?.[1] ?? 0
-                    ) || undefined
-                  : undefined,
-              })
-          );
+          if (
+            isCruel &&
+            (cruelPhase as CruelScriptPhase) === 'second_countdown'
+          ) {
+            cruelSecondSignatureInvested += amount;
+          }
+          const intendedGaugeImpact = calculateDirectInvestmentGaugeImpact({
+            investmentAmount: amount,
+            marketPrice,
+            windMultiplier: playerCapitalMultiplier,
+            trainingLevel: isTraining
+              ? Number(
+                  scenario.target.id.match(
+                    /training_dummy_level_(\d+)/
+                  )?.[1] ?? 0
+                ) || undefined
+              : undefined,
+          });
+          if (capitalReversalRemainingSeconds > 0) {
+            const reversal = resolveCapitalReversal(intendedGaugeImpact / 2);
+            applyPlayerGaugeCandidate(gauge + reversal.gaugeDelta);
+            capitalReversalRemainingSeconds = 0;
+          } else {
+            applyPlayerGaugeCandidate(gauge - intendedGaugeImpact);
+          }
           directActions += 1;
           commandProgress = 0;
           lastPlayerAction = investment.action;
@@ -1144,10 +1339,13 @@ const simulateBattle = (
               : 1
           ),
         enemyInvested *
-          (divinationRemainingSeconds > 0
+          ((divinationRemainingSeconds > 0
             ? ENEMY_SUPPORT_SKILL_BALANCE.divination
                 .enemyInvestmentMultiplier
-            : 1),
+            : 1) *
+            ((cruelPhase as CruelScriptPhase) === 'recovery'
+              ? CRUEL_SCRIPTED_BATTLE.recoveryEnemyPressureMultiplier
+              : 1)),
         marketPrice,
         1 + (scenario.influenceBonus ?? 0)
       ) *
@@ -1157,10 +1355,21 @@ const simulateBattle = (
         continuousSynergyGaugePushPerSecond,
       isTraining
     );
-    const velocity =
+    const limitAdjustedVelocity =
       enemyLimitBreakHoldRemainingSeconds > 0
         ? Math.max(0, rawVelocity)
         : rawVelocity;
+    const forcedLiquidationAdjustedVelocity =
+      resolveForcedLiquidationContinuousVelocity({
+      velocity: limitAdjustedVelocity,
+      recoveryRemaining: forcedLiquidationRecoveryRemainingSeconds,
+      awaitingManualCounter: forcedLiquidationAwaitingManualCounter,
+    });
+    const velocity = resolveCruelRecoveryContinuousVelocity({
+      velocity: forcedLiquidationAdjustedVelocity,
+      isCruel,
+      phase: cruelPhase,
+    });
     const nextGauge = gauge + velocity * STEP_SECONDS;
     if (velocity < 0) {
       applyPlayerGaugeCandidate(nextGauge);
@@ -1186,6 +1395,8 @@ const simulateBattle = (
     enemyBossDefenseActivations,
     enemyBossDefenseAbsorbedGauge,
     timedCapitalBuffActivations,
+    cruelSecondSignatureInvested,
+    cruelSecondStartOwnership,
   };
 };
 
@@ -1218,8 +1429,8 @@ const summarize = (
   ).length;
   const activations = results.reduce(
     (totals, result) => {
-      totals.divine_benison +=
-        result.enemySupportActivations.divine_benison;
+      totals.blackest_night +=
+        result.enemySupportActivations.blackest_night;
       totals.drain += result.enemySupportActivations.drain;
       totals.drill += result.enemySupportActivations.drill;
       totals.divination +=
@@ -1228,6 +1439,10 @@ const summarize = (
         result.enemySupportActivations.rapid_assault;
       totals.limit_break_3 +=
         result.enemySupportActivations.limit_break_3;
+      totals.capital_reversal +=
+        result.enemySupportActivations.capital_reversal;
+      totals.forced_liquidation +=
+        result.enemySupportActivations.forced_liquidation;
       totals.omnicapitalization +=
         result.enemySupportActivations.omnicapitalization;
       totals.cruel_reckoning +=
@@ -1307,6 +1522,17 @@ const summarize = (
       (total, result) =>
         total + result.timedCapitalBuffActivations,
       0
+    ),
+    medianCruelSecondSignatureRatio: percentile(
+      results.map(
+        (result) =>
+          result.cruelSecondSignatureInvested / Math.max(1, scenario.target.marketPrice)
+      ),
+      0.5
+    ),
+    medianCruelSecondStartOwnership: percentile(
+      results.map((result) => result.cruelSecondStartOwnership ?? 0),
+      0.5
     ),
     maximumPlayerRecoveryRatio: Math.max(
       ...results.map(
@@ -1766,7 +1992,7 @@ const cityAuditScenarios = [
     timedCapitalBuff: lightOfHopeBurst,
   },
   {
-    id: 'city_6_crystarium_benison',
+    id: 'city_6_crystarium_blackest_night',
     target: crystariumBoss,
     isCityBoss: true,
     maxSeconds: 600,
@@ -1802,7 +2028,7 @@ const cityAuditScenarios = [
     timedCapitalBuff: grandCompanyEorzeaBurst,
   },
   {
-    id: 'city_10_solution_nine_benison_divination',
+    id: 'city_10_solution_nine_blackest_night_divination',
     target: solutionNineBoss,
     isCityBoss: true,
     maxSeconds: 600,
@@ -1885,7 +2111,15 @@ const savageScenarios: SimulationScenario[] =
     // Shared network fatigue makes later ally calls a supplement rather than a
     // complete solution. Audit a prepared clear with a finite 35% personal war
     // chest so direct investment and support decisions both matter.
-    playerBaselineCash: Math.round(target.marketPrice * 0.35),
+    playerBaselineCash: Math.round(
+      target.marketPrice * (index % 4 === 3 ? 0.55 : 0.35)
+    ),
+    // A prepared Savage route equips the already-learned Passé. The first
+    // layer uses it manually; after 1-1 the same action may occupy opening AUTO.
+    openingPlayerPassage: index < 4,
+    // From the second series onward, save the once-per-battle Passé for the
+    // authored LB3 hit instead of spending it in the opener.
+    playerPassageOnLimitBreak: index >= 4,
     openingCapitalBoostRatio:
       TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
     openingAllianceSupportRatio: ALLIANCE_SUPPORT_MARKET_RATIO,
@@ -1951,6 +2185,7 @@ const ultimateScenarioBase = {
   ),
   openingCapitalBoostRatio:
     TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
+  openingAllianceSupportRatio: ALLIANCE_SUPPORT_MARKET_RATIO,
   supportSources: highDifficultySupportRotation,
   supportAfterDirectActions: useHighDifficultySupport,
   timedCapitalBuff: {
@@ -1977,6 +2212,9 @@ const ultimatePreparedPatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
         ...ultimateScenarioBase,
         id: `ultimate_prepared_${pattern.id}`,
         ultimateAutoPatternIndex: patternIndex,
+        playerBaselineCash: Math.round(
+          ultimateSanityTarget.marketPrice * 0.5
+        ),
         openingPlayerPassage: true,
         timedCapitalBuff: {
           ...eraWindBurst,
@@ -2009,27 +2247,23 @@ const ultimateReports = [
   ...ultimatePreparedPatternReports,
   ultimateSupportDisabledReport,
 ];
-const cruelSupportRotation = [
-  ultimateSanityTarget,
-  ...[...savageProperties].sort(
-    (left, right) =>
-      calculateSubsidiarySupportAmount(right) -
-      calculateSubsidiarySupportAmount(left)
-  ),
-  ...preparedUltimateSupportRotation,
-];
+// The live Cruel battle receives only normal owned properties from App.tsx.
+// Ultimate and Savage records are not callable subsidiaries.
+const cruelSupportRotation = preparedUltimateSupportRotation;
+assert.equal(cruelSupportRotation.length, 22);
 const cruelScenarioBase = {
   target: cruelSanityTarget,
   isCruel: true,
   maxSeconds: 120,
-  playerBaselineCash: Math.round(cruelSanityTarget.marketPrice * 0.1),
+  openingAllianceSupportRatio: ALLIANCE_SUPPORT_MARKET_RATIO,
   supportSources: cruelSupportRotation,
   supportAfterDirectActions: useHighDifficultySupport,
 } as const satisfies Omit<SimulationScenario, 'id'>;
 const cruelScenarios: SimulationScenario[] = [
   {
     ...cruelScenarioBase,
-    id: 'cruel_prepared_full_route',
+    id: 'cruel_prepared_conservative_10_percent',
+    playerBaselineCash: Math.round(cruelSanityTarget.marketPrice * 0.1),
     openingCapitalBoostRatio:
       TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
     timedCapitalBuff: {
@@ -2044,7 +2278,25 @@ const cruelScenarios: SimulationScenario[] = [
   },
   {
     ...cruelScenarioBase,
-    id: 'cruel_no_limit_break',
+    id: 'cruel_prepared_full_cash',
+    playerBaselineCash: cruelSanityTarget.marketPrice,
+    openingCapitalBoostRatio:
+      TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
+    timedCapitalBuff: {
+      ...ultimateGrandCompanyEorzeaBurst,
+      triggerAfterSupportActions: 8,
+    },
+    preparedLimitBreak: {
+      tier: 3,
+      triggerAfterSupportActions: 12,
+      participants: cruelSupportRotation,
+    },
+  },
+  {
+    ...cruelScenarioBase,
+    id: 'cruel_no_limit_break_full_cash',
+    playerBaselineCash: cruelSanityTarget.marketPrice,
+    preferDirectInvestmentActions: 2,
     timedCapitalBuff: {
       ...ultimateGrandCompanyEorzeaBurst,
       triggerAfterSupportActions: 8,
@@ -2052,13 +2304,9 @@ const cruelScenarios: SimulationScenario[] = [
   },
   {
     ...cruelScenarioBase,
-    id: 'cruel_no_manual_synergy',
-    openingCapitalBoostRatio:
-      TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
-  },
-  {
-    ...cruelScenarioBase,
-    id: 'cruel_support_and_synergy_only',
+    id: 'cruel_support_only_full_cash',
+    playerBaselineCash: cruelSanityTarget.marketPrice,
+    allowDirectInvestment: false,
     timedCapitalBuff: {
       ...ultimateGrandCompanyEorzeaBurst,
       triggerAfterSupportActions: 10,
@@ -2073,6 +2321,8 @@ const runtimeAlignmentProbes = {
     runDrillTelegraphCoverProbe(),
   divinationTelegraphEraWindCancel:
     runDivinationEraWindCancelProbe(),
+  forcedLiquidationManualCounter:
+    runForcedLiquidationManualCounterProbe(),
   forcedBossDefense: [
     runForcedBossDefenseProbe({
       id: 'city_4_cover_forced',
@@ -2202,6 +2452,79 @@ for (const report of cruelReports) {
     `${report.id} must always resolve the second recovery check`
   );
 }
+const conservativeCruelReport =
+  reportById.cruel_prepared_conservative_10_percent;
+const fullCashCruelReport = reportById.cruel_prepared_full_cash;
+const noLimitBreakCruelReport = reportById.cruel_no_limit_break_full_cash;
+const supportOnlyCruelReport = reportById.cruel_support_only_full_cash;
+assert.equal(conservativeCruelReport.wins, 10);
+assert.equal(
+  conservativeCruelReport.medianCruelSecondSignatureRatio,
+  CRUEL_SCRIPTED_BATTLE.secondSignatureMarketRatio,
+  'the minimum-cash prepared route spends exactly its reserved 10% signature'
+);
+assert.equal(fullCashCruelReport.wins, 10);
+assert.ok(
+  fullCashCruelReport.medianSeconds >= 80 &&
+    fullCashCruelReport.p90Seconds <= 100,
+  'the observed 100%-cash fan route remains an 80-to-100-second Cruel clear'
+);
+assert.ok(
+  fullCashCruelReport.medianCruelSecondSignatureRatio >=
+    CRUEL_SCRIPTED_BATTLE.secondSignatureMarketRatio,
+  'the full-cash clear must satisfy the second appraisal with direct capital'
+);
+assert.equal(
+  noLimitBreakCruelReport.wins,
+  10,
+  'a human direct-investment-first route can clear Cruel without a limit break'
+);
+assert.equal(supportOnlyCruelReport.wins, 0);
+assert.equal(
+  supportOnlyCruelReport.medianCruelSecondSignatureRatio,
+  0,
+  'support and SYNERGY cannot masquerade as the direct-capital signature'
+);
+assert.deepEqual(
+  runtimeAlignmentProbes.forcedLiquidationManualCounter,
+  {
+    recoveryRemaining: FORCED_LIQUIDATION_BALANCE.repeatRecoveryGraceMs,
+    waitingVelocity: 0,
+    winnerBeforeManual: null,
+    manualCommandConsumed: true,
+    awaitingManualCounter: false,
+    commandProgress: 0,
+    winnerAfterManual: 'player',
+  },
+  'Forced Liquidation waits for one ready manual command, then permits the same command to settle immediately'
+);
+assert.equal(
+  getForcedLiquidationSimulationGraceMs({
+    id: 'first_savage_grace_probe',
+    target: savageProperties[3],
+    isSavage: true,
+  }),
+  FORCED_LIQUIDATION_BALANCE.firstClearRecoveryGraceMs,
+  'only the first Savage series keeps the three-second learning grace'
+);
+assert.equal(
+  getForcedLiquidationSimulationGraceMs({
+    id: 'later_savage_grace_probe',
+    target: savageProperties[7],
+    isSavage: true,
+  }),
+  FORCED_LIQUIDATION_BALANCE.repeatRecoveryGraceMs,
+  'later Savage series use the 1.8-second repeat grace'
+);
+assert.equal(
+  getForcedLiquidationSimulationGraceMs({
+    id: 'ultimate_grace_probe',
+    target: ultimateSanityTarget,
+    isUltimate: true,
+  }),
+  FORCED_LIQUIDATION_BALANCE.repeatRecoveryGraceMs,
+  'Ultimate uses the 1.8-second repeat grace'
+);
 assert.equal(reportById.gridania_first.wins, 8);
 assert.ok(
   reportById.gridania_first.medianDirectActions >= 4 &&
@@ -2228,7 +2551,7 @@ assert.equal(
 for (const id of [
   'normal_late_solution_nine',
   'city_9_tuliyollal_divination',
-  'city_10_solution_nine_benison_divination',
+  'city_10_solution_nine_blackest_night_divination',
 ] as const) {
   assert.equal(
     reportById[id].timedCapitalBuffActivations,
@@ -2242,9 +2565,28 @@ const savageAutoSkillsByReportId = new Map(
     const profile = SAVAGE_ENEMY_AUTO_PROFILES[Math.floor(index / 4)][index % 4];
     return [
       report.id,
-      new Set([profile.opening, profile.critical].filter(Boolean)),
+      new Set<EnemySupportSkillId>(
+        [profile.opening, profile.critical].filter(Boolean)
+      ),
     ] as const;
   })
+);
+const ultimateAutoSkillsByReportId = new Map(
+  [...ultimatePatternReports, ...ultimatePreparedPatternReports].map(
+    (report, index) => {
+      const pattern =
+        ULTIMATE_ENEMY_AUTO_PATTERNS[
+          index % ULTIMATE_ENEMY_AUTO_PATTERNS.length
+        ];
+      return [
+        report.id,
+        new Set<EnemySupportSkillId>([
+          pattern.opening,
+          pattern.critical,
+        ]),
+      ] as const;
+    }
+  )
 );
 
 for (const report of allReports) {
@@ -2278,14 +2620,19 @@ for (const report of allReports) {
     `${report.id} must share the cumulative 20% recovery cap`
   );
   for (const skill of [
-    'divine_benison',
+    'blackest_night',
     'drain',
     'drill',
     'divination',
+    'rapid_assault',
+    'limit_break_3',
+    'capital_reversal',
+    'forced_liquidation',
   ] as const) {
     if (
       report.profile.includes(skill) ||
-      savageAutoSkillsByReportId.get(report.id)?.has(skill)
+      savageAutoSkillsByReportId.get(report.id)?.has(skill) ||
+      ultimateAutoSkillsByReportId.get(report.id)?.has(skill)
     ) {
       assert.ok(
         report.activations[skill] <= report.battles,
@@ -2326,8 +2673,8 @@ for (const report of [
   ...cruelReports,
 ]) {
   assert.ok(
-    report.p90Seconds < 120,
-    `${report.id} should keep its p90 below two minutes`
+    report.p90Seconds < 130,
+    `${report.id} should keep its p90 near two minutes even after Blackest Night`
   );
   assert.ok(
     report.p90DirectActions + report.p90SupportActions < 30,
@@ -2363,13 +2710,13 @@ const expectedCitySupportProfiles = [
   [],
   [],
   ['drain'],
-  ['drain'],
-  ['divine_benison', 'drain'],
-  ['divine_benison'],
+  ['blackest_night'],
+  ['blackest_night', 'rapid_assault'],
+  ['blackest_night'],
   ['drain'],
   ['drain', 'drill'],
   ['divination'],
-  ['divine_benison', 'divination'],
+  ['blackest_night', 'divination'],
 ] as const;
 
 assert.equal(cityReports.length, 10);
@@ -2417,6 +2764,20 @@ savageReports.forEach((report, index) => {
     `${report.id} uses guaranteed opening Cover only on layer two`
   );
   assert.deepEqual(report.profile, expectedProfile);
+  if (layer >= 3) {
+    assert.equal(
+      report.activations.capital_reversal,
+      report.battles,
+      `${report.id} must teach 資本反転 exactly once after the 55% gate`
+    );
+  }
+  if (layer === 4) {
+    assert.equal(
+      report.activations.forced_liquidation,
+      report.battles,
+      `${report.id} must resolve 強制清算 exactly once after 資本反転`
+    );
+  }
   const expectedAuto = SAVAGE_ENEMY_AUTO_PROFILES[seriesIndex][layer - 1];
   if (expectedAuto.opening) {
     assert.equal(
@@ -2475,7 +2836,7 @@ ultimatePatternReports.forEach((report, index) => {
   const pattern = ULTIMATE_ENEMY_AUTO_PATTERNS[index];
   assert.deepEqual(
     report.profile,
-    ['divine_benison', 'drain', 'drill', 'divination']
+    ['blackest_night', 'drain', 'drill', 'divination', 'capital_reversal', 'forced_liquidation']
   );
   assert.equal(
     report.openingBossDefenseTier,
@@ -2847,15 +3208,27 @@ assert.ok(
   'a late-company 極 should land in the authored twenty-to-forty-second band'
 );
 
-// Cruel's phase checks use only active time and ownership. Stun, Cover and
-// Living Dead remain useful around the declarations but are never required to
-// cancel them.
+// Cruel's phase checks use only active time and ownership. Feint, Passé and
+// Living Dead remain useful around the declarations, but phase changes are
+// not cancellable actions.
 const cruelCriticalPhaseProbes = {
   firstFromFull: resolveCruelFirstImpact(100),
   firstFromLow: resolveCruelFirstImpact(7),
-  secondAtThreshold: resolveCruelSecondImpact(50),
-  secondPrepared: resolveCruelSecondImpact(75),
-  secondAlmostPrepared: resolveCruelSecondImpact(74),
+  secondAtThreshold: resolveCruelSecondImpact(
+    50,
+    calculateCruelSignatureRequirement(cruelSimulationTarget.marketPrice),
+    cruelSimulationTarget.marketPrice
+  ),
+  secondPrepared: resolveCruelSecondImpact(
+    75,
+    calculateCruelSignatureRequirement(cruelSimulationTarget.marketPrice),
+    cruelSimulationTarget.marketPrice
+  ),
+  secondAlmostPrepared: resolveCruelSecondImpact(
+    74,
+    calculateCruelSignatureRequirement(cruelSimulationTarget.marketPrice),
+    cruelSimulationTarget.marketPrice
+  ),
 };
 assert.equal(cruelCriticalPhaseProbes.firstFromFull, 10);
 assert.equal(cruelCriticalPhaseProbes.firstFromLow, 7);
@@ -2863,16 +3236,28 @@ assert.deepEqual(cruelCriticalPhaseProbes.secondAtThreshold, {
   outcome: 'defeat',
   ownershipBefore: 50,
   ownershipAfter: 0,
+  ownershipSatisfied: false,
+  signatureSatisfied: true,
+  signaturePaid: 750_000_000,
+  signatureRequired: 750_000_000,
 });
 assert.deepEqual(cruelCriticalPhaseProbes.secondPrepared, {
   outcome: 'break',
   ownershipBefore: 75,
   ownershipAfter: 75,
+  ownershipSatisfied: true,
+  signatureSatisfied: true,
+  signaturePaid: 750_000_000,
+  signatureRequired: 750_000_000,
 });
 assert.deepEqual(cruelCriticalPhaseProbes.secondAlmostPrepared, {
   outcome: 'defeat',
   ownershipBefore: 74,
   ownershipAfter: 0,
+  ownershipSatisfied: false,
+  signatureSatisfied: true,
+  signaturePaid: 750_000_000,
+  signatureRequired: 750_000_000,
 }, 'a failed second assessment deterministically loses after its presentation');
 
 console.log(
