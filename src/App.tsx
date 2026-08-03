@@ -180,7 +180,7 @@ const FEATURE_UNLOCKS: Record<
     kicker: 'RIVAL WIND',
     title: '競合の追い風 解放',
     dialogue: 'リムサ・ロミンサの人脈開通後は、競合にも赤い追い風が届くでっす。赤い間は温存も立派な一手でっす！',
-    detail: '競合追い風の10秒間は敵防衛が1.35倍。静穏へ戻ると補正は消え、全画面演出による停止もありません。',
+    detail: '競合追い風の7～9秒間は敵防衛が1.35倍。静穏へ戻ると補正は消え、全画面演出中は残り時間が減りません。',
   },
   turbulent_wind: {
     kicker: 'MARKET TURBULENCE',

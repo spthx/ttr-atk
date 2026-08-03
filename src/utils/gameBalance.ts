@@ -555,7 +555,7 @@ export const TACTICAL_SKILL_BALANCE = {
     maxUsesPerBattle: 1,
   },
   cover: {
-    durationMs: 18_000,
+    durationMs: 16_000,
     absorbRatio: 0.92,
     gaugeCapacity: 84,
   },
@@ -1155,7 +1155,7 @@ export const BOSS_COVER_BALANCE = {
     counterCapitalRatio: 0.06,
   },
   enhancedCover: {
-    durationMs: 18_000,
+    durationMs: 16_000,
     absorbRatio: 0.92,
     gaugeCapacity: 84,
     counterCapitalRatio: 0.12,

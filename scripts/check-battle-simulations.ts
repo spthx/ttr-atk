@@ -1888,7 +1888,7 @@ const eraWindBurst = progressionSynergyBurst('ERA_WIND_SYNERGY');
 const ultimateGrandCompanyEorzeaBurst = {
   ...grandCompanyEorzeaBurst,
   // Three Savage upgrades (+0.06) and full integration (+0.07).
-  multiplier: 1.91,
+  multiplier: Number((grandCompanyEorzeaBurst.multiplier + 0.13).toFixed(2)),
 } as const;
 
 const normalScenarios = [
@@ -2213,8 +2213,9 @@ const ultimatePreparedPatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
         id: `ultimate_prepared_${pattern.id}`,
         ultimateAutoPatternIndex: patternIndex,
         playerBaselineCash: Math.round(
-          ultimateSanityTarget.marketPrice * 0.5
+          ultimateSanityTarget.marketPrice
         ),
+        preferDirectInvestmentActions: 4,
         openingPlayerPassage: true,
         timedCapitalBuff: {
           ...eraWindBurst,
@@ -2967,7 +2968,7 @@ assert.deepEqual(BOSS_COVER_BALANCE.cover, {
   counterCapitalRatio: 0.06,
 });
 assert.deepEqual(BOSS_COVER_BALANCE.enhancedCover, {
-  durationMs: 18_000,
+  durationMs: 16_000,
   absorbRatio: 0.92,
   gaugeCapacity: 84,
   counterCapitalRatio: 0.12,
