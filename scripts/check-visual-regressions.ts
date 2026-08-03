@@ -788,7 +788,7 @@ assert.ok(
 );
 assert.match(
   battleModal,
-  /!capitalPilePresentationLocked \|\|[\s\S]*commandTimeScale <= 0[\s\S]*setCommandProgress\([\s\S]*commandProgressPerTick \* commandTimeScale/,
+  /!capitalPresentationActive \|\|[\s\S]*commandTimeScale <= 0[\s\S]*setCommandProgress\([\s\S]*commandProgressPerTick \* commandTimeScale/,
   'the dedicated pile interval must advance only the player command clock'
 );
 assert.match(
@@ -883,7 +883,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const visibleRemaining = Math\.max\([\s\S]*100,[\s\S]*Math\.ceil\(rawRemaining \/ 100\) \* 100[\s\S]*\)/,
+  /const visibleRemaining = Math\.max\([\s\S]*100,[\s\S]*Math\.ceil\(clock\.remainingMs \/ 100\) \* 100[\s\S]*\)/,
   'an enemy telegraph held by capital stacking must never show zero seconds'
 );
 assert.match(
@@ -893,13 +893,13 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const beginCast = \(grantPostPileGrace = false\)[\s\S]*capitalPilePreviewActiveRef\.current\.player[\s\S]*capitalPilePreviewActiveRef\.current\.enemy[\s\S]*beginCast\(grantPostPileGrace \|\| capitalPileBlocked\)[\s\S]*if \(grantPostPileGrace\)[\s\S]*refreshEnemySupportTelegraphDeadline\([\s\S]*ENEMY_SUPPORT_POST_PILE_GRACE_MS[\s\S]*const graceTimer = window\.setTimeout\([\s\S]*beginCast\(false\)[\s\S]*ENEMY_SUPPORT_POST_PILE_GRACE_MS/,
+  /const beginCast = \(grantPostPileGrace = false\)[\s\S]*capitalPilePreviewActiveRef\.current\.player[\s\S]*capitalPilePreviewActiveRef\.current\.enemy[\s\S]*beginCast\(grantPostPileGrace \|\| capitalPileBlocked\)[\s\S]*if \(grantPostPileGrace\)[\s\S]*startEnemySupportTelegraphTicker\([\s\S]*ENEMY_SUPPORT_POST_PILE_GRACE_MS,[\s\S]*\(\) => beginCast\(false\)/,
   'an enemy support cast deferred by stacking must grant a readable post-pile action window'
 );
 assert.match(
   battleModal,
-  /startEnemySupportTelegraphTicker\(presentation\.telegraphMs\)[\s\S]*const beginCast[\s\S]*updateStage\('cast'\)[\s\S]*clearEnemySupportTelegraphTicker\(\)[\s\S]*setEnemySupportTelegraphRemainingMs\(null\)/,
-  'the enemy countdown must start with the warning and stop only when the actual cast starts'
+  /const beginCast[\s\S]*updateStage\('cast'\)[\s\S]*clearEnemySupportTelegraphTicker\(\)[\s\S]*setEnemySupportTelegraphRemainingMs\(null\)[\s\S]*startEnemySupportTelegraphTicker\([\s\S]*presentation\.telegraphMs,[\s\S]*\(\) => beginCast\(false\)/,
+  'the enemy countdown must own the warning duration and stop only when the actual cast starts'
 );
 assert.match(
   battleModal,
@@ -945,6 +945,56 @@ assert.match(
   battleModal,
   /simulationPausedRef\.current = presentationPauseActive[\s\S]*simulationPausedRef\.current \|\|[\s\S]*timeScale <= 0/,
   'presentation pauses must synchronously block queued enemy actions'
+);
+assert.match(
+  battleModal,
+  /const impactPresentationActive =[\s\S]{0,120}isBattleImpactPresentationActive\(impactStop\?\.phase\)/,
+  'impact locking must use one shared phase rule'
+);
+assert.match(
+  battleModal,
+  /const presentationPauseActive =[\s\S]{0,520}impactPresentationActive/,
+  'impact hitstop and release must both pause the battle simulation'
+);
+assert.match(
+  battleModal,
+  /const fullCommandPauseActive =[\s\S]{0,520}impactPresentationActive/,
+  'impact hitstop and release must both pause command recharge'
+);
+assert.doesNotMatch(
+  battleModal,
+  /impactStop\?\.phase === 'hitstop'/,
+  'the release phase must never be excluded from battle-clock locking'
+);
+assert.match(
+  battleModal,
+  /const capitalPresentationActive =\s*capitalCommit !== null \|\| capitalPilePresentationLocked/,
+  'direct investments and queued piles must share one presentation clock'
+);
+assert.match(
+  battleModal,
+  /const capitalPresentationAllowsCommandRecharge =[\s\S]{0,240}capitalPreviewStage\?\.commandRecharge !== 'pause'[\s\S]{0,240}playerCapitalPilePreviewStage\?\.commandRecharge !== 'pause'[\s\S]{0,240}enemyCapitalPilePreviewStage\?\.commandRecharge !== 'pause'/,
+  'every capital presentation must carry its command-recharge policy'
+);
+assert.match(
+  battleModal,
+  /capitalPileActive: capitalPresentationActive[\s\S]{0,180}capitalPileAllowsCommandRecharge:\s*capitalPresentationAllowsCommandRecharge/,
+  'the clock helper must receive the unified capital presentation state'
+);
+assert.match(
+  battleModal,
+  /useEffect\(\(\) => \{\s*if \(\s*!capitalPresentationActive[\s\S]{0,720}setCommandProgress/,
+  'direct coin stacking must use the presentation-only command recharge loop'
+);
+assert.match(
+  battleModal,
+  /advanceEnemySupportTelegraphClock\(\{[\s\S]{0,420}enemySupportCastBlockedRef\.current[\s\S]{0,240}capitalCommitActiveRef\.current[\s\S]{0,240}capitalPilePreviewActiveRef\.current\.player[\s\S]{0,240}capitalPilePreviewActiveRef\.current\.enemy/,
+  'enemy telegraphs must freeze behind every active presentation blocker'
+);
+assert.doesNotMatch(
+  battleModal,
+  /window\.setTimeout\([\s\S]{0,120}\(\) => beginCast\(false\)[\s\S]{0,120}presentation\.telegraphMs/,
+  'enemy telegraphs must not use a wall-clock cast timeout'
 );
 assert.match(
   battleModal,
