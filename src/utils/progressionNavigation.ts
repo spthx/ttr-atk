@@ -17,6 +17,7 @@ export type BattleResultDestination =
   | 'next-case'
   | 'next-community'
   | 'same-community'
+  | 'alliance-list'
   | 'high-end-list'
   | 'training-list'
   | 'campaign-ending';
@@ -41,12 +42,14 @@ export const getBattleResultCta = ({
   hasNextCommunity = false,
   isCityBoss = false,
   isReacquisition = false,
+  returnToAlliance = false,
 }: {
   battleMode: BattleMode;
   winner: 'player' | 'opponent';
   hasNextCommunity?: boolean;
   isCityBoss?: boolean;
   isReacquisition?: boolean;
+  returnToAlliance?: boolean;
 }): BattleResultCta => {
   if (battleMode === 'training') {
     return {
@@ -70,6 +73,18 @@ export const getBattleResultCta = ({
           ? '攻略結果を確定して高難度一覧へ'
           : '敗因を記録して高難度一覧へ',
       departureLabel: '離脱報告を確認して高難度一覧へ',
+    };
+  }
+
+  if (returnToAlliance) {
+    return {
+      destination: 'alliance-list',
+      intent: winner === 'player' ? 'continue' : 'retry',
+      label:
+        winner === 'player'
+          ? '交渉結果を確定してアライアンスへ'
+          : '敗因を記録してアライアンスへ',
+      departureLabel: '離脱報告を確認してアライアンスへ',
     };
   }
 

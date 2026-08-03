@@ -84,6 +84,7 @@ import {
   loadPendingBattleSession,
   persistPendingBattleSession,
   shouldRestorePendingBattleSession,
+  type NormalBattleOrigin,
 } from './utils/battleSession';
 import {
   getUnlockedCommunityIds,
@@ -363,13 +364,22 @@ export default function App() {
       pendingBattleSession?.mode === 'ultimate' ||
       pendingBattleSession?.mode === 'cruel'
       ? 'savage'
-      : 'market'
+      : pendingBattleSession?.mode === 'normal' &&
+          pendingBattleSession.normalOrigin === 'cartels'
+        ? 'cartels'
+        : 'market'
   );
   const [activeBattleProperty, setActiveBattleProperty] =
     useState<Property | null>(pendingBattleSession?.targetProperty ?? null);
   const [activeBattleMode, setActiveBattleMode] = useState<BattleMode>(
     pendingBattleSession?.mode ?? 'normal'
   );
+  const [normalBattleOrigin, setNormalBattleOrigin] =
+    useState<NormalBattleOrigin>(
+      pendingBattleSession?.mode === 'normal'
+        ? pendingBattleSession.normalOrigin ?? 'market'
+        : 'market'
+    );
   const showTrainingSelector = false;
   const [endingNotice, setEndingNotice] = useState<'normal' | 'savage' | 'true' | null>(null);
   const announcedEndingRef = useRef<'normal' | 'savage' | 'true' | null>(null);
@@ -424,6 +434,7 @@ export default function App() {
   const [skillsStoryReturn, setSkillsStoryReturn] = useState<
     | { destination: 'market'; community: CommunityType }
     | { destination: 'savage' }
+    | { destination: 'cartels' }
     | null
   >(null);
   const deferredBattleIncomeRef = useRef(0);
@@ -1181,18 +1192,22 @@ export default function App() {
     return false;
   };
 
-  const handleStartBuyout = (property: Property) => {
+  const handleStartBuyout = (
+    property: Property,
+    origin: NormalBattleOrigin = 'market'
+  ) => {
     if (!unlockedCommunityIds.has(property.community)) {
       soundFx.playWarning();
       addGameLog(`【人脈未開通】${property.community}へ進むには、手前の都市で必要な人脈をそろえてください。`, 'warning');
-      setActiveTab('market');
+      setActiveTab(origin);
       return;
     }
     if (!hasBattleBrokerageFunds(property)) return;
     soundFx.playCoin();
     setSkillsStoryReturn(null);
     persistGameState();
-    persistPendingBattleSession('normal', property);
+    persistPendingBattleSession('normal', property, { normalOrigin: origin });
+    setNormalBattleOrigin(origin);
     setBattleTimeScale(0);
     setActiveBattleMode('normal');
     setActiveBattleProperty(property);
@@ -1270,6 +1285,8 @@ export default function App() {
       return false;
     }
     const isNormalBattle = activeBattleMode === 'normal';
+    const returnsToAlliance =
+      isNormalBattle && normalBattleOrigin === 'cartels';
     const isExtremeReacquisitionBattle =
       isNormalBattle && isExtremeReacquisition(targetProperty);
     const projectedProperties = isNormalBattle
@@ -1512,7 +1529,11 @@ export default function App() {
       if (normalBattleNavigation?.unlockedCommunity) {
         setUnlockNotice(normalBattleNavigation.unlockedCommunity);
       }
-      if (normalBattleNavigation) {
+      if (returnsToAlliance) {
+        setSkillsStoryReturn(
+          gainsAbilityExplanation ? { destination: 'cartels' } : null
+        );
+      } else if (normalBattleNavigation) {
         setMarketNavigationRequest((previous) => ({
           id: (previous?.id || 0) + 1,
           mode: normalBattleNavigation.mode,
@@ -1527,7 +1548,7 @@ export default function App() {
             : null
         );
       }
-      setActiveTab('market');
+      setActiveTab(returnsToAlliance ? 'cartels' : 'market');
 
       addGameLog(
         `【交渉成功】${targetProperty.name} を取得し、自社の保有事業・契約に加えました！（確定支出 ${formatCurrency(
@@ -1555,7 +1576,7 @@ export default function App() {
         )}）`,
         'warning'
       );
-      if (normalBattleNavigation) {
+      if (normalBattleNavigation && !returnsToAlliance) {
         setMarketNavigationRequest((previous) => ({
           id: (previous?.id || 0) + 1,
           mode: normalBattleNavigation.mode,
@@ -1563,7 +1584,7 @@ export default function App() {
         }));
       }
       setSkillsStoryReturn(null);
-      setActiveTab('market');
+      setActiveTab(returnsToAlliance ? 'cartels' : 'market');
     }
 
     if (isNormalBattle) {
@@ -1983,6 +2004,8 @@ export default function App() {
     if (!skillsStoryReturn) return;
     if (skillsStoryReturn.destination === 'savage') {
       setActiveTab('savage');
+    } else if (skillsStoryReturn.destination === 'cartels') {
+      setActiveTab('cartels');
     } else {
       setActiveTab('market');
       setMarketNavigationRequest((previous) => ({
@@ -2154,6 +2177,8 @@ export default function App() {
             storyReturnLabel={
               skillsStoryReturn?.destination === 'savage'
                 ? '零式の攻略一覧へ戻る'
+                : skillsStoryReturn?.destination === 'cartels'
+                  ? 'アライアンス攻略へ戻る'
                 : skillsStoryReturn?.destination === 'market'
                   ? `${skillsStoryReturn.community}の交渉先へ戻る`
                   : undefined
@@ -2178,7 +2203,9 @@ export default function App() {
             }
             onFormAlliance={handleFormAlliance}
             onBreakAlliance={handleBreakAlliance}
-            onStartBuyout={handleStartBuyout}
+            onStartBuyout={(property) =>
+              handleStartBuyout(property, 'cartels')
+            }
           />
         )}
 
@@ -2372,7 +2399,11 @@ export default function App() {
                 <span className="mt-3 block rounded-xl border border-amber-200/25 bg-slate-950/75 p-3 text-sm font-bold leading-relaxed text-amber-50">「この都市の人脈がつながったでっす。新しい交易路から、次の市場へ進むでっす！」</span>
               </span>
             </span>
-            <span className="relative z-10 mt-4 inline-block rounded-lg bg-amber-400 px-4 py-2 text-xs font-black text-slate-950">次の都市の交渉先へ</span>
+            <span className="relative z-10 mt-4 inline-block rounded-lg bg-amber-400 px-4 py-2 text-xs font-black text-slate-950">
+              {normalBattleOrigin === 'cartels'
+                ? 'アライアンス攻略へ戻る'
+                : '次の都市の交渉先へ'}
+            </span>
           </span>
         </button>
       )}
@@ -2463,6 +2494,10 @@ export default function App() {
           isCityBoss={
             activeBattleMode === 'normal' &&
             isNormalCityBoss(properties, activeBattleProperty)
+          }
+          returnToAlliance={
+            activeBattleMode === 'normal' &&
+            normalBattleOrigin === 'cartels'
           }
           onAddFunds={handleAddFunds}
           onResetFunds={handleResetFunds}

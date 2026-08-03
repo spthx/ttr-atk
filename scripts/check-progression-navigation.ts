@@ -93,6 +93,39 @@ assert.deepEqual(
   'A normal in-city victory must describe the next case, not the world map.'
 );
 
+assert.deepEqual(
+  getBattleResultCta({
+    battleMode: 'normal',
+    winner: 'player',
+    hasNextCommunity: true,
+    isCityBoss: true,
+    isReacquisition: true,
+    returnToAlliance: true,
+  }),
+  {
+    destination: 'alliance-list',
+    intent: 'continue',
+    label: '交渉結果を確定してアライアンスへ',
+    departureLabel: '離脱報告を確認してアライアンスへ',
+  },
+  'An Alliance-origin victory must return to Alliance even when the target also belongs to story progression.'
+);
+
+assert.deepEqual(
+  getBattleResultCta({
+    battleMode: 'normal',
+    winner: 'opponent',
+    returnToAlliance: true,
+  }),
+  {
+    destination: 'alliance-list',
+    intent: 'retry',
+    label: '敗因を記録してアライアンスへ',
+    departureLabel: '離脱報告を確認してアライアンスへ',
+  },
+  'An Alliance-origin defeat must return to the same Alliance target list.'
+);
+
 assert.equal(
   getBattleResultCta({
     battleMode: 'normal',
@@ -246,8 +279,23 @@ assert.equal(
 
 assert.match(
   appSource,
-  /const returnFromAbilitySetup[\s\S]*destination === 'savage'[\s\S]*setActiveTab\('savage'\)[\s\S]*mode: 'targets'[\s\S]*community: skillsStoryReturn\.community/,
-  'Ability setup must return to either the Savage list or the exact story enemy-selection screen.'
+  /const returnFromAbilitySetup[\s\S]*destination === 'savage'[\s\S]*setActiveTab\('savage'\)[\s\S]*destination === 'cartels'[\s\S]*setActiveTab\('cartels'\)[\s\S]*mode: 'targets'[\s\S]*community: skillsStoryReturn\.community/,
+  'Ability setup must return to Alliance, the Savage list, or the exact story enemy-selection screen.'
+);
+assert.match(
+  appSource,
+  /persistPendingBattleSession\('normal', property, \{ normalOrigin: origin \}\)[\s\S]*onStartBuyout=\{\(property\) =>[\s\S]*handleStartBuyout\(property, 'cartels'\)/,
+  'Alliance battles must persist their explicit screen origin instead of inferring it from a shared property ID.'
+);
+assert.match(
+  appSource,
+  /returnsToAlliance[\s\S]*destination: 'cartels'[\s\S]*setActiveTab\(returnsToAlliance \? 'cartels' : 'market'\)/,
+  'Alliance victories with an ability or synergy unlock must preserve a one-step Alliance return.'
+);
+assert.match(
+  appSource,
+  /destination === 'cartels'[\s\S]*アライアンス攻略へ戻る/,
+  'The ability screen must name the Alliance return destination explicitly.'
 );
 assert.match(
   abilityViewSource,
