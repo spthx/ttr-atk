@@ -132,13 +132,13 @@ import {
 import { StrengthComparison } from './StrengthComparison';
 import {
   applyTrainingGaugeSpeed,
+  applyNormalClosingMomentum,
   advanceBattleCashRecovery,
   applyCoverToGaugeDelta,
   applyBlackestNightToGaugeDelta,
   BOSS_COVER_BALANCE,
   BATTLE_LOYALTY_BALANCE,
   BATTLE_SUPPORT_BALANCE,
-  BATTLE_GAUGE_SPEED_FACTOR,
   type ProfitAllocationOptionId,
   canEnemyAffordDrill,
   calculateBattleVictoryReward,
@@ -156,6 +156,7 @@ import {
   calculateLimitBreakOwnershipPush,
   calculateLimitBreakPushGilEquivalent,
   calculateForcedLiquidationGaugeDelta,
+  claimBattleSynergyUsage,
   consumeLimitBreakCharge,
   ENEMY_BALANCE_FACTOR,
   ENEMY_INITIAL_COMMITMENT_RATIO,
@@ -164,6 +165,7 @@ import {
   getBossAbilityTier,
   getEnemyDifficultyLevel,
   getEnemyDivinationDurationMs,
+  resolveBattleGaugeSpeedFactor,
   getEnemyDrillImpact,
   getEnemyMinimumCommitment,
   getOpeningBossAbilityTier,
@@ -181,6 +183,7 @@ import {
   getReacquisitionLevel,
   getSubsidiaryRiskIncrease,
   getSubsidiarySupportMultiplier,
+  INITIAL_BATTLE_COMMAND_PROGRESS,
   LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER,
   LIMIT_BREAK_CHARGE_PER_BAR,
   LIMIT_BREAK_MULTIPLIERS,
@@ -262,6 +265,7 @@ interface BattleModalProps {
   isCruel?: boolean;
   isTraining?: boolean;
   isCityBoss?: boolean;
+  returnToAlliance?: boolean;
   onAddFunds?: (amount: number) => void;
   onResetFunds?: () => void;
   onTimeScaleChange?: (scale: number) => void;
@@ -952,6 +956,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   isCruel = false,
   isTraining = false,
   isCityBoss = false,
+  returnToAlliance = false,
   onTimeScaleChange,
   battleFrameRate,
   onBattleEnd,
@@ -1116,6 +1121,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     useState(0);
   const [usedBattleSynergyIds, setUsedBattleSynergyIds] =
     useState<Set<string>>(() => new Set());
+  const usedBattleSynergyIdsRef = useRef<Set<string>>(new Set());
   const [enemyMarketWindRemaining, setEnemyMarketWindRemaining] = useState(0);
   const [enemySupportCinematic, setEnemySupportCinematic] =
     useState<EnemySupportCinematic | null>(null);
@@ -1188,6 +1194,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [celebrationDecision, setCelebrationDecision] =
     useState<CelebrationDecision>(null);
   const [openingAutoPending, setOpeningAutoPending] = useState(false);
+  const [openingDecisionPending, setOpeningDecisionPending] = useState(false);
   const [criticalAutoPending, setCriticalAutoPending] =
     useState<PendingCriticalGaugeCandidate | null>(null);
   const [ultimateCriticalGatePending, setUltimateCriticalGatePending] =
@@ -1300,6 +1307,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const resultConfirmedRef = useRef(false);
   const celebrationDecisionRef = useRef<CelebrationDecision>(null);
   const openingAutoTriggeredRef = useRef(false);
+  const openingDecisionPendingRef = useRef(false);
   const criticalAutoArmedRef = useRef(false);
   const criticalAutoTriggeredRef = useRef(false);
   const criticalAutoResolutionPhaseRef =
@@ -1977,7 +1985,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     );
   const battleSynergyUsed =
     !!selectedBattleSynergy &&
-    usedBattleSynergyIds.has(selectedBattleSynergy.id);
+    (
+      usedBattleSynergyIds.has(selectedBattleSynergy.id) ||
+      usedBattleSynergyIdsRef.current.has(selectedBattleSynergy.id)
+    );
 
   const totalPlayerInvested = companyInvested + demandInvested;
   const rawOwnership = (100 - gauge) / 2;
@@ -2673,6 +2684,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     !!capitalCommit ||
     enemySupportPausesBattle ||
     openingAutoPending ||
+    openingDecisionPending ||
     !!criticalAutoPending ||
     ultimateCriticalGatePending ||
     presentationLocked ||
@@ -2740,6 +2752,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     !!capitalCommit ||
     capitalPilePresentationLocked ||
     openingAutoPending ||
+    openingDecisionPending ||
     !!criticalAutoPending ||
     ultimateCriticalGatePending ||
     impactPresentationActive ||
@@ -2856,6 +2869,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (
       !commandReady ||
       !decisionGraceArmedRef.current ||
+      openingDecisionPending ||
       battlePhase !== 'active' ||
       winner ||
       presentationLocked ||
@@ -2876,6 +2890,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     battlePhase,
     commandReady,
     decisiveLocked,
+    openingDecisionPending,
     presentationLocked,
     winner,
   ]);
@@ -3228,6 +3243,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setCriticalAutoPending(null);
     setUltimateCriticalGatePending(false);
     setCruelOmnicapitalizationPending(null);
+    openingDecisionPendingRef.current = false;
+    setOpeningDecisionPending(false);
     const openingLog = {
       id: `open-${Date.now()}`,
       category: 'system' as LogCategory,
@@ -3236,7 +3253,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         : `${companyName}対${targetProperty.name}、争奪戦開始。競合は${formatCurrency(initialEnemyCommitment)}を先に積みました。`,
     };
     changeBattlePhase('active');
-    setCommandProgress(0);
+    // The simulator and the authored battle opener both assume one real
+    // player decision before an enemy telegraph can own the stage.
+    setCommandProgress(INITIAL_BATTLE_COMMAND_PROGRESS);
     const canQueueOpeningAuto =
       !!openingAutoSkill &&
       isSkillUsableInBattle({
@@ -3356,6 +3375,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ) {
       soundFx.playWarning();
       return false;
+    }
+    if (openingDecisionPendingRef.current) {
+      openingDecisionPendingRef.current = false;
+      setOpeningDecisionPending(false);
     }
     if (decisionGraceTimerRef.current) {
       window.clearTimeout(decisionGraceTimerRef.current);
@@ -3661,6 +3684,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       enemyOpeningCoverUsedRef.current ||
       battlePhase !== 'active' ||
       openingSlowActive ||
+      openingAutoPending ||
       battleAnnouncement ||
       conditionAnnouncement ||
       skillCinematic ||
@@ -3683,6 +3707,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     conditionAnnouncement,
     impactStop,
     openingBossAbilityTier,
+    openingAutoPending,
     openingSlowActive,
     skillCinematic,
   ]);
@@ -3700,6 +3725,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       criticalAutoResolutionPhaseRef.current,
       'cancel'
     );
+    openingDecisionPendingRef.current = false;
+    setOpeningDecisionPending(false);
     criticalAutoPendingRef.current = null;
     setCriticalAutoPending(null);
     terminalCapitalHandoffRef.current = null;
@@ -5265,6 +5292,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   useEffect(() => {
     if (
       enemySupportProfile.length === 0 ||
+      openingDecisionPending ||
       (isCruel && cruelScriptPhase !== 'resolved') ||
       cruelOmnicapitalizationPending ||
       ultimateCriticalGatePending ||
@@ -5426,6 +5454,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     isUltimate,
     limitImpactActive,
     openingSlowActive,
+    openingDecisionPending,
     ownership,
     panel,
     showHelp,
@@ -5863,15 +5892,21 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const deadZone = gapRatio < 0.025 ? 0.32 : 1;
       const rawVelocity = applyTrainingGaugeSpeed(
         baseVelocity *
-          BATTLE_GAUGE_SPEED_FACTOR *
+          resolveBattleGaugeSpeedFactor({ isTraining, isHighEndRaid }) *
           leverage *
           deadZone *
           currentWind.speedMultiplier -
           (eraWindActive ? eraWindPushPerSecond : 0),
         isTraining
       );
-      const cruelAdjustedVelocity = resolveCruelRecoveryContinuousVelocity({
+      const closingAdjustedVelocity = applyNormalClosingMomentum({
         velocity: rawVelocity,
+        gauge: gaugeRef.current,
+        isTraining,
+        isHighEndRaid,
+      });
+      const cruelAdjustedVelocity = resolveCruelRecoveryContinuousVelocity({
+        velocity: closingAdjustedVelocity,
         isCruel,
         phase: cruelScriptPhaseRef.current,
       });
@@ -5910,7 +5945,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [battleFrameRate, criticalAutoReadyForTrigger, currentWind.playerMultiplier, currentWind.speedMultiplier, effectiveCapitalGap, enemyCapitalMultiplier, enemyInvested, enemyLimitBreakHoldRemaining, eraWindActive, eraWindPushPerSecond, influenceBonus, isCruel, isTraining, progressionSynergyMultiplier, targetProperty.marketPrice, timeScale, totalPlayerInvested, updateGauge, winner]);
+  }, [battleFrameRate, criticalAutoReadyForTrigger, currentWind.playerMultiplier, currentWind.speedMultiplier, effectiveCapitalGap, enemyCapitalMultiplier, enemyInvested, enemyLimitBreakHoldRemaining, eraWindActive, eraWindPushPerSecond, influenceBonus, isCruel, isHighEndRaid, isTraining, progressionSynergyMultiplier, targetProperty.marketPrice, timeScale, totalPlayerInvested, updateGauge, winner]);
 
   const startCompanyCapitalPresentation = (
     snapshot: CapitalCommitSnapshot,
@@ -6573,11 +6608,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   ) => {
     if (
       usedBattleSynergyIds.has(synergyId) ||
+      usedBattleSynergyIdsRef.current.has(synergyId) ||
       skillCinematic ||
       skillCinematicRuntimeRef.current ||
       !consumeCommand()
     ) return;
-    setUsedBattleSynergyIds((current) => new Set(current).add(synergyId));
+    const claimedSynergyIds = claimBattleSynergyUsage(
+      usedBattleSynergyIdsRef.current,
+      synergyId
+    );
+    if (!claimedSynergyIds) return;
+    usedBattleSynergyIdsRef.current = claimedSynergyIds;
+    setUsedBattleSynergyIds(claimedSynergyIds);
     setPanel('capital');
     setLastPlayerAction('SYNERGY');
     let amount = 0;
@@ -6702,6 +6744,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (
       !effect ||
       usedBattleSynergyIds.has(synergy.id) ||
+      usedBattleSynergyIdsRef.current.has(synergy.id) ||
       skillCinematic ||
       skillCinematicRuntimeRef.current ||
       !consumeCommand()
@@ -6713,9 +6756,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     lastPressureCauseRef.current = 'synergy';
     enemySupportCastBlockedRef.current = true;
     simulationPausedRef.current = true;
-    setUsedBattleSynergyIds((current) =>
-      new Set(current).add(synergy.id)
+    const claimedSynergyIds = claimBattleSynergyUsage(
+      usedBattleSynergyIdsRef.current,
+      synergy.id
     );
+    if (!claimedSynergyIds) return;
+    usedBattleSynergyIdsRef.current = claimedSynergyIds;
+    setUsedBattleSynergyIds(claimedSynergyIds);
     const rallyOwnershipPush = Math.max(0, effect.ownershipPush ?? 0);
     const rallyGilEquivalent = calculateLimitBreakPushGilEquivalent(
       targetProperty.marketPrice,
@@ -7116,6 +7163,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const started = useSkill(openingAutoSkill, {
       source: 'opening-auto',
       onComplete: () => {
+        // Opening AUTO uses a reserved slot. After authored opening defense
+        // finishes, hold every battle clock until one manual command succeeds.
+        openingDecisionPendingRef.current = true;
+        setOpeningDecisionPending(true);
+        setCommandProgress(INITIAL_BATTLE_COMMAND_PROGRESS);
         setOpeningAutoPending(false);
         setOpeningSlowActive(false);
       },
@@ -7365,6 +7417,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         hasNextCommunity: !!nextCommunity,
         isCityBoss,
         isReacquisition: isExtremeBattle,
+        returnToAlliance,
       })
     : null;
   const resultFinancialComment = isTraining

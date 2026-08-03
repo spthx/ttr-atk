@@ -30,6 +30,8 @@ export const PASSIVE_REVENUE_MULTIPLIER = 2;
 export const INITIAL_PLAYER_FUNDS = 20_000;
 export const PLAYER_BATTLE_CASH_CAP_RATIO = 1;
 export const BATTLE_GAUGE_SPEED_FACTOR = 4;
+export const NORMAL_BATTLE_GAUGE_SPEED_FACTOR = 4.5;
+export const INITIAL_BATTLE_COMMAND_PROGRESS = 100;
 export const TRAINING_GAUGE_SPEED_MULTIPLIER = 0.1;
 export const TRAINING_MIN_OWNERSHIP_PERCENT = 1;
 export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
@@ -44,6 +46,31 @@ export const applyTrainingGaugeSpeed = (
   velocity: number,
   isTraining: boolean
 ) => velocity * (isTraining ? TRAINING_GAUGE_SPEED_MULTIPLIER : 1);
+
+export const resolveBattleGaugeSpeedFactor = ({
+  isTraining,
+  isHighEndRaid,
+}: {
+  isTraining: boolean;
+  isHighEndRaid: boolean;
+}) =>
+  isTraining || isHighEndRaid
+    ? BATTLE_GAUGE_SPEED_FACTOR
+    : NORMAL_BATTLE_GAUGE_SPEED_FACTOR;
+
+/**
+ * Claims a once-per-battle synergy without mutating the caller's Set.
+ * Returning null lets the UI and effect handler share one atomic guard.
+ */
+export const claimBattleSynergyUsage = (
+  usedSynergyIds: ReadonlySet<string>,
+  synergyId: string
+) => {
+  if (usedSynergyIds.has(synergyId)) return null;
+  const next = new Set(usedSynergyIds);
+  next.add(synergyId);
+  return next;
+};
 
 export const calculatePlayerBattleCashLimit = (marketPrice: number) =>
   Math.max(10, Math.round(Math.max(0, marketPrice) * PLAYER_BATTLE_CASH_CAP_RATIO));
@@ -608,6 +635,43 @@ export const normalizeBattleOwnership = (ownership: number) =>
 
 export const calculateOwnershipFromGauge = (gauge: number) =>
   normalizeBattleOwnership((100 - gauge) / 2);
+
+export const NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD = 85;
+export const NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND = 0.75;
+
+/**
+ * Prevents a normal battle from lingering after one side has earned a decisive
+ * lead. The floor only follows the current pressure direction, so a capital
+ * reversal immediately cancels or reverses the closeout push.
+ */
+export const applyNormalClosingMomentum = ({
+  velocity,
+  gauge,
+  isTraining,
+  isHighEndRaid,
+}: {
+  velocity: number;
+  gauge: number;
+  isTraining: boolean;
+  isHighEndRaid: boolean;
+}) => {
+  if (isTraining || isHighEndRaid) return velocity;
+
+  const playerOwnership = calculateOwnershipFromGauge(gauge);
+  if (
+    playerOwnership >= NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD &&
+    velocity < 0
+  ) {
+    return Math.min(velocity, -NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND);
+  }
+  if (
+    playerOwnership <= 100 - NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD &&
+    velocity > 0
+  ) {
+    return Math.max(velocity, NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND);
+  }
+  return velocity;
+};
 
 export const CRITICAL_AUTO_OWNERSHIP_THRESHOLD = 25;
 

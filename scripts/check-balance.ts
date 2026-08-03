@@ -182,11 +182,13 @@ import {
   applyBlackestNightToGaugeDelta,
   applyCoverToGaugeDelta,
   applyTrainingGaugeSpeed,
+  applyNormalClosingMomentum,
   BOSS_COVER_BALANCE,
   BATTLE_CASH_RECOVERY_RATE_PER_SECOND,
   BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO,
   BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS,
   BATTLE_GAUGE_SPEED_FACTOR,
+  NORMAL_BATTLE_GAUGE_SPEED_FACTOR,
   BATTLE_LOYALTY_BALANCE,
   BATTLE_SUPPORT_BALANCE,
   PROFIT_ALLOCATION_OPTIONS,
@@ -201,8 +203,10 @@ import {
   ENEMY_INITIAL_COMMITMENT_RATIO,
   ENEMY_BALANCE_FACTOR,
   INITIAL_PLAYER_FUNDS,
+  INITIAL_BATTLE_COMMAND_PROGRESS,
   PASSIVE_REVENUE_MULTIPLIER,
   PLAYER_BATTLE_CASH_CAP_RATIO,
+  resolveBattleGaugeSpeedFactor,
   TACTICAL_SKILL_BALANCE,
   TRAINING_GAUGE_SPEED_MULTIPLIER,
   TRAINING_MIN_OWNERSHIP_PERCENT,
@@ -270,6 +274,7 @@ import {
   resolveEnemyDrainTransfer,
   resolveCapitalReversal,
   calculateForcedLiquidationGaugeDelta,
+  claimBattleSynergyUsage,
   resolveForcedLiquidationContinuousVelocity,
   shouldEnemyUseBlackestNight,
 } from '../src/utils/gameBalance';
@@ -987,6 +992,40 @@ const pendingBattleSession = parsePendingBattleSession(
 );
 assert.equal(pendingBattleSession?.targetProperty.id, pendingBattleProperty.id);
 assert.equal(pendingBattleSession?.mode, 'normal');
+assert.equal(
+  pendingBattleSession?.normalOrigin,
+  'market',
+  'legacy pending normal battles without an origin remain compatible'
+);
+const pendingAllianceBattleSession = parsePendingBattleSession(
+  JSON.stringify({
+    version: 1,
+    mode: 'normal',
+    targetProperty: pendingBattleProperty,
+    startedAt: pendingBattleNow - 5_000,
+    normalOrigin: 'cartels',
+  }),
+  pendingBattleNow
+);
+assert.equal(
+  pendingAllianceBattleSession?.normalOrigin,
+  'cartels',
+  'an interrupted Alliance battle restores its Alliance return context'
+);
+assert.equal(
+  parsePendingBattleSession(
+    JSON.stringify({
+      version: 1,
+      mode: 'normal',
+      targetProperty: pendingBattleProperty,
+      startedAt: pendingBattleNow - 5_000,
+      normalOrigin: 'invalid',
+    }),
+    pendingBattleNow
+  ),
+  null,
+  'unknown pending battle origins are rejected'
+);
 const currentNormalPropertyIds = new Set(
   INITIAL_PROPERTIES.map((property) => property.id)
 );
@@ -4285,7 +4324,89 @@ assert.ok(
   calculateLimitBreakAmount(1_000, lbTier2Subs, 3) > 1_200,
   'LB3 keeps the uncapped late-game aggregation payoff'
 );
+const originalSynergyUsage = new Set<string>();
+const firstSynergyClaim = claimBattleSynergyUsage(
+  originalSynergyUsage,
+  'forest-material-network'
+);
+assert.ok(firstSynergyClaim?.has('forest-material-network'));
+assert.equal(
+  originalSynergyUsage.has('forest-material-network'),
+  false,
+  'claiming a manual synergy does not mutate an older render snapshot'
+);
+assert.equal(
+  claimBattleSynergyUsage(
+    firstSynergyClaim ?? new Set<string>(),
+    'forest-material-network'
+  ),
+  null,
+  'the same manual synergy cannot be claimed twice in one battle'
+);
 assert.equal(BATTLE_GAUGE_SPEED_FACTOR, 4);
+assert.equal(
+  INITIAL_BATTLE_COMMAND_PROGRESS,
+  100,
+  'every battle opens with one player command before enemy presentation chains'
+);
+assert.equal(NORMAL_BATTLE_GAUGE_SPEED_FACTOR, 4.5);
+assert.equal(
+  resolveBattleGaugeSpeedFactor({ isTraining: false, isHighEndRaid: false }),
+  4.5
+);
+assert.equal(
+  resolveBattleGaugeSpeedFactor({ isTraining: true, isHighEndRaid: false }),
+  4
+);
+assert.equal(
+  resolveBattleGaugeSpeedFactor({ isTraining: false, isHighEndRaid: true }),
+  4
+);
+assert.equal(
+  applyNormalClosingMomentum({
+    velocity: -0.2,
+    gauge: -70,
+    isTraining: false,
+    isHighEndRaid: false,
+  }),
+  -0.75
+);
+assert.equal(
+  applyNormalClosingMomentum({
+    velocity: 0.2,
+    gauge: 70,
+    isTraining: false,
+    isHighEndRaid: false,
+  }),
+  0.75
+);
+assert.equal(
+  applyNormalClosingMomentum({
+    velocity: -0.2,
+    gauge: -69.8,
+    isTraining: false,
+    isHighEndRaid: false,
+  }),
+  -0.2
+);
+assert.equal(
+  applyNormalClosingMomentum({
+    velocity: 0.2,
+    gauge: -70,
+    isTraining: false,
+    isHighEndRaid: false,
+  }),
+  0.2
+);
+assert.equal(
+  applyNormalClosingMomentum({
+    velocity: -0.2,
+    gauge: -70,
+    isTraining: false,
+    isHighEndRaid: true,
+  }),
+  -0.2
+);
 assert.equal(TRAINING_GAUGE_SPEED_MULTIPLIER, 0.1);
 assert.equal(TRAINING_MIN_OWNERSHIP_PERCENT, 1);
 assert.ok(

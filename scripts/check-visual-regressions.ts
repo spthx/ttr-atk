@@ -466,13 +466,18 @@ assert.ok(
 );
 assert.match(
   battleModal,
-  /const \[usedBattleSynergyIds, setUsedBattleSynergyIds\][\s\S]*const battleSynergyUsed =[\s\S]*usedBattleSynergyIds\.has\(selectedBattleSynergy\.id\)/,
-  'regular and progression SYNERGY must share one per-battle usage ledger'
+  /const \[usedBattleSynergyIds, setUsedBattleSynergyIds\][\s\S]*const usedBattleSynergyIdsRef = useRef<Set<string>>\(new Set\(\)\)[\s\S]*const battleSynergyUsed =[\s\S]*usedBattleSynergyIds\.has\(selectedBattleSynergy\.id\)[\s\S]*usedBattleSynergyIdsRef\.current\.has\(selectedBattleSynergy\.id\)/,
+  'regular and progression SYNERGY must share a synchronous per-battle usage ledger and rendered state mirror'
 );
 assert.match(
   battleModal,
-  /const demandFromGroup = \(\s*synergyId: string,[\s\S]*usedBattleSynergyIds\.has\(synergyId\)[\s\S]*setUsedBattleSynergyIds\(\(current\) => new Set\(current\)\.add\(synergyId\)\)/,
-  'regular group SYNERGY must reject and record repeat use in the same battle'
+  /const demandFromGroup = \(\s*synergyId: string,[\s\S]*usedBattleSynergyIdsRef\.current\.has\(synergyId\)[\s\S]*claimBattleSynergyUsage\(\s*usedBattleSynergyIdsRef\.current,\s*synergyId\s*\)[\s\S]*usedBattleSynergyIdsRef\.current = claimedSynergyIds;[\s\S]*setUsedBattleSynergyIds\(claimedSynergyIds\)/,
+  'regular group SYNERGY must synchronously reject and record repeat use in the same battle'
+);
+assert.match(
+  battleModal,
+  /const activateProgressionBattleSynergy = \(synergy: GroupSynergy\) => \{[\s\S]*usedBattleSynergyIdsRef\.current\.has\(synergy\.id\)[\s\S]*claimBattleSynergyUsage\(\s*usedBattleSynergyIdsRef\.current,\s*synergy\.id\s*\)[\s\S]*usedBattleSynergyIdsRef\.current = claimedSynergyIds;[\s\S]*setUsedBattleSynergyIds\(claimedSynergyIds\)/,
+  'progression SYNERGY must use the same synchronous once-per-battle claim'
 );
 assert.match(
   battleModal,
@@ -488,6 +493,54 @@ assert.match(
   battleModal,
   /runtime\.completionFired = completionDecision\.consumed\.completion;[\s\S]*if \(!completionDecision\.fireCompletion\) return;[\s\S]*skillCinematicRuntimeRef\.current = null;[\s\S]*runtime\.onComplete\?\.\(\);/,
   'ability auto-completion must consume and resume each queued action exactly once'
+);
+assert.match(
+  battleModal,
+  /const \[openingDecisionPending, setOpeningDecisionPending\] = useState\(false\);[\s\S]*const openingDecisionPendingRef = useRef\(false\);[\s\S]*source: 'opening-auto',[\s\S]*onComplete: \(\) => \{[\s\S]*openingDecisionPendingRef\.current = true;[\s\S]*setOpeningDecisionPending\(true\);[\s\S]*setCommandProgress\(INITIAL_BATTLE_COMMAND_PROGRESS\);[\s\S]*setOpeningAutoPending\(false\)/,
+  'opening AUTO completion must preserve a ready manual command behind a durable first-decision gate'
+);
+assert.match(
+  battleModal,
+  /const presentationPauseActive =[\s\S]*openingAutoPending \|\|[\s\S]*openingDecisionPending \|\|[\s\S]*useLayoutEffect/,
+  'the opening decision gate must stop battle clocks without becoming an action lock'
+);
+assert.match(
+  battleModal,
+  /const presentationLocked =[\s\S]*capitalPresentationActive \|\|\s*openingAutoPending \|\|\s*!!criticalAutoPending/,
+  'the opening decision gate must remain outside presentationLocked so the first command stays actionable'
+);
+const presentationLockBlock = battleModal.slice(
+  battleModal.indexOf('const presentationLocked ='),
+  battleModal.indexOf('const decisiveLocked =')
+);
+const actionLockBlock = battleModal.slice(
+  battleModal.indexOf('const actionsLocked ='),
+  battleModal.indexOf('const primarySkillActionLocked =')
+);
+assert.doesNotMatch(
+  presentationLockBlock,
+  /openingDecisionPending/,
+  'the opening decision gate must never become a presentation lock'
+);
+assert.doesNotMatch(
+  actionLockBlock,
+  /openingDecisionPending/,
+  'the opening decision gate must never disable the command buttons'
+);
+assert.match(
+  battleModal,
+  /const consumeCommand = \(\) => \{[\s\S]*if \(openingDecisionPendingRef\.current\) \{[\s\S]*openingDecisionPendingRef\.current = false;[\s\S]*setOpeningDecisionPending\(false\);[\s\S]*setCommandProgress\(0\)/,
+  'only a successfully consumed manual command may release the opening decision gate'
+);
+assert.match(
+  battleModal,
+  /openingBossAbilityTier === 'none' \|\|[\s\S]*openingSlowActive \|\|[\s\S]*openingAutoPending \|\|[\s\S]*activateEnemyBossAbility\(\{[\s\S]*tier: openingBossAbilityTier/,
+  'authored opening Cover must wait for the player opening AUTO cinematic to finish'
+);
+assert.match(
+  battleModal,
+  /enemySupportProfile\.length === 0 \|\|\s*openingDecisionPending \|\|/,
+  'enemy support selection must wait until the player consumes the guaranteed opening command'
 );
 assert.match(
   battleModal,

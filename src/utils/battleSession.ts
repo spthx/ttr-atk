@@ -5,11 +5,19 @@ export const PENDING_BATTLE_RECOVERY_KEY =
   'tataru_trade_pending_battle_recovery_v1';
 export const PENDING_BATTLE_SESSION_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
+export type NormalBattleOrigin = 'market' | 'cartels';
+
 export interface PendingBattleSession {
   version: 1;
   mode: BattleMode;
   targetProperty: Property;
   startedAt: number;
+  normalOrigin?: NormalBattleOrigin;
+}
+
+export interface PendingBattleSessionOptions {
+  startedAt?: number;
+  normalOrigin?: NormalBattleOrigin;
 }
 
 /**
@@ -46,6 +54,11 @@ const BATTLE_MODES: readonly BattleMode[] = [
   'training',
 ];
 
+const NORMAL_BATTLE_ORIGINS: readonly NormalBattleOrigin[] = [
+  'market',
+  'cartels',
+];
+
 const isRecoverableProperty = (value: unknown): value is Property => {
   if (!value || typeof value !== 'object') return false;
   const property = value as Partial<Property>;
@@ -78,6 +91,10 @@ export const parsePendingBattleSession = (
     if (
       parsed.version !== 1 ||
       !BATTLE_MODES.includes(parsed.mode as BattleMode) ||
+      (parsed.normalOrigin !== undefined &&
+        !NORMAL_BATTLE_ORIGINS.includes(
+          parsed.normalOrigin as NormalBattleOrigin
+        )) ||
       !isRecoverableProperty(parsed.targetProperty) ||
       typeof parsed.startedAt !== 'number' ||
       !Number.isFinite(parsed.startedAt) ||
@@ -86,7 +103,15 @@ export const parsePendingBattleSession = (
     ) {
       return null;
     }
-    return parsed as PendingBattleSession;
+    return {
+      version: 1,
+      mode: parsed.mode as BattleMode,
+      targetProperty: parsed.targetProperty,
+      startedAt: parsed.startedAt,
+      ...(parsed.mode === 'normal'
+        ? { normalOrigin: parsed.normalOrigin ?? 'market' }
+        : {}),
+    };
   } catch {
     return null;
   }
@@ -120,14 +145,22 @@ export const loadPendingBattleSession = (): PendingBattleSession | null => {
 export const persistPendingBattleSession = (
   mode: BattleMode,
   targetProperty: Property,
-  startedAt = Date.now()
+  startedAtOrOptions: number | PendingBattleSessionOptions = {}
 ) => {
   if (typeof window === 'undefined') return;
+  const options: PendingBattleSessionOptions =
+    typeof startedAtOrOptions === 'number'
+      ? { startedAt: startedAtOrOptions }
+      : startedAtOrOptions;
+  const startedAt = options.startedAt ?? Date.now();
   const session: PendingBattleSession = {
     version: 1,
     mode,
     targetProperty,
     startedAt,
+    ...(mode === 'normal'
+      ? { normalOrigin: options.normalOrigin ?? 'market' }
+      : {}),
   };
   const serialized = JSON.stringify(session);
   try {
