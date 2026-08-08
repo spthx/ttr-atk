@@ -816,13 +816,38 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /rackLowered && !baseVisualFrame\.rackCompressed[\s\S]{0,120}rackCompressed: true/,
+  /persistentOverflowTier = Math\.max\([\s\S]{0,500}rackLowered \|\| baseVisualFrame\.rackCompressed[\s\S]{0,120}overflowTier: persistentOverflowTier/,
   'ending or replacing a preview must not raise a rack that was already lowered'
 );
 assert.doesNotMatch(
   battleModal,
   /set(?:Player|Enemy)CapitalRackLowered\(false\)/,
   'a lowered rack must never return upward during the same battle'
+);
+assert.match(
+  battleModal,
+  /const \[playerCapitalRackFloorTier, setPlayerCapitalRackFloorTier\][\s\S]*const \[enemyCapitalRackFloorTier, setEnemyCapitalRackFloorTier\]/,
+  'each side must retain the deepest overflow footing reached during the battle'
+);
+assert.match(
+  battleModal,
+  /const deepestRackFloorTier = Math\.max\([\s\S]{0,260}overflowPass[\s\S]{0,220}setPlayerCapitalRackFloorTier\(\(current\) =>[\s\S]{0,100}Math\.max\(current, deepestRackFloorTier\)/,
+  'temporary reload sink depth must be latched monotonically instead of released at completion'
+);
+assert.doesNotMatch(
+  battleModal,
+  /set(?:Player|Enemy)CapitalRackFloorTier\(0\)/,
+  'the deepest rack footing must never reset while the battle modal remains mounted'
+);
+assert.deepEqual(
+  CAPITAL_STACK_BEAT_MS,
+  { standard: 90, heavy: 128, compact: 62 },
+  'coin painting should use the approved slightly faster cadence at every intensity'
+);
+assert.match(
+  capitalCss,
+  /--capital-stack-beat-ms:\s*128ms;[\s\S]*var\(--capital-stack-beat-ms, 128ms\)/,
+  'CSS packet timing fallbacks must match the faster heavy timeline'
 );
 assert.match(
   capitalCss,
