@@ -33,13 +33,17 @@ import {
   BATTLE_STATE_UPDATE_INTERVAL_MS,
   BATTLE_HIT_STOP_TIMING,
   BATTLE_STATUS_MESSAGE_DURATION_MS,
+  CAPITAL_OVERFLOW_RESTACK_BEATS,
+  CAPITAL_STACK_BEAT_MS,
   advanceEnemySupportTelegraphClock,
+  buildCapitalStackTimeline,
   canConfirmBattleResult,
   enqueueBattleStatusMessage,
   getBattleCapitalVisualBundleCount,
   getBattleCapitalOverflowTier,
   getBattleCapitalVisibleUnits,
   getCapitalColumnHeights,
+  getCapitalOverflowPassCount,
   getCapitalVisibleUnitSequence,
   getMechanicalCapitalColumnFrames,
   getCapitalCommitTiming,
@@ -1380,8 +1384,8 @@ assert.equal(
       'column heights preserve the visible-unit total'
     );
     assert.ok(
-      Math.max(...heights) - Math.min(...heights) <= 1,
-      'fixed columns grow almost level without random mounds'
+      heights.every((height) => height >= 0),
+      'terrace columns never require negative or hidden correction units'
     );
     assert.deepEqual(
       getCapitalColumnHeights(units),
@@ -1389,6 +1393,132 @@ assert.equal(
       'the same amount always produces the same column silhouette'
     );
   }
+);
+let previousTerrace = getCapitalColumnHeights(0);
+for (let units = 1; units <= MAX_BATTLE_CAPITAL_VISIBLE_UNITS; units += 1) {
+  const nextTerrace = getCapitalColumnHeights(units);
+  assert.ok(
+    nextTerrace.every(
+      (height, columnIndex) => height >= previousTerrace[columnIndex]
+    ),
+    `terrace growth remains monotonic at visible unit ${units}`
+  );
+  previousTerrace = nextTerrace;
+}
+const saturatedTerrace = getCapitalColumnHeights(
+  MAX_BATTLE_CAPITAL_VISIBLE_UNITS
+);
+assert.ok(
+  Math.max(...saturatedTerrace) - Math.min(...saturatedTerrace) >= 20,
+  'the fixed rack finishes as a central terrace instead of a level wall'
+);
+assert.ok(
+  saturatedTerrace[6] > saturatedTerrace[20] &&
+    saturatedTerrace[17] > saturatedTerrace[21],
+  'the two central spines rise above the outer shoulders'
+);
+assert.equal(
+  getCapitalOverflowPassCount(0, 350_000, 1_000_000, true),
+  1,
+  'a first all-in 35% command receives a visible heavy reload below 1.5x total'
+);
+assert.equal(
+  getCapitalOverflowPassCount(0, 750_000, 1_000_000, true),
+  2,
+  'a 75% alliance-scale wave receives two bounded heavy reloads'
+);
+const heavyCapitalTimeline = buildCapitalStackTimeline({
+  id: 'balance-heavy-35',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 0,
+  nextCapital: 350_000,
+  marketPrice: 1_000_000,
+  intensity: 'heavy',
+  seed: 42,
+});
+assert.equal(heavyCapitalTimeline.frames[0].phase, 'preload');
+assert.equal(heavyCapitalTimeline.frames[0].rackCompressed, true);
+assert.equal(heavyCapitalTimeline.frames.at(-1)?.phase, 'settle');
+assert.equal(
+  heavyCapitalTimeline.frames.at(-1)?.presentedCapital,
+  350_000,
+  'the presentation-only timeline ends at the already-committed capital'
+);
+assert.ok(
+  heavyCapitalTimeline.frames
+    .filter((frame) => frame.phase === 'pour')
+    .every((frame) => frame.durationMs >= 100),
+  'every primary heavy packet remains visible for at least three 30fps samples'
+);
+assert.deepEqual(
+  buildCapitalStackTimeline(heavyCapitalTimeline.event),
+  heavyCapitalTimeline,
+  'same scene event and seed produce the same renderer-neutral timeline'
+);
+assert.ok(
+  CAPITAL_STACK_BEAT_MS.heavy > CAPITAL_STACK_BEAT_MS.standard &&
+    CAPITAL_STACK_BEAT_MS.standard >= 90,
+  'large packets receive more visible weight instead of being dealt faster'
+);
+assert.ok(
+  heavyCapitalTimeline.preloadMs >= 280,
+  'the lowered rack reaches its landing position before the first heavy packet'
+);
+const saturatedCounterTimeline = buildCapitalStackTimeline({
+  id: 'balance-saturated-counter',
+  side: 'enemy',
+  source: 'enemy-defense',
+  previousCapital: 8_000_000,
+  nextCapital: 8_160_000,
+  marketPrice: 1_000_000,
+  intensity: 'heavy',
+  seed: 84,
+});
+const saturatedCounterPackets = saturatedCounterTimeline.frames.filter(
+  (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+);
+assert.ok(
+  saturatedCounterPackets.length >= 1,
+  'a 16% enemy counter still reloads coins after the fixed rack is saturated'
+);
+assert.ok(
+  saturatedCounterTimeline.frames.every(
+    (frame, index, frames) =>
+      index === 0 || frame.presentedCapital >= frames[index - 1].presentedCapital
+  ),
+  'the saturated fixed ledger rises monotonically with its reload packets'
+);
+assert.equal(
+  saturatedCounterTimeline.frames.at(-1)?.presentedCapital,
+  8_160_000,
+  'the saturated reload ends at the exact committed capital'
+);
+const cruelOpeningFrames = getMechanicalCapitalColumnFrames(
+  0,
+  MAX_BATTLE_CAPITAL_VISIBLE_UNITS - 1,
+  24,
+  5,
+  0,
+  CAPITAL_OVERFLOW_RESTACK_BEATS.heavy,
+  true
+);
+const cruelOpeningGrowth = cruelOpeningFrames.map((frame, index) =>
+  frame.visibleUnits - (cruelOpeningFrames[index - 1]?.visibleUnits ?? 0)
+);
+const cruelOpeningMeanGrowth =
+  (MAX_BATTLE_CAPITAL_VISIBLE_UNITS - 1) / cruelOpeningGrowth.length;
+assert.ok(
+  cruelOpeningGrowth.every(
+    (growth) =>
+      growth >= cruelOpeningMeanGrowth * 0.7 &&
+      growth <= cruelOpeningMeanGrowth * 1.35
+  ),
+  'an opening mountain arrives continuously instead of stalling before a final lump'
+);
+assert.ok(
+  cruelOpeningFrames.every((frame) => frame.activeColumnIndices.length <= 5),
+  'even the largest opening wave keeps each packet to one five-column bundle'
 );
 const mechanicalColumnSequence = getCapitalVisibleUnitSequence(12, 480, 22);
 assert.equal(mechanicalColumnSequence.at(-1), 480);
@@ -2382,6 +2512,30 @@ assert.deepEqual(
   [8_000, 12_000, 16_000, 16_000],
   'progression battle synergies use compressed 8-to-16-second windows'
 );
+const playerHoseSweepGroups = [
+  [21, 14, 19, 8, 13],
+  [3, 18, 7, 12, 2],
+  [17, 6, 11, 1],
+  [16, 5, 10, 0],
+  [15, 4, 9, 20],
+];
+const playerHoseSweepCycle = [
+  ...playerHoseSweepGroups,
+  ...playerHoseSweepGroups.slice(1, -1).reverse(),
+];
+mechanicalRackFrames
+  .slice(0, playerHoseSweepCycle.length * 2)
+  .forEach((frame, frameIndex) => {
+    const expectedGroup =
+      playerHoseSweepCycle[frameIndex % playerHoseSweepCycle.length];
+    assert.ok(
+      frame.activeColumnIndices.length > 0 &&
+        frame.activeColumnIndices.every((columnIndex) =>
+          expectedGroup.includes(columnIndex)
+        ),
+      'growth packets sweep inner-to-outer and outer-to-inner without random column jumps'
+    );
+  });
 assert.ok(
   (grandCompanyEorzea.battleEffect?.capitalPressureMultiplier ?? 0) >
     (lightOfHope.battleEffect?.capitalPressureMultiplier ?? 0),

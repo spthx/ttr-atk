@@ -422,23 +422,38 @@ class SoundEffects {
       };
 
       try {
-        const alternatePitch = resolvedIndex % 2 === 0 ? 1 : 0.88;
-        scheduleVoice(
-          'triangle',
-          now,
-          isFinal ? 0.07 : 0.045,
-          (1_480 - progress * 460) * alternatePitch,
-          430 - progress * 95,
-          0.035 + progress * 0.012
-        );
+        // A packet is heard as several pre-stacked coins arriving together,
+        // not as one UI chirp. Keep the cluster deterministic and bounded so
+        // 30/60fps presentation changes never alter its density or node count.
+        const partialRatios = [1, 1.41, 1.97, 2.62, 3.31] as const;
+        const partialStaggers = [0, 0.004, 0.009, 0.015, 0.022] as const;
+        const partialDurations = [0.058, 0.073, 0.049, 0.086, 0.065] as const;
+        const partialVolumes = [0.018, 0.014, 0.011, 0.008, 0.006] as const;
+        const voiceCount = 3 + ((resolvedIndex * 7 + resolvedTotal) % 3);
+        const packetPitch = [0.96, 1, 1.035, 0.985][resolvedIndex % 4];
+        const sidePitch = side === 'player' ? 1 : 0.94;
+        const baseFrequency = (900 - progress * 185) * packetPitch * sidePitch;
+
+        for (let voiceIndex = 0; voiceIndex < voiceCount; voiceIndex += 1) {
+          const frequency = baseFrequency * partialRatios[voiceIndex];
+          const duration = partialDurations[voiceIndex];
+          scheduleVoice(
+            voiceIndex === 0 ? 'triangle' : 'sine',
+            now + partialStaggers[voiceIndex],
+            duration,
+            frequency,
+            frequency * (0.82 - voiceIndex * 0.025),
+            partialVolumes[voiceIndex] * (0.94 + progress * 0.12)
+          );
+        }
         if (isFinal && includeFinalWeight) {
           scheduleVoice(
             'sine',
-            now + 0.008,
-            0.56,
-            side === 'player' ? 72 : 66,
-            29,
-            0.058
+            now + 0.018,
+            0.28,
+            side === 'player' ? 82 : 74,
+            34,
+            0.052
           );
         }
       } finally {

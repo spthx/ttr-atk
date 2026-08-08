@@ -147,18 +147,18 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /getMechanicalCapitalColumnFrames\([\s\S]*strongPresentation \? 8 : 7/,
-  'funding waves must advance a bounded rack group instead of lifting every column together'
+  /const timeline = buildCapitalStackTimeline\(\{[\s\S]*intensity,[\s\S]*seed: serial/,
+  'every live funding wave must consume the renderer-neutral fixed-column timeline'
 );
 assert.match(
   battleModal,
   /overflowTier:\s*getBattleCapitalOverflowTier\(committedCapital, marketPrice\)/,
   'exceptional committed capital must keep the fixed rack seated after the burst ends'
 );
-assert.match(
+assert.doesNotMatch(
   battleModal,
-  /frame\.overflowTier > 0 && frame\.presentationSerial > 0/,
-  'overflow pieces must remain a finite preview effect instead of permanent animation'
+  /className="capital-overflow-stamp"/,
+  'thin overflow ellipses must not compete with the new fixed-column bundles'
 );
 assert.match(
   battleModal,
@@ -181,9 +181,9 @@ assert.match(
   'the support drawer must read as player relationships rather than an abstract fund source'
 );
 assert.match(
-  capitalCss,
-  /\.gil-floater--support[\s\S]*bottom:\s*calc\(46%/,
-  'support amounts must remain above the coin field command area'
+  battleModal,
+  /capitalPileOwnsField[\s\S]*isFundingAmount[\s\S]*if \(capitalPileOwnsField && isFundingAmount\) return;/,
+  'capital funding amounts must yield the field to the pile and fixed ledger'
 );
 assert.match(
   battleModal,
@@ -192,8 +192,8 @@ assert.match(
 );
 assert.match(
   capitalCss,
-  /capital-overflow-stamp[\s\S]*capital-overflow-machine-drop/,
-  'overcapital must use one bounded finite machine-drop beat'
+  /--capital-packet-visible-layers:[\s\S]*repeating-linear-gradient[\s\S]*capital-column-machine-feed var\(--capital-stack-beat-ms/,
+  'an incoming beat must be a thick striped bundle synchronized to the JS timeline'
 );
 assert.match(
   capitalCss,
@@ -205,30 +205,25 @@ assert.match(
   /@media \(max-width: 639px\) and \(min-height: 701px\)[\s\S]*gil-tower--player \.gil-tower__chips[\s\S]*top: -3rem;[\s\S]*right: -10%;[\s\S]*left: 20%;/,
   'tall portrait phones must spend their free vertical area on the coin mountain'
 );
+assert.match(
+  capitalCss,
+  /capital-fixed-column\[data-machine-active="true"\][^{]*\{[^}]*z-index:\s*calc\(6 \+ var\(--column-depth\)\)/,
+  'incoming bundles may cross settled rows but remain below the actor layer'
+);
+assert.match(
+  capitalCss,
+  /gil-tower__chips[\s\S]*isolation: isolate;[\s\S]*ownership-fighter[\s\S]*z-index:\s*22/,
+  'coin depth must remain inside an isolated layer below actors and readouts'
+);
 assert.doesNotMatch(
-  capitalCss,
-  /capital-fixed-column\[data-machine-active="true"\][^{]*\{[^}]*z-index/,
-  'a stacking column must not jump ahead of nearer rows while it moves'
-);
-assert.match(
-  capitalCss,
-  /gil-tower__chips[\s\S]*isolation: isolate;[\s\S]*capital-overflow-stamp[\s\S]*z-index: 12;/,
-  'coin depth and finite overflow pieces must remain inside an isolated layer below actors and readouts'
+  battleModal,
+  /CAPITAL_OVERFLOW_LANE_ORDER|overflowPieceCount/,
+  'the renderer must not add a second amount-like overflow particle system'
 );
 assert.match(
   battleModal,
-  /const CAPITAL_OVERFLOW_LANE_ORDER = \[3, 4, 2, 5, 1, 6, 0, 7\] as const;/,
-  'overcapital lanes must run from the center toward the outer edges'
-);
-assert.match(
-  battleModal,
-  /Math\.min\(16, 8 \+ frame\.overflowTier \* 2\)/,
-  'overcapital must keep the falling piece count at sixteen or fewer'
-);
-assert.match(
-  battleModal,
-  /CAPITAL_OVERFLOW_LANE_ORDER\[\s*index % CAPITAL_OVERFLOW_LANE_ORDER\.length\s*\]/,
-  'overcapital pieces must reuse only the eight bounded lanes'
+  /const packetLayers = activeColumns\.has\(index\)[\s\S]*6 \+ Math\.abs\(frame\.packetSeed \+ index \* 3\) % 7/,
+  'each of the fixed active columns must receive one deterministic six-to-twelve-layer packet'
 );
 assert.match(
   integratedCss,
@@ -325,7 +320,7 @@ const saturatedReloadFrames = getMechanicalCapitalColumnFrames(
   BATTLE_CAPITAL_COLUMN_COUNT * 36,
   BATTLE_CAPITAL_COLUMN_COUNT * 36,
   30,
-  8,
+  5,
   saturatedReloadPasses,
   CAPITAL_OVERFLOW_RESTACK_BEATS.heavy
 );
@@ -349,7 +344,7 @@ const oneOverflowSweep = getMechanicalCapitalColumnFrames(
   BATTLE_CAPITAL_COLUMN_COUNT * 36,
   BATTLE_CAPITAL_COLUMN_COUNT * 36,
   24,
-  8,
+  5,
   1,
   CAPITAL_OVERFLOW_RESTACK_BEATS.heavy
 )
@@ -358,19 +353,24 @@ const oneOverflowSweep = getMechanicalCapitalColumnFrames(
       frame.overflowPass === 1 && frame.activeColumnIndices.length > 0
   )
   .flatMap((frame) => frame.activeColumnIndices);
-const outwardCapitalSweep = [
-  6, 17, 1, 2, 11, 12, 5, 7, 16, 18, 0,
-  3, 10, 13, 4, 8, 15, 19, 9, 14, 20, 21,
+const playerCapitalSweepGroups = [
+  [21, 14, 19, 8, 13],
+  [3, 18, 7, 12, 2],
+  [17, 6, 11, 1],
+  [16, 5, 10, 0],
+  [15, 4, 9, 20],
 ];
+const outwardCapitalSweep = playerCapitalSweepGroups.flat();
+const inwardCapitalSweep = [...playerCapitalSweepGroups].reverse().flat();
 assert.deepEqual(
   oneOverflowSweep.slice(0, BATTLE_CAPITAL_COLUMN_COUNT),
   outwardCapitalSweep,
-  'one overflow pass must first deal every fixed column from the centre spines outwards'
+  'one player overflow pass must first sweep adjacent columns from the battle centre outwards'
 );
 assert.deepEqual(
   oneOverflowSweep.slice(BATTLE_CAPITAL_COLUMN_COUNT),
-  [...outwardCapitalSweep].reverse(),
-  'one overflow pass must return from the outer edges to the centre spines'
+  inwardCapitalSweep,
+  'one player overflow pass must return along the same adjacent path from the outer edge'
 );
 assert.equal(
   oneOverflowSweep.length,
@@ -384,13 +384,34 @@ outwardCapitalSweep.forEach((columnIndex) => {
     `fixed column ${columnIndex} must be touched exactly once per sweep direction`
   );
 });
-assert.ok(
-  CAPITAL_STACK_BEAT_MS.heavy <= CAPITAL_STACK_BEAT_MS.standard,
-  'large capital must be dealt at least as quickly per beat as an ordinary offer'
+const enemyOverflowSweep = getMechanicalCapitalColumnFrames(
+  BATTLE_CAPITAL_COLUMN_COUNT * 36,
+  BATTLE_CAPITAL_COLUMN_COUNT * 36,
+  24,
+  5,
+  1,
+  CAPITAL_OVERFLOW_RESTACK_BEATS.heavy,
+  false,
+  'enemy'
+)
+  .filter(
+    (frame) =>
+      frame.overflowPass === 1 && frame.activeColumnIndices.length > 0
+  )
+  .flatMap((frame) => frame.activeColumnIndices);
+assert.deepEqual(
+  enemyOverflowSweep.slice(0, BATTLE_CAPITAL_COLUMN_COUNT),
+  [...outwardCapitalSweep].reverse(),
+  'the enemy sweep must mirror the player path from its own inner edge'
 );
 assert.ok(
-  saturatedReloadFrames.length * CAPITAL_STACK_BEAT_MS.heavy <= 1_000,
-  'all three overflow reload passes must finish their bounded frame sequence within one second'
+  CAPITAL_STACK_BEAT_MS.heavy > CAPITAL_STACK_BEAT_MS.standard &&
+    CAPITAL_STACK_BEAT_MS.heavy >= 100,
+  'large capital must keep every bundle visible across at least three 30fps samples'
+);
+assert.ok(
+  saturatedReloadFrames.length * CAPITAL_STACK_BEAT_MS.heavy >= 3_000,
+  'exceptional reloads must spend time on visible stacking instead of collapsing inside one second'
 );
 assert.match(
   battleModal,
@@ -527,8 +548,8 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const presentationLocked =[\s\S]*capitalPresentationActive \|\|\s*openingAutoPending \|\|\s*!!criticalAutoPending/,
-  'the opening decision gate must remain outside presentationLocked so the first command stays actionable'
+  /const presentationLocked =[\s\S]*capitalPresentationActive \|\|\s*enemyOpeningCapitalPending \|\|\s*openingAutoPending \|\|\s*!!criticalAutoPending/,
+  'opening capital may lock its authored scene while the later decision gate stays actionable'
 );
 const presentationLockBlock = battleModal.slice(
   battleModal.indexOf('const presentationLocked ='),
@@ -632,8 +653,8 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const displayedPlayerInvested = totalPlayerInvested;[\s\S]*const displayedOwnership =\s*capitalRevealPending && activeCapitalSnapshot[\s\S]*activeCapitalSnapshot\.previousOwnership[\s\S]*: ownership;/,
-  'accepted gil must update immediately while ownership alone waits for the capital reveal'
+  /const activePlayerPileFrame =[\s\S]*capitalPreviewStage \?\? playerCapitalPilePreviewStage;[\s\S]*activePlayerPileFrame\?\.presentedCapital \?\? totalPlayerInvested;[\s\S]*enemyCapitalPilePreviewStage\?\.presentedCapital \?\? enemyInvested;/,
+  'both fixed ledgers must advance with the same packet timeline as their visible piles'
 );
 assert.match(
   battleModal,
@@ -642,8 +663,48 @@ assert.match(
 );
 assert.doesNotMatch(
   battleModal,
-  /const displayed(?:Player|Company)Invested\s*=\s*capitalRevealPending/,
-  'capitalRevealPending must never roll the displayed gil totals back'
+  /showFloater\(`着金 \+\$\{formatCurrency\(snapshot\.amount\)\}`/,
+  'direct stacking must not mount a second amount floater over the coin scene'
+);
+const capitalBoostEffectStart = battleModal.lastIndexOf(
+  "} else if (skill.effectType === 'CAPITAL_BOOST')"
+);
+const capitalBoostEffectBlock = battleModal.slice(
+  capitalBoostEffectStart,
+  battleModal.indexOf(
+    "} else if (skill.effectType === 'LIVING_DEAD')",
+    capitalBoostEffectStart
+  )
+);
+assert.doesNotMatch(
+  capitalBoostEffectBlock,
+  /showFloater\(/,
+  'ぶんどる must never queue a funding floater before its deferred AUTO pile'
+);
+assert.doesNotMatch(
+  battleModal,
+  /className=\{`capital-commit-cue/,
+  'direct stacking must not add an amount overlay above the pile or fixed ledger'
+);
+assert.doesNotMatch(
+  capitalCss,
+  /\.capital-commit-cue/,
+  'the removed amount overlay must not survive as dead responsive CSS'
+);
+assert.match(
+  battleModal,
+  /: capitalCommitCueText[\s\S]{0,220}title: capitalCommitCueText[\s\S]{0,120}detail: 'コイン積載中'/,
+  'the single capital telop must reuse the existing one-line command-state lane'
+);
+assert.match(
+  battleModal,
+  /const openingTimeline = buildCapitalStackTimeline\(\{[\s\S]*source: 'opening',[\s\S]*previousCapital: 0,[\s\S]*nextCapital: initialEnemyCommitment/,
+  'the already-committed enemy opening ledger must still receive a visual zero-to-final scene'
+);
+assert.match(
+  battleModal,
+  /enemyOpeningCapitalPending[\s\S]*startCapitalPilePreview\(\s*'enemy',\s*0,\s*initialEnemyCommitment,[\s\S]*'pause'/,
+  'the opening pile must block battle clocks until its queue is complete'
 );
 const activeCapitalColumnStart = capitalCss.indexOf(
   '.capital-fixed-column[data-machine-active="true"]'
@@ -659,7 +720,7 @@ assert.ok(
 assert.match(
   activeCapitalColumnCss,
   /data-machine-active="true"\]::before[\s\S]*animation:\s*capital-column-machine-feed/,
-  'an active column must show a short incoming coin cap instead of flashing the whole pillar'
+  'an active column must show an incoming stacked bundle instead of flashing the whole pillar'
 );
 assert.doesNotMatch(
   activeCapitalColumnCss,
@@ -673,7 +734,7 @@ assert.doesNotMatch(
 );
 assert.match(
   capitalCss,
-  /gil-column-field\s*\{[\s\S]*--capital-rack-compression:\s*0rem;[\s\S]*translate:\s*0 calc\([\s\S]*var\(--capital-rack-sink, 0rem\) \+ var\(--capital-rack-compression\)[\s\S]*\)/,
+  /gil-column-field\s*\{[\s\S]*--capital-rack-compression:\s*0rem;[\s\S]*translate:\s*0 min\([\s\S]*var\(--capital-rack-sink, 0rem\) \+ var\(--capital-rack-compression\)[\s\S]*\)/,
   'the fixed rack must combine its persistent overflow sink with the loading-time descent'
 );
 for (const tier of [1, 2, 3]) {
@@ -687,13 +748,53 @@ for (const tier of [1, 2, 3]) {
 }
 assert.match(
   capitalCss,
-  /gil-column-field\[data-rack-compressed="true"\]\s*\{[\s\S]*?--capital-rack-compression:\s*\.55rem;/,
-  'an exceptional funding frame must visibly lower the fixed rack while coins are loaded'
+  /gil-column-field\[data-rack-compressed="true"\]\s*\{[\s\S]*?--capital-rack-compression:\s*clamp\(1\.8rem, 4\.2vh, 2\.5rem\);/,
+  'a heavy funding frame must lower the fixed rack without hiding the entire early mound'
 );
 assert.match(
   capitalCss,
-  /@media \(max-width: 430px\)[\s\S]*gil-column-field\[data-rack-compressed="true"\]\s*\{[\s\S]*?--capital-rack-compression:\s*\.62rem;/,
-  'portrait phones must retain the stronger loading-time rack descent'
+  /@media \(max-width: 430px\)[\s\S]*gil-column-field\[data-rack-compressed="true"\]\s*\{[\s\S]*?--capital-rack-compression:\s*clamp\(2\.25rem, 4\.6vh, 2\.8rem\);/,
+  'portrait phones must keep the measured 402x874 loading descent'
+);
+assert.match(
+  battleModal,
+  /data-packet-active=\{activeColumns\.size > 0 \? 'true' : 'false'\}/,
+  'the bounded rack must expose whether a packet is currently acting'
+);
+assert.match(
+  capitalCss,
+  /gil-column-field\[data-packet-active="true"\]\s*\{\s*z-index:\s*26;/,
+  'the packet field must rise within its own rack while loading'
+);
+assert.match(
+  battleModal,
+  /visualFrame\.activeColumnIndices\.length > 0 \? 'gil-tower--packet-active' : ''/,
+  'the outer coin tower must expose packet activity outside its isolated chip layer'
+);
+assert.match(
+  capitalCss,
+  /capital-visual-row > \.gil-tower--packet-active\s*\{\s*z-index:\s*23;/,
+  'falling wealth must briefly raise its outer stacking context above the portrait'
+);
+assert.match(
+  activeCapitalColumnCss,
+  /animation-delay:\s*calc\(var\(--capital-packet-order, 0\) \* -12ms\);/,
+  'the four-to-five fixed packet columns must arrive as a short cascade rather than one flat flash'
+);
+assert.match(
+  capitalCss,
+  /@media \(prefers-reduced-motion: reduce\)[\s\S]*gil-column-field\[data-rack-compressed="true"\]\s*\{[\s\S]*transition-duration:\s*1ms;/,
+  'reduced motion must override the more specific compressed-rack transition'
+);
+assert.match(
+  integratedCss,
+  /--battle-gauge-interpolation:\s*110ms;[\s\S]*recast-meter > i > u[\s\S]*transition:\s*width var\(--battle-gauge-interpolation\) linear;/,
+  'player and enemy recast meters must bridge every 100ms logical update without an idle gap'
+);
+assert.match(
+  capitalCss,
+  /ownership-track__player,[\s\S]*ownership-track__enemy-flow[\s\S]*transition:\s*transform var\(--battle-gauge-interpolation, 110ms\) linear;[\s\S]*ownership-track__tension,[\s\S]*ownership-track__marker[\s\S]*transition:\s*left var\(--battle-gauge-interpolation, 110ms\) linear;/,
+  'ownership fill and its visible boundary must share the same continuous interpolation'
 );
 assert.match(
   battleModal,

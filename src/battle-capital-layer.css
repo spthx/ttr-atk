@@ -7,6 +7,11 @@
   z-index: 1;
 }
 
+.integrated-battlefield
+  .capital-visual-row > .gil-tower--packet-active {
+  z-index: 23;
+}
+
 .integrated-battlefield .capital-visual-row .gil-tower__chips,
 .integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips,
 .integrated-battlefield .capital-visual-row .gil-tower--enemy .gil-tower__chips {
@@ -2189,59 +2194,6 @@
   animation-play-state: paused;
 }
 
-.capital-commit-cue {
-  position: absolute;
-  z-index: 42;
-  top: 55%;
-  left: 29%;
-  display: block;
-  width: min(15rem, 44%);
-  padding: 0;
-  overflow: visible;
-  border: 0;
-  color: #fff1a8;
-  background: transparent;
-  box-shadow: none;
-  contain: layout style;
-  pointer-events: none;
-  translate: -50% -50%;
-  text-align: center;
-}
-
-.capital-commit-cue small {
-  display: none;
-}
-
-.capital-commit-cue strong {
-  display: block;
-  overflow: visible;
-  font: 1000 clamp(1rem, 3.1vw, 2rem)/1 ui-monospace, "Arial Black", sans-serif;
-  letter-spacing: -.04em;
-  text-shadow:
-    -2px -2px 0 #130b02,
-    2px -2px 0 #130b02,
-    -2px 2px 0 #130b02,
-    2px 2px 0 #130b02,
-    0 .18rem .28rem rgba(0, 0, 0, .8);
-  white-space: nowrap;
-}
-
-.capital-commit-cue--prepare {
-  animation: capital-cue-prepare var(--capital-prepare-duration, 150ms) ease-out both;
-}
-
-.capital-commit-cue--travel {
-  animation: capital-cue-travel var(--capital-travel-duration, 170ms) ease-out both;
-}
-
-.capital-commit-cue--impact {
-  animation: capital-cue-impact var(--capital-impact-duration, 475ms) ease-out both;
-}
-
-.capital-commit-cue--afterglow {
-  animation: capital-cue-afterglow var(--capital-afterglow-duration, 320ms) ease-out both;
-}
-
 .integrated-battlefield--capital-commit .ownership-avatar--player {
   will-change: transform, opacity;
 }
@@ -2715,27 +2667,6 @@
   100% { filter: brightness(1); opacity: 1; }
 }
 
-@keyframes capital-cue-prepare {
-  0% { opacity: 0; transform: translateY(.32rem); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes capital-cue-travel {
-  0% { opacity: .82; transform: translateX(-.2rem); }
-  100% { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes capital-cue-impact {
-  0%, 13% { opacity: 1; transform: translateY(.1rem); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes capital-cue-afterglow {
-  0% { opacity: 1; transform: translateY(0); }
-  68% { opacity: .82; }
-  100% { opacity: 0; transform: translateY(-.24rem); }
-}
-
 @media (max-width: 639px) {
   .integrated-battlefield .battlefield-capital-deluge > i {
     --deluge-fall-distance: 8.5rem;
@@ -2758,15 +2689,6 @@
     text-overflow: clip;
   }
 
-  .capital-commit-cue {
-    top: 57%;
-    left: 27%;
-    width: min(10.4rem, 46%);
-  }
-
-  .capital-commit-cue strong {
-    font-size: clamp(.95rem, 5vw, 1.35rem);
-  }
 }
 
 @media (max-height: 700px) {
@@ -3162,14 +3084,6 @@
     animation: none !important;
   }
 
-  .capital-commit-cue {
-    animation: capital-cue-reduced .2s ease-out both !important;
-  }
-}
-
-@keyframes capital-cue-reduced {
-  from { opacity: .55; }
-  to { opacity: 1; }
 }
 
 /*
@@ -3552,6 +3466,7 @@
   --coin-light: #fff4ad;
   --coin-mid: #e6a90b;
   --coin-dark: #704006;
+  --capital-stack-beat-ms: 136ms;
   --capital-rack-compression: 0rem;
   position: absolute;
   z-index: 1;
@@ -3560,10 +3475,13 @@
   overflow: visible;
   pointer-events: none;
   contain: layout style;
-  translate: 0 calc(
-    var(--capital-rack-sink, 0rem) + var(--capital-rack-compression)
+  translate: 0 min(
+    5rem,
+    calc(var(--capital-rack-sink, 0rem) + var(--capital-rack-compression))
   );
-  transition: translate 220ms cubic-bezier(.2, .72, .22, 1);
+  /* Enter quickly enough to read as the loading tray being lowered, then
+   * return with the weight of the completed pile instead of snapping home. */
+  transition: translate 560ms cubic-bezier(.16, .78, .22, 1);
 }
 
 /* Exceptional funding reuses the fixed twenty-two columns as a lowered
@@ -3573,8 +3491,17 @@
  * transition rather than the old one-frame root snap. */
 .integrated-battlefield
   .gil-column-field[data-rack-compressed="true"] {
-  --capital-rack-compression: .55rem;
+  --capital-rack-compression: clamp(1.8rem, 4.2vh, 2.5rem);
+  transition-duration: 280ms;
+  transition-timing-function: cubic-bezier(.24, .02, .42, 1);
   will-change: translate;
+}
+
+/* During the pour the wealth itself is the acting character. Raise only the
+ * bounded fixed rack for that beat; settled piles return behind the portraits. */
+.integrated-battlefield
+  .gil-column-field[data-packet-active="true"] {
+  z-index: 26;
 }
 
 .integrated-battlefield .gil-column-field--enemy {
@@ -3634,8 +3561,8 @@
   transform: translateX(-50%);
   transform-origin: center bottom;
   transition:
-    height 30ms steps(1, end),
-    opacity 30ms linear;
+    height var(--capital-stack-beat-ms, 136ms) steps(1, end),
+    opacity calc(var(--capital-stack-beat-ms, 136ms) * .36) linear;
   will-change: auto;
 }
 
@@ -3682,38 +3609,80 @@
 
 .integrated-battlefield
   .capital-fixed-column[data-machine-active="true"] {
-  will-change: auto;
+  z-index: calc(6 + var(--column-depth));
+  will-change: height;
 }
 
 .integrated-battlefield
   .capital-fixed-column[data-machine-active="true"]::before {
+  --capital-packet-visible-layers: clamp(6, var(--capital-packet-layers, 8), 12);
+  --capital-packet-start-y: clamp(-18rem, -34vh, -11rem);
   position: absolute;
-  top: calc(var(--coin-cap-height) * -.36);
+  z-index: 2;
+  bottom: calc(100% - .08rem);
   left: 50%;
   display: block;
   width: calc(100% + 2px);
-  height: var(--coin-cap-height);
-  border: 1px solid color-mix(in srgb, var(--coin-light), var(--coin-dark) 24%);
-  border-radius: 50%;
+  height: calc(
+    var(--coin-cap-height) +
+    var(--capital-packet-visible-layers) * var(--coin-layer-step)
+  );
+  border: 1px solid color-mix(in srgb, var(--coin-light), var(--coin-dark) 30%);
+  border-radius:
+    48% 48% .14rem .14rem /
+    var(--coin-cap-height) var(--coin-cap-height) .14rem .14rem;
   opacity: 0;
   content: "";
   pointer-events: none;
   background:
-    radial-gradient(circle at 42% 30%, var(--coin-light), transparent 18%),
-    radial-gradient(ellipse at center, var(--coin-light), var(--coin-mid) 58%, var(--coin-dark));
+    radial-gradient(
+      ellipse at 50% calc(var(--coin-cap-height) * .42),
+      var(--coin-light) 0 12%,
+      var(--coin-mid) 48%,
+      var(--coin-dark) 76%,
+      transparent 78%
+    ),
+    repeating-linear-gradient(
+      180deg,
+      transparent 0 calc(var(--coin-layer-step) * .5),
+      color-mix(in srgb, var(--coin-dark), transparent 8%) calc(var(--coin-layer-step) * .54) calc(var(--coin-layer-step) * .72),
+      color-mix(in srgb, var(--coin-light), transparent 12%) calc(var(--coin-layer-step) * .76) var(--coin-layer-step)
+    ),
+    linear-gradient(
+      90deg,
+      var(--coin-dark),
+      var(--coin-mid) 22%,
+      var(--coin-light) 46%,
+      var(--coin-mid) 69%,
+      var(--coin-dark)
+    );
+  background-blend-mode: normal, multiply, normal;
   box-shadow:
-    inset 0 .06rem .08rem rgba(255, 255, 255, .55),
-    0 .06rem .06rem rgba(0, 0, 0, .35);
-  will-change: translate, opacity;
-  animation: capital-column-machine-feed 52ms steps(3, end) both;
+    inset .07rem 0 .08rem rgba(255, 255, 255, .44),
+    inset -.08rem 0 .1rem rgba(45, 20, 0, .46),
+    0 .16rem .2rem rgba(0, 0, 0, .5),
+    0 0 .18rem color-mix(in srgb, var(--coin-mid), transparent 48%);
+  filter: drop-shadow(0 .14rem .12rem rgba(0, 0, 0, .48));
+  transform-origin: center bottom;
+  will-change: transform, opacity;
+  animation: capital-column-machine-feed var(--capital-stack-beat-ms, 136ms) cubic-bezier(.18, .72, .3, 1) both;
+  animation-delay: calc(var(--capital-packet-order, 0) * -12ms);
+}
+
+/* Fixed columns stay mounted, so alternate two equivalent animation names to
+ * restart a falling bundle on every deterministic timeline beat. */
+.integrated-battlefield
+  .capital-fixed-column[data-machine-active="true"][data-packet-phase="1"]::before {
+  animation-name: capital-column-machine-feed-alt;
 }
 
 .integrated-battlefield .capital-overflow-stamp {
   position: absolute;
-  z-index: 12;
+  z-index: 1;
   inset: 0;
   display: block;
   overflow: visible;
+  opacity: .14;
   pointer-events: none;
   contain: layout style;
 }
@@ -3752,10 +3721,65 @@
 }
 
 @keyframes capital-column-machine-feed {
-  0% { opacity: 0; translate: -50% -.42rem; }
-  34% { opacity: 1; translate: -50% -.24rem; }
-  67% { opacity: 1; translate: -50% -.08rem; }
-  100% { opacity: 0; translate: -50% 0; }
+  0% {
+    opacity: 0;
+    transform: translate(-50%, var(--capital-packet-start-y)) scaleY(.96);
+  }
+  10% {
+    opacity: .92;
+    transform: translate(-50%, var(--capital-packet-start-y)) scaleY(.98);
+  }
+  24% {
+    opacity: 1;
+    transform: translate(-50%, calc(var(--capital-packet-start-y) + 1.2rem)) scaleY(1);
+  }
+  78% {
+    opacity: 1;
+    transform: translate(-50%, -.16rem) scaleY(1.02);
+  }
+  88% {
+    opacity: 1;
+    transform: translate(-50%, .08rem) scaleY(.94);
+  }
+  94% {
+    opacity: .94;
+    transform: translate(-50%, -.03rem) scaleY(1.01);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 0) scaleY(1);
+  }
+}
+
+@keyframes capital-column-machine-feed-alt {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, var(--capital-packet-start-y)) scaleY(.96);
+  }
+  10% {
+    opacity: .92;
+    transform: translate(-50%, var(--capital-packet-start-y)) scaleY(.98);
+  }
+  24% {
+    opacity: 1;
+    transform: translate(-50%, calc(var(--capital-packet-start-y) + 1.2rem)) scaleY(1);
+  }
+  78% {
+    opacity: 1;
+    transform: translate(-50%, -.16rem) scaleY(1.02);
+  }
+  88% {
+    opacity: 1;
+    transform: translate(-50%, .08rem) scaleY(.94);
+  }
+  94% {
+    opacity: .94;
+    transform: translate(-50%, -.03rem) scaleY(1.01);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 0) scaleY(1);
+  }
 }
 
 @keyframes capital-overflow-machine-drop {
@@ -3808,7 +3832,7 @@
 
   .integrated-battlefield
     .gil-column-field[data-rack-compressed="true"] {
-    --capital-rack-compression: .62rem;
+    --capital-rack-compression: clamp(2.25rem, 4.6vh, 2.8rem);
   }
 
   .integrated-battlefield .capital-overflow-stamp > i {
@@ -3863,8 +3887,17 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .integrated-battlefield .gil-column-field,
   .integrated-battlefield .capital-fixed-column {
     transition-duration: 1ms;
+    transition-delay: 0ms;
+    will-change: auto;
+  }
+
+  .integrated-battlefield
+    .gil-column-field[data-rack-compressed="true"] {
+    transition-duration: 1ms;
+    transition-delay: 0ms;
     will-change: auto;
   }
 
@@ -4065,7 +4098,7 @@
   position: absolute;
   inset: 0;
   width: 100%;
-  transition: transform .12s linear;
+  transition: transform var(--battle-gauge-interpolation, 110ms) linear;
   will-change: transform;
 }
 
@@ -4080,6 +4113,8 @@
 .integrated-battlefield .ownership-track__tension,
 .integrated-battlefield .ownership-track__marker {
   left: var(--battle-frontline);
+  transition: left var(--battle-gauge-interpolation, 110ms) linear;
+  will-change: left;
 }
 
 .integrated-battlefield .ownership-duel > .battle-wind-sigil {
