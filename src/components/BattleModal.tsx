@@ -2624,6 +2624,67 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     primarySkillActionLocked && primarySkillStateText === '発動可'
       ? '演出待ち'
       : primarySkillStateText;
+  const cruelReckoningActive =
+    isCruel && cruelScriptPhase === 'second_countdown';
+  const cruelReckoningSeconds = Math.max(
+    0,
+    Math.ceil((enemySupportTelegraphRemainingMs ?? 0) / 1000)
+  );
+  const cruelSignatureRatio =
+    (cruelSecondSignatureInvested /
+      Math.max(1, targetProperty.marketPrice)) *
+    100;
+  const presentationBlocksCommands =
+    presentationLocked || impactPresentationActive || decisiveLocked;
+  const battleCommandState = cruelReckoningActive
+    ? {
+        tone: 'cruel',
+        title: `終極査定 残り${cruelReckoningSeconds}秒`,
+        detail: `所有 ${normalizedOwnership.toFixed(1)}/75%｜直接 ${cruelSignatureRatio.toFixed(1)}/10%｜${
+          presentationBlocksCommands
+            ? '演出中'
+            : commandReady
+              ? '受付中'
+              : `次 ${Math.round(commandProgress)}%`
+        }`,
+      }
+    : winner
+      ? {
+          tone: 'locked',
+          title: '決着済み',
+          detail: '分析へ進めます',
+        }
+      : battlePhase !== 'active'
+        ? {
+            tone: 'locked',
+            title: '開始前',
+            detail: '条件を確認してください',
+          }
+        : showHelp || showLog
+          ? {
+              tone: 'locked',
+              title: '説明を確認中',
+              detail: '閉じると操作へ戻ります',
+            }
+          : presentationBlocksCommands
+      ? {
+          tone: 'locked',
+          title: '演出中',
+          detail: '終了後に操作できます',
+        }
+      : commandReady
+        ? {
+            tone: 'ready',
+            title: '操作受付中',
+            detail: isTraining
+              ? '準備100%｜投資・アビリティを選べます'
+              : '準備100%｜投資・支援・アビリティを選べます',
+          }
+        : {
+            tone: 'charging',
+            title: `コマンド準備 ${Math.round(commandProgress)}%`,
+            detail: '満了後に次の操作ができます',
+          };
   const backgroundInert =
     panel !== 'capital' ||
     showHelp ||
@@ -8445,7 +8506,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                       100).toFixed(1)}{' '}
                     / 10%
                   </em>
-                  <b>12秒・人脈／LB／SYNERGY／外部アライアンスは対象外</b>
+                  <b>12秒 / 必須：所有75%＋自社直接10%</b>
+                  <span className="cruel-omnicapitalization-card__exclusion">
+                    人脈・LB・SYNERGY・外部支援は直接出資に含まれません
+                  </span>
                 </>
               )}
               <i aria-hidden="true"><u /></i>
@@ -8464,6 +8528,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </div>
 
         <section className="active-time battlefield-timing" aria-label="行動準備ゲージ">
+          <span
+            className={`battle-command-state battle-command-state--${battleCommandState.tone}`}
+            aria-live={battleCommandState.tone === 'charging' || battleCommandState.tone === 'cruel' ? 'off' : 'polite'}
+            aria-atomic="true"
+          >
+            <b>{battleCommandState.title}</b>
+            <em>{battleCommandState.detail}</em>
+          </span>
           <div
             className={`recast-meter recast-meter--player ${commandReady ? 'is-ready' : ''}`}
             role="progressbar"

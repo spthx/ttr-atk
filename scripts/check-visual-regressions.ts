@@ -22,6 +22,7 @@ const battlePresentation = readSource('src/utils/battlePresentation.ts');
 const capitalCss = readSource('src/battle-capital-layer.css');
 const buyoutCss = readSource('src/battle-buyout.css');
 const integratedCss = readSource('src/battle-integrated-field.css');
+const launchIntro = readSource('src/components/LaunchIntro.tsx');
 const header = readSource('src/components/Header.tsx');
 const cartelAllianceView = readSource('src/components/CartelAllianceView.tsx');
 const skillsSynergyView = readSource('src/components/SkillsSynergyView.tsx');
@@ -62,6 +63,26 @@ assert.match(
   app,
   /BATTLE_FRAME_RATE_STORAGE_KEY/,
   'the 30/60fps preference must remain available'
+);
+assert.match(
+  launchIntro,
+  /launch-intro__next[\s\S]{0,180}shrink-0[\s\S]{0,180}whitespace-nowrap/,
+  'the portrait intro action must remain a single readable line'
+);
+assert.match(
+  indexCss,
+  /\.launch-intro__next[\s\S]{0,180}flex:\s*0 0 auto[\s\S]{0,180}white-space:\s*nowrap/,
+  'intro CSS must prevent the next action from shrinking into two lines'
+);
+assert.match(
+  indexCss,
+  /@media \(max-width: 639px\)[\s\S]*?\.launch-intro__panel\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*100%;[\s\S]*?animation-name:\s*launch-panel-mobile/,
+  'the portrait intro panel must stay inside the viewport during its entrance'
+);
+assert.match(
+  indexCss,
+  /@keyframes launch-panel-mobile\s*\{[\s\S]*?translateY\(12px\)[\s\S]*?transform:\s*none/,
+  'the portrait intro entrance must not translate the name field off-screen'
 );
 assert.match(
   app,
@@ -1058,6 +1079,31 @@ assert.match(
   battleModal,
   /primarySkillActionLocked && primarySkillStateText === '発動可'[\s\S]*'演出待ち'/,
   'a locked ready ability must explain that it is waiting for the presentation'
+);
+assert.match(
+  battleModal,
+  /battleCommandState[\s\S]{0,1400}終極査定 残り[\s\S]{0,1400}操作受付中[\s\S]{0,1400}コマンド準備/,
+  'the live command lane must distinguish Cruel, presentation, ready, and recharge states'
+);
+assert.match(
+  battleModal,
+  /操作受付中[\s\S]{0,220}準備100%｜投資・アビリティを選べます[\s\S]{0,160}準備100%｜投資・支援・アビリティを選べます/,
+  'the ready command lane must expose a visible full-recast percentage'
+);
+assert.match(
+  battleModal,
+  /battle-command-state--\$\{battleCommandState\.tone\}[\s\S]{0,320}battleCommandState\.title[\s\S]{0,240}battleCommandState\.detail/,
+  'the live command lane must render its short title and readable detail together'
+);
+assert.match(
+  integratedCss,
+  /\.battle-command-state[\s\S]{0,900}\.battle-command-state--ready[\s\S]{0,900}\.battle-command-state--cruel/,
+  'portrait battles must visually distinguish ready, locked, and Cruel command states'
+);
+assert.match(
+  capitalCss,
+  /cruel-omnicapitalization-card__exclusion[\s\S]{0,240}font-size:\s*\.7rem/,
+  'Cruel direct-investment exclusions must remain legible on a portrait phone'
 );
 assert.match(
   battleModal,
