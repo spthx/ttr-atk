@@ -3466,7 +3466,7 @@
   --coin-light: #fff4ad;
   --coin-mid: #e6a90b;
   --coin-dark: #704006;
-  --capital-stack-beat-ms: 136ms;
+  --capital-stack-beat-ms: 128ms;
   --capital-rack-compression: 0rem;
   position: absolute;
   z-index: 1;
@@ -3560,8 +3560,8 @@
   transform: translateX(-50%);
   transform-origin: center bottom;
   transition:
-    height var(--capital-stack-beat-ms, 136ms) steps(1, end),
-    opacity calc(var(--capital-stack-beat-ms, 136ms) * .36) linear;
+    height var(--capital-stack-beat-ms, 128ms) steps(1, end),
+    opacity calc(var(--capital-stack-beat-ms, 128ms) * .36) linear;
   will-change: auto;
 }
 
@@ -3664,7 +3664,7 @@
   filter: drop-shadow(0 .14rem .12rem rgba(0, 0, 0, .48));
   transform-origin: center bottom;
   will-change: transform, opacity;
-  animation: capital-column-machine-feed var(--capital-stack-beat-ms, 136ms) cubic-bezier(.18, .72, .3, 1) both;
+  animation: capital-column-machine-feed var(--capital-stack-beat-ms, 128ms) cubic-bezier(.18, .72, .3, 1) both;
   animation-delay: calc(var(--capital-packet-order, 0) * -12ms);
 }
 

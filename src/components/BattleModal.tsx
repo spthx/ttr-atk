@@ -792,6 +792,7 @@ const GilTower: React.FC<{
   motion: BattleMotion;
   visualFrameOverride?: CapitalPilePresentationFrame | null;
   rackLowered?: boolean;
+  rackFloorTier?: number;
 }> = ({
   amount,
   reserveAmount = 0,
@@ -800,6 +801,7 @@ const GilTower: React.FC<{
   motion,
   visualFrameOverride = null,
   rackLowered = false,
+  rackFloorTier = 0,
 }) => {
   const committedCapital = Math.max(0, amount);
   const visibleUnits = getBattleCapitalVisibleUnits(
@@ -816,15 +818,24 @@ const GilTower: React.FC<{
     presentationSerial: 0,
     commandRecharge: 'continue',
     presentedCapital: committedCapital,
-    beatDurationMs: 96,
+    beatDurationMs: 90,
     packetSeed: 0,
   };
   // Once a large pour has pushed the rack below the frame, keep its footing
   // there for the rest of the battle. A later preview must never make the
   // accumulated mass climb back up merely because its transient frame ended.
+  const persistentOverflowTier = Math.max(
+    baseVisualFrame.overflowTier,
+    Math.max(0, Math.min(3, Math.floor(rackFloorTier)))
+  );
   const visualFrame: CapitalPilePresentationFrame =
-    rackLowered && !baseVisualFrame.rackCompressed
-      ? { ...baseVisualFrame, rackCompressed: true }
+    (rackLowered && !baseVisualFrame.rackCompressed) ||
+    persistentOverflowTier !== baseVisualFrame.overflowTier
+      ? {
+          ...baseVisualFrame,
+          rackCompressed: rackLowered || baseVisualFrame.rackCompressed,
+          overflowTier: persistentOverflowTier,
+        }
       : baseVisualFrame;
   const capitalRatio = committedCapital / Math.max(marketPrice, 1);
 
@@ -1164,6 +1175,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     useState(false);
   const [enemyCapitalRackLowered, setEnemyCapitalRackLowered] =
     useState(false);
+  const [playerCapitalRackFloorTier, setPlayerCapitalRackFloorTier] =
+    useState(0);
+  const [enemyCapitalRackFloorTier, setEnemyCapitalRackFloorTier] =
+    useState(0);
   const [terminalCapitalSnapshot, setTerminalCapitalSnapshot] =
     useState<CapitalCommitSnapshot | null>(null);
   const [impactStop, setImpactStop] = useState<ImpactStop | null>(null);
@@ -1727,6 +1742,22 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         } else {
           setEnemyCapitalRackLowered(true);
         }
+      }
+      const deepestRackFloorTier = Math.max(
+        previousOverflowTier,
+        overflowTier,
+        timeline.frames.some((frame) => (frame.overflowPass ?? 0) > 0)
+          ? 1
+          : 0
+      );
+      if (side === 'player') {
+        setPlayerCapitalRackFloorTier((current) =>
+          Math.max(current, deepestRackFloorTier)
+        );
+      } else {
+        setEnemyCapitalRackFloorTier((current) =>
+          Math.max(current, deepestRackFloorTier)
+        );
       }
       const setPreviewStage =
         side === 'player'
@@ -6107,6 +6138,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (timeline.frames.some((frame) => frame.rackCompressed)) {
       setPlayerCapitalRackLowered(true);
     }
+    const deepestRackFloorTier = Math.max(
+      previousOverflowTier,
+      overflowTier,
+      timeline.frames.some((frame) => (frame.overflowPass ?? 0) > 0) ? 1 : 0
+    );
+    setPlayerCapitalRackFloorTier((current) =>
+      Math.max(current, deepestRackFloorTier)
+    );
     const firstTimelineFrame = timeline.frames[0];
     const finalTimelineFrame = timeline.frames.at(-1) ?? firstTimelineFrame;
     const audibleFrames = timeline.frames.filter(
@@ -8176,6 +8215,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     capitalPreviewStage ?? playerCapitalPilePreviewStage
                   }
                   rackLowered={playerCapitalRackLowered}
+                  rackFloorTier={playerCapitalRackFloorTier}
                 />
                 {playerCoverKnightPhase !== 'absent' && (
                   <div
@@ -8299,6 +8339,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   motion={motion}
                   visualFrameOverride={enemyCapitalPilePreviewStage}
                   rackLowered={enemyCapitalRackLowered}
+                  rackFloorTier={enemyCapitalRackFloorTier}
                 />
                 {enemySupportCinematic && (
                   <div

@@ -879,9 +879,9 @@ export const CAPITAL_STACK_BEAT_MS = {
   // At 30fps the two primary cadences remain visible for roughly three and
   // four frames respectively. These are authored exploration values, not
   // measurements copied from the reference video.
-  standard: 96,
-  heavy: 136,
-  compact: 66,
+  standard: 90,
+  heavy: 128,
+  compact: 62,
 } as const;
 
 export const CAPITAL_OVERFLOW_RESTACK_BEATS = {
