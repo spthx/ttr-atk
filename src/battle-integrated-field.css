@@ -7,6 +7,9 @@
 .integrated-battlefield {
   --field-player: rgba(8, 116, 156, .74);
   --field-enemy: rgba(159, 18, 57, .76);
+  /* Logical battle values commit at 100ms intervals. Interpolate very slightly
+   * beyond that cadence so each segment hands off to the next without a pause. */
+  --battle-gauge-interpolation: 110ms;
   position: relative;
   isolation: isolate;
   display: block !important;
@@ -51,7 +54,7 @@
 .battlefield-territory > i {
   position: absolute;
   inset: 0;
-  transition: transform .12s linear;
+  transition: transform var(--battle-gauge-interpolation) linear;
   will-change: transform;
 }
 
@@ -78,6 +81,8 @@
   border-radius: 999px;
   content: "";
   pointer-events: none;
+  transition: left var(--battle-gauge-interpolation) linear;
+  will-change: left;
   background: #fff8d1;
   box-shadow:
     0 0 .3rem #fff,
@@ -4235,7 +4240,8 @@
   border-radius: inherit;
   background: linear-gradient(90deg, #075985, #38bdf8 72%, #e0f2fe);
   box-shadow: 0 0 .45rem rgba(56, 189, 248, .66);
-  transition: width .05s linear;
+  transition: width var(--battle-gauge-interpolation) linear;
+  will-change: width;
 }
 
 .integrated-battlefield .recast-meter--enemy > i > u {
@@ -4369,7 +4375,8 @@
     linear-gradient(90deg, rgba(14, 165, 233, .12), rgba(103, 232, 249, .48)),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, .08) 0 .4rem, transparent .4rem .8rem);
   box-shadow: .15rem 0 .65rem rgba(103, 232, 249, .46);
-  transition: width .05s linear;
+  transition: width var(--battle-gauge-interpolation) linear;
+  will-change: width;
 }
 
 .investment-execute-button > :not(.investment-execute-button__charge) {
@@ -4584,6 +4591,17 @@
   .integrated-battlefield .battlefield-pressure-lane__enemy,
   .integrated-battlefield .battlefield-pressure-lane__front {
     transition-duration: 0s !important;
+  }
+
+  .battlefield-territory > i,
+  .integrated-battlefield::after,
+  .integrated-battlefield .ownership-track__player,
+  .integrated-battlefield .ownership-track__enemy-flow,
+  .integrated-battlefield .ownership-track__tension,
+  .integrated-battlefield .ownership-track__marker,
+  .integrated-battlefield .recast-meter > i > u,
+  .investment-execute-button__charge {
+    transition-duration: 1ms !important;
   }
 }
 

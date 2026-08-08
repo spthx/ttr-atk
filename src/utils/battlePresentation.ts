@@ -149,28 +149,28 @@ const CAPITAL_COMMIT_TIMINGS: Record<
 > = {
   standard: {
     small: {
-      prepareMs: 220,
-      travelMs: 240,
-      hitStopMs: 55,
-      settleMs: 360,
-      afterglowMs: 480,
-      totalMs: 1_355,
+      prepareMs: 140,
+      travelMs: 170,
+      hitStopMs: 50,
+      settleMs: 760,
+      afterglowMs: 240,
+      totalMs: 1_360,
     },
     medium: {
-      prepareMs: 280,
-      travelMs: 300,
-      hitStopMs: 64,
-      settleMs: 430,
-      afterglowMs: 570,
-      totalMs: 1_644,
+      prepareMs: 150,
+      travelMs: 190,
+      hitStopMs: 55,
+      settleMs: 1_320,
+      afterglowMs: 280,
+      totalMs: 1_995,
     },
     heavy: {
-      prepareMs: 400,
-      travelMs: 440,
-      hitStopMs: 88,
-      settleMs: 520,
-      afterglowMs: 760,
-      totalMs: 2_208,
+      prepareMs: 160,
+      travelMs: 220,
+      hitStopMs: 72,
+      settleMs: 4_788,
+      afterglowMs: 320,
+      totalMs: 5_560,
     },
   },
   compact: {
@@ -791,10 +791,27 @@ export const MAX_BATTLE_CAPITAL_VISIBLE_UNITS =
 
 const CAPITAL_COLUMN_FILL_ORDER = [
   // Deal from the two central spines toward the outer edges. Keeping this
-  // order deterministic makes even a saturated reload read like a fast
-  // mechanical tray rather than unrelated columns flashing at random.
+  // order deterministic makes every bundle land in a readable place.
   6, 17, 1, 2, 11, 12, 5, 7, 16, 18, 0,
   3, 10, 13, 4, 8, 15, 19, 9, 14, 20, 21,
+] as const;
+
+// One bounded fill cycle makes a terrace rather than a level machine rack.
+// Every column is still represented by exactly one persistent DOM node. The
+// ten repeated centre/shoulder slots make the rear spine rise above the outer
+// walls, and replaying the same cycle guarantees that increasing capital can
+// never shorten an existing column.
+const CAPITAL_TERRACE_FILL_CYCLE = [
+  ...CAPITAL_COLUMN_FILL_ORDER,
+  6, 17, 11, 12, 1, 2, 5, 7, 16, 18,
+] as const;
+
+// Screen-space order for the twenty-two persistent columns. Presentation uses
+// this independently from the terrace fill order so incoming bundles travel as
+// one continuous hose-like sweep instead of jumping between distant columns.
+const CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER = [
+  20, 9, 4, 15, 0, 10, 5, 16, 1, 11, 6,
+  17, 2, 12, 7, 18, 3, 13, 8, 19, 14, 21,
 ] as const;
 
 /**
@@ -831,17 +848,17 @@ export const getBattleCapitalVisibleUnits = (
   );
 };
 
-/** Same amount always produces the same almost-level twenty-two-column silhouette. */
+/** Same amount always produces the same monotonic twenty-two-column terrace. */
 export const getCapitalColumnHeights = (visibleUnits: number) => {
   const normalizedUnits = Math.max(
     0,
     Math.min(MAX_BATTLE_CAPITAL_VISIBLE_UNITS, Math.round(visibleUnits))
   );
-  const baseHeight = Math.floor(normalizedUnits / BATTLE_CAPITAL_COLUMN_COUNT);
-  const remainder = normalizedUnits % BATTLE_CAPITAL_COLUMN_COUNT;
-  const heights = Array<number>(BATTLE_CAPITAL_COLUMN_COUNT).fill(baseHeight);
-  for (let index = 0; index < remainder; index += 1) {
-    heights[CAPITAL_COLUMN_FILL_ORDER[index]] += 1;
+  const heights = Array<number>(BATTLE_CAPITAL_COLUMN_COUNT).fill(0);
+  for (let unit = 0; unit < normalizedUnits; unit += 1) {
+    const columnIndex =
+      CAPITAL_TERRACE_FILL_CYCLE[unit % CAPITAL_TERRACE_FILL_CYCLE.length];
+    heights[columnIndex] += 1;
   }
   return heights;
 };
@@ -859,15 +876,21 @@ export interface MechanicalCapitalColumnFrame {
 }
 
 export const CAPITAL_STACK_BEAT_MS = {
-  standard: 18,
-  heavy: 16,
-  compact: 16,
+  // At 30fps the two primary cadences remain visible for roughly three and
+  // four frames respectively. These are authored exploration values, not
+  // measurements copied from the reference video.
+  standard: 96,
+  heavy: 136,
+  compact: 66,
 } as const;
 
 export const CAPITAL_OVERFLOW_RESTACK_BEATS = {
-  standard: 8,
-  heavy: 6,
-  compact: 6,
+  // Five adjacent screen-space groups travel from the inner edge to the outer
+  // edge and then back again. Duplicating each turn keeps the direction change
+  // readable, like a hose pausing briefly before it sweeps back.
+  standard: 10,
+  heavy: 10,
+  compact: 10,
 } as const;
 
 const getCapitalSweepGroups = (
@@ -904,7 +927,12 @@ export const getCapitalOverflowPassCount = (
   const previous = Math.max(0, previousCapital);
   const next = Math.max(0, nextCapital);
   const deltaRatio = Math.max(0, next - previous) / price;
-  if (next <= previous || next / price < 1.5) return 0;
+  if (next <= previous) return 0;
+  // Persistent overflow still begins at 1.5x asking price, but a heavy new
+  // wave must visibly reload the lowered rack even on the first 20/35/75%
+  // command. The old total-only gate made the game's most common all-in skip
+  // the large-capital treatment entirely.
+  if (!heavy && next / price < 1.5) return 0;
 
   const previousBand = Math.max(
     0,
@@ -917,9 +945,9 @@ export const getCapitalOverflowPassCount = (
   const crossedBands = Math.max(0, nextBand - previousBand);
   const impactPasses = !heavy
     ? 0
-    : deltaRatio >= 2
+    : deltaRatio >= 1.5
       ? 3
-      : deltaRatio >= 0.75
+      : deltaRatio >= 0.65
         ? 2
         : deltaRatio >= 0.18
           ? 1
@@ -928,10 +956,9 @@ export const getCapitalOverflowPassCount = (
 };
 
 /**
- * Deals capital into the fixed rack in small deterministic groups. Each frame
- * changes only a handful of columns, like an automatic mahjong table, before
- * returning to the next group and raising the rack again. The amount changes
- * frame count and height, never the number of DOM nodes.
+ * Deals capital into the fixed rack as deterministic four/five-column bundles.
+ * Each visible beat spends a balanced share of the remaining mass, so a large
+ * mountain keeps arriving continuously without amount-proportional DOM nodes.
  */
 export const getMechanicalCapitalColumnFrames = (
   previousUnits: number,
@@ -939,7 +966,9 @@ export const getMechanicalCapitalColumnFrames = (
   maxFrames: number,
   columnsPerBeat = 5,
   overflowPasses = 0,
-  overflowBeats: number = CAPITAL_OVERFLOW_RESTACK_BEATS.standard
+  overflowBeats: number = CAPITAL_OVERFLOW_RESTACK_BEATS.standard,
+  compressWhileLoading = false,
+  side: 'player' | 'enemy' = 'player'
 ): MechanicalCapitalColumnFrame[] => {
   const from = Math.max(
     0,
@@ -964,7 +993,7 @@ export const getMechanicalCapitalColumnFrames = (
     1,
     Math.min(BATTLE_CAPITAL_COLUMN_COUNT, Math.floor(columnsPerBeat))
   );
-  const frameCount = from === to
+  let frameCount = from === to
     ? 0
     : Math.max(
     1,
@@ -973,73 +1002,93 @@ export const getMechanicalCapitalColumnFrames = (
       Math.floor(maxFrames),
       Math.ceil(totalDistance / groupSize)
     )
-    );
+  );
   const direction = to > from ? 1 : -1;
+  // Each side starts beside the centre line and sweeps toward its own outer
+  // edge. Capital removal runs the same physical path in reverse.
+  const innerToOuterOrder = side === 'player'
+    ? [...CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER].reverse()
+    : [...CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER];
   const order = direction > 0
-    ? [...CAPITAL_COLUMN_FILL_ORDER]
-    : [...CAPITAL_COLUMN_FILL_ORDER].reverse();
+    ? innerToOuterOrder
+    : [...innerToOuterOrder].reverse();
   const sweepGroups = getCapitalSweepGroups(order, groupSize);
   const frames: MechanicalCapitalColumnFrame[] = [];
-  let groupCursor = 0;
+  const groupPlans = sweepGroups
+    .map((group) => ({
+      group,
+      distance: group.reduce(
+        (sum, columnIndex) =>
+          sum + Math.abs(target[columnIndex] - current[columnIndex]),
+        0
+      ),
+    }))
+    .filter((plan) => plan.distance > 0);
+  frameCount = Math.max(frameCount, groupPlans.length);
 
-  for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
-    const framesRemaining = frameCount - frameIndex;
-    const unitsRemaining = current.reduce(
-      (sum, height, index) => sum + Math.abs(target[index] - height),
+  // Growth follows an open pendulum: inner -> outer -> inner-adjacent, then the
+  // next cycle touches inner again. Every consecutive beat is adjacent while
+  // the middle groups receive enough visits to avoid a late capital lump.
+  const pendulumPlans = [
+    ...groupPlans,
+    ...groupPlans.slice(1, -1).reverse(),
+  ];
+  const scheduledGroups = Array.from(
+    { length: frameCount },
+    (_, frameIndex) => pendulumPlans[frameIndex % pendulumPlans.length]
+  );
+  const scheduledVisitTotals = new Map<(typeof groupPlans)[number], number>();
+  scheduledGroups.forEach((plan) => {
+    scheduledVisitTotals.set(
+      plan,
+      (scheduledVisitTotals.get(plan) ?? 0) + 1
+    );
+  });
+
+  const completedVisits = new Map<(typeof groupPlans)[number], number>();
+  scheduledGroups.forEach((plan) => {
+    const visitsDone = completedVisits.get(plan) ?? 0;
+    const visitsRemaining =
+      (scheduledVisitTotals.get(plan) ?? 1) - visitsDone;
+    const groupDistance = plan.group.reduce(
+      (sum, columnIndex) =>
+        sum + Math.abs(target[columnIndex] - current[columnIndex]),
       0
     );
-    let budget = Math.max(1, Math.ceil(unitsRemaining / framesRemaining));
+    let budget = Math.ceil(groupDistance / Math.max(1, visitsRemaining));
     const active = new Set<number>();
-    let groupSearches = 0;
 
-    while (budget > 0 && groupSearches < sweepGroups.length) {
-      const group = sweepGroups[groupCursor];
-      groupCursor = (groupCursor + 1) % sweepGroups.length;
-      groupSearches += 1;
-      let groupChanged = false;
-
-      while (budget > 0) {
-        let roundChanged = false;
-        group.forEach((columnIndex) => {
-          if (budget <= 0) return;
-          if (current[columnIndex] === target[columnIndex]) return;
-          current[columnIndex] += direction;
-          budget -= 1;
-          groupChanged = true;
-          roundChanged = true;
-          active.add(columnIndex);
-        });
-        if (!roundChanged) break;
-      }
-      if (groupChanged) break;
-    }
-
-    if (frameIndex === frameCount - 1) {
-      target.forEach((height, index) => {
-        if (current[index] !== height) active.add(index);
-        current[index] = height;
+    while (budget > 0) {
+      let roundChanged = false;
+      plan.group.forEach((columnIndex) => {
+        if (budget <= 0 || current[columnIndex] === target[columnIndex]) return;
+        current[columnIndex] += direction;
+        budget -= 1;
+        roundChanged = true;
+        active.add(columnIndex);
       });
+      if (!roundChanged) break;
     }
+    completedVisits.set(plan, visitsDone + 1);
     frames.push({
       visibleUnits: current.reduce((sum, height) => sum + height, 0),
       columnHeights: [...current],
       activeColumnIndices: [...active],
+      rackCompressed: compressWhileLoading && direction > 0,
     });
-  }
+  });
 
   const boundedPasses = Math.max(0, Math.min(3, Math.floor(overflowPasses)));
-  // A reload is a deliberate round trip: centre to edges, then edges to centre.
-  // Balanced groups prevent the last outer pair from sharing a beat with the
-  // first central pair, so the rack never appears to reset mid-sweep.
+  // A reload uses the same deliberate inner-to-outer-to-inner round trip.
   const outwardGroups = getCapitalSweepGroups(
-    CAPITAL_COLUMN_FILL_ORDER,
+    innerToOuterOrder,
     groupSize
   );
-  const inwardGroups = getCapitalSweepGroups(
-    [...CAPITAL_COLUMN_FILL_ORDER].reverse(),
-    groupSize
-  );
-  const maximumRoundTripBeats = outwardGroups.length + inwardGroups.length;
+  const roundTripGroups = [
+    ...outwardGroups,
+    ...[...outwardGroups].reverse(),
+  ];
+  const maximumRoundTripBeats = roundTripGroups.length;
   const boundedBeats = Math.max(
     1,
     Math.min(maximumRoundTripBeats, Math.floor(overflowBeats))
@@ -1055,14 +1104,10 @@ export const getMechanicalCapitalColumnFrames = (
       stackBeat: 0,
     });
     for (let beatIndex = 0; beatIndex < boundedBeats; beatIndex += 1) {
-      const sweepingOutward = beatIndex < outwardGroups.length;
-      const activeColumnIndices = sweepingOutward
-        ? outwardGroups[beatIndex]
-        : inwardGroups[beatIndex - outwardGroups.length];
       frames.push({
         visibleUnits: to,
         columnHeights: [...target],
-        activeColumnIndices,
+        activeColumnIndices: roundTripGroups[beatIndex],
         rackCompressed: true,
         overflowPass: pass,
         stackBeat: beatIndex + 1,
@@ -1086,6 +1131,171 @@ export const getMechanicalCapitalColumnFrames = (
     });
   }
   return frames;
+};
+
+export type CapitalStackSide = 'player' | 'enemy';
+export type CapitalStackSource =
+  | 'direct'
+  | 'support'
+  | 'opening'
+  | 'enemy-defense'
+  | 'skill';
+export type CapitalStackIntensity = 'standard' | 'heavy' | 'compact';
+export type CapitalStackPhase = 'preload' | 'pour' | 'settle';
+
+/**
+ * Renderer-neutral input produced after battle capital has been committed.
+ * It never mutates the ledger; React and a future Unity renderer consume the
+ * same deterministic scene description.
+ */
+export interface CapitalStackEvent {
+  id: string;
+  side: CapitalStackSide;
+  source: CapitalStackSource;
+  previousCapital: number;
+  nextCapital: number;
+  marketPrice: number;
+  intensity: CapitalStackIntensity;
+  seed: number;
+}
+
+export interface CapitalStackTimelineFrame
+  extends MechanicalCapitalColumnFrame {
+  phase: CapitalStackPhase;
+  atMs: number;
+  durationMs: number;
+  presentedCapital: number;
+  packetSeed: number;
+}
+
+export interface CapitalStackTimeline {
+  event: CapitalStackEvent;
+  beatMs: number;
+  preloadMs: number;
+  pourDurationMs: number;
+  settleMs: number;
+  totalMs: number;
+  frames: CapitalStackTimelineFrame[];
+}
+
+/**
+ * Builds one fixed-DOM stacking scene. Amount changes heights and the bounded
+ * number of beats, never the number of rendered columns. Frame-rate changes
+ * only how often a renderer samples this absolute timeline.
+ */
+export const buildCapitalStackTimeline = (
+  event: CapitalStackEvent
+): CapitalStackTimeline => {
+  const compact = event.intensity === 'compact';
+  const heavy = event.intensity === 'heavy';
+  const beatMs = CAPITAL_STACK_BEAT_MS[event.intensity];
+  const settleMs = compact ? 72 : heavy ? 280 : 190;
+  const previousStage = getBattleCapitalVisibleUnits(
+    event.previousCapital,
+    event.marketPrice
+  );
+  const targetStage = getBattleCapitalVisibleUnits(
+    event.nextCapital,
+    event.marketPrice
+  );
+  const requestedReloadPasses = getCapitalOverflowPassCount(
+    event.previousCapital,
+    event.nextCapital,
+    event.marketPrice,
+    heavy
+  );
+  // Once the bounded rack is full, any further positive capital still needs a
+  // visible packet. Otherwise common 7–16% enemy counters update only the
+  // ledger and the core coin contest appears to stop at saturation.
+  const reloadPasses =
+    previousStage === targetStage && event.nextCapital > event.previousCapital
+      ? Math.max(1, requestedReloadPasses)
+      : requestedReloadPasses;
+  const willCompress = heavy || reloadPasses > 0;
+  // CSS lowers a loading rack over 280ms. Finish that anticipation before the
+  // first packet starts so the landing surface never moves under the coins.
+  const preloadMs = compact ? 24 : willCompress ? 300 : 90;
+  const reloadBeats = compact
+    ? CAPITAL_OVERFLOW_RESTACK_BEATS.compact
+    : heavy
+      ? CAPITAL_OVERFLOW_RESTACK_BEATS.heavy
+      : CAPITAL_OVERFLOW_RESTACK_BEATS.standard;
+  const mechanicalFrames = getMechanicalCapitalColumnFrames(
+    previousStage,
+    targetStage,
+    compact ? 4 : heavy ? 24 : 22,
+    compact ? 6 : heavy ? 5 : 4,
+    reloadPasses,
+    reloadBeats,
+    heavy,
+    event.side
+  );
+  const seed = Number.isFinite(event.seed) ? Math.trunc(event.seed) : 0;
+  const capitalDistance = event.nextCapital - event.previousCapital;
+  const stageDistance = targetStage - previousStage;
+  const presentedCapitalFor = (
+    visibleUnits: number,
+    frameIndex: number
+  ) => {
+    if (capitalDistance === 0) return event.nextCapital;
+    // Once the fixed rack is visually saturated, overflow reloads still need
+    // a readable ledger climb. Interpolate across the bounded packet sequence
+    // instead of snapping the displayed amount on its first frame.
+    if (stageDistance === 0) {
+      const progress = (frameIndex + 1) / Math.max(1, mechanicalFrames.length);
+      return Math.round(event.previousCapital + capitalDistance * progress);
+    }
+    const progress = Math.max(
+      0,
+      Math.min(1, (visibleUnits - previousStage) / stageDistance)
+    );
+    return Math.round(event.previousCapital + capitalDistance * progress);
+  };
+  const preloadFrame: CapitalStackTimelineFrame = {
+    phase: 'preload',
+    atMs: 0,
+    durationMs: preloadMs,
+    visibleUnits: previousStage,
+    columnHeights: getCapitalColumnHeights(previousStage),
+    activeColumnIndices: [],
+    rackCompressed: willCompress,
+    presentedCapital: event.previousCapital,
+    packetSeed: seed,
+  };
+  const pourFrames = mechanicalFrames.map(
+    (frame, index): CapitalStackTimelineFrame => ({
+      ...frame,
+      // Use a timeline-global beat so persistent fixed DOM nodes can alternate
+      // their CSS animation name and visibly relaunch every packet.
+      stackBeat: index + 1,
+      phase: 'pour',
+      atMs: preloadMs + index * beatMs,
+      durationMs: beatMs,
+      presentedCapital: presentedCapitalFor(frame.visibleUnits, index),
+      packetSeed: seed + (index + 1) * 7_919,
+    })
+  );
+  const pourDurationMs = pourFrames.length * beatMs;
+  const settleFrame: CapitalStackTimelineFrame = {
+    phase: 'settle',
+    atMs: preloadMs + pourDurationMs,
+    durationMs: settleMs,
+    visibleUnits: targetStage,
+    columnHeights: getCapitalColumnHeights(targetStage),
+    activeColumnIndices: [],
+    rackCompressed: heavy,
+    presentedCapital: event.nextCapital,
+    packetSeed: seed + (pourFrames.length + 1) * 7_919,
+  };
+  return {
+    event,
+    beatMs,
+    preloadMs,
+    pourDurationMs,
+    settleMs,
+    totalMs: preloadMs + pourDurationMs + settleMs,
+    frames: [preloadFrame, ...pourFrames, settleFrame],
+  };
 };
 
 /** Fixed visual grades for capital beyond the drawable twenty-two-column rack. */

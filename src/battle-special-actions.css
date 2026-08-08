@@ -93,7 +93,8 @@
   border-radius: inherit;
   background: linear-gradient(90deg, #075985, #38bdf8 70%, #e0f2fe);
   box-shadow: 0 0 .5rem rgba(56, 189, 248, .62);
-  transition: width .05s linear;
+  transition: width var(--battle-gauge-interpolation, 110ms) linear;
+  will-change: width;
 }
 
 .recast-lane--player.recast-lane--ready {

@@ -67,13 +67,12 @@ import {
 } from '../utils/battleSettlement';
 import {
   BATTLE_CINEMATIC_TIMING,
-  CAPITAL_OVERFLOW_RESTACK_BEATS,
-  CAPITAL_STACK_BEAT_MS,
   BATTLE_GAUGE_VISUAL_COMMIT_MS,
   BATTLE_STATE_UPDATE_INTERVAL_MS,
   BATTLE_STATUS_MESSAGE_DURATION_MS,
   ENEMY_SUPPORT_POST_PILE_GRACE_MS,
   advanceEnemySupportTelegraphClock,
+  buildCapitalStackTimeline,
   canConfirmBattleResult,
   enqueueBattleStatusMessage,
   getBattleHitStopTiming,
@@ -81,12 +80,9 @@ import {
   getBattleCinematicLayer,
   getBattleCapitalOverflowTier,
   getBattleCapitalVisibleUnits,
-  getCapitalOverflowPassCount,
   getCapitalColumnHeights,
-  getMechanicalCapitalColumnFrames,
   getCapitalCommitTiming,
   getCapitalPresentationRecoveryAction,
-  getCapitalDropParticleCount,
   getBattleClockScales,
   isBattleImpactPresentationActive,
   getNextBattleSkillId,
@@ -103,6 +99,8 @@ import {
   type BattleImpactStopPhase,
   type BattleStatusMessageTone,
   type CapitalCommitStage,
+  type CapitalStackIntensity,
+  type CapitalStackSource,
   type MechanicalCapitalColumnFrame,
   type SkillCinematicStage,
   type SkillCinematicTiming,
@@ -304,6 +302,9 @@ interface CapitalPilePresentationFrame extends MechanicalCapitalColumnFrame {
   overflowTier: number;
   presentationSerial: number;
   commandRecharge: CapitalPileCommandRecharge;
+  presentedCapital: number;
+  beatDurationMs: number;
+  packetSeed: number;
 }
 type LogCategory = 'system' | 'player' | 'enemy' | 'funds' | 'skill' | 'result';
 type BattleAnnouncement = 'start' | 'limit';
@@ -714,23 +715,19 @@ const riskPresentation = (risk: number) => {
 };
 
 const CAPITAL_COLUMN_SLOTS = [
-  { x: 42.5, phoneX: 34.6, bottom: 30, depth: 0 }, { x: 47.5, phoneX: 44.9, bottom: 32, depth: 0 },
-  { x: 52.5, phoneX: 55.1, bottom: 32, depth: 0 }, { x: 57.5, phoneX: 65.4, bottom: 30, depth: 0 },
-  { x: 40, phoneX: 29.5, bottom: 20, depth: 1 }, { x: 45, phoneX: 39.8, bottom: 22, depth: 1 },
-  { x: 50, phoneX: 50, bottom: 23, depth: 1 }, { x: 55, phoneX: 60.3, bottom: 22, depth: 1 },
-  { x: 60, phoneX: 70.5, bottom: 20, depth: 1 },
-  { x: 37.5, phoneX: 24.4, bottom: 10, depth: 2 }, { x: 42.5, phoneX: 34.6, bottom: 12, depth: 2 },
-  { x: 47.5, phoneX: 44.9, bottom: 13, depth: 2 }, { x: 52.5, phoneX: 55.1, bottom: 13, depth: 2 },
-  { x: 57.5, phoneX: 65.4, bottom: 12, depth: 2 }, { x: 62.5, phoneX: 75.6, bottom: 10, depth: 2 },
-  { x: 40, phoneX: 29.5, bottom: 0, depth: 3 }, { x: 45, phoneX: 39.8, bottom: 2, depth: 3 },
-  { x: 50, phoneX: 50, bottom: 3, depth: 3 }, { x: 55, phoneX: 60.3, bottom: 2, depth: 3 },
-  { x: 60, phoneX: 70.5, bottom: 0, depth: 3 },
-  { x: 35, phoneX: 19.3, bottom: 9, depth: 2 }, { x: 65, phoneX: 80.8, bottom: 9, depth: 2 },
+  { x: 42.5, phoneX: 28.4, bottom: 30, depth: 0 }, { x: 47.5, phoneX: 42.9, bottom: 32, depth: 0 },
+  { x: 52.5, phoneX: 57.1, bottom: 32, depth: 0 }, { x: 57.5, phoneX: 71.6, bottom: 30, depth: 0 },
+  { x: 40, phoneX: 21.3, bottom: 20, depth: 1 }, { x: 45, phoneX: 35.7, bottom: 22, depth: 1 },
+  { x: 50, phoneX: 50, bottom: 23, depth: 1 }, { x: 55, phoneX: 64.4, bottom: 22, depth: 1 },
+  { x: 60, phoneX: 78.7, bottom: 20, depth: 1 },
+  { x: 37.5, phoneX: 14.2, bottom: 10, depth: 2 }, { x: 42.5, phoneX: 28.4, bottom: 12, depth: 2 },
+  { x: 47.5, phoneX: 42.9, bottom: 13, depth: 2 }, { x: 52.5, phoneX: 57.1, bottom: 13, depth: 2 },
+  { x: 57.5, phoneX: 71.6, bottom: 12, depth: 2 }, { x: 62.5, phoneX: 85.8, bottom: 10, depth: 2 },
+  { x: 40, phoneX: 21.3, bottom: 0, depth: 3 }, { x: 45, phoneX: 35.7, bottom: 2, depth: 3 },
+  { x: 50, phoneX: 50, bottom: 3, depth: 3 }, { x: 55, phoneX: 64.4, bottom: 2, depth: 3 },
+  { x: 60, phoneX: 78.7, bottom: 0, depth: 3 },
+  { x: 35, phoneX: 7, bottom: 9, depth: 2 }, { x: 65, phoneX: 93, bottom: 9, depth: 2 },
 ] as const;
-
-// A bounded eight-lane mechanical sweep. When sixteen pieces are needed this
-// same center-out pass repeats once, never turning into a random scatter.
-const CAPITAL_OVERFLOW_LANE_ORDER = [3, 4, 2, 5, 1, 6, 0, 7] as const;
 
 const GilPileVisual = React.memo(function GilPileVisual({
   frame,
@@ -740,10 +737,6 @@ const GilPileVisual = React.memo(function GilPileVisual({
   side: 'player' | 'enemy';
 }) {
   const activeColumns = new Set(frame.activeColumnIndices);
-  const overflowPieceCount =
-    frame.overflowTier > 0 && frame.presentationSerial > 0
-      ? Math.min(16, 8 + frame.overflowTier * 2)
-      : 0;
 
   return (
     <span
@@ -752,45 +745,41 @@ const GilPileVisual = React.memo(function GilPileVisual({
       data-rack-compressed={frame.rackCompressed ? 'true' : 'false'}
       data-overflow-pass={frame.overflowPass ?? 0}
       data-stack-beat={frame.stackBeat ?? 0}
+      data-packet-active={activeColumns.size > 0 ? 'true' : 'false'}
+      style={{
+        '--capital-stack-beat-ms': `${frame.beatDurationMs}ms`,
+      } as React.CSSProperties}
       aria-hidden="true"
     >
-      {CAPITAL_COLUMN_SLOTS.map((slot, index) => (
-        <i
-          key={`${side}-${index}`}
-          className="capital-fixed-column"
-          data-depth={slot.depth}
-          data-empty={frame.columnHeights[index] <= 0}
-          data-machine-active={activeColumns.has(index)}
-          style={{
-            '--column-x': `${slot.x}%`,
-            '--column-phone-x': `${slot.phoneX}%`,
-            '--column-tablet-x': `${slot.phoneX}%`,
-            '--column-bottom': `${slot.bottom}%`,
-            '--column-depth': slot.depth,
-            '--column-layers': frame.columnHeights[index],
-          } as React.CSSProperties}
-        />
-      ))}
-      {overflowPieceCount > 0 && (
-        <span
-          key={`${frame.presentationSerial}-${frame.overflowTier}`}
-          className="capital-overflow-stamp"
-          data-overflow-tier={frame.overflowTier}
-        >
-          {Array.from({ length: overflowPieceCount }, (_, index) => (
-            <i
-              key={index}
-              style={{
-                '--overflow-index': index,
-                '--overflow-lane':
-                  CAPITAL_OVERFLOW_LANE_ORDER[
-                    index % CAPITAL_OVERFLOW_LANE_ORDER.length
-                  ],
-              } as React.CSSProperties}
-            />
-          ))}
-        </span>
-      )}
+      {CAPITAL_COLUMN_SLOTS.map((slot, index) => {
+        const packetOrder = Math.max(
+          0,
+          frame.activeColumnIndices.indexOf(index)
+        );
+        const packetLayers = activeColumns.has(index)
+          ? 6 + Math.abs(frame.packetSeed + index * 3) % 7
+          : 0;
+        return (
+          <i
+            key={`${side}-${index}`}
+            className="capital-fixed-column"
+            data-depth={slot.depth}
+            data-empty={frame.columnHeights[index] <= 0}
+            data-machine-active={activeColumns.has(index)}
+            data-packet-phase={(frame.stackBeat ?? 0) % 2}
+            style={{
+              '--column-x': `${slot.x}%`,
+              '--column-phone-x': `${slot.phoneX}%`,
+              '--column-tablet-x': `${slot.phoneX}%`,
+              '--column-bottom': `${slot.bottom}%`,
+              '--column-depth': slot.depth,
+              '--column-layers': frame.columnHeights[index],
+              '--capital-packet-layers': packetLayers,
+              '--capital-packet-order': packetOrder,
+            } as React.CSSProperties}
+          />
+        );
+      })}
     </span>
   );
 });
@@ -824,12 +813,15 @@ const GilTower: React.FC<{
     overflowTier: getBattleCapitalOverflowTier(committedCapital, marketPrice),
     presentationSerial: 0,
     commandRecharge: 'continue',
+    presentedCapital: committedCapital,
+    beatDurationMs: 96,
+    packetSeed: 0,
   };
   const capitalRatio = committedCapital / Math.max(marketPrice, 1);
 
   return (
     <div
-      className={`gil-tower gil-tower--${side} ${motion === side ? 'gil-tower--impact' : ''} ${visualFrame.overflowTier > 0 && visualFrame.presentationSerial > 0 ? 'gil-tower--overflow-impact' : ''}`}
+      className={`gil-tower gil-tower--${side} ${motion === side ? 'gil-tower--impact' : ''} ${visualFrame.activeColumnIndices.length > 0 ? 'gil-tower--packet-active' : ''} ${visualFrame.overflowTier > 0 && visualFrame.presentationSerial > 0 ? 'gil-tower--overflow-impact' : ''}`}
       data-capital-stage={visualFrame.visibleUnits}
       data-capital-units={visibleUnits}
       data-capital-ratio={Math.max(0, Math.round(capitalRatio * 100))}
@@ -1183,6 +1175,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     BattleConditionAnnouncement[]
   >([]);
   const [openingSlowActive, setOpeningSlowActive] = useState(false);
+  const [enemyOpeningCapitalPending, setEnemyOpeningCapitalPending] =
+    useState(false);
   const [decisiveBlow, setDecisiveBlow] = useState<DecisiveBlow | null>(null);
   const [terminalCinematicStage, setTerminalCinematicStage] =
     useState<TerminalCinematicStage | null>(null);
@@ -1668,7 +1662,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       heavy = false,
       includeFinalWeight = true,
       commandRecharge: CapitalPileCommandRecharge = 'continue',
-      onComplete?: () => void
+      onComplete?: () => void,
+      source?: CapitalStackSource
     ) => {
       clearCapitalPilePreview(side);
       const serial = capitalPilePreviewSerialRef.current[side];
@@ -1687,79 +1682,40 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ??
         false;
       const compact = reducedMotion;
-      const previousStage = getBattleCapitalVisibleUnits(
-        previousCapital,
-        targetProperty.marketPrice
-      );
-      const targetStage = getBattleCapitalVisibleUnits(
-        nextCapital,
-        targetProperty.marketPrice
-      );
       const previousOverflowTier = getBattleCapitalOverflowTier(
         previousCapital,
         targetProperty.marketPrice
-      );
-      const overflowPasses = getCapitalOverflowPassCount(
-        previousCapital,
-        nextCapital,
-        targetProperty.marketPrice,
-        strongPresentation
-      );
-      const overflowBeats = compact
-        ? CAPITAL_OVERFLOW_RESTACK_BEATS.compact
-        : strongPresentation
-          ? CAPITAL_OVERFLOW_RESTACK_BEATS.heavy
-          : CAPITAL_OVERFLOW_RESTACK_BEATS.standard;
-      const columnFrames = getMechanicalCapitalColumnFrames(
-        previousStage,
-        targetStage,
-        compact ? 4 : strongPresentation ? 24 : 22,
-        compact ? 6 : strongPresentation ? 8 : 7,
-        overflowPasses,
-        overflowBeats
       );
       const overflowTier = getBattleCapitalOverflowTier(
         nextCapital,
         targetProperty.marketPrice
       );
+      const intensity: CapitalStackIntensity = compact
+        ? 'compact'
+        : strongPresentation
+          ? 'heavy'
+          : 'standard';
+      const timeline = buildCapitalStackTimeline({
+        id: `pile-${side}-${serial}`,
+        side,
+        source: source ?? (side === 'enemy' ? 'enemy-defense' : 'support'),
+        previousCapital,
+        nextCapital,
+        marketPrice: targetProperty.marketPrice,
+        intensity,
+        seed: serial,
+      });
       const setPreviewStage =
         side === 'player'
           ? setPlayerCapitalPilePreviewStage
           : setEnemyCapitalPilePreviewStage;
-      const timing = getCapitalCommitTiming(strongPresentation ? 5 : 3, compact);
-      const settleLeadMs = compact ? 25 : strongPresentation ? 30 : 45;
-      const beatMs = compact
-        ? CAPITAL_STACK_BEAT_MS.compact
-        : strongPresentation
-          ? CAPITAL_STACK_BEAT_MS.heavy
-          : CAPITAL_STACK_BEAT_MS.standard;
-      const settleMs = Math.max(timing.settleMs, columnFrames.length * beatMs);
       const isStacking = nextCapital >= previousCapital;
-      const audibleBeatCount = Math.min(
-        strongPresentation ? 12 : 8,
-        columnFrames.length
+      const audibleFrames = timeline.frames.filter(
+        (frame) =>
+          frame.phase === 'pour' && frame.activeColumnIndices.length > 0
       );
-      const audibleFrameIndices = new Map<number, number>();
-      for (let soundIndex = 0; soundIndex < audibleBeatCount; soundIndex += 1) {
-        const frameIndex = audibleBeatCount <= 1
-          ? columnFrames.length - 1
-          : Math.round(
-              soundIndex * (columnFrames.length - 1) /
-                (audibleBeatCount - 1)
-            );
-        audibleFrameIndices.set(frameIndex, soundIndex);
-      }
-
-      setPreviewStage({
-        visibleUnits: previousStage,
-        columnHeights: getCapitalColumnHeights(previousStage),
-        activeColumnIndices: [],
-        overflowTier: previousOverflowTier,
-        presentationSerial: serial,
-        commandRecharge,
-      });
-      const frameIntervalMs = Math.ceil(
-        settleMs / Math.max(1, columnFrames.length)
+      const audibleFrameIndices = new Map(
+        audibleFrames.map((frame, index) => [frame.packetSeed, index])
       );
       const schedule = (callback: () => void, delayMs: number) => {
         const timer = window.setTimeout(() => {
@@ -1781,8 +1737,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         releaseTerminalAfterCapital();
       };
       const paintFrame = (index: number) => {
-        const frame = columnFrames[index];
-        const isFinalFrame = index === columnFrames.length - 1;
+        const frame = timeline.frames[index];
+        const isFinalFrame = index === timeline.frames.length - 1;
         const overflowReloading = (frame.overflowPass ?? 0) > 0;
         setPreviewStage({
           ...frame,
@@ -1795,29 +1751,25 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             ? serial * 100 + (frame.overflowPass ?? 0)
             : serial,
           commandRecharge,
+          beatDurationMs: frame.durationMs,
+          packetSeed: frame.packetSeed,
         });
-        const audibleIndex = audibleFrameIndices.get(index);
+        const audibleIndex = audibleFrameIndices.get(frame.packetSeed);
         if (isStacking && audibleIndex !== undefined) {
           soundFx.playCapitalStackStep(
             side === 'player' ? 'player' : 'opponent',
             audibleIndex,
-            audibleBeatCount,
+            audibleFrames.length,
             includeFinalWeight
           );
         }
         if (isFinalFrame) {
-          if (isStacking && overflowTier > 0) {
-            soundFx.playCapitalImpact(
-              side === 'player' ? 'player' : 'opponent',
-              Math.min(1, 0.68 + overflowTier * 0.1)
-            );
-          }
-          schedule(complete, timing.afterglowMs);
+          schedule(complete, frame.durationMs);
           return;
         }
-        schedule(() => paintFrame(index + 1), frameIntervalMs);
+        schedule(() => paintFrame(index + 1), frame.durationMs);
       };
-      schedule(() => paintFrame(0), settleLeadMs + frameIntervalMs);
+      paintFrame(0);
     },
     [
       clearCapitalPilePreview,
@@ -2026,9 +1978,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         terminalCinematicStage === 'impact'
       )
     );
-  // Capital is committed when the command is accepted. Show the exact amount
-  // immediately; the fixed coin rack then catches up as the visible receipt.
-  const displayedPlayerInvested = totalPlayerInvested;
+  // The ledger commits synchronously, while the fixed readout follows the same
+  // renderer-neutral packet timeline as the pile. This keeps numbers from
+  // announcing a completed stack before the player has seen it arrive.
+  const activePlayerPileFrame =
+    capitalPreviewStage ?? playerCapitalPilePreviewStage;
+  const displayedPlayerInvested =
+    activePlayerPileFrame?.presentedCapital ?? totalPlayerInvested;
+  const displayedEnemyInvested =
+    enemyCapitalPilePreviewStage?.presentedCapital ?? enemyInvested;
   const displayedOwnership =
     capitalRevealPending && activeCapitalSnapshot
       ? activeCapitalSnapshot.previousOwnership
@@ -2039,25 +1997,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         activeCapitalSnapshot.compact
       )
     : null;
-  const regularCapitalDropVisible =
-    capitalCommit?.stage === 'impact' ||
-    capitalCommit?.stage === 'afterglow';
-  const terminalCapitalDropVisible =
-    !!terminalCapitalSnapshot &&
-    (
-      terminalCinematicStage === 'hitstop' ||
-      terminalCinematicStage === 'impact' ||
-      terminalCinematicStage === 'resolution'
-    );
-  const capitalDropParticleCount =
-    (regularCapitalDropVisible || terminalCapitalDropVisible) &&
-    activeCapitalTiming &&
-    activeCapitalSnapshot
-      ? getCapitalDropParticleCount(
-          activeCapitalTiming.tier,
-          activeCapitalSnapshot.compact
-        )
-      : 0;
   const playerCapitalMotion: BattleMotion =
     capitalPresentationStage === 'impact' ||
     capitalPresentationStage === 'afterglow'
@@ -2597,6 +2536,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     !!conditionAnnouncement ||
     !!skillCinematic ||
     capitalPresentationActive ||
+    enemyOpeningCapitalPending ||
     openingAutoPending ||
     !!criticalAutoPending ||
     ultimateCriticalGatePending ||
@@ -2666,6 +2606,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               title: '説明を確認中',
               detail: '閉じると操作へ戻ります',
             }
+          : capitalCommitCueText
+            ? {
+                tone: 'locked',
+                title: capitalCommitCueText,
+                detail: 'コイン積載中',
+              }
           : presentationBlocksCommands
       ? {
           tone: 'locked',
@@ -3071,6 +3017,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     tone: FloatingGil['tone'] = 'positive',
     kind: FloatingGil['kind'] = 'normal'
   ) => {
+    const capitalPileOwnsField =
+      capitalCommitActiveRef.current ||
+      capitalPilePreviewActiveRef.current.player ||
+      capitalPilePreviewActiveRef.current.enemy;
+    const isFundingAmount =
+      kind === 'support' ||
+      /(?:着金|防衛\s*\+|人脈\s*\+|SYNERGY\s*\+|協力\s*\+|ぶんどる\s*\+|LB\s*実効\s*約)/.test(
+        text
+      );
+    // During a capital scene the fixed ledger and one status telop carry the
+    // exact amount. A second actor-level amount obscures the bundles and was
+    // the direct cause of the old double-text presentation.
+    if (capitalPileOwnsField && isFundingAmount) return;
     const id = Date.now() + Math.random();
     setFloaters((current) => [
       ...current.slice(-2),
@@ -3310,10 +3269,34 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       id: `open-${Date.now()}`,
       category: 'system' as LogCategory,
       text: isTraining
-        ? `${companyName}、${targetProperty.name}の訓練開始。木人は耐久資本${formatCurrency(initialEnemyCommitment)}を全配置しました。`
-        : `${companyName}対${targetProperty.name}、争奪戦開始。競合は${formatCurrency(initialEnemyCommitment)}を先に積みました。`,
+        ? `${companyName}、${targetProperty.name}の訓練開始。木人へ耐久資本${formatCurrency(initialEnemyCommitment)}を搬入します。`
+        : `${companyName}対${targetProperty.name}、争奪戦開始。競合が開幕資本${formatCurrency(initialEnemyCommitment)}を搬入します。`,
     };
     changeBattlePhase('active');
+    const openingTimeline = buildCapitalStackTimeline({
+      id: `opening-enemy-${Date.now()}`,
+      side: 'enemy',
+      source: 'opening',
+      previousCapital: 0,
+      nextCapital: initialEnemyCommitment,
+      marketPrice: targetProperty.marketPrice,
+      intensity: 'heavy',
+      seed: capitalPilePreviewSerialRef.current.enemy,
+    });
+    const openingFrame = openingTimeline.frames[0];
+    setEnemyOpeningCapitalPending(initialEnemyCommitment > 0);
+    setEnemyCapitalPilePreviewStage(
+      initialEnemyCommitment > 0
+        ? {
+            ...openingFrame,
+            overflowTier: 0,
+            presentationSerial: capitalPilePreviewSerialRef.current.enemy,
+            commandRecharge: 'pause',
+            beatDurationMs: openingFrame.durationMs,
+            packetSeed: openingFrame.packetSeed,
+          }
+        : null
+    );
     // The simulator and the authored battle opener both assume one real
     // player decision before an enemy telegraph can own the stage.
     setCommandProgress(INITIAL_BATTLE_COMMAND_PROGRESS);
@@ -3329,10 +3312,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setOpeningSlowActive(true);
     setStatusText(
       isTraining
-        ? '木人訓練開始――投入・人脈・アビリティを自由に試してください'
+        ? '木人の耐久資本を積載します――コインの山を確認してください'
         : canQueueOpeningAuto
-          ? `${openingAutoSkill.name}を開幕アビリティへ予約`
-          : '投資レベルを選び、投資実行でギルを積んでください'
+          ? `競合資本の積載後、${openingAutoSkill.name}を実行します`
+          : '競合の開幕資本を積載します――コインの山を確認してください'
     );
     setLogs((current) => [
       openingLog,
@@ -3346,6 +3329,59 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       3900
     );
   };
+
+  useEffect(() => {
+    if (
+      !enemyOpeningCapitalPending ||
+      battlePhase !== 'active' ||
+      winner ||
+      battleAnnouncement ||
+      conditionAnnouncement ||
+      skillCinematic ||
+      capitalCommit ||
+      enemySupportPresentationLocked ||
+      impactStop ||
+      terminalRef.current ||
+      endedRef.current
+    ) {
+      return;
+    }
+    setEnemyOpeningCapitalPending(false);
+    setStatusText(
+      isTraining
+        ? `木人耐久資本 ${formatCurrency(initialEnemyCommitment)}――積載中`
+        : `競合開幕資本 ${formatCurrency(initialEnemyCommitment)}――積載中`
+    );
+    startCapitalPilePreview(
+      'enemy',
+      0,
+      initialEnemyCommitment,
+      true,
+      true,
+      'pause',
+      () => {
+        setStatusText(
+          isTraining
+            ? '木人の耐久資本を積み終えた――操作を開始できます'
+            : '競合の開幕資本を積み終えた――こちらの一手へ'
+        );
+      },
+      'opening'
+    );
+  }, [
+    battleAnnouncement,
+    battlePhase,
+    capitalCommit,
+    conditionAnnouncement,
+    enemyOpeningCapitalPending,
+    enemySupportPresentationLocked,
+    impactStop,
+    initialEnemyCommitment,
+    isTraining,
+    skillCinematic,
+    startCapitalPilePreview,
+    winner,
+  ]);
 
   useEffect(() => {
     if (
@@ -3744,12 +3780,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       openingBossAbilityTier === 'none' ||
       enemyOpeningCoverUsedRef.current ||
       battlePhase !== 'active' ||
+      enemyOpeningCapitalPending ||
       openingSlowActive ||
       openingAutoPending ||
       battleAnnouncement ||
       conditionAnnouncement ||
       skillCinematic ||
       capitalCommit ||
+      capitalPilePresentationLocked ||
       impactStop ||
       terminalRef.current ||
       endedRef.current
@@ -3765,7 +3803,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     battleAnnouncement,
     battlePhase,
     capitalCommit,
+    capitalPilePresentationLocked,
     conditionAnnouncement,
+    enemyOpeningCapitalPending,
     impactStop,
     openingBossAbilityTier,
     openingAutoPending,
@@ -6017,49 +6057,46 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     simulationPausedRef.current = true;
     const serial = capitalCommitSerialRef.current;
     const timing = getCapitalCommitTiming(snapshot.level, snapshot.compact);
-    const previousStage = getBattleCapitalVisibleUnits(
-      snapshot.previousCapital,
-      targetProperty.marketPrice
-    );
-    const targetStage = getBattleCapitalVisibleUnits(
-      snapshot.previousCapital + snapshot.amount,
-      targetProperty.marketPrice
-    );
     const previousOverflowTier = getBattleCapitalOverflowTier(
       snapshot.previousCapital,
       targetProperty.marketPrice
-    );
-    const overflowPasses = getCapitalOverflowPassCount(
-      snapshot.previousCapital,
-      snapshot.previousCapital + snapshot.amount,
-      targetProperty.marketPrice,
-      snapshot.level >= 4
-    );
-    const overflowBeats = snapshot.compact
-      ? CAPITAL_OVERFLOW_RESTACK_BEATS.compact
-      : snapshot.level >= 4
-        ? CAPITAL_OVERFLOW_RESTACK_BEATS.heavy
-        : CAPITAL_OVERFLOW_RESTACK_BEATS.standard;
-    const columnFrames = getMechanicalCapitalColumnFrames(
-      previousStage,
-      targetStage,
-      snapshot.compact ? 4 : snapshot.level >= 4 ? 24 : 22,
-      snapshot.compact ? 6 : snapshot.level >= 4 ? 8 : 7,
-      overflowPasses,
-      overflowBeats
     );
     const overflowTier = getBattleCapitalOverflowTier(
       snapshot.previousCapital + snapshot.amount,
       targetProperty.marketPrice
     );
+    const intensity: CapitalStackIntensity = snapshot.compact
+      ? 'compact'
+      : snapshot.level >= 4
+        ? 'heavy'
+        : 'standard';
+    const timeline = buildCapitalStackTimeline({
+      id: `direct-player-${serial}`,
+      side: 'player',
+      source: 'direct',
+      previousCapital: snapshot.previousCapital,
+      nextCapital: snapshot.previousCapital + snapshot.amount,
+      marketPrice: targetProperty.marketPrice,
+      intensity,
+      seed: serial,
+    });
+    const firstTimelineFrame = timeline.frames[0];
+    const finalTimelineFrame = timeline.frames.at(-1) ?? firstTimelineFrame;
+    const audibleFrames = timeline.frames.filter(
+      (frame) =>
+        frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+    );
+    const audibleFrameIndices = new Map(
+      audibleFrames.map((frame, index) => [frame.packetSeed, index])
+    );
     capitalCommitActiveRef.current = true;
     setCapitalPreviewStage({
-      visibleUnits: previousStage,
-      columnHeights: getCapitalColumnHeights(previousStage),
-      activeColumnIndices: [],
+      ...firstTimelineFrame,
       overflowTier: previousOverflowTier,
       presentationSerial: serial,
       commandRecharge: 'continue',
+      beatDurationMs: firstTimelineFrame.durationMs,
+      packetSeed: firstTimelineFrame.packetSeed,
     });
     setCapitalCommit({
       ...snapshot,
@@ -6071,29 +6108,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     );
     soundFx.playCoin();
 
-    const beatMs = snapshot.compact
-      ? CAPITAL_STACK_BEAT_MS.compact
-      : snapshot.level >= 4
-        ? CAPITAL_STACK_BEAT_MS.heavy
-        : CAPITAL_STACK_BEAT_MS.standard;
-    const settleMs = Math.max(timing.settleMs, columnFrames.length * beatMs);
-    const audibleBeatCount = Math.min(
-      snapshot.level >= 4 ? 12 : 8,
-      columnFrames.length
-    );
-    const audibleFrameIndices = new Map<number, number>();
-    for (let soundIndex = 0; soundIndex < audibleBeatCount; soundIndex += 1) {
-      const frameIndex = audibleBeatCount <= 1
-        ? columnFrames.length - 1
-        : Math.round(
-            soundIndex * (columnFrames.length - 1) /
-              (audibleBeatCount - 1)
-          );
-      audibleFrameIndices.set(frameIndex, soundIndex);
-    }
-    const frameIntervalMs = Math.ceil(
-      settleMs / Math.max(1, columnFrames.length)
-    );
     const schedule = (callback: () => void, delayMs: number) => {
       const timer = window.setTimeout(() => {
         if (
@@ -6123,12 +6137,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           : current
       );
       setCapitalPreviewStage({
-        visibleUnits: targetStage,
-        columnHeights: getCapitalColumnHeights(targetStage),
+        ...finalTimelineFrame,
         activeColumnIndices: [],
         overflowTier,
         presentationSerial: serial,
         commandRecharge: 'continue',
+        beatDurationMs: finalTimelineFrame.durationMs,
+        packetSeed: finalTimelineFrame.packetSeed,
       });
       setMotion('idle');
       setStatusText(
@@ -6142,8 +6157,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       schedule(complete, timing.afterglowMs);
     };
     const paintFrame = (index: number) => {
-      const frame = columnFrames[index];
-      const isFinalFrame = index === columnFrames.length - 1;
+      const frame = timeline.frames[index];
+      const isFinalFrame = index === timeline.frames.length - 1;
       const overflowReloading = (frame.overflowPass ?? 0) > 0;
       setCapitalPreviewStage({
         ...frame,
@@ -6156,27 +6171,23 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           ? serial * 100 + (frame.overflowPass ?? 0)
           : serial,
         commandRecharge: 'continue',
+        beatDurationMs: frame.durationMs,
+        packetSeed: frame.packetSeed,
       });
-      const audibleIndex = audibleFrameIndices.get(index);
+      const audibleIndex = audibleFrameIndices.get(frame.packetSeed);
       if (audibleIndex !== undefined) {
         soundFx.playCapitalStackStep(
           'player',
           audibleIndex,
-          audibleBeatCount,
-          isFinalFrame
+          audibleFrames.length,
+          true
         );
       }
       if (isFinalFrame) {
-        if (overflowTier > 0) {
-          soundFx.playCapitalImpact(
-            'player',
-            Math.min(1, 0.68 + overflowTier * 0.1)
-          );
-        }
-        schedule(enterAfterglow, frameIntervalMs);
+        schedule(enterAfterglow, frame.durationMs);
         return;
       }
-      schedule(() => paintFrame(index + 1), frameIntervalMs);
+      schedule(() => paintFrame(index + 1), frame.durationMs);
     };
     const enterImpact = () => {
       setCapitalCommit((current) =>
@@ -6187,9 +6198,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setStatusText(
         `${formatCurrency(snapshot.amount)}着金――資本を積載中！`
       );
-      showFloater(`着金 +${formatCurrency(snapshot.amount)}`, 'player');
-      soundFx.playCapitalImpact('player', snapshot.level / 5);
-      schedule(() => paintFrame(0), timing.hitStopMs + frameIntervalMs);
+      schedule(
+        () => paintFrame(Math.min(1, timeline.frames.length - 1)),
+        timing.hitStopMs + firstTimelineFrame.durationMs
+      );
     };
     const enterTravel = () => {
       if (motionTimerRef.current) {
@@ -7061,12 +7073,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       }
       chargeLimitBreak(amount * currentWind.playerMultiplier);
       setStatusText(`味方がぶんどる――無料支援資金${formatCurrency(amount)}を即時投入`);
-      showFloater(
-        `ALLY ぶんどる +${formatCurrency(amount)}`,
-        'player',
-        'positive',
-        'support'
-      );
+      // The fixed ledger and the shared command-lane telop own this amount.
+      // Keeping it out of the floater queue also covers the critical AUTO path,
+      // where the skill cinematic finishes before its deferred pile begins.
     } else if (skill.effectType === 'LIVING_DEAD') {
       updateLivingDeadState(
         'waiting',
@@ -7205,6 +7214,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       winner ||
       endedRef.current ||
       terminalRef.current ||
+      enemyOpeningCapitalPending ||
       battleAnnouncement ||
       conditionAnnouncement ||
       skillCinematic ||
@@ -7244,6 +7254,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     capitalPilePresentationLocked,
     conditionAnnouncement,
     enemySupportPresentationLocked,
+    enemyOpeningCapitalPending,
     impactStop,
     openingAutoPending,
     openingAutoSkill,
@@ -7980,19 +7991,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             </div>
           </>
         )}
-        {capitalCommit &&
-          activeCapitalTiming &&
-          (capitalCommit.stage === 'impact' ||
-            capitalCommit.stage === 'afterglow') && (
-          <div
-            key={`${capitalCommit.serial}-${capitalCommit.stage}`}
-            className={`capital-commit-cue capital-commit-cue--${capitalCommit.stage} capital-commit-cue--${activeCapitalTiming.tier}`}
-            role="status"
-            aria-live="polite"
-          >
-            <strong>{capitalCommitCueText}</strong>
-          </div>
-        )}
         {conditionAnnouncement && !battleAnnouncement && !terminalCinematicStage && (
           <div
             className={`battle-status-message battle-status-message--${conditionAnnouncement.tone} battle-status-message--kind-${conditionAnnouncement.kind}`}
@@ -8003,24 +8001,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           >
             <span>{normalizeBattleStatusMessageText(conditionAnnouncement.text)}</span>
           </div>
-        )}
-        {capitalDropParticleCount > 0 && (
-          <span className="battlefield-capital-deluge battlefield-capital-deluge--player" aria-hidden="true">
-            {Array.from({ length: capitalDropParticleCount }).map((_, index) => (
-              <i
-                key={index}
-                style={{
-                  '--deluge-x': `${8 + (index % 6) * 7.2}%`,
-                  '--deluge-drift': `${((index % 3) - 1) * 0.24}rem`,
-                  '--deluge-size': `${0.18 + (index % 4) * 0.045}rem`,
-                  animationDelay: activeCapitalSnapshot?.compact
-                    ? `${(index % 6) * 0.01}s`
-                    : `${Math.floor(index / 6) * 0.16 + (index % 6) * 0.025}s`,
-                  animationDuration: `${0.76 + (index % 3) * 0.08}s`,
-                } as React.CSSProperties}
-              />
-            ))}
-          </span>
         )}
         {(isSavage || isUltimate || isCruel) && (
           <div className={`battlefield-raid-marker ${isCruel ? 'battlefield-raid-marker--cruel' : isUltimate ? 'battlefield-raid-marker--ultimate' : ''}`}>
@@ -8102,7 +8082,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             </div>
             <div
               className="ownership-capital-readout"
-              aria-label={`投入総額。自社${formatCurrency(displayedPlayerInvested)}、競合${formatCurrency(enemyInvested)}`}
+              aria-label={`投入総額。自社${formatCurrency(displayedPlayerInvested)}、競合${formatCurrency(displayedEnemyInvested)}`}
             >
               <strong
                 className={
@@ -8122,10 +8102,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <span>CAPITAL</span>
               <strong
                 className={motion === 'enemy' ? 'is-acting' : ''}
-                data-empty={enemyInvested <= 0}
+                data-empty={displayedEnemyInvested <= 0}
               >
                 <small>競合投入</small>
-                {formatCurrency(enemyInvested)}
+                {formatCurrency(displayedEnemyInvested)}
               </strong>
             </div>
             {windVisible && !conditionAnnouncement && (
