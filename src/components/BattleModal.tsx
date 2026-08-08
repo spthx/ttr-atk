@@ -791,6 +791,7 @@ const GilTower: React.FC<{
   side: 'player' | 'enemy';
   motion: BattleMotion;
   visualFrameOverride?: CapitalPilePresentationFrame | null;
+  rackLowered?: boolean;
 }> = ({
   amount,
   reserveAmount = 0,
@@ -798,13 +799,14 @@ const GilTower: React.FC<{
   side,
   motion,
   visualFrameOverride = null,
+  rackLowered = false,
 }) => {
   const committedCapital = Math.max(0, amount);
   const visibleUnits = getBattleCapitalVisibleUnits(
     committedCapital,
     marketPrice
   );
-  const visualFrame: CapitalPilePresentationFrame = visualFrameOverride ?? {
+  const baseVisualFrame: CapitalPilePresentationFrame = visualFrameOverride ?? {
     visibleUnits,
     columnHeights: getCapitalColumnHeights(visibleUnits),
     activeColumnIndices: [],
@@ -817,6 +819,13 @@ const GilTower: React.FC<{
     beatDurationMs: 96,
     packetSeed: 0,
   };
+  // Once a large pour has pushed the rack below the frame, keep its footing
+  // there for the rest of the battle. A later preview must never make the
+  // accumulated mass climb back up merely because its transient frame ended.
+  const visualFrame: CapitalPilePresentationFrame =
+    rackLowered && !baseVisualFrame.rackCompressed
+      ? { ...baseVisualFrame, rackCompressed: true }
+      : baseVisualFrame;
   const capitalRatio = committedCapital / Math.max(marketPrice, 1);
 
   return (
@@ -1151,6 +1160,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     useState<CapitalPilePresentationFrame | null>(null);
   const [enemyCapitalPilePreviewStage, setEnemyCapitalPilePreviewStage] =
     useState<CapitalPilePresentationFrame | null>(null);
+  const [playerCapitalRackLowered, setPlayerCapitalRackLowered] =
+    useState(false);
+  const [enemyCapitalRackLowered, setEnemyCapitalRackLowered] =
+    useState(false);
   const [terminalCapitalSnapshot, setTerminalCapitalSnapshot] =
     useState<CapitalCommitSnapshot | null>(null);
   const [impactStop, setImpactStop] = useState<ImpactStop | null>(null);
@@ -1638,6 +1651,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ? [side]
         : ['player', 'enemy'];
       sides.forEach((targetSide) => {
+        soundFx.stopCapitalStackStream(
+          targetSide === 'player' ? 'player' : 'opponent'
+        );
         capitalPilePreviewSerialRef.current[targetSide] += 1;
         capitalPilePreviewTimersRef.current[targetSide].forEach((timer) =>
           window.clearTimeout(timer)
@@ -1705,6 +1721,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         intensity,
         seed: serial,
       });
+      if (timeline.frames.some((frame) => frame.rackCompressed)) {
+        if (side === 'player') {
+          setPlayerCapitalRackLowered(true);
+        } else {
+          setEnemyCapitalRackLowered(true);
+        }
+      }
       const setPreviewStage =
         side === 'player'
           ? setPlayerCapitalPilePreviewStage
@@ -1760,7 +1783,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             side === 'player' ? 'player' : 'opponent',
             audibleIndex,
             audibleFrames.length,
-            includeFinalWeight
+            includeFinalWeight,
+            frame.durationMs
           );
         }
         if (isFinalFrame) {
@@ -6080,6 +6104,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       intensity,
       seed: serial,
     });
+    if (timeline.frames.some((frame) => frame.rackCompressed)) {
+      setPlayerCapitalRackLowered(true);
+    }
     const firstTimelineFrame = timeline.frames[0];
     const finalTimelineFrame = timeline.frames.at(-1) ?? firstTimelineFrame;
     const audibleFrames = timeline.frames.filter(
@@ -6106,8 +6133,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setStatusText(
       `${formatCurrency(snapshot.amount)}の投資資金を整えています……`
     );
-    soundFx.playCoin();
-
     const schedule = (callback: () => void, delayMs: number) => {
       const timer = window.setTimeout(() => {
         if (
@@ -6180,7 +6205,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           'player',
           audibleIndex,
           audibleFrames.length,
-          true
+          true,
+          frame.durationMs
         );
       }
       if (isFinalFrame) {
@@ -8149,6 +8175,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   visualFrameOverride={
                     capitalPreviewStage ?? playerCapitalPilePreviewStage
                   }
+                  rackLowered={playerCapitalRackLowered}
                 />
                 {playerCoverKnightPhase !== 'absent' && (
                   <div
@@ -8271,6 +8298,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   side="enemy"
                   motion={motion}
                   visualFrameOverride={enemyCapitalPilePreviewStage}
+                  rackLowered={enemyCapitalRackLowered}
                 />
                 {enemySupportCinematic && (
                   <div

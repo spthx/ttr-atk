@@ -1,9 +1,23 @@
-import { FANKIT_AUDIO } from '../data/fankitAssets';
+import { FANKIT_AUDIO, GAME_AUDIO } from '../data/fankitAssets';
 
 /**
  * Retro-Modern Web Audio API Synthesizer
  * Generates arcade-style sound effects for the financial simulation game.
  */
+
+type CapitalRapidFireSide = 'player' | 'opponent';
+
+type CapitalRapidFireSession = {
+  generation: number;
+  side: CapitalRapidFireSide;
+  active: boolean;
+  stopAtMs: number | null;
+  chunkTimer: number | null;
+  stopTimer: number | null;
+  sources: Set<AudioBufferSourceNode>;
+  master: GainNode | null;
+  panner: StereoPannerNode | null;
+};
 
 class SoundEffects {
   private ctx: AudioContext | null = null;
@@ -13,6 +27,10 @@ class SoundEffects {
   private cinematicSource: AudioBufferSourceNode | null = null;
   private cinematicGain: GainNode | null = null;
   private limitImpactTimer: number | null = null;
+  private capitalRapidFireGeneration = 0;
+  private capitalRapidFireSessions: Partial<
+    Record<CapitalRapidFireSide, CapitalRapidFireSession>
+  > = {};
   public enabled: boolean = true;
 
   private stopCinematicAudio(fadeMs = 0) {
@@ -45,6 +63,8 @@ class SoundEffects {
       window.clearTimeout(this.limitImpactTimer);
       this.limitImpactTimer = null;
     }
+    this.stopCapitalStackStream('player');
+    this.stopCapitalStackStream('opponent');
     this.stopCinematicAudio(fadeMs);
   }
 
@@ -77,6 +97,13 @@ class SoundEffects {
     const ctx = this.initCtx();
     if (ctx?.state === 'suspended') {
       void ctx.resume().catch(() => {});
+    }
+    if (ctx) {
+      void this.getDecodedAudioBuffer(ctx, GAME_AUDIO.capitalRapidFire).catch(
+        () => {
+          this.bufferCache.delete(GAME_AUDIO.capitalRapidFire);
+        }
+      );
     }
   }
 
@@ -203,6 +230,22 @@ class SoundEffects {
     return buffer;
   }
 
+  private getDecodedAudioBuffer(ctx: AudioContext, url: string) {
+    let pendingBuffer = this.bufferCache.get(url);
+    if (!pendingBuffer) {
+      pendingBuffer = fetch(url)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`audio fetch failed: ${response.status}`);
+          }
+          return response.arrayBuffer();
+        })
+        .then((data) => ctx.decodeAudioData(data.slice(0)));
+      this.bufferCache.set(url, pendingBuffer);
+    }
+    return pendingBuffer;
+  }
+
   private disconnectOnEnded(
     source: AudioScheduledSourceNode,
     ...nodes: Array<AudioNode | null>
@@ -316,152 +359,218 @@ class SoundEffects {
     }
   }
 
-  /**
-   * One bounded metallic beat for a painted capital-pile stage.
-   * `index` is zero-based; the caller owns the visual cadence and cancellation.
-   * The last beat adds one low body tone so the completed pile has weight
-   * without loading an asset or opening another AudioContext.
-   */
+  private releaseCapitalRapidFireChunk(session: CapitalRapidFireSession) {
+    if (session.chunkTimer !== null && typeof window !== 'undefined') {
+      window.clearTimeout(session.chunkTimer);
+      session.chunkTimer = null;
+    }
+    const sources = [...session.sources];
+    const master = session.master;
+    const panner = session.panner;
+    session.sources.clear();
+    session.master = null;
+    session.panner = null;
+    const ctx = this.ctx;
+    const now = ctx?.currentTime ?? 0;
+    if (master && ctx) {
+      try {
+        master.gain.cancelScheduledValues(now);
+        master.gain.setValueAtTime(Math.max(master.gain.value, 0.0001), now);
+        master.gain.linearRampToValueAtTime(0.0001, now + 0.006);
+      } catch {
+        // The context may have been interrupted between visual frames.
+      }
+    }
+    sources.forEach((source) => {
+      try {
+        source.stop(ctx ? now + 0.008 : undefined);
+      } catch {
+        // A completed click needs no second stop.
+      }
+    });
+    const disconnect = () => {
+      sources.forEach((source) => {
+        try {
+          source.disconnect();
+        } catch {
+          // The source may already have released itself.
+        }
+      });
+      try {
+        master?.disconnect();
+        panner?.disconnect();
+      } catch {
+        // An interrupted context may already have released the graph.
+      }
+    };
+    if (typeof window === 'undefined') {
+      disconnect();
+    } else {
+      window.setTimeout(disconnect, 12);
+    }
+  }
+
+  private startCapitalRapidFireChunk(
+    session: CapitalRapidFireSession,
+    buffer: AudioBuffer
+  ) {
+    const ctx = this.ctx;
+    if (
+      !ctx ||
+      !session.active ||
+      this.capitalRapidFireSessions[session.side]?.generation !==
+        session.generation
+    ) {
+      return;
+    }
+    const remainingMs =
+      session.stopAtMs === null
+        ? 1_000
+        : Math.max(0, session.stopAtMs - performance.now());
+    if (remainingMs <= 0) {
+      this.stopCapitalStackStream(session.side);
+      return;
+    }
+    const chunkMs = Math.min(1_000, remainingMs);
+    const now = ctx.currentTime;
+    const chunkEnd = now + chunkMs / 1_000;
+    const master = ctx.createGain();
+    const panner =
+      typeof ctx.createStereoPanner === 'function'
+        ? ctx.createStereoPanner()
+        : null;
+    master.gain.setValueAtTime(0.16, now);
+    master.gain.setValueAtTime(0.16, Math.max(now, chunkEnd - 0.006));
+    master.gain.linearRampToValueAtTime(0.0001, chunkEnd);
+    if (panner) {
+      panner.pan.setValueAtTime(
+        session.side === 'player' ? -0.24 : 0.24,
+        now
+      );
+      master.connect(panner);
+      panner.connect(ctx.destination);
+    } else {
+      master.connect(ctx.destination);
+    }
+    session.master = master;
+    session.panner = panner;
+
+    // The approved click is fired every 38ms. One chunk is never longer than
+    // one second; if painting continues, the next chunk is started afterward.
+    for (let offsetMs = 0; offsetMs < chunkMs; offsetMs += 38) {
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(master);
+      session.sources.add(source);
+      source.onended = () => {
+        session.sources.delete(source);
+        try {
+          source.disconnect();
+        } catch {
+          // Safari can release a source before its onended callback.
+        }
+      };
+      source.start(now + offsetMs / 1_000);
+      source.stop(chunkEnd);
+    }
+    session.chunkTimer = window.setTimeout(() => {
+      session.chunkTimer = null;
+      this.releaseCapitalRapidFireChunk(session);
+      if (
+        session.active &&
+        (session.stopAtMs === null || performance.now() < session.stopAtMs)
+      ) {
+        this.startCapitalRapidFireChunk(session, buffer);
+      } else {
+        this.stopCapitalStackStream(session.side);
+      }
+    }, chunkMs);
+  }
+
+  private beginCapitalRapidFire(side: CapitalRapidFireSide) {
+    this.stopCapitalStackStream(side);
+    const ctx = this.initCtx();
+    if (!ctx) return null;
+    const session: CapitalRapidFireSession = {
+      generation: ++this.capitalRapidFireGeneration,
+      side,
+      active: true,
+      stopAtMs: null,
+      chunkTimer: null,
+      stopTimer: null,
+      sources: new Set(),
+      master: null,
+      panner: null,
+    };
+    this.capitalRapidFireSessions[side] = session;
+    const pendingBuffer = this.getDecodedAudioBuffer(
+      ctx,
+      GAME_AUDIO.capitalRapidFire
+    );
+    void pendingBuffer
+      .then((buffer) => {
+        if (
+          session.active &&
+          this.ctx === ctx &&
+          this.capitalRapidFireSessions[side]?.generation ===
+            session.generation
+        ) {
+          this.startCapitalRapidFireChunk(session, buffer);
+        }
+      })
+      .catch(() => {
+        if (this.bufferCache.get(GAME_AUDIO.capitalRapidFire) === pendingBuffer) {
+          this.bufferCache.delete(GAME_AUDIO.capitalRapidFire);
+        }
+        this.stopCapitalStackStream(side);
+      });
+    return session;
+  }
+
+  stopCapitalStackStream(side: CapitalRapidFireSide) {
+    const session = this.capitalRapidFireSessions[side];
+    if (!session) return;
+    session.active = false;
+    if (session.stopTimer !== null && typeof window !== 'undefined') {
+      window.clearTimeout(session.stopTimer);
+      session.stopTimer = null;
+    }
+    this.releaseCapitalRapidFireChunk(session);
+    if (
+      this.capitalRapidFireSessions[side]?.generation === session.generation
+    ) {
+      delete this.capitalRapidFireSessions[side];
+    }
+  }
+
+  /** Keep the approved rapid-fire click locked to the visible pour window. */
   playCapitalStackStep(
-    side: 'player' | 'opponent',
+    side: CapitalRapidFireSide,
     index: number,
     total: number,
-    includeFinalWeight = true
+    _includeFinalWeight = true,
+    frameDurationMs = 96
   ) {
     if (!this.enabled) return;
-    try {
-      const ctx = this.initCtx();
-      if (!ctx) return;
-      const resolvedTotal = Math.max(1, Math.floor(total));
-      const resolvedIndex = Math.max(
-        0,
-        Math.min(resolvedTotal - 1, Math.floor(index))
-      );
-      const progress =
-        resolvedTotal <= 1 ? 1 : resolvedIndex / (resolvedTotal - 1);
-      const isFinal = resolvedIndex === resolvedTotal - 1;
-      const now = ctx.currentTime;
-      const panner =
-        typeof ctx.createStereoPanner === 'function'
-          ? ctx.createStereoPanner()
-          : null;
-      if (panner) {
-        panner.pan.setValueAtTime(side === 'player' ? -0.24 : 0.24, now);
-        panner.connect(ctx.destination);
+    const resolvedTotal = Math.max(1, Math.floor(total));
+    const resolvedIndex = Math.max(
+      0,
+      Math.min(resolvedTotal - 1, Math.floor(index))
+    );
+    let session = this.capitalRapidFireSessions[side];
+    if (resolvedIndex === 0 || !session?.active) {
+      session = this.beginCapitalRapidFire(side) ?? undefined;
+    }
+    if (!session) return;
+    if (resolvedIndex === resolvedTotal - 1) {
+      const stopDelayMs = Math.max(1, Math.round(frameDurationMs));
+      session.stopAtMs = performance.now() + stopDelayMs;
+      if (session.stopTimer !== null) {
+        window.clearTimeout(session.stopTimer);
       }
-
-      let activeVoices = 0;
-      let schedulingFinished = false;
-      let outputDisconnected = false;
-      const disconnectNode = (node: AudioNode) => {
-        try {
-          node.disconnect();
-        } catch {
-          // An interrupted context may already have released the node.
-        }
-      };
-      const releaseOutput = () => {
-        if (
-          outputDisconnected ||
-          !schedulingFinished ||
-          activeVoices > 0
-        ) {
-          return;
-        }
-        outputDisconnected = true;
-        if (panner) disconnectNode(panner);
-      };
-      const scheduleVoice = (
-        type: OscillatorType,
-        start: number,
-        duration: number,
-        startFrequency: number,
-        endFrequency: number,
-        volume: number
-      ) => {
-        const oscillator = ctx.createOscillator();
-        const gain = ctx.createGain();
-        let cleaned = false;
-        const cleanup = () => {
-          if (cleaned) return;
-          cleaned = true;
-          disconnectNode(oscillator);
-          disconnectNode(gain);
-          activeVoices = Math.max(0, activeVoices - 1);
-          releaseOutput();
-        };
-
-        oscillator.type = type;
-        oscillator.frequency.setValueAtTime(startFrequency, start);
-        oscillator.frequency.exponentialRampToValueAtTime(
-          endFrequency,
-          start + duration
-        );
-        gain.gain.setValueAtTime(volume, start);
-        gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
-        oscillator.connect(gain);
-        if (panner) {
-          gain.connect(panner);
-        } else {
-          gain.connect(ctx.destination);
-        }
-        oscillator.onended = cleanup;
-        activeVoices += 1;
-        try {
-          oscillator.start(start);
-          oscillator.stop(start + duration + 0.01);
-        } catch (error) {
-          try {
-            oscillator.stop();
-          } catch {
-            // A voice that failed before starting has nothing left to stop.
-          }
-          cleanup();
-          throw error;
-        }
-      };
-
-      try {
-        // A packet is heard as several pre-stacked coins arriving together,
-        // not as one UI chirp. Keep the cluster deterministic and bounded so
-        // 30/60fps presentation changes never alter its density or node count.
-        const partialRatios = [1, 1.41, 1.97, 2.62, 3.31] as const;
-        const partialStaggers = [0, 0.004, 0.009, 0.015, 0.022] as const;
-        const partialDurations = [0.058, 0.073, 0.049, 0.086, 0.065] as const;
-        const partialVolumes = [0.018, 0.014, 0.011, 0.008, 0.006] as const;
-        const voiceCount = 3 + ((resolvedIndex * 7 + resolvedTotal) % 3);
-        const packetPitch = [0.96, 1, 1.035, 0.985][resolvedIndex % 4];
-        const sidePitch = side === 'player' ? 1 : 0.94;
-        const baseFrequency = (900 - progress * 185) * packetPitch * sidePitch;
-
-        for (let voiceIndex = 0; voiceIndex < voiceCount; voiceIndex += 1) {
-          const frequency = baseFrequency * partialRatios[voiceIndex];
-          const duration = partialDurations[voiceIndex];
-          scheduleVoice(
-            voiceIndex === 0 ? 'triangle' : 'sine',
-            now + partialStaggers[voiceIndex],
-            duration,
-            frequency,
-            frequency * (0.82 - voiceIndex * 0.025),
-            partialVolumes[voiceIndex] * (0.94 + progress * 0.12)
-          );
-        }
-        if (isFinal && includeFinalWeight) {
-          scheduleVoice(
-            'sine',
-            now + 0.018,
-            0.28,
-            side === 'player' ? 82 : 74,
-            34,
-            0.052
-          );
-        }
-      } finally {
-        schedulingFinished = true;
-        releaseOutput();
-      }
-    } catch {
-      // Audio fallback
+      session.stopTimer = window.setTimeout(() => {
+        this.stopCapitalStackStream(side);
+      }, stopDelayMs);
     }
   }
 

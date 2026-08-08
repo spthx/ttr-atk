@@ -3479,16 +3479,15 @@
     5rem,
     calc(var(--capital-rack-sink, 0rem) + var(--capital-rack-compression))
   );
-  /* Enter quickly enough to read as the loading tray being lowered, then
-   * return with the weight of the completed pile instead of snapping home. */
-  transition: translate 560ms cubic-bezier(.16, .78, .22, 1);
+  /* A heavy pour lowers the loading tray once. Battle state keeps the signal
+   * latched afterward, so the completed mass never climbs back into frame. */
+  transition: translate 280ms cubic-bezier(.24, .02, .42, 1);
 }
 
 /* Exceptional funding reuses the fixed twenty-two columns as a lowered
  * loading tray. The frame signal survived the overflow rewrite, so reconnect
- * it here instead of adding amount-proportional coins. Keeping the final
- * overflow frame compressed through its afterglow makes the return a smooth
- * transition rather than the old one-frame root snap. */
+ * it here instead of adding amount-proportional coins. Once activated, the
+ * battle presentation keeps this lowered footing through every later pour. */
 .integrated-battlefield
   .gil-column-field[data-rack-compressed="true"] {
   --capital-rack-compression: clamp(1.8rem, 4.2vh, 2.5rem);

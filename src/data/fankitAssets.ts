@@ -96,3 +96,7 @@ export const FANKIT_AUDIO = {
   victory: publicAsset('ff14-fankit/audio/FFXIV_FATE01_Complete.mp3'),
   defeat: publicAsset('ff14-fankit/audio/FFXIV_Instance_Failed.mp3'),
 } as const;
+
+export const GAME_AUDIO = {
+  capitalRapidFire: publicAsset('game-audio/capital-rapid-fire.mp3'),
+} as const;
