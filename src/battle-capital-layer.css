@@ -3101,7 +3101,14 @@
 
   .cruel-omnicapitalization-card em,
   .cruel-omnicapitalization-card b {
-    font-size: .64rem;
+    font-size: .72rem;
+    line-height: 1.42;
+  }
+
+  .cruel-omnicapitalization-card__exclusion {
+    color: #e2e8f0;
+    font-size: .7rem !important;
+    line-height: 1.42 !important;
   }
 }
 

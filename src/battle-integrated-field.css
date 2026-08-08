@@ -4817,3 +4817,102 @@
     width: 8.4rem !important;
   }
 }
+
+/*
+ * One compact reading lane answers whether the player can act now. Longer
+ * event prose stays in the log; Cruel reuses this lane for its live checks.
+ */
+.integrated-battlefield > .battlefield-capital {
+  bottom: 2.65rem;
+}
+
+.integrated-battlefield > .battlefield-timing {
+  height: 2.65rem;
+  min-height: 2.65rem;
+  grid-template-rows: minmax(1.15rem, auto) .4rem;
+  gap: .18rem .35rem;
+  padding: .25rem .42rem .3rem !important;
+}
+
+.integrated-battlefield .battle-command-state {
+  display: flex;
+  min-width: 0;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  justify-content: center;
+  gap: .38rem;
+  overflow: hidden;
+  color: #cbd5e1;
+  font-style: normal;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.integrated-battlefield .battle-command-state b,
+.integrated-battlefield .battle-command-state em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.integrated-battlefield .battle-command-state b {
+  flex: 0 0 auto;
+  color: #f8fafc;
+  font-size: .72rem;
+  font-weight: 1000;
+}
+
+.integrated-battlefield .battle-command-state em {
+  min-width: 0;
+  color: #cbd5e1;
+  font-size: .66rem;
+  font-weight: 850;
+}
+
+.integrated-battlefield .battle-command-state--ready b,
+.integrated-battlefield .battle-command-state--ready em {
+  color: #86efac;
+}
+
+.integrated-battlefield .battle-command-state--locked b {
+  color: #fde68a;
+}
+
+.integrated-battlefield .battle-command-state--cruel {
+  justify-content: space-between;
+}
+
+.integrated-battlefield .battle-command-state--cruel b {
+  color: #f0abfc;
+}
+
+.integrated-battlefield .battle-command-state--cruel em {
+  color: #fef08a;
+  text-align: right;
+}
+
+@media (max-width: 639px) {
+  .integrated-battlefield > .battlefield-capital {
+    bottom: 2.9rem;
+  }
+
+  .integrated-battlefield > .battlefield-timing {
+    height: 2.9rem;
+    min-height: 2.9rem;
+    grid-template-rows: minmax(1.35rem, auto) .4rem;
+  }
+
+  .integrated-battlefield .battle-command-state {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: .08rem .35rem;
+  }
+
+  .integrated-battlefield .battle-command-state b {
+    font-size: .74rem;
+  }
+
+  .integrated-battlefield .battle-command-state em {
+    font-size: .68rem;
+  }
+}

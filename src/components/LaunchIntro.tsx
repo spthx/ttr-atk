@@ -186,7 +186,7 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
           <button
             type="button"
             onClick={next}
-            className="flex min-h-11 items-center gap-2 rounded-xl border border-amber-200 bg-gradient-to-r from-amber-400 to-yellow-500 px-5 py-3 text-xs font-black text-slate-950 shadow-[0_0_25px_rgba(251,191,36,.28)] transition active:scale-95"
+            className="launch-intro__next flex min-h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-amber-200 bg-gradient-to-r from-amber-400 to-yellow-500 px-5 py-3 text-xs font-black text-slate-950 shadow-[0_0_25px_rgba(251,191,36,.28)] transition active:scale-95"
           >
             {step === INTRO_STEPS.length - 1 ? 'この名で開店する' : '次へ'}
             <ArrowRight className="h-4 w-4" />
