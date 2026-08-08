@@ -38,6 +38,9 @@ const indexCss = readSource('src/index.css');
 const saveData = readSource('src/utils/saveData.ts');
 const battleSession = readSource('src/utils/battleSession.ts');
 const cartel = readSource('src/utils/cartel.ts');
+const audio = readSource('src/utils/audio.ts');
+const fankitAssets = readSource('src/data/fankitAssets.ts');
+const pagesWorkflow = readSource('.github/workflows/deploy-pages.yml');
 
 assert.match(
   capitalCss,
@@ -800,6 +803,87 @@ assert.match(
   battleModal,
   /data-rack-compressed=\{frame\.rackCompressed \? 'true' : 'false'\}/,
   'the mechanical overflow frame must remain connected to the rack descent CSS'
+);
+assert.match(
+  battleModal,
+  /const \[playerCapitalRackLowered, setPlayerCapitalRackLowered\][\s\S]*const \[enemyCapitalRackLowered, setEnemyCapitalRackLowered\]/,
+  'each side must own a battle-lifetime latch for its lowered capital rack'
+);
+assert.match(
+  battleModal,
+  /timeline\.frames\.some\(\(frame\) => frame\.rackCompressed\)[\s\S]{0,240}setPlayerCapitalRackLowered\(true\)[\s\S]{0,180}setEnemyCapitalRackLowered\(true\)/,
+  'a generic heavy pour must latch the lowered footing for the acting side'
+);
+assert.match(
+  battleModal,
+  /rackLowered && !baseVisualFrame\.rackCompressed[\s\S]{0,120}rackCompressed: true/,
+  'ending or replacing a preview must not raise a rack that was already lowered'
+);
+assert.doesNotMatch(
+  battleModal,
+  /set(?:Player|Enemy)CapitalRackLowered\(false\)/,
+  'a lowered rack must never return upward during the same battle'
+);
+assert.match(
+  capitalCss,
+  /completed mass never climbs back into frame[\s\S]{0,180}transition:\s*translate 280ms/,
+  'the rack descent must be one-way instead of retaining the old 560ms return'
+);
+assert.match(
+  fankitAssets,
+  /capitalRapidFire:\s*publicAsset\('game-audio\/capital-rapid-fire\.mp3'\)/,
+  'capital stacking must resolve the approved local click through the public base path'
+);
+const capitalRapidFireAsset = resolve(
+  repositoryRoot,
+  'public/game-audio/capital-rapid-fire.mp3'
+);
+assert.ok(
+  existsSync(capitalRapidFireAsset) && statSync(capitalRapidFireAsset).size === 6_368,
+  'the approved Click_001 payload must remain present and byte-sized as reviewed'
+);
+assert.match(
+  pagesWorkflow,
+  /cp -R public\/game-audio dist\/game-audio/,
+  'GitHub Pages must publish the approved rapid-fire audio directory'
+);
+assert.match(
+  audio,
+  /const chunkMs = Math\.min\(1_000, remainingMs\)[\s\S]*offsetMs \+= 38/,
+  'each stream chunk must be capped at one second and fire the click every 38ms'
+);
+assert.match(
+  audio,
+  /session\.active &&[\s\S]{0,180}performance\.now\(\) < session\.stopAtMs[\s\S]{0,160}startCapitalRapidFireChunk\(session, buffer\)/,
+  'a completed one-second chunk may restart only while coin painting is still active'
+);
+assert.match(
+  audio,
+  /session\.stopAtMs = performance\.now\(\) \+ stopDelayMs[\s\S]{0,220}stopCapitalStackStream\(side\)/,
+  'the final painted packet must stop the stream at the same frame boundary'
+);
+assert.match(
+  battleModal,
+  /playCapitalStackStep\([\s\S]{0,220}frame\.durationMs/,
+  'capital rendering must pass the final packet duration into audio shutdown'
+);
+assert.match(
+  battleModal,
+  /clearCapitalPilePreview[\s\S]{0,420}soundFx\.stopCapitalStackStream/,
+  'cancelled or replaced pile previews must immediately stop their audio stream'
+);
+assert.doesNotMatch(
+  audio,
+  /getCapitalRapidFireBuffer|partialRatios|One bounded metallic beat/,
+  'the rejected procedural metallic/pulse synth must not return'
+);
+const directCapitalPresentation = battleModal.match(
+  /const startCompanyCapitalPresentation[\s\S]*?const investCompanyFunds/
+)?.[0] ?? '';
+assert.doesNotMatch(
+  directCapitalPresentation,
+  /soundFx\.playCoin\(\)/,
+  'direct investment must not layer the retired metal coin chime over the rapid-fire stream'
 );
 assert.doesNotMatch(
   capitalCss,
