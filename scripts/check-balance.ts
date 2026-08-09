@@ -250,6 +250,12 @@ import {
   LIMIT_BREAK_OWNERSHIP_CAPS,
   NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS,
   REPEATED_NETWORK_SUPPORT_BALANCE,
+  SAVAGE_NETWORK_SUPPORT_LIMIT,
+  ULTIMATE_APPRAISAL_LIMIT_MS,
+  ULTIMATE_NETWORK_SUPPORT_LIMIT,
+  SAVAGE_LIMIT_BREAK_LIMIT,
+  ULTIMATE_LIMIT_BREAK_LIMIT,
+  canRequestLimitedNetworkSupport,
   advanceCriticalAutoResolution,
   resolveCriticalAutoInterception,
   resolveLivingDeadOutcome,
@@ -3277,6 +3283,15 @@ assert.equal(
   getRepeatedNetworkSupportMultiplier(99),
   REPEATED_NETWORK_SUPPORT_BALANCE.minimumMultiplier
 );
+assert.equal(SAVAGE_NETWORK_SUPPORT_LIMIT, 18);
+assert.equal(ULTIMATE_NETWORK_SUPPORT_LIMIT, 8);
+assert.equal(SAVAGE_LIMIT_BREAK_LIMIT, 1);
+assert.equal(ULTIMATE_LIMIT_BREAK_LIMIT, 1);
+assert.equal(ULTIMATE_APPRAISAL_LIMIT_MS, 108_000);
+assert.equal(canRequestLimitedNetworkSupport(17, SAVAGE_NETWORK_SUPPORT_LIMIT), true);
+assert.equal(canRequestLimitedNetworkSupport(18, SAVAGE_NETWORK_SUPPORT_LIMIT), false);
+assert.equal(canRequestLimitedNetworkSupport(7, ULTIMATE_NETWORK_SUPPORT_LIMIT), true);
+assert.equal(canRequestLimitedNetworkSupport(8, ULTIMATE_NETWORK_SUPPORT_LIMIT), false);
 
 const extremeBaseProperty = {
   ...INITIAL_PROPERTIES.find((property) => property.id === 'prop_coffee_aurora')!,
@@ -4986,7 +5001,8 @@ assert.deepEqual(FORCED_LIQUIDATION_BALANCE, {
   triggerPlayerOwnership: 75,
   unmitigatedTargetPlayerOwnership: 3,
   firstClearRecoveryGraceMs: 3_000,
-  repeatRecoveryGraceMs: 1_800,
+  laterSavageRecoveryGraceMs: 1_400,
+  ultimateRecoveryGraceMs: 4_000,
   maxUsesPerBattle: 1,
 });
 assert.equal(

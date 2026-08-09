@@ -850,6 +850,29 @@ export const REPEATED_NETWORK_SUPPORT_BALANCE = {
   minimumMultiplier: 0.5,
 } as const;
 
+/**
+ * High difficulty asks the player to plan a build instead of replacing every
+ * mistake with another company call. Savage has room to learn the authored
+ * guard baits. Ultimate is tighter: eight requests make the player assign each
+ * contact to a telegraphed danger instead of consuming a full support rotation.
+ * Cruel keeps its separate assessment tuning.
+ */
+export const SAVAGE_NETWORK_SUPPORT_LIMIT = 18;
+export const ULTIMATE_NETWORK_SUPPORT_LIMIT = 8;
+export const SAVAGE_LIMIT_BREAK_LIMIT = 1;
+export const ULTIMATE_LIMIT_BREAK_LIMIT = 1;
+export const ULTIMATE_APPRAISAL_LIMIT_MS = 108_000;
+
+export const canRequestLimitedNetworkSupport = (
+  previousUses: number,
+  limit: number
+) => {
+  const normalizedUses = Number.isFinite(previousUses)
+    ? Math.max(0, Math.floor(previousUses))
+    : 0;
+  return normalizedUses < Math.max(0, Math.floor(limit));
+};
+
 export const getRepeatedNetworkSupportMultiplier = (previousUses: number) => {
   const normalizedUses = Number.isFinite(previousUses)
     ? Math.max(0, Math.floor(previousUses))

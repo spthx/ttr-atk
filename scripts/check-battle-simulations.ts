@@ -52,6 +52,9 @@ import {
   shouldForceUltimateCriticalBeforeVictory,
   TACTICAL_SKILL_BALANCE,
   HIGH_DIFFICULTY_SUPPORT_MULTIPLIER,
+  SAVAGE_NETWORK_SUPPORT_LIMIT,
+  ULTIMATE_APPRAISAL_LIMIT_MS,
+  ULTIMATE_NETWORK_SUPPORT_LIMIT,
   ULTIMATE_ENEMY_AUTO_PATTERNS,
   type EnemySupportSkillId,
   type LimitBreakTier,
@@ -131,6 +134,10 @@ interface SimulationScenario {
   };
   allowDirectInvestment?: boolean;
   preferDirectInvestmentActions?: number;
+  /** Additional human hesitation after each ready command. */
+  reactionDelayExtraSeconds?: number;
+  /** Allows audits to distinguish a prepared route from one that ignores regen. */
+  playerRecoveryCapRatio?: number;
 }
 
 type EnemySupportActivationCounts = Record<EnemySupportSkillId, number>;
@@ -199,6 +206,14 @@ interface PendingEnemySupport {
 const deterministicReactionDelay = (seed: number, actionCount: number) =>
   ((seed * 17 + actionCount * 11) % 8) * 0.05;
 
+const getScenarioReactionDelay = (
+  scenario: SimulationScenario,
+  seed: number,
+  actionCount: number
+) =>
+  deterministicReactionDelay(seed, actionCount) +
+  Math.max(0, scenario.reactionDelayExtraSeconds ?? 0);
+
 const getAffordableInvestment = (cash: number, marketPrice: number) =>
   [...INVESTMENT_LEVELS]
     .reverse()
@@ -216,9 +231,11 @@ const getForcedLiquidationSimulationGraceMs = (
         (definition) => definition.id === scenario.target.id
       )?.series
     : undefined;
-  return savageSeries === 1
-    ? FORCED_LIQUIDATION_BALANCE.firstClearRecoveryGraceMs
-    : FORCED_LIQUIDATION_BALANCE.repeatRecoveryGraceMs;
+  return scenario.isUltimate
+    ? FORCED_LIQUIDATION_BALANCE.ultimateRecoveryGraceMs
+    : savageSeries === 1
+      ? FORCED_LIQUIDATION_BALANCE.firstClearRecoveryGraceMs
+      : FORCED_LIQUIDATION_BALANCE.laterSavageRecoveryGraceMs;
 };
 
 const runForcedLiquidationManualCounterProbe = () => {
@@ -228,7 +245,7 @@ const runForcedLiquidationManualCounterProbe = () => {
   let commandProgress = 100;
   let awaitingManualCounter = true;
   const recoveryRemaining =
-    FORCED_LIQUIDATION_BALANCE.repeatRecoveryGraceMs;
+    FORCED_LIQUIDATION_BALANCE.laterSavageRecoveryGraceMs;
   const waitingVelocity = resolveForcedLiquidationContinuousVelocity({
     velocity: -6,
     recoveryRemaining,
@@ -357,7 +374,7 @@ const simulateBattle = (
   let aiCycle = 0;
   let lastPlayerAction: PlayerBattleAction | null = null;
   let presentationLockSeconds = 0;
-  let reactionDelaySeconds = deterministicReactionDelay(seed, 0);
+  let reactionDelaySeconds = getScenarioReactionDelay(scenario, seed, 0);
   let directActions = 0;
   let supportActions = 0;
   const supportUseCounts: Record<string, number> = {};
@@ -1006,6 +1023,7 @@ const simulateBattle = (
       timeScale: 1,
       windMultiplier: 1,
       terminal: false,
+      cumulativeCapRatio: scenario.playerRecoveryCapRatio,
     });
     playerCash = playerRecovery.availableFunds;
     playerRecovered = playerRecovery.cumulativeRecovered;
@@ -1131,7 +1149,8 @@ const simulateBattle = (
         commandProgress = 0;
         lastPlayerAction = 'LIMIT_BREAK';
         presentationLockSeconds = 2.4;
-        reactionDelaySeconds = deterministicReactionDelay(
+        reactionDelaySeconds = getScenarioReactionDelay(
+          scenario,
           seed,
           directActions + supportActions
         );
@@ -1141,7 +1160,13 @@ const simulateBattle = (
       }
       const preferDirectInvestment =
         directActions < (scenario.preferDirectInvestmentActions ?? 0);
-      const supportSource = cruelSignaturePending || preferDirectInvestment
+      const networkSupportLimit = isSavage
+        ? SAVAGE_NETWORK_SUPPORT_LIMIT
+        : isUltimate
+          ? ULTIMATE_NETWORK_SUPPORT_LIMIT
+          : Number.POSITIVE_INFINITY;
+      const supportSource = cruelSignaturePending || preferDirectInvestment ||
+        supportActions >= networkSupportLimit
         ? undefined
         : scenario.supportSources?.[supportActions];
       const supportThreshold =
@@ -1222,7 +1247,8 @@ const simulateBattle = (
         }
       }
 
-      reactionDelaySeconds = deterministicReactionDelay(
+      reactionDelaySeconds = getScenarioReactionDelay(
+        scenario,
         seed,
         directActions + supportActions
       );
@@ -1395,7 +1421,7 @@ const simulateBattle = (
   }
 
   return {
-    winner: 'timeout',
+    winner: isUltimate ? 'opponent' : 'timeout',
     wallSeconds,
     directActions,
     supportActions,
@@ -2159,6 +2185,57 @@ const savageReports = savageScenarios.map(
       5_000 + index * 100
     )
 );
+
+/**
+ * Human-readiness matrix kept outside the fixed 500-battle regression total.
+ * Each route changes one major factor so tuning can distinguish insufficient
+ * preparation, ignored cash recovery, and slow command decisions.
+ */
+const savageHumanReadinessReports = savageScenarios.flatMap(
+  (preparedScenario, index) => {
+    const target = preparedScenario.target;
+    const auditSeed = 7_500 + index * 30;
+    const shared = {
+      ...preparedScenario,
+      maxSeconds: 180,
+    } satisfies SimulationScenario;
+    return [
+      summarize(
+        {
+          ...shared,
+          id: `${preparedScenario.id}_unprepared`,
+          playerBaselineCash: Math.round(target.marketPrice * 0.1),
+          openingCapitalBoostRatio: undefined,
+          openingAllianceSupportRatio: undefined,
+          openingPlayerPassage: false,
+          playerPassageOnLimitBreak: false,
+          timedCapitalBuff: undefined,
+          preparedLimitBreak: undefined,
+        },
+        5,
+        auditSeed
+      ),
+      summarize(
+        {
+          ...shared,
+          id: `${preparedScenario.id}_no_recovery`,
+          playerRecoveryCapRatio: 0,
+        },
+        5,
+        auditSeed + 10
+      ),
+      summarize(
+        {
+          ...shared,
+          id: `${preparedScenario.id}_careless`,
+          reactionDelayExtraSeconds: 2,
+        },
+        5,
+        auditSeed + 20
+      ),
+    ];
+  }
+);
 const savageEnemySupportDisabledReports =
   savageScenarios.map((scenario, index) =>
     summarize(
@@ -2192,7 +2269,7 @@ const ultimateScenarioBase = {
   id: 'ultimate_pattern_base',
   target: ultimateSanityTarget,
   isUltimate: true,
-  maxSeconds: 1_200,
+  maxSeconds: ULTIMATE_APPRAISAL_LIMIT_MS / 1000,
   playerBaselineCash: Math.round(
     ultimateSanityTarget.marketPrice * 0.1
   ),
@@ -2234,18 +2311,61 @@ const ultimatePreparedPatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
           ...eraWindBurst,
           triggerAfterSupportActions: 8,
         },
-        // A prepared clear route rotates through every acquired company while
-        // the battle-wide request counter still applies shared fatigue.
+        // A prepared clear route assigns the eight available contacts to the
+        // authored warnings while battle-wide fatigue still applies.
         supportSources: preparedUltimateSupportRotation,
         preparedLimitBreak: {
           tier: 3,
-          triggerAfterSupportActions: 12,
+          triggerAfterSupportActions: 8,
           participants: preparedUltimateSupportRotation,
         },
       },
       1,
       9_600 + patternIndex * 10
     )
+);
+const ultimateHumanReadinessReports = ULTIMATE_ENEMY_AUTO_PATTERNS.flatMap(
+  (pattern, patternIndex) => {
+    const preparedScenario: SimulationScenario = {
+      ...ultimateScenarioBase,
+      id: `ultimate_human_${pattern.id}`,
+      ultimateAutoPatternIndex: patternIndex,
+      playerBaselineCash: ultimateSanityTarget.marketPrice,
+      preferDirectInvestmentActions: 4,
+      openingPlayerPassage: true,
+      timedCapitalBuff: {
+        ...eraWindBurst,
+        triggerAfterSupportActions: 8,
+      },
+      supportSources: preparedUltimateSupportRotation,
+      preparedLimitBreak: {
+        tier: 3,
+        triggerAfterSupportActions: 8,
+        participants: preparedUltimateSupportRotation,
+      },
+    };
+    const auditSeed = 10_000 + patternIndex * 20;
+    return [
+      summarize(
+        {
+          ...preparedScenario,
+          id: `${preparedScenario.id}_no_recovery`,
+          playerRecoveryCapRatio: 0,
+        },
+        3,
+        auditSeed
+      ),
+      summarize(
+        {
+          ...preparedScenario,
+          id: `${preparedScenario.id}_careless`,
+          reactionDelayExtraSeconds: 2,
+        },
+        3,
+        auditSeed + 10
+      ),
+    ];
+  }
 );
 const ultimateSupportDisabledReport = summarize(
   {
@@ -2330,6 +2450,26 @@ const cruelScenarios: SimulationScenario[] = [
 const cruelReports = cruelScenarios.map((scenario, index) =>
   summarize(scenario, 10, 10_500 + index * 100)
 );
+const cruelHumanReadinessReports = [
+  summarize(
+    {
+      ...cruelScenarios[1],
+      id: 'cruel_prepared_no_recovery',
+      playerRecoveryCapRatio: 0,
+    },
+    5,
+    11_000
+  ),
+  summarize(
+    {
+      ...cruelScenarios[1],
+      id: 'cruel_prepared_careless',
+      reactionDelayExtraSeconds: 2,
+    },
+    5,
+    11_010
+  ),
+];
 const runtimeAlignmentProbes = {
   drillTelegraphPlayerCover:
     runDrillTelegraphCoverProbe(),
@@ -2399,6 +2539,22 @@ const reportById = Object.fromEntries(
   allReports.map((report) => [report.id, report])
 );
 console.log(JSON.stringify({
+  ultimateTuningSummary: {
+    prepared: ultimatePreparedPatternReports.map((report) => ({
+      id: report.id,
+      battles: report.battles,
+      wins: report.wins,
+      medianSeconds: report.medianSeconds,
+    })),
+    humanReadiness: ultimateHumanReadinessReports.map((report) => ({
+      id: report.id,
+      battles: report.battles,
+      wins: report.wins,
+      medianSeconds: report.medianSeconds,
+    })),
+  },
+}, null, 2));
+console.log(JSON.stringify({
   totalBattles,
   cruelAudit: {
     totalBattles: cruelReports.reduce(
@@ -2406,6 +2562,13 @@ console.log(JSON.stringify({
       0
     ),
     reports: cruelReports,
+  },
+  cruelHumanReadinessAudit: {
+    totalBattles: cruelHumanReadinessReports.reduce(
+      (total, report) => total + report.battles,
+      0
+    ),
+    reports: cruelHumanReadinessReports,
   },
   normalProgressionAudit: {
     totalBattles: normalReports.reduce(
@@ -2436,6 +2599,13 @@ console.log(JSON.stringify({
     ),
     reports: savageReports,
   },
+  savageHumanReadinessAudit: {
+    totalBattles: savageHumanReadinessReports.reduce(
+      (total, report) => total + report.battles,
+      0
+    ),
+    reports: savageHumanReadinessReports,
+  },
   savageEnemySupportDisabledAudit: {
     totalBattles: savageEnemySupportDisabledReports.reduce(
       (total, report) => total + report.battles,
@@ -2450,6 +2620,13 @@ console.log(JSON.stringify({
       0
     ),
     reports: ultimateReports,
+  },
+  ultimateHumanReadinessAudit: {
+    totalBattles: ultimateHumanReadinessReports.reduce(
+      (total, report) => total + report.battles,
+      0
+    ),
+    reports: ultimateHumanReadinessReports,
   },
   runtimeAlignmentProbes,
 }, null, 2));
@@ -2502,7 +2679,7 @@ assert.equal(
 assert.deepEqual(
   runtimeAlignmentProbes.forcedLiquidationManualCounter,
   {
-    recoveryRemaining: FORCED_LIQUIDATION_BALANCE.repeatRecoveryGraceMs,
+    recoveryRemaining: FORCED_LIQUIDATION_BALANCE.laterSavageRecoveryGraceMs,
     waitingVelocity: 0,
     winnerBeforeManual: null,
     manualCommandConsumed: true,
@@ -2527,8 +2704,8 @@ assert.equal(
     target: savageProperties[7],
     isSavage: true,
   }),
-  FORCED_LIQUIDATION_BALANCE.repeatRecoveryGraceMs,
-  'later Savage series use the 1.8-second repeat grace'
+  FORCED_LIQUIDATION_BALANCE.laterSavageRecoveryGraceMs,
+  'later Savage series use the 1.4-second execution window'
 );
 assert.equal(
   getForcedLiquidationSimulationGraceMs({
@@ -2536,8 +2713,8 @@ assert.equal(
     target: ultimateSanityTarget,
     isUltimate: true,
   }),
-  FORCED_LIQUIDATION_BALANCE.repeatRecoveryGraceMs,
-  'Ultimate uses the 1.8-second repeat grace'
+  FORCED_LIQUIDATION_BALANCE.ultimateRecoveryGraceMs,
+  'Ultimate restores a four-second rebuild window after the forced drop'
 );
 assert.equal(reportById.gridania_first.wins, 8);
 assert.ok(
@@ -2884,8 +3061,8 @@ ultimatePatternReports.forEach((report, index) => {
   }
   assert.equal(report.timeouts, 0);
   assert.ok(
-    report.p90Seconds < 120,
-    `${report.id} resolves inside the two-minute Ultimate target`
+    report.p90Seconds <= ULTIMATE_APPRAISAL_LIMIT_MS / 1000 + STEP_SECONDS,
+    `${report.id} resolves at or before the two-minute Ultimate appraisal`
   );
   assert.ok(
     report.p90DirectActions + report.p90SupportActions < 30,

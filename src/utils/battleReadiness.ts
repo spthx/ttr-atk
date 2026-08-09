@@ -468,7 +468,7 @@ export const calculateBattleReadiness = ({
     : ratio;
   const builtInMechanicWarning =
     battleMode === 'cruel'
-      ? `酷は約15秒後、投入資本・資金・LBを維持して所有率10%から立て直します。復帰中は自社へ進む継続速度が50%。50%へ戻すと12秒の第二査定。終了時に所有率75%以上＋査定中の自社直接出資${Math.round(calculateCruelSignatureRequirement(targetMarketPrice) / 1_000_000)}M（相場10%）が必要です。人脈・LB・SYNERGY・外部アライアンスは署名対象外です。`
+      ? `酷は約15秒後、投入資本・資金・LBを維持して所有率10%から立て直します。復帰中は自社へ進む継続速度が50%。50%へ戻すと15秒の第二査定。終了時に所有率75%以上＋査定中の自社直接出資${Math.round(calculateCruelSignatureRequirement(targetMarketPrice) / 1_000_000)}M（相場10%）が必要です。直接出資2回分を温存してください。人脈・LB・SYNERGY・外部アライアンスは署名対象外です。`
       : battleMode === 'ultimate'
       ? '絶は開幕・瀕死アビリティを決着前に必ず解決します。戦力が足りても、構えへの対応を誤ると敗北します。'
       : battleMode === 'savage'

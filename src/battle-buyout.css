@@ -873,6 +873,32 @@
 .result-settlement-summary.is-neutral > header strong {
   color: #bae6fd;
 }
+.result-settlement-summary > details {
+  border-top: 1px solid rgba(148, 163, 184, .18);
+}
+.result-settlement-summary > details > summary {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: .62rem;
+  font-weight: 900;
+  list-style: none;
+}
+.result-settlement-summary > details > summary::after {
+  content: '＋';
+  color: #6ee7b7;
+  font: 900 .86rem/1 ui-monospace, monospace;
+}
+.result-settlement-summary > details[open] > summary::after {
+  content: '－';
+}
+.result-settlement-summary > details > summary::-webkit-details-marker {
+  display: none;
+}
 .result-settlement-summary dl {
   display: grid;
   gap: .2rem;

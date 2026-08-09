@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Property, IndustryType, CommunityType } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER, TRADE_COMMUNITIES } from '../data/worldData';
-import { formatCurrency, formatNumber } from '../utils/formatter';
+import { formatCurrency } from '../utils/formatter';
+import { INITIAL_GROUP_SYNERGIES } from '../data/initialData';
 import { soundFx } from '../utils/audio';
 import { ArrowRight, ShieldAlert, CheckCircle2, Crown, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole, Gauge, WalletCards } from 'lucide-react';
 import { BeginnerGuide } from './BeginnerGuide';
@@ -315,9 +316,8 @@ export const MarketView: React.FC<MarketViewProps> = ({
                   <span className="campaign-city-card__readiness">
                     <small>次の相手</small>
                     <b>{READINESS_PRESENTATION[easiestTarget.result.grade].label}</b>
-                    <em aria-label={`自社${formatCurrency(easiestTarget.result.playerExpectedCapital)}、競合${formatCurrency(easiestTarget.result.enemyBudget)}`}>
-                      <span><small>自社</small><b>{formatNumber(easiestTarget.result.playerExpectedCapital)}</b></span>
-                      <span><small>競合</small><b>{formatNumber(easiestTarget.result.enemyBudget)}</b></span>
+                    <em>
+                      <span><small>勝利後</small><b>{campaignMode === 'savage' ? '事業・連携強化' : '人脈・収益増加'}</b></span>
                     </em>
                   </span>
                 )}
@@ -446,6 +446,9 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 marketPrice: activePrice,
               });
           const propertyPresentation = getPropertyPresentation(prop.description);
+          const linkedSynergies = INITIAL_GROUP_SYNERGIES.filter((synergy) =>
+            prop.groupKeys.includes(synergy.id)
+          ).slice(0, 2);
           const isBoss =
             campaignMode === 'savage' ||
             isNormalCityBoss(properties, prop);
@@ -524,10 +527,20 @@ export const MarketView: React.FC<MarketViewProps> = ({
                   <StrengthComparison result={strengthComparison} compact summaryOnly />
                 )}
 
+                {!isPlayerOwned && (
+                  <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-950/25 px-3 py-2 text-[11px] text-emerald-100">
+                    <b className="block text-emerald-300">勝利すると強くなること</b>
+                    <span>人脈1件・毎秒収益 +{formatCurrency(prop.annualRevenue)}</span>
+                    {linkedSynergies.length > 0 && (
+                      <small className="mt-1 block text-cyan-200">有効な事業連携：{linkedSynergies.map((synergy) => synergy.name).join('／')}</small>
+                    )}
+                  </div>
+                )}
+
                 {prop.community === 'ソリューション・ナイン' && !isPlayerOwned && (
                   <aside className="trade-target-card__strategy-note" role="note">
                     <b>先端市場の交渉注意</b>
-                    <span>投入順が重要です。まず競合の予備資金を使わせてから、人脈・LBを重ねましょう。</span>
+                    <span>「未投入資金ドレイン」の予告中に直接出資して退避。競合の予備資金を使わせてから、人脈・LBを重ねましょう。</span>
                   </aside>
                 )}
 

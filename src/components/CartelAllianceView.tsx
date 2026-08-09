@@ -286,7 +286,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
 
                           {strengthComparison && (
                             <div className="mt-3">
-                              <StrengthComparison result={strengthComparison} compact />
+                              <StrengthComparison result={strengthComparison} compact summaryOnly />
                             </div>
                           )}
 
@@ -350,7 +350,7 @@ export const CartelAllianceView: React.FC<CartelAllianceViewProps> = ({
 
                       {hqStrengthComparison && (
                         <div className="w-full min-w-0 sm:max-w-sm">
-                          <StrengthComparison result={hqStrengthComparison} compact />
+                          <StrengthComparison result={hqStrengthComparison} compact summaryOnly />
                         </div>
                       )}
 

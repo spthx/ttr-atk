@@ -78,15 +78,17 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
       className={`strength-comparison strength-comparison--${result.grade} ${
         compact ? 'strength-comparison--compact' : ''
       } ${summaryOnly ? 'strength-comparison--summary' : ''}`}
-      aria-label={`${comparisonTitle}。自社見込${formatCurrency(
-        result.playerExpectedCapital
-      )}、${isTraining ? '木人耐久' : '競合予算'}${formatCurrency(result.enemyBudget)}、${comparisonLabel}`}
+      aria-label={summaryOnly
+        ? `${comparisonTitle}。${comparisonLabel}。競合の手数は${enemyPace}`
+        : `${comparisonTitle}。自社見込${formatCurrency(
+            result.playerExpectedCapital
+          )}、${isTraining ? '木人耐久' : '競合予算'}${formatCurrency(result.enemyBudget)}、${comparisonLabel}`}
     >
       <header>
         <span><Gauge />{isTraining ? '訓練戦力' : '挑戦前の戦力比較'}</span>
         <strong>{result.symbol} {comparisonLabel}</strong>
       </header>
-      <div className="strength-comparison__values">
+      {!summaryOnly && <div className="strength-comparison__values">
         <span>
           <small>自社・戦力換算</small>
           <b>{formatCurrency(result.playerExpectedCapital)}</b>
@@ -96,21 +98,21 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
           <small>{isTraining ? '木人・固定耐久' : '競合・防衛力'}</small>
           <b>{formatCurrency(result.enemyBudget)}</b>
         </span>
-      </div>
-      <div className="strength-comparison__duel-bar" aria-hidden="true">
+      </div>}
+      {!summaryOnly && <div className="strength-comparison__duel-bar" aria-hidden="true">
         <i className="strength-comparison__duel-bar-player" style={{ width: `${playerShare}%` }} />
         <i className="strength-comparison__duel-bar-enemy" style={{ width: `${enemyShare}%` }} />
         <b style={{ left: `${playerShare}%` }} />
-      </div>
+      </div>}
       <div className="strength-comparison__verdict">
-        <span>{balanceLabel}</span>
+        <span>{summaryOnly ? result.advice : balanceLabel}</span>
         <span>競合の手数：{enemyPace}</span>
       </div>
-      {summaryOnly && (nonCashAssumptions.length > 0 || result.playerPushBonus > 0) && (
+      {summaryOnly && (
         <div className="strength-comparison__assumptions">
-          {nonCashAssumptions.length > 0 && <span>前提：{supportLabel}</span>}
+          <span>有効な準備：{supportLabel}</span>
           {result.playerPushBonus > 0 && (
-            <span>商戦補正・押込 +{Math.round(result.playerPushBonus * 100)}%</span>
+            <span>事業・交易網の後押しあり</span>
           )}
         </div>
       )}

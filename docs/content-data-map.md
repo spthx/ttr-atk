@@ -23,6 +23,12 @@
 |商戦UIと演出順|`src/components/BattleModal.tsx`|データではなく実行器へ縮小していく|
 |コイン・商戦CSS|`src/battle-capital-layer.css`|固定列、transform/opacity中心|
 
+関連する設計基準:
+
+- [難易度進行・敗北学習設計](./difficulty-progression-design.md)
+- [コイン描画 WebGL2 フォールバック実装手引き](./coin-webgl2-fallback-guide.md)
+- [Unity / WebGL 移植仕様書](./unity-webgl-migration-spec.md)
+
 ## 2. テキストの所在
 
 現状は完全なローカライズ表へ集約されていない。オリジナル化時の探索順は次の通り。

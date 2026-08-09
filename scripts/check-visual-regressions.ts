@@ -20,6 +20,7 @@ const app = readSource('src/App.tsx');
 const appPage = readSource('app/page.tsx');
 const battlePresentation = readSource('src/utils/battlePresentation.ts');
 const capitalCss = readSource('src/battle-capital-layer.css');
+const finalWindCss = readSource('src/battle-final-wind.css');
 const buyoutCss = readSource('src/battle-buyout.css');
 const integratedCss = readSource('src/battle-integrated-field.css');
 const launchIntro = readSource('src/components/LaunchIntro.tsx');
@@ -34,6 +35,7 @@ const cruelBattle = readSource('src/utils/cruelBattle.ts');
 const highEndRaidView = readSource('src/components/HighEndRaidView.tsx');
 const highEndRaidCss = readSource('src/high-end-raids.css');
 const marketView = readSource('src/components/MarketView.tsx');
+const strengthComparison = readSource('src/components/StrengthComparison.tsx');
 const indexCss = readSource('src/index.css');
 const saveData = readSource('src/utils/saveData.ts');
 const battleSession = readSource('src/utils/battleSession.ts');
@@ -180,8 +182,143 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /aria-label={`人脈。\$\{commandReady/,
-  'the support drawer must read as player relationships rather than an abstract fund source'
+  /const hasNetworkSupport = battleSubs\.length > 0 \|\| alliance\.active;[\s\S]*\{hasNetworkSupport && \([\s\S]*aria-label={`人脈。/,
+  'the support drawer must stay absent until the player has a relationship or an alliance request'
+);
+assert.match(
+  battleModal,
+  /aria-label="現在使用できる商戦アクション"/,
+  'the dynamic action strip must not announce locked features that are not rendered yet'
+);
+assert.match(
+  battleModal,
+  /disabled=\{[\s\S]{0,120}!hasAvailableNetworkSupport[\s\S]{0,260}今回使える支援はありません/,
+  'an exhausted alliance-only drawer must remain visible as state but cannot open an empty action panel'
+);
+assert.match(
+  battleModal,
+  /const networkSupportLimit =[\s\S]{0,650}canRequestLimitedNetworkSupport\(networkRequestCount, networkSupportLimit\)/,
+  'Savage and Ultimate must expose finite battle-local relationship-support budgets'
+);
+assert.match(
+  battleModal,
+  /disabled=\{!commandReady \|\| actionsLocked \|\| limitedNetworkSupportExhausted\}/,
+  'limited high-difficulty relationship companies must stop accepting requests after the visible budget is spent'
+);
+assert.match(
+  battleModal,
+  /const limitedLimitBreakSpent = isSavage[\s\S]{0,180}SAVAGE_LIMIT_BREAK_LIMIT[\s\S]{0,180}isUltimate[\s\S]{0,180}ULTIMATE_LIMIT_BREAK_LIMIT/,
+  'Savage and Ultimate must treat Limit Break as a battle-local finite decision'
+);
+assert.match(
+  battleModal,
+  /\{!limitedLimitBreakSpent && <em>\{actionsLocked[\s\S]{0,260}\? '発動可'/,
+  'a spent high-difficulty Limit Break must omit the redundant ready-state badge'
+);
+assert.match(
+  battleModal,
+  /panel !== 'capital'[\s\S]{0,180}title: '人脈を選択中'[\s\S]{0,160}閉じて商戦へ戻ります/,
+  'the command state must explain that an open relationship drawer intentionally pauses selection'
+);
+assert.match(
+  battleModal,
+  /disabled=\{!commandReady \|\| limitBreakTier === 0 \|\| actionsLocked \|\| limitedLimitBreakSpent\}/,
+  'a spent high-difficulty Limit Break must not become actionable again after recharging'
+);
+assert.match(
+  battleModal,
+  /ultimateAppraisalRemainingMsRef\.current -[\s\S]{0,220}BATTLE_STATE_UPDATE_INTERVAL_MS \* timeScale[\s\S]{0,900}ULTIMATE_APPRAISAL_EXPIRED/,
+  'Ultimate must end the passive-recovery stalemate at its visible appraisal deadline'
+);
+assert.match(
+  battleModal,
+  /終極査定 \{Math\.ceil\(ultimateAppraisalRemainingMs \/ 1000\)\}秒/,
+  'Ultimate must keep its appraisal countdown visible during battle'
+);
+assert.match(
+  battleModal,
+  /絶は108秒の終極査定。[\s\S]{0,180}敵予告・着弾演出中[\s\S]{0,160}停止[\s\S]{0,220}ボタン1回[\s\S]{0,180}8回/,
+  'Ultimate briefing must explain the fair pause rule and the finite resource plan'
+);
+assert.match(
+  battleModal,
+  /compact: reducedMotion \|\| isHighEndRaid/,
+  'high-end repeated investments must use the compact pile timeline to preserve decision tempo'
+);
+assert.match(
+  battleModal,
+  /const compact = reducedMotion \|\| isHighEndRaid/,
+  'high-end support and enemy capital previews must use the compact pile timeline too'
+);
+assert.match(
+  battleModal,
+  /const enemySupportPausesBattle =\s*!!enemySupportCinematic && !cruelScriptedCountdownActive/,
+  'enemy telegraphs must pause passive pressure so difficulty stays in the response choice'
+);
+assert.equal(
+  (battleModal.match(/getSkillCinematicTiming\(reducedMotion \|\| isHighEndRaid\)/g) ?? []).length,
+  3,
+  'all player skill cinematic paths must use compact high-end timing'
+);
+assert.match(
+  battleModal,
+  /onClick=\{\(\) => \{[\s\S]{0,120}!isHighEndRaid[\s\S]{0,320}demandFromProperty\(quickNetworkSupportProperty\)[\s\S]{0,120}requestAlliance\(\)/,
+  'high-end network support must avoid a repeated drawer round-trip while retaining its timing decision'
+);
+assert.match(
+  battleEncounterData,
+  /drain:\s*\{[\s\S]{0,180}telegraphText:\s*'未投入資金ドレイン――直接出資で退避'/,
+  'Drain must tell the player what is at risk and which live counter avoids it'
+);
+assert.match(
+  marketView,
+  /ソリューション・ナイン[\s\S]{0,260}未投入資金ドレイン[\s\S]{0,80}予告中に直接出資して退避/,
+  'Solution Nine must teach the Drain counter before charging the challenge fee'
+);
+assert.match(
+  battleModal,
+  /enemyDrainStolen > 0 && !isHighEndRaid[\s\S]{0,260}予告中に直接出資し、手元資金を積載へ退避/,
+  'a normal-mode Drain defeat must report measured damage and one concrete next action'
+);
+assert.match(
+  battleEncounterData,
+  /forced_liquidation:\s*\{[\s\S]{0,220}telegraphText:\s*'強制清算――所有率3%へ。着弾直後の反撃を1回残せ'/,
+  'Forced Liquidation must disclose the three-percent drop and the saved-counter requirement before impact'
+);
+assert.match(
+  battleModal,
+  /enemySupportUsed\.has\('forced_liquidation'\)[\s\S]{0,260}人脈・SYNERGY・LBのどれか1回を温存/,
+  'a Forced Liquidation defeat must name the mechanic and one concrete recovery command'
+);
+assert.match(
+  battleModal,
+  /enemySupportUsed\.has\('blackest_night'\)[\s\S]{0,260}障壁中は直接出資を温存し、終了後に人脈→SYNERGY→LB/,
+  'a Blackest Night defeat must explain the post-barrier rebuild order'
+);
+assert.match(
+  battleEncounterData,
+  /cruel_reckoning:\s*\{[\s\S]{0,240}telegraphText:\s*'終極資本査定――15秒で所有75%＋直接出資10%'[\s\S]{0,100}telegraphMs:\s*15_000/,
+  'Cruel Reckoning must expose the fifteen-second assessment contract'
+);
+assert.match(
+  battleModal,
+  /shouldTriggerCruelSecondPhase\([\s\S]*startEnemySupportSkill\(CRUEL_SCRIPTED_BATTLE\.secondActionId\)[\s\S]{0,520}setPanel\('capital'\)[\s\S]{0,240}setCommandProgress\(100\)/,
+  'Cruel Reckoning must close the relationship drawer and arm direct investment for its live countdown'
+);
+assert.match(
+  battleModal,
+  /const presentationBlocksCommands =[\s\S]{0,180}panel !== 'capital'/,
+  'the command-state label must not announce受付中 while a modal drawer keeps the investment deck inert'
+);
+assert.match(
+  finalWindCss,
+  /\.battle-announcement::before,\s*\.battle-announcement::after[\s\S]*\.battle-announcement::before \{ top: 38%; \}[\s\S]*\.battle-announcement::after \{ bottom: 38%; \}/,
+  'battle announcements must draw balanced upper and lower divider lines'
+);
+assert.doesNotMatch(
+  capitalCss,
+  /buyout-screen--limit-tier-1[\s\S]{0,160}battle-announcement--limit::after[\s\S]{0,80}display:\s*none/,
+  'LIMIT BREAK I must not remove the lower announcement divider'
 );
 assert.match(
   battleModal,
@@ -215,7 +352,7 @@ assert.match(
 );
 assert.match(
   capitalCss,
-  /gil-tower__chips[\s\S]*isolation: isolate;[\s\S]*ownership-fighter[\s\S]*z-index:\s*22/,
+  /gil-tower__chips[\s\S]*isolation: isolate;[\s\S]*ownership-fighter[\s\S]*z-index:\s*24/,
   'coin depth must remain inside an isolated layer below actors and readouts'
 );
 assert.doesNotMatch(
@@ -656,7 +793,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const activePlayerPileFrame =[\s\S]*capitalPreviewStage \?\? playerCapitalPilePreviewStage;[\s\S]*activePlayerPileFrame\?\.presentedCapital \?\? totalPlayerInvested;[\s\S]*enemyCapitalPilePreviewStage\?\.presentedCapital \?\? enemyInvested;/,
+  /const activePlayerPileFrame =[\s\S]*capitalPreviewStage \?\? playerCapitalPilePreviewStage;[\s\S]*activePlayerPileFrame\?\.presentedCapital \?\? totalPlayerInvested;[\s\S]*enemyCapitalPilePreviewStage\?\.presentedCapital \?\?[\s\S]*enemyOpeningVisualConcealed \? 0 : enemyInvested/,
   'both fixed ledgers must advance with the same packet timeline as their visible piles'
 );
 assert.match(
@@ -703,6 +840,16 @@ assert.match(
   battleModal,
   /const openingTimeline = buildCapitalStackTimeline\(\{[\s\S]*source: 'opening',[\s\S]*previousCapital: 0,[\s\S]*nextCapital: initialEnemyCommitment/,
   'the already-committed enemy opening ledger must still receive a visual zero-to-final scene'
+);
+assert.match(
+  battleModal,
+  /const enemyOpeningVisualConcealed =[\s\S]*battlePhase === 'briefing'[\s\S]*enemyOpeningCapitalPending && enemyCapitalPilePreviewStage === null[\s\S]*displayedEnemyInvested =[\s\S]*enemyOpeningVisualConcealed \? 0 : enemyInvested/,
+  'the enemy opening pile and readout must stay empty until the zero-to-final timeline owns them'
+);
+assert.match(
+  battleModal,
+  /<GilTower[\s\S]{0,180}amount=\{displayedEnemyInvested\}[\s\S]{0,180}side="enemy"/,
+  'the enemy renderer must consume the staged opening amount instead of flashing the committed ledger'
 );
 assert.match(
   battleModal,
@@ -777,7 +924,17 @@ assert.match(
 assert.match(
   capitalCss,
   /capital-visual-row > \.gil-tower--packet-active\s*\{\s*z-index:\s*23;/,
-  'falling wealth must briefly raise its outer stacking context above the portrait'
+  'falling wealth may rise above the settled rack but must remain below the portrait at z-index 24'
+);
+assert.match(
+  battleModal,
+  /--capital-actor-impact-duration':[\s\S]*Math\.min\(460,[\s\S]*--capital-actor-return-duration':[\s\S]*Math\.min\(160,/,
+  'Tataru movement must use short actor-only clocks instead of the multi-second coin timeline'
+);
+assert.match(
+  capitalCss,
+  /capital-tataru-impact[\s\S]*var\(--capital-actor-impact-duration, 460ms\)[\s\S]*@keyframes capital-tataru-impact[\s\S]*82%[\s\S]*100% \{ transform: scaleX\(-1\); \}/,
+  'Tataru must return to the fixed origin early while the remaining coin packets continue'
 );
 assert.match(
   activeCapitalColumnCss,
@@ -967,8 +1124,28 @@ assert.doesNotMatch(
 );
 assert.match(
   battleModal,
-  /aria-label="商店戦力の変化"[\s\S]*<small>今回の戦力増減<\/small>/,
-  'the result growth card must identify its signed number as this battle\'s change, not an absolute strength value'
+  /const growthLabel =[\s\S]*大きく成長[\s\S]*着実に成長[\s\S]*aria-label="商店戦力の変化"[\s\S]*<small>今回の成長<\/small>/,
+  'the result growth card must present qualitative growth instead of another finance-sized strength number'
+);
+assert.match(
+  strengthComparison,
+  /summaryOnly[\s\S]*競合の手数は\$\{enemyPace\}[\s\S]*有効な準備：\{supportLabel\}/,
+  'summary readiness must prioritize a strength category, enemy pace, and useful preparation'
+);
+assert.match(
+  marketView,
+  /勝利すると強くなること[\s\S]*人脈1件・毎秒収益[\s\S]*有効な事業連携/,
+  'market targets must explain how defeating them grows the company and advances synergies'
+);
+assert.match(
+  battleModal,
+  /追加防衛の余力[\s\S]*残りわずか[\s\S]*消耗中[\s\S]*潤沢/,
+  'battle HUD must expose actionable enemy reserve bands without the hidden reserve amount'
+);
+assert.match(
+  battleModal,
+  /<summary>収支内訳を見る<\/summary>[\s\S]*result-battle-details/,
+  'result details must remain available on demand while keeping the first view focused'
 );
 assert.match(
   app,
@@ -1045,7 +1222,7 @@ assert.ok(
 );
 assert.match(
   battleModal,
-  /高難度支援補正：人脈・通常グループSYNERGY[\s\S]*外部アライアンス・LBは対象外/,
+  /高難度支援：人脈・通常グループSYNERGYが強化（外部アライアンス・LBは別枠）/,
   'high-difficulty rules must exclude both external alliance and LIMIT BREAK'
 );
 const requestAllianceSource = battleModal.slice(
@@ -1117,8 +1294,8 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /if \(skillId === 'forced_liquidation'\)[\s\S]*forcedLiquidationRecoveryRemainingRef\.current = recoveryMs;[\s\S]*forcedLiquidationAwaitingManualCounterRef\.current = true/,
-  '強制清算 impact must arm a manual-counter gate for pre-existing player continuous pressure'
+  /if \(skillId === 'forced_liquidation'\)[\s\S]*forcedLiquidationRecoveryRemainingRef\.current = recoveryMs;[\s\S]*forcedLiquidationAwaitingManualCounterRef\.current = true;[\s\S]*setPanel\('capital'\)/,
+  '強制清算 impact must arm the manual-counter gate and return to the actionable capital panel'
 );
 assert.match(
   battleModal,
@@ -1292,13 +1469,13 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /battleCommandState[\s\S]{0,1400}終極査定 残り[\s\S]{0,1400}操作受付中[\s\S]{0,1400}コマンド準備/,
+  /battleCommandState[\s\S]{0,1400}終極査定 残り[\s\S]{0,1400}操作受付中[\s\S]{0,1400}次の操作を準備中/,
   'the live command lane must distinguish Cruel, presentation, ready, and recharge states'
 );
 assert.match(
   battleModal,
-  /操作受付中[\s\S]{0,220}準備100%｜投資・アビリティを選べます[\s\S]{0,160}準備100%｜投資・支援・アビリティを選べます/,
-  'the ready command lane must expose a visible full-recast percentage'
+  /操作受付中[\s\S]{0,220}投資・アビリティを選べます[\s\S]{0,160}投資・支援・アビリティを選べます[\s\S]{0,500}次の操作を準備中[\s\S]{0,160}ゲージ満了後に操作できます/,
+  'the command lane must explain ready and recharge states without duplicating the visible gauge percentage'
 );
 assert.match(
   battleModal,
@@ -1317,8 +1494,8 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /displayedPlayerInvested\s*\/\s*Math\.max\(1, targetProperty\.marketPrice\)\s*\*\s*100[\s\S]*data-extreme-opponent-scale-ratio[\s\S]*相手企業規模比/,
-  'Extreme presents the real accumulated gil relative to the opponent company scale'
+  /displayedPlayerInvested\s*\/\s*Math\.max\(1, targetProperty\.marketPrice\)\s*\*\s*100[\s\S]*data-extreme-opponent-scale-ratio/,
+  'Extreme must retain real capital scaling for the pile without exposing another numeric comparison label'
 );
 assert.match(
   battleModal,
@@ -1337,8 +1514,13 @@ assert.match(
 );
 assert.match(
   highEndRaidView,
-  /万象資本化[\s\S]*開始約15秒後[\s\S]*所有率10%[\s\S]*第二査定[\s\S]*75%以上/,
-  'the Cruel card must disclose its two recovery checks without implying a required loadout'
+  /勝負どころ：第二査定[\s\S]*所有率50%まで再建[\s\S]*15秒[\s\S]*所有率75%＋自社直接10%/,
+  'the Cruel card must disclose both recovery checks once in a concise plan'
+);
+assert.doesNotMatch(
+  highEndRaidView,
+  /AI LEVEL 6/,
+  'the high-difficulty list must not expose an internal AI level'
 );
 assert.match(
   highEndRaidCss,

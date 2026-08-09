@@ -245,7 +245,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
                 </div>
               </dl>
 
-              <StrengthComparison result={strengthComparison} compact />
+              <StrengthComparison result={strengthComparison} compact summaryOnly />
 
               {needsCartelPreparation && (
                 <aside className="savage-layer-card__preparation" role="note">
@@ -352,9 +352,9 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
           </span>
           <span>
             <ShieldAlert />
-            AI LEVEL 6・地域／業界補正なし・通常事業と収益は保護
+            地域／業界補正なし・通常事業と収益は保護
           </span>
-          <StrengthComparison result={ultimateStrengthComparison} compact />
+          <StrengthComparison result={ultimateStrengthComparison} compact summaryOnly />
           <div className="ultimate-raid-card__actions">
             <button
               type="button"
@@ -413,15 +413,15 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
             </span>
             <span>
               <ShieldAlert />
-              AI LEVEL 6・強化かばう・通常事業と進行は保護
+              強化かばう・通常事業と進行は保護
             </span>
             <div className="cruel-raid-card__warning" role="note">
-              <b>二段階フェーズ「万象資本化」</b>
+              <b>勝負どころ：第二査定</b>
               <p>
-                開始約15秒後に所有率10%へ（投入資本・資金・LBは維持）。復帰中は自社へ進む継続速度が50%になります。50%へ戻すと12秒の第二査定が始まり、所有率75%以上＋査定中の自社直接出資{formatCurrency(cruelSignatureCapital)}（相場10%）が必須。人脈・LB・SYNERGY・外部アライアンスは署名対象外です。
+                第一宣告後に所有率50%まで再建。続く15秒で所有率75%＋自社直接10%をそろえるため、直接出資2回分を残してください。
               </p>
             </div>
-            <StrengthComparison result={cruelStrengthComparison} compact />
+            <StrengthComparison result={cruelStrengthComparison} compact summaryOnly />
             <div className="cruel-raid-card__actions">
               <button
                 type="button"
