@@ -267,8 +267,6 @@ interface BattleModalProps {
   isTraining?: boolean;
   isCityBoss?: boolean;
   returnToAlliance?: boolean;
-  onAddFunds?: (amount: number) => void;
-  onResetFunds?: () => void;
   onTimeScaleChange?: (scale: number) => void;
   battleFrameRate: 30 | 60;
   onBattleEnd: (result: BattleResult) => boolean;

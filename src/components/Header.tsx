@@ -27,8 +27,6 @@ interface HeaderProps {
   ultimateCleared: boolean;
   soundEnabled: boolean;
   setSoundEnabled: (enabled: boolean) => void;
-  onAddFunds?: (amount: number) => void;
-  onResetFunds?: () => void;
   onNewGame: () => void;
 }
 
@@ -54,14 +52,8 @@ export const Header: React.FC<HeaderProps> = ({
   ultimateCleared,
   soundEnabled,
   setSoundEnabled,
-  onAddFunds,
-  onResetFunds,
   onNewGame,
 }) => {
-  const showDebugControls =
-    typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).has('debug');
-
   const toggleSound = () => {
     soundFx.enabled = !soundEnabled;
     setSoundEnabled(!soundEnabled);
@@ -97,30 +89,6 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden sm:inline">{formatCurrency(totalFunds)}</span>
             </span>
           </div>
-
-          {/* Test controls are available only with ?debug in the URL. */}
-          {showDebugControls && (
-            <div className="flex items-center gap-1">
-              {onAddFunds && (
-              <button
-                onClick={() => onAddFunds(100_000_000)}
-                className="px-2 py-1 rounded bg-amber-950 hover:bg-amber-900 border border-amber-500/50 text-amber-300 text-[10px] font-extrabold cursor-pointer transition-all active:scale-95 shadow"
-                title="テスト用：資金に +1億ギル補充"
-              >
-                🧪 +1億
-              </button>
-            )}
-            {onResetFunds && (
-              <button
-                onClick={onResetFunds}
-                className="px-1.5 py-1 rounded bg-slate-800 hover:bg-rose-950/80 border border-slate-700 hover:border-rose-500/60 text-slate-300 hover:text-rose-300 text-[10px] font-bold cursor-pointer transition-all active:scale-95"
-                title="テスト用：資金を初期値（5万ギル）にリセット"
-              >
-                🔄 リセット
-              </button>
-              )}
-            </div>
-          )}
 
           {/* Passive Yield */}
           <div

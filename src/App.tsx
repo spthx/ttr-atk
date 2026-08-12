@@ -1857,17 +1857,6 @@ export default function App() {
     );
   };
 
-  // Debug / Test Fund Handlers
-  const handleAddFunds = (amount: number = 100_000_000) => {
-    setTotalFunds((prev) => prev + amount);
-    addGameLog(`🧪 【テスト機能】資金に +${formatCurrency(amount)} を追加補充しました。`, 'info');
-  };
-
-  const handleResetFunds = () => {
-    setTotalFunds(50_000);
-    addGameLog(`🔄 【テスト機能】資金を初期値 50,000ギル にリセットしました。`, 'warning');
-  };
-
   const handleNewGame = () => {
     const accepted = window.confirm(
       '保存済みの所持金・保有事業／契約・装備アビリティ・外部協力／公的後援を削除して、ニューゲームを始めますか？'
@@ -2099,8 +2088,6 @@ export default function App() {
         ultimateCleared={ultimateCleared}
         soundEnabled={soundEnabled}
         setSoundEnabled={setSoundEnabled}
-        onAddFunds={handleAddFunds}
-        onResetFunds={handleResetFunds}
         onNewGame={handleNewGame}
       />
 
@@ -2532,8 +2519,6 @@ export default function App() {
             activeBattleMode === 'normal' &&
             normalBattleOrigin === 'cartels'
           }
-          onAddFunds={handleAddFunds}
-          onResetFunds={handleResetFunds}
           onBattleEnd={handleBattleEnd}
           onClose={() => {
             if (deferredBattleIncomeRef.current > 0) {
