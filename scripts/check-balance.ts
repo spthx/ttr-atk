@@ -1534,7 +1534,7 @@ assert.ok(
 );
 assert.ok(
   heavyCapitalTimeline.preloadMs >= 280,
-  'the lowered rack reaches its landing position before the first heavy packet'
+  'a heavy packet keeps a readable anticipation beat before its first visible coin'
 );
 const saturatedCounterTimeline = buildCapitalStackTimeline({
   id: 'balance-saturated-counter',

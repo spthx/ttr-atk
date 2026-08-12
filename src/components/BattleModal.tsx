@@ -1060,10 +1060,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     useState<CapitalPilePresentationFrame | null>(null);
   const [enemyCapitalPilePreviewStage, setEnemyCapitalPilePreviewStage] =
     useState<CapitalPilePresentationFrame | null>(null);
-  const [playerCapitalRackLowered, setPlayerCapitalRackLowered] =
-    useState(false);
-  const [enemyCapitalRackLowered, setEnemyCapitalRackLowered] =
-    useState(false);
   const [playerCapitalRackFloorTier, setPlayerCapitalRackFloorTier] =
     useState(0);
   const [enemyCapitalRackFloorTier, setEnemyCapitalRackFloorTier] =
@@ -1639,29 +1635,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         intensity,
         seed: serial,
       });
-      if (timeline.frames.some((frame) => frame.rackCompressed)) {
-        if (side === 'player') {
-          setPlayerCapitalRackLowered(true);
-        } else {
-          setEnemyCapitalRackLowered(true);
-        }
-      }
-      const deepestRackFloorTier = Math.max(
-        previousOverflowTier,
-        overflowTier,
-        timeline.frames.some((frame) => (frame.overflowPass ?? 0) > 0)
-          ? 1
-          : 0
-      );
-      if (side === 'player') {
-        setPlayerCapitalRackFloorTier((current) =>
-          Math.max(current, deepestRackFloorTier)
-        );
-      } else {
-        setEnemyCapitalRackFloorTier((current) =>
-          Math.max(current, deepestRackFloorTier)
-        );
-      }
       const setPreviewStage =
         side === 'player'
           ? setPlayerCapitalPilePreviewStage
@@ -1697,12 +1670,23 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         const frame = timeline.frames[index];
         const isFinalFrame = index === timeline.frames.length - 1;
         const overflowReloading = (frame.overflowPass ?? 0) > 0;
+        if (isFinalFrame) {
+          if (side === 'player') {
+            setPlayerCapitalRackFloorTier((current) =>
+              Math.max(current, overflowTier)
+            );
+          } else {
+            setEnemyCapitalRackFloorTier((current) =>
+              Math.max(current, overflowTier)
+            );
+          }
+        }
         setPreviewStage({
           ...frame,
           overflowTier: isFinalFrame
             ? overflowTier
             : overflowReloading
-              ? Math.max(1, overflowTier)
+              ? overflowTier
               : previousOverflowTier,
           presentationSerial: overflowReloading
             ? serial * 100 + (frame.overflowPass ?? 0)
@@ -6185,17 +6169,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       intensity,
       seed: serial,
     });
-    if (timeline.frames.some((frame) => frame.rackCompressed)) {
-      setPlayerCapitalRackLowered(true);
-    }
-    const deepestRackFloorTier = Math.max(
-      previousOverflowTier,
-      overflowTier,
-      timeline.frames.some((frame) => (frame.overflowPass ?? 0) > 0) ? 1 : 0
-    );
-    setPlayerCapitalRackFloorTier((current) =>
-      Math.max(current, deepestRackFloorTier)
-    );
     const firstTimelineFrame = timeline.frames[0];
     const finalTimelineFrame = timeline.frames.at(-1) ?? firstTimelineFrame;
     const audibleFrames = timeline.frames.filter(
@@ -6274,12 +6247,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const frame = timeline.frames[index];
       const isFinalFrame = index === timeline.frames.length - 1;
       const overflowReloading = (frame.overflowPass ?? 0) > 0;
+      if (isFinalFrame) {
+        setPlayerCapitalRackFloorTier((current) =>
+          Math.max(current, overflowTier)
+        );
+      }
       setCapitalPreviewStage({
         ...frame,
         overflowTier: isFinalFrame
           ? overflowTier
           : overflowReloading
-            ? Math.max(1, overflowTier)
+            ? overflowTier
             : previousOverflowTier,
         presentationSerial: overflowReloading
           ? serial * 100 + (frame.overflowPass ?? 0)
@@ -8153,7 +8131,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             marketPrice: targetProperty.marketPrice,
             previewFrame:
               capitalPreviewStage ?? playerCapitalPilePreviewStage,
-            rackLowered: playerCapitalRackLowered,
             rackFloorTier: playerCapitalRackFloorTier,
             impact: playerCapitalMotion === 'player',
           }}
@@ -8161,7 +8138,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             amount: displayedEnemyInvested,
             marketPrice: targetProperty.marketPrice,
             previewFrame: enemyCapitalPilePreviewStage,
-            rackLowered: enemyCapitalRackLowered,
             rackFloorTier: enemyCapitalRackFloorTier,
             impact: motion === 'enemy' || motion === 'rebel',
           }}

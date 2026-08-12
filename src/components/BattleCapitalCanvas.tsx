@@ -14,9 +14,10 @@ import {
 } from '../utils/battlePresentation';
 import { resolveBattleCanvasDpr } from '../utils/battleCanvasQuality';
 import {
+  BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER,
   easeBattleCapitalRackDepth,
   resolveBattleCapitalCanvasLayout,
-  resolveBattleCapitalRackOffset,
+  resolveBattleCapitalStackGeometry,
   resolveBattleCapitalVisualLayers,
 } from '../utils/battleCapitalCanvasLayout';
 import casinoWideUrl from '../assets/battle/battlefield-casino-wide.webp';
@@ -52,7 +53,6 @@ export interface BattleCapitalCanvasSideState {
   /** Defaults to amount / marketPrice and affects decoration, never geometry. */
   capitalRatio?: number;
   previewFrame?: BattleCapitalCanvasPreviewFrame | null;
-  rackLowered?: boolean;
   rackFloorTier?: number;
   impact?: boolean;
 }
@@ -82,7 +82,6 @@ interface NormalizedCapitalFrame {
   packetSeed: number;
   packetProgress: number;
   beatDurationMs: number;
-  rackCompressed: boolean;
   rackDepth: number;
 }
 
@@ -256,12 +255,7 @@ const normalizeSide = (
       packetSeed: Math.round(finiteNonNegative(preview?.packetSeed ?? 0)),
       packetProgress: activeColumnIndices.length > 0 ? 0 : 1,
       beatDurationMs: Math.max(1, preview?.beatDurationMs ?? 90),
-      rackCompressed:
-        state.rackLowered === true || preview?.rackCompressed === true,
-      rackDepth:
-        state.rackLowered === true || preview?.rackCompressed === true
-          ? overflowTier + 1
-          : 0,
+      rackDepth: overflowTier,
     },
   };
 };
@@ -691,23 +685,63 @@ const drawCapitalSide = (
   const layout = resolveBattleCapitalCanvasLayout(width, height);
   const { areaWidth } = layout;
   const centerX = areaLeft + areaWidth / 2;
-  const loweredBy = resolveBattleCapitalRackOffset(
-    height,
-    layout.landscape,
-    side.frame.rackDepth
-  );
-  const baseY = height * 0.82 + loweredBy;
   const representativeColumn = layout.columns.at(-1) ?? layout.columns[0];
   const coinWidth = representativeColumn.coinWidth;
   const coinHeight = representativeColumn.coinHeight;
+  const activeColumns = new Set(side.frame.activeColumnIndices);
+  const maxRawLayers = Math.max(0, ...side.frame.columnHeights);
+  const overflowLayers =
+    side.frame.rackDepth * BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;
+  const renderedColumns = layout.columns.map((column, index) => {
+    const layers = side.frame.columnHeights[index] ?? 0;
+    const stackVariation = 0.98 + deterministicNoise(index * 37 + 11) * 0.04;
+    const baseVisualLayers = resolveBattleCapitalVisualLayers({
+      layers,
+      depth: column.depth,
+      maxRawLayers,
+      variation: stackVariation,
+    });
+    const visualLayers =
+      baseVisualLayers > 0 ? baseVisualLayers + overflowLayers : 0;
+    const depthScale = 0.97 + column.depth * 0.01;
+    const renderedCoinHeight = column.coinHeight * depthScale;
+    const renderedLayerStep = column.layerStep * depthScale;
+    const bodyHeight =
+      visualLayers <= 0
+        ? 0
+        : renderedCoinHeight +
+          Math.max(0, visualLayers - 1) * renderedLayerStep;
+    const baselineLift =
+      (column.bottom / 100) * height * 0.19 + column.depth * 0.25;
+    return {
+      column,
+      index,
+      visualLayers,
+      depthScale,
+      bodyHeight,
+      baselineLift,
+    };
+  });
+  const tallestColumnExtent = Math.max(
+    0,
+    ...renderedColumns.map(({ bodyHeight, baselineLift }) =>
+      bodyHeight > 0 ? bodyHeight + baselineLift : 0
+    )
+  );
+  const stackGeometry = resolveBattleCapitalStackGeometry(
+    height,
+    layout.landscape,
+    tallestColumnExtent
+  );
+  const { baseY, floorY } = stackGeometry;
 
   const auraStrength = clamp(Math.log2(side.capitalRatio + 1) / 5, 0, 1);
   const pileGlow = context.createRadialGradient(
     centerX,
-    baseY - height * 0.07,
+    floorY - height * 0.07,
     0,
     centerX,
-    baseY - height * 0.07,
+    floorY - height * 0.07,
     areaWidth * 0.54
   );
   pileGlow.addColorStop(0, side.side === 'player'
@@ -720,7 +754,7 @@ const drawCapitalSide = (
   context.beginPath();
   context.ellipse(
     centerX,
-    baseY + coinHeight,
+    floorY + coinHeight,
     areaWidth * (0.43 + auraStrength * 0.11),
     height * (0.06 + auraStrength * 0.026),
     0,
@@ -733,7 +767,7 @@ const drawCapitalSide = (
   drawOverflowHoard(
     context,
     centerX,
-    baseY,
+    floorY,
     areaWidth,
     side,
     coinWidth,
@@ -777,23 +811,16 @@ const drawCapitalSide = (
   context.fill();
   context.globalAlpha = 1;
 
-  const activeColumns = new Set(side.frame.activeColumnIndices);
-  const maxRawLayers = Math.max(0, ...side.frame.columnHeights);
-
-  for (const [index, column] of layout.columns.entries()) {
-    const layers = side.frame.columnHeights[index] ?? 0;
-    const stackVariation = 0.94 + deterministicNoise(index * 37 + 11) * 0.1;
-    const visualLayers = resolveBattleCapitalVisualLayers({
-      layers,
-      depth: column.depth,
-      maxRawLayers,
-      variation: stackVariation,
-    });
+  for (const {
+    column,
+    index,
+    visualLayers,
+    depthScale,
+    baselineLift,
+  } of renderedColumns) {
     const mirroredPosition = playerSide ? column.xRatio : 1 - column.xRatio;
     const x = areaLeft + mirroredPosition * areaWidth;
-    const depthScale = 0.91 + column.depth * 0.042;
-    const columnBaseY =
-      baseY - (column.bottom / 100) * height * 0.19 - column.depth * 0.25;
+    const columnBaseY = baseY - baselineLift;
     drawCoinColumn(
       context,
       x,

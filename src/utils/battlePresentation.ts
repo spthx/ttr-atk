@@ -882,7 +882,7 @@ export interface MechanicalCapitalColumnFrame {
   visibleUnits: number;
   columnHeights: number[];
   activeColumnIndices: number[];
-  /** Presentation-only rack compression; it never changes committed capital. */
+  /** Heavy/reload anticipation marker; renderers must not pre-lower an empty rack. */
   rackCompressed?: boolean;
   /** One-based overflow reload pass, used only to retrigger the bounded stamp. */
   overflowPass?: number;
@@ -930,7 +930,7 @@ const getCapitalSweepGroups = (
 
 /**
  * Converts exceptional funding into a bounded number of full-rack reloads.
- * The amount changes the number of presentation passes, never the DOM count.
+ * The amount changes the number of presentation passes, never the column count.
  */
 export const getCapitalOverflowPassCount = (
   previousCapital: number,
@@ -944,9 +944,10 @@ export const getCapitalOverflowPassCount = (
   const deltaRatio = Math.max(0, next - previous) / price;
   if (next <= previous) return 0;
   // Persistent overflow still begins at 1.5x asking price, but a heavy new
-  // wave must visibly reload the lowered rack even on the first 20/35/75%
+  // wave must visibly deal across the full rack even on the first 20/35/75%
   // command. The old total-only gate made the game's most common all-in skip
-  // the large-capital treatment entirely.
+  // the large-capital treatment entirely. The renderer still keeps the floor
+  // visible until the completed columns actually reach its upper safe line.
   if (!heavy && next / price < 1.5) return 0;
 
   const previousBand = Math.max(
@@ -1194,7 +1195,7 @@ export interface CapitalStackTimeline {
 }
 
 /**
- * Builds one fixed-DOM stacking scene. Amount changes heights and the bounded
+ * Builds one fixed-column Canvas stacking scene. Amount changes heights and the bounded
  * number of beats, never the number of rendered columns. Frame-rate changes
  * only how often a renderer samples this absolute timeline.
  */
@@ -1227,8 +1228,8 @@ export const buildCapitalStackTimeline = (
       ? Math.max(1, requestedReloadPasses)
       : requestedReloadPasses;
   const willCompress = heavy || reloadPasses > 0;
-  // CSS lowers a loading rack over 280ms. Finish that anticipation before the
-  // first packet starts so the landing surface never moves under the coins.
+  // Heavy/reload commands keep a readable anticipation beat before the first
+  // packet. This marker must never move an empty rack ahead of the visible coins.
   const preloadMs = compact ? 24 : willCompress ? 300 : 90;
   const reloadBeats = compact
     ? CAPITAL_OVERFLOW_RESTACK_BEATS.compact

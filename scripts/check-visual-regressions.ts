@@ -21,11 +21,12 @@ import {
   resolveBattleCanvasDpr,
 } from '../src/utils/battleCanvasQuality';
 import {
+  BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER,
   BATTLE_CAPITAL_CANVAS_ROW_COUNTS,
   BATTLE_CAPITAL_RACK_TWEEN_MS,
   easeBattleCapitalRackDepth,
   resolveBattleCapitalCanvasLayout,
-  resolveBattleCapitalRackOffset,
+  resolveBattleCapitalStackGeometry,
   resolveBattleCapitalVisualLayers,
 } from '../src/utils/battleCapitalCanvasLayout';
 
@@ -255,14 +256,14 @@ assert.match(
   /const overflowTier = Math\.round\([\s\S]{0,120}Math\.max\([\s\S]{0,160}preview\?\.overflowTier \?\?[\s\S]{0,120}getBattleCapitalOverflowTier\(amount, marketPrice\)[\s\S]{0,100}state\.rackFloorTier \?\? 0/,
   'the Canvas2D rack must retain the deepest preview or battle-lifetime overflow footing'
 );
-assert.match(
+assert.doesNotMatch(
   battleCapitalCanvas,
-  /rackCompressed:\s*state\.rackLowered === true \|\| preview\?\.rackCompressed === true/,
-  'the Canvas2D rack must retain a latched descent after its active preview ends'
+  /rackLowered|rackCompressed:\s*state\./,
+  'a heavy command must not pre-lower or permanently bury the visible treasury'
 );
 assert.match(
   battleCapitalCanvas,
-  /const layout = resolveBattleCapitalCanvasLayout\(width, height\);[\s\S]*for \(const \[index, column\] of layout\.columns\.entries\(\)\)[\s\S]*drawCoinColumn\([\s\S]*activeColumns\.has\(index\)/,
+  /const layout = resolveBattleCapitalCanvasLayout\(width, height\);[\s\S]*const renderedColumns = layout\.columns\.map\(\(column, index\) =>[\s\S]*for \(const \{[\s\S]*\} of renderedColumns\)[\s\S]*drawCoinColumn\([\s\S]*activeColumns\.has\(index\)/,
   'the Canvas2D renderer must paint the responsive twenty-two-column tray from the staged frame'
 );
 assert.equal(
@@ -312,8 +313,8 @@ assert.match(
 );
 assert.match(
   liveCapitalCanvas,
-  /player=\{\{[\s\S]*amount:\s*displayedPlayerInvested,[\s\S]*previewFrame:\s*capitalPreviewStage \?\? playerCapitalPilePreviewStage,[\s\S]*rackLowered:\s*playerCapitalRackLowered,[\s\S]*rackFloorTier:\s*playerCapitalRackFloorTier,[\s\S]*enemy=\{\{[\s\S]*amount:\s*displayedEnemyInvested,[\s\S]*previewFrame:\s*enemyCapitalPilePreviewStage,[\s\S]*rackLowered:\s*enemyCapitalRackLowered,[\s\S]*rackFloorTier:\s*enemyCapitalRackFloorTier,/,
-  'both live capital ledgers and their latched rack state must feed the shared canvas'
+  /player=\{\{[\s\S]*amount:\s*displayedPlayerInvested,[\s\S]*previewFrame:\s*capitalPreviewStage \?\? playerCapitalPilePreviewStage,[\s\S]*rackFloorTier:\s*playerCapitalRackFloorTier,[\s\S]*enemy=\{\{[\s\S]*amount:\s*displayedEnemyInvested,[\s\S]*previewFrame:\s*enemyCapitalPilePreviewStage,[\s\S]*rackFloorTier:\s*enemyCapitalRackFloorTier,/,
+  'both live capital ledgers and their actual overflow tiers must feed the shared canvas'
 );
 assert.match(
   liveCapitalCanvas,
@@ -406,19 +407,21 @@ assert.ok(
   landscapeCapitalLayout.columns.every((column) => column.coinWidth >= 47),
   'landscape coins must grow with the tray instead of staying at the retired 17px cap'
 );
-assert.ok(
-  resolveBattleCapitalVisualLayers({
+const mediumRearLayers = resolveBattleCapitalVisualLayers({
     layers: 12,
     depth: 0,
     maxRawLayers: 12,
     variation: 1,
-  }) >
-    resolveBattleCapitalVisualLayers({
-      layers: 12,
-      depth: 3,
-      maxRawLayers: 12,
-      variation: 1,
-    }),
+  });
+const mediumFrontLayers = resolveBattleCapitalVisualLayers({
+  layers: 12,
+  depth: 3,
+  maxRawLayers: 12,
+  variation: 1,
+});
+assert.ok(
+  mediumRearLayers >= mediumFrontLayers &&
+    mediumRearLayers - mediumFrontLayers <= 1,
   'medium capital must keep a broad stepped treasury tray'
 );
 for (let depth = 0; depth < 4; depth += 1) {
@@ -433,17 +436,57 @@ for (let depth = 0; depth < 4; depth += 1) {
     'a saturated tray must become a level wall instead of retaining a short front row'
   );
 }
-assert.ok(
-  resolveBattleCapitalRackOffset(414, false, 4) >= 60,
-  'portrait overflow tier three must lower the rack by the original screen-scale distance'
+const portraitShortPile = resolveBattleCapitalStackGeometry(414, false, 80);
+assert.equal(
+  portraitShortPile.scrollPx,
+  0,
+  'a normal portrait pile must grow from the visible floor without pre-lowering'
 );
+assert.equal(portraitShortPile.baseY, portraitShortPile.floorY);
+const portraitTallPile = resolveBattleCapitalStackGeometry(414, false, 300);
+assert.ok(portraitTallPile.scrollPx > 0);
 assert.ok(
-  resolveBattleCapitalRackOffset(171, true, 4) >= 45,
-  'landscape overflow tier three must visibly scroll the rack beyond the short field'
+  Math.abs(
+    (portraitTallPile.baseY - 300) - portraitTallPile.safeTopY
+  ) < 1e-9,
+  'portrait overflow must scroll by exactly the excess height so the visible wall never shrinks'
+);
+const portraitTallerPile = resolveBattleCapitalStackGeometry(414, false, 320);
+assert.ok(
+  Math.abs(portraitTallerPile.scrollPx - portraitTallPile.scrollPx - 20) < 1e-9,
+  'every additional overflow pixel must move the hidden footing by one pixel'
+);
+const portraitExtremePile = resolveBattleCapitalStackGeometry(414, false, 380);
+assert.ok(
+  portraitExtremePile.baseY > 414 &&
+    Math.abs(
+      portraitExtremePile.baseY - 380 - portraitExtremePile.safeTopY
+    ) < 1e-9,
+  'an extreme pile may scroll its footing offscreen only while its full visible top remains pinned'
+);
+const landscapeShortPile = resolveBattleCapitalStackGeometry(171, true, 50);
+assert.equal(landscapeShortPile.scrollPx, 0);
+assert.ok(
+  landscapeShortPile.baseY < 171,
+  'a landscape rack must remain inside the short field before its columns reach the safe top'
+);
+const landscapeTallPile = resolveBattleCapitalStackGeometry(171, true, 150);
+assert.ok(landscapeTallPile.scrollPx > 0);
+assert.ok(
+  landscapeTallPile.safeTopY >= 171 * 0.42 &&
+    Math.abs(
+      landscapeTallPile.baseY - 150 - landscapeTallPile.safeTopY
+    ) < 1e-9,
+  'a landscape overflow wall must stay below the compact gauge/readout band while retaining its full visible height'
+);
+assert.equal(
+  BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER,
+  8,
+  'each true overflow tier must add visible height before any safe-line scroll'
 );
 assert.equal(BATTLE_CAPITAL_RACK_TWEEN_MS, 280);
-assert.equal(easeBattleCapitalRackDepth(0, 4, 0), 0);
-assert.equal(easeBattleCapitalRackDepth(0, 4, BATTLE_CAPITAL_RACK_TWEEN_MS), 4);
+assert.equal(easeBattleCapitalRackDepth(0, 3, 0), 0);
+assert.equal(easeBattleCapitalRackDepth(0, 3, BATTLE_CAPITAL_RACK_TWEEN_MS), 3);
 assert.match(
   battleCapitalCanvasLayout,
   /const span = ROW_SPANS\[depth\] \* \(landscape \? 0\.84 : 1\);[\s\S]{0,240}const coinWidth = clamp\(pitch \* \(landscape \? 0\.92 : 0\.86\), 12, 72\);/,
@@ -1152,12 +1195,12 @@ const saturatedReloadFrames = getMechanicalCapitalColumnFrames(
 assert.equal(
   saturatedReloadFrames.filter((frame) => frame.rackCompressed).length,
   saturatedReloadPasses * (CAPITAL_OVERFLOW_RESTACK_BEATS.heavy + 2),
-  'a saturated rack must retain every sink and mechanical reload beat'
+  'a saturated rack must retain every bounded mechanical reload beat'
 );
 assert.equal(
   saturatedReloadFrames.at(-1)?.rackCompressed,
   true,
-  'the final overflow frame must keep the rack down instead of restoring its root'
+  'the final overflow frame must retain its heavy/reload anticipation marker'
 );
 assert.ok(
   saturatedReloadFrames.every(
@@ -1543,8 +1586,8 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const loweredBy = resolveBattleCapitalRackOffset\([\s\S]{0,120}layout\.landscape,[\s\S]{0,80}side\.frame\.rackDepth[\s\S]{0,100}const baseY = height \* 0\.82 \+ loweredBy;/,
-  'the Canvas2D rack must project its latched compression and overflow depth into a screen-scale descent'
+  /const overflowLayers =[\s\S]{0,120}side\.frame\.rackDepth \* BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;[\s\S]*const stackGeometry = resolveBattleCapitalStackGeometry\([\s\S]{0,100}tallestColumnExtent[\s\S]{0,80}const \{ baseY, floorY \} = stackGeometry;/,
+  'the Canvas2D rack must add visible overflow height first and scroll only the part above the safe line'
 );
 assert.match(
   battleModal,
@@ -1572,24 +1615,14 @@ assert.match(
   'player and enemy recast meters must bridge every 100ms logical update without an idle gap'
 );
 assert.match(
-  battleModal,
-  /const \[playerCapitalRackLowered, setPlayerCapitalRackLowered\][\s\S]*const \[enemyCapitalRackLowered, setEnemyCapitalRackLowered\]/,
-  'each side must own a battle-lifetime latch for its lowered capital rack'
-);
-assert.match(
-  battleModal,
-  /timeline\.frames\.some\(\(frame\) => frame\.rackCompressed\)[\s\S]{0,240}setPlayerCapitalRackLowered\(true\)[\s\S]{0,180}setEnemyCapitalRackLowered\(true\)/,
-  'a generic heavy pour must latch the lowered footing for the acting side'
-);
-assert.match(
   liveCapitalCanvas,
-  /rackLowered:\s*playerCapitalRackLowered,[\s\S]{0,100}rackFloorTier:\s*playerCapitalRackFloorTier,[\s\S]*rackLowered:\s*enemyCapitalRackLowered,[\s\S]{0,100}rackFloorTier:\s*enemyCapitalRackFloorTier/,
-  'ending or replacing a preview must not raise a rack that was already lowered'
+  /rackFloorTier:\s*playerCapitalRackFloorTier,[\s\S]*rackFloorTier:\s*enemyCapitalRackFloorTier/,
+  'ending a preview must retain only the deepest actual overflow tier'
 );
 assert.doesNotMatch(
   battleModal,
-  /set(?:Player|Enemy)CapitalRackLowered\(false\)/,
-  'a lowered rack must never return upward during the same battle'
+  /CapitalRackLowered|set(?:Player|Enemy)CapitalRackLowered/,
+  'the retired heavy-command descent latch must not return'
 );
 assert.match(
   battleModal,
@@ -1598,8 +1631,13 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const deepestRackFloorTier = Math\.max\([\s\S]{0,260}overflowPass[\s\S]{0,220}setPlayerCapitalRackFloorTier\(\(current\) =>[\s\S]{0,100}Math\.max\(current, deepestRackFloorTier\)/,
-  'temporary reload sink depth must be latched monotonically instead of released at completion'
+  /if \(isFinalFrame\) \{[\s\S]{0,160}setPlayerCapitalRackFloorTier\(\(current\) =>[\s\S]{0,80}Math\.max\(current, overflowTier\)[\s\S]{0,180}setEnemyCapitalRackFloorTier\(\(current\) =>[\s\S]{0,80}Math\.max\(current, overflowTier\)/,
+  'only the final actual overflow tier may be latched monotonically after its visible pile arrives'
+);
+assert.doesNotMatch(
+  battleModal,
+  /deepestRackFloorTier|overflowPass[\s\S]{0,120}\? 1/,
+  'a temporary heavy reload pass must not synthesize a hidden rack tier'
 );
 assert.doesNotMatch(
   battleModal,

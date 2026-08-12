@@ -1,8 +1,9 @@
 export const BATTLE_CAPITAL_CANVAS_ROW_COUNTS = [4, 5, 6, 7] as const;
 export const BATTLE_CAPITAL_RACK_TWEEN_MS = 280;
+export const BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER = 8;
 
 const ROW_SPANS = [0.52, 0.7, 0.84, 0.9] as const;
-const ROW_BASE_HEIGHT_SCALES = [1, 0.84, 0.68, 0.54] as const;
+const ROW_BASE_HEIGHT_SCALES = [1, 0.98, 0.96, 0.94] as const;
 const ROW_BOTTOMS = [
   [24, 26, 26, 24],
   [16, 18, 19, 18, 16],
@@ -35,6 +36,14 @@ export interface BattleCapitalCanvasLayout {
   landscape: boolean;
 }
 
+export interface BattleCapitalStackGeometry {
+  baseY: number;
+  floorY: number;
+  safeTopY: number;
+  scrollPx: number;
+  visibleWindow: number;
+}
+
 /**
  * Resolves one dense four-row treasury tray. Column width follows row pitch,
  * so a wide phone gains larger coins instead of larger empty gaps.
@@ -56,7 +65,7 @@ export const resolveBattleCapitalCanvasLayout = (
     const coinHeight = clamp(coinWidth * 0.2, 4.5, 12);
     const layerStep = landscape
       ? clamp(safeHeight * 0.016, 2.1, 3.2)
-      : clamp(safeHeight * 0.008, 2.7, 3.55);
+      : clamp(safeHeight * 0.014, 4.4, 7.2);
 
     for (let column = 0; column < count; column += 1) {
       const centered = column - (count - 1) / 2;
@@ -97,28 +106,34 @@ export const resolveBattleCapitalVisualLayers = ({
   return Math.max(1, Math.round(layers * rowScale * settledVariation));
 };
 
-const getRackOffsets = (height: number, landscape: boolean) => {
-  const safeHeight = Math.max(1, Number.isFinite(height) ? height : 1);
-  if (landscape) {
-    const compression = clamp(safeHeight * 0.12, 28.8, 40);
-    return [0, compression, compression + 12.64, compression + 15.52, compression + 18.4];
-  }
-  const compression = clamp(safeHeight * 0.1, 36, 44.8);
-  return [0, compression, compression + 15.04, compression + 19.2, compression + 23.36];
-};
-
-/** depth 0 is the normal rack; 1..4 are compressed overflow tiers 0..3. */
-export const resolveBattleCapitalRackOffset = (
+/**
+ * Keeps the treasury on its visible floor until the tallest completed column
+ * reaches the upper safe line. After that, every added pixel of coin height
+ * scrolls the footing by exactly one pixel: the visible wall never shrinks and
+ * an all-in command cannot pre-bury an empty rack.
+ */
+export const resolveBattleCapitalStackGeometry = (
   height: number,
   landscape: boolean,
-  depth: number
-) => {
-  const offsets = getRackOffsets(height, landscape);
-  const safeDepth = clamp(depth, 0, offsets.length - 1);
-  const lower = Math.floor(safeDepth);
-  const upper = Math.ceil(safeDepth);
-  const progress = safeDepth - lower;
-  return offsets[lower] + (offsets[upper] - offsets[lower]) * progress;
+  tallestColumnExtent: number
+): BattleCapitalStackGeometry => {
+  const safeHeight = Math.max(1, Number.isFinite(height) ? height : 1);
+  const floorY = safeHeight * (landscape ? 0.78 : 0.82);
+  // Landscape keeps the wall beneath the compact DOM gauge/readout band.
+  const safeTopY = safeHeight * (landscape ? 0.42 : 0.22);
+  const visibleWindow = floorY - safeTopY;
+  const scrollPx = Math.max(
+    0,
+    (Number.isFinite(tallestColumnExtent) ? tallestColumnExtent : 0) -
+      visibleWindow
+  );
+  return {
+    baseY: floorY + scrollPx,
+    floorY,
+    safeTopY,
+    scrollPx,
+    visibleWindow,
+  };
 };
 
 export const easeBattleCapitalRackDepth = (
