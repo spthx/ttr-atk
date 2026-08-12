@@ -4,7 +4,7 @@ import {
   INITIAL_PROPERTIES,
 } from '../src/data/initialData';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
-import { isEarlyNormalEncounterPropertyId } from '../src/data/campaignEncounterData';
+import { getCampaignEncounterDefinition } from '../src/data/campaignEncounterData';
 import { decideEnemyAction } from '../src/utils/enemyAi';
 import {
   BLACKEST_NIGHT_BALANCE,
@@ -25,6 +25,7 @@ import {
   BOSS_COVER_BALANCE,
   calculateDirectInvestmentGaugeImpact,
   calculateEnemyBudget,
+  calculateLimitBreakChargeGain,
   calculateLimitBreakAmount,
   calculateLimitBreakOwnershipPush,
   calculateSubsidiarySupportAmount,
@@ -37,6 +38,7 @@ import {
   getEnemyDifficultyLevel,
   getEnemyDrillImpact,
   getEnemyMinimumCommitment,
+  getLimitBreakTier,
   getOpeningBossAbilityTier,
   getEnemySupportAutoProfile,
   getEnemySupportSkillProfile,
@@ -54,6 +56,7 @@ import {
   shouldForceUltimateCriticalBeforeVictory,
   TACTICAL_SKILL_BALANCE,
   HIGH_DIFFICULTY_SUPPORT_MULTIPLIER,
+  isNormalPlayerLiquidityCloseoutActive,
   SAVAGE_NETWORK_SUPPORT_LIMIT,
   ULTIMATE_APPRAISAL_LIMIT_MS,
   ULTIMATE_NETWORK_SUPPORT_LIMIT,
@@ -62,6 +65,7 @@ import {
   type LimitBreakTier,
 } from '../src/utils/gameBalance';
 import {
+  buildCapitalStackTimeline,
   getBattleHitStopTiming,
   getCapitalCommitTiming,
 } from '../src/utils/battlePresentation';
@@ -138,9 +142,14 @@ interface SimulationScenario {
   };
   preparedLimitBreak?: {
     tier: LimitBreakTier;
+    triggerAfterDirectActions?: number;
     triggerAfterSupportActions: number;
     participants: readonly Property[];
   };
+  /** Requires the simulated command route to earn the requested LB bars. */
+  requireChargedLimitBreak?: boolean;
+  /** Models the full live normal-pile duration while command recharge continues. */
+  modelFullNormalPresentation?: boolean;
   allowDirectInvestment?: boolean;
   preferDirectInvestmentActions?: number;
   /** Additional human hesitation after each ready command. */
@@ -158,12 +167,15 @@ interface SimulationResult {
   wallSeconds: number;
   directActions: number;
   supportActions: number;
+  limitBreakActions: number;
   manualOpeningActions: number;
   finalOwnership: number;
   enemySupportActivations: EnemySupportActivationCounts;
   maximumPlayerRecoveryRatio: number;
   maximumEnemyRecoveryRatio: number;
   minimumEnemyReserve: number;
+  liquidityCloseoutSeconds: number | null;
+  finishAction: PlayerBattleAction | null;
   enemyBossDefenseTier: ReturnType<typeof getBossAbilityTier>;
   enemyBudget: number;
   enemyDifficultyLevel: number;
@@ -333,6 +345,9 @@ const simulateBattle = (
   const isUltimate = scenario.isUltimate ?? false;
   const isCruel = scenario.isCruel ?? false;
   const isPhantom = scenario.isPhantom ?? false;
+  const isExtremeBattle = isExtremeReacquisition(scenario.target);
+  const campaignEncounterDefinition =
+    getCampaignEncounterDefinition(scenario.target.id);
   const usesSavageMechanics = isSavage || isPhantom;
   const usesUltimateBasePower = isUltimate || isPhantom;
   const isHighEndRaid =
@@ -342,11 +357,6 @@ const simulateBattle = (
     : isUltimate
       ? ULTIMATE_NETWORK_SUPPORT_LIMIT
       : Number.POSITIVE_INFINITY;
-  const isEarlyNormalBattle =
-    !isTraining &&
-    !isHighEndRaid &&
-    !isExtremeReacquisition(scenario.target) &&
-    isEarlyNormalEncounterPropertyId(scenario.target.id);
   const enemySupportProfile = scenario.disableEnemySupport
     ? []
     : getEnemySupportSkillProfile({
@@ -430,10 +440,15 @@ const simulateBattle = (
   let aiProgress = 0;
   let aiCycle = 0;
   let lastPlayerAction: PlayerBattleAction | null = null;
+  let lastPlayerCapitalAction: PlayerBattleAction | null = null;
   let presentationLockSeconds = 0;
+  let presentationAllowsCommandRecharge = false;
   let reactionDelaySeconds = getScenarioReactionDelay(scenario, seed, 0);
   let directActions = 0;
   let supportActions = 0;
+  let limitBreakActions = 0;
+  let earnedLimitBreakCharge = 0;
+  let campaignNetworkFinisherArmed = false;
   let manualOpeningActions = 0;
   let manualCapitalBoostUsed = false;
   let manualAllianceSupportUsed = false;
@@ -467,6 +482,7 @@ const simulateBattle = (
   let maximumPlayerRecoveryRatio = 0;
   let maximumEnemyRecoveryRatio = 0;
   let minimumEnemyReserve = enemyReserve;
+  let liquidityCloseoutActiveSince: number | null = null;
   let pendingEnemySupport: PendingEnemySupport | null = null;
   let cruelSecondFailurePending = false;
   let enemyBossDefenseUsed = false;
@@ -666,12 +682,18 @@ const simulateBattle = (
         wallSeconds,
         directActions,
         supportActions,
+        limitBreakActions,
         manualOpeningActions,
         finalOwnership: (100 - gauge) / 2,
         enemySupportActivations,
         maximumPlayerRecoveryRatio,
         maximumEnemyRecoveryRatio,
         minimumEnemyReserve,
+        liquidityCloseoutSeconds:
+          liquidityCloseoutActiveSince === null
+            ? null
+            : wallSeconds - liquidityCloseoutActiveSince,
+        finishAction: lastPlayerCapitalAction,
         enemyBossDefenseTier,
         enemyBudget,
         enemyDifficultyLevel: enemyDifficulty,
@@ -696,12 +718,18 @@ const simulateBattle = (
         wallSeconds,
         directActions,
         supportActions,
+        limitBreakActions,
         manualOpeningActions,
         finalOwnership: 0,
         enemySupportActivations,
         maximumPlayerRecoveryRatio,
         maximumEnemyRecoveryRatio,
         minimumEnemyReserve,
+        liquidityCloseoutSeconds:
+          liquidityCloseoutActiveSince === null
+            ? null
+            : wallSeconds - liquidityCloseoutActiveSince,
+        finishAction: null,
         enemyBossDefenseTier,
         enemyBudget,
         enemyDifficultyLevel: enemyDifficulty,
@@ -874,6 +902,12 @@ const simulateBattle = (
         0,
         presentationLockSeconds - STEP_SECONDS
       );
+      if (
+        scenario.modelFullNormalPresentation &&
+        presentationAllowsCommandRecharge
+      ) {
+        commandProgress = Math.min(100, commandProgress + 2.8);
+      }
       continue;
     }
 
@@ -1138,7 +1172,36 @@ const simulateBattle = (
       enemyBudget > 0 ? enemyRecovered / enemyBudget : 0
     );
 
-    if (commandProgress >= 100 && reactionDelaySeconds <= 0) {
+    const livePlayerPressureVelocity = calculateGaugeVelocity(
+      playerInvested,
+      enemyInvested,
+      marketPrice
+    );
+    const campaignNetworkFinisherActive =
+      campaignNetworkFinisherArmed && livePlayerPressureVelocity < 0;
+    const onboardingLiquidityCloseoutLocked =
+      !isTraining &&
+      !isHighEndRaid &&
+      !isExtremeBattle &&
+      getLimitBreakTier((scenario.supportSources?.length ?? 0) + 1) === 0 &&
+      (
+        campaignNetworkFinisherActive ||
+        isNormalPlayerLiquidityCloseoutActive({
+          playerOwnership: (100 - gauge) / 2,
+          enemyReserve,
+          enemyMinimumCommitment: getEnemyMinimumCommitment(marketPrice),
+          velocity: livePlayerPressureVelocity,
+        })
+      );
+
+    if (
+      commandProgress >= 100 &&
+      reactionDelaySeconds <= 0 &&
+      !onboardingLiquidityCloseoutLocked
+    ) {
+      if (campaignNetworkFinisherArmed) {
+        campaignNetworkFinisherArmed = false;
+      }
       const manualCapitalBoostRatio = Math.max(
         0,
         scenario.manualCapitalBoostRatio ?? 0
@@ -1147,7 +1210,12 @@ const simulateBattle = (
         forcedLiquidationAwaitingManualCounter = false;
         manualCapitalBoostUsed = true;
         manualOpeningActions += 1;
-        playerInvested += Math.round(marketPrice * manualCapitalBoostRatio);
+        const amount = Math.round(marketPrice * manualCapitalBoostRatio);
+        playerInvested += amount;
+        earnedLimitBreakCharge += calculateLimitBreakChargeGain(
+          amount,
+          marketPrice
+        );
         commandProgress = 0;
         lastPlayerAction = 'SYNERGY';
         presentationLockSeconds = 1.8;
@@ -1169,7 +1237,12 @@ const simulateBattle = (
         forcedLiquidationAwaitingManualCounter = false;
         manualAllianceSupportUsed = true;
         manualOpeningActions += 1;
-        playerInvested += Math.round(marketPrice * manualAllianceSupportRatio);
+        const amount = Math.round(marketPrice * manualAllianceSupportRatio);
+        playerInvested += amount;
+        earnedLimitBreakCharge += calculateLimitBreakChargeGain(
+          amount,
+          marketPrice
+        );
         commandProgress = 0;
         lastPlayerAction = 'ALLIANCE';
         presentationLockSeconds = 0.23;
@@ -1227,9 +1300,17 @@ const simulateBattle = (
         preparedLimitBreak &&
         !preparedLimitBreakUsed &&
         !cruelSignaturePending &&
+        directActions >=
+          (preparedLimitBreak.triggerAfterDirectActions ?? 0) &&
         supportActions >= preparedLimitBreak.triggerAfterSupportActions &&
-        enemyBossDefenseUsed &&
-        enemyBossDefenseRemainingSeconds <= 0
+        (
+          !scenario.requireChargedLimitBreak ||
+          earnedLimitBreakCharge >= preparedLimitBreak.tier * 100
+        ) &&
+        (
+          !enemyBossDefenseBalance ||
+          (enemyBossDefenseUsed && enemyBossDefenseRemainingSeconds <= 0)
+        )
       ) {
         forcedLiquidationAwaitingManualCounter = false;
         preparedLimitBreakUsed = true;
@@ -1276,9 +1357,12 @@ const simulateBattle = (
         // Keep the global action-limit audit honest without conflating the LB
         // with another network request.
         directActions += 1;
+        limitBreakActions += 1;
         commandProgress = 0;
         lastPlayerAction = 'LIMIT_BREAK';
+        lastPlayerCapitalAction = 'LIMIT_BREAK';
         presentationLockSeconds = 2.4;
+        presentationAllowsCommandRecharge = false;
         reactionDelaySeconds = getScenarioReactionDelay(
           scenario,
           seed,
@@ -1301,11 +1385,18 @@ const simulateBattle = (
       if (supportSource && directActions >= supportThreshold) {
         forcedLiquidationAwaitingManualCounter = false;
         const previousSupportUses = supportActions;
+        const previousPlayerInvested = playerInvested;
         const amount = Math.round(
           calculateSubsidiarySupportAmount(
             supportSource,
             previousSupportUses
           ) *
+            (previousSupportUses === 0 &&
+            !isTraining &&
+            !isHighEndRaid &&
+            !isExtremeBattle
+              ? campaignEncounterDefinition?.firstNetworkSupportMultiplier ?? 1
+              : 1) *
             (isHighEndRaid
               ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
               : 1)
@@ -1319,13 +1410,44 @@ const simulateBattle = (
           ) * playerCapitalMultiplier
         );
         playerInvested += amount;
+        earnedLimitBreakCharge += calculateLimitBreakChargeGain(
+          amount,
+          marketPrice
+        );
         applyPlayerGaugeCandidate(gauge - impact);
         supportUseCounts[supportSource.id] =
           (supportUseCounts[supportSource.id] ?? 0) + 1;
         supportActions += 1;
+        if (
+          previousSupportUses === 0 &&
+          campaignEncounterDefinition?.firstNetworkFinisher === true
+        ) {
+          campaignNetworkFinisherArmed = true;
+        }
         commandProgress = 0;
         lastPlayerAction = 'FUNDS';
-        presentationLockSeconds = 0.23;
+        lastPlayerCapitalAction = 'FUNDS';
+        presentationLockSeconds = scenario.modelFullNormalPresentation
+          ? buildCapitalStackTimeline({
+              id: `audit-support-${supportActions}`,
+              side: 'player',
+              source: 'support',
+              previousCapital: previousPlayerInvested,
+              nextCapital: playerInvested,
+              marketPrice,
+              intensity:
+                amount / Math.max(marketPrice, 1) >= 0.14 &&
+                previousSupportUses < 3
+                  ? 'heavy'
+                  : 'standard',
+              seed: supportActions,
+            }).frames.reduce(
+              (total, frame) => total + frame.durationMs,
+              0
+            ) / 1_000
+          : 0.23;
+        presentationAllowsCommandRecharge =
+          scenario.modelFullNormalPresentation;
       } else {
         const investment =
           scenario.allowDirectInvestment === false
@@ -1339,6 +1461,10 @@ const simulateBattle = (
           );
           playerCash -= amount;
           playerInvested += amount;
+          earnedLimitBreakCharge += calculateLimitBreakChargeGain(
+            amount,
+            marketPrice
+          );
           if (
             isCruel &&
             (cruelPhase as CruelScriptPhase) === 'second_countdown'
@@ -1367,8 +1493,14 @@ const simulateBattle = (
           directActions += 1;
           commandProgress = 0;
           lastPlayerAction = investment.action;
+          lastPlayerCapitalAction = investment.action;
           presentationLockSeconds =
-            getCapitalCommitTiming(investment.level, true).totalMs / 1_000;
+            getCapitalCommitTiming(
+              investment.level,
+              !scenario.modelFullNormalPresentation
+            ).totalMs / 1_000;
+          presentationAllowsCommandRecharge =
+            scenario.modelFullNormalPresentation;
         }
       }
 
@@ -1432,6 +1564,10 @@ const simulateBattle = (
           );
           enemyReserve -= actual;
           enemyInvested += actual;
+          earnedLimitBreakCharge += calculateLimitBreakChargeGain(
+            actual * enemyCapitalMultiplier,
+            marketPrice
+          );
           const enemyGaugeShock = Math.min(
             10,
             (
@@ -1513,12 +1649,32 @@ const simulateBattle = (
         continuousSynergyGaugePushPerSecond,
       isTraining
     );
+    const enemyMinimumCommitment =
+      getEnemyMinimumCommitment(marketPrice);
+    const liquidityCloseoutActive =
+      !isTraining &&
+      !isHighEndRaid &&
+      !isExtremeBattle &&
+      isNormalPlayerLiquidityCloseoutActive({
+        playerOwnership: (100 - gauge) / 2,
+        enemyReserve,
+        enemyMinimumCommitment,
+        velocity: rawVelocity,
+      });
+    if (liquidityCloseoutActive) {
+      liquidityCloseoutActiveSince ??= wallSeconds;
+    } else {
+      liquidityCloseoutActiveSince = null;
+    }
     const closingAdjustedVelocity = applyNormalClosingMomentum({
       velocity: rawVelocity,
       gauge,
       isTraining,
       isHighEndRaid,
-      acceleratedEarlyNormal: isEarlyNormalBattle,
+      enemyReserve: isExtremeBattle
+        ? Number.POSITIVE_INFINITY
+        : enemyReserve,
+      enemyMinimumCommitment,
     });
     const limitAdjustedVelocity =
       enemyLimitBreakHoldRemainingSeconds > 0
@@ -1566,12 +1722,18 @@ const simulateBattle = (
     wallSeconds,
     directActions,
     supportActions,
+    limitBreakActions,
     manualOpeningActions,
     finalOwnership: (100 - gauge) / 2,
     enemySupportActivations,
     maximumPlayerRecoveryRatio,
     maximumEnemyRecoveryRatio,
     minimumEnemyReserve,
+    liquidityCloseoutSeconds:
+      liquidityCloseoutActiveSince === null
+        ? null
+        : wallSeconds - liquidityCloseoutActiveSince,
+    finishAction: null,
     enemyBossDefenseTier,
     enemyBudget,
     enemyDifficultyLevel: enemyDifficulty,
@@ -1681,6 +1843,19 @@ const summarize = (
     medianSupportActions: percentile(
       results.map((result) => result.supportActions),
       0.5
+    ),
+    limitBreakFinishes: results.filter(
+      (result) => result.finishAction === 'LIMIT_BREAK'
+    ).length,
+    networkFinishes: results.filter(
+      (result) => result.finishAction === 'FUNDS'
+    ).length,
+    liquidityCloseoutActivations: results.filter(
+      (result) => result.liquidityCloseoutSeconds !== null
+    ).length,
+    maximumLiquidityCloseoutSeconds: Math.max(
+      0,
+      ...results.map((result) => result.liquidityCloseoutSeconds ?? 0)
     ),
     p90SupportActions: percentile(
       results.map((result) => result.supportActions),
@@ -2127,6 +2302,7 @@ const normalScenarios = [
     id: 'gridania_first',
     target: starterFarm,
     isTutorial: true,
+    modelFullNormalPresentation: true,
   },
   {
     id: 'gridania_boss_with_network_support',
@@ -2135,7 +2311,8 @@ const normalScenarios = [
     supportSources: [starterFarm],
     // The first real contact becomes the player's first callable network in
     // the second (boss) fight. No retired business is granted in the background.
-    supportAfterDirectActions: () => 1,
+    supportAfterDirectActions: () => 3,
+    modelFullNormalPresentation: true,
   },
   {
     id: 'gridania_boss_without_network_support',
@@ -2182,18 +2359,28 @@ const earlyNormalCadenceReports = [
       influenceBonus: 0.03,
       supportSources: [gridaniaBoss],
       supportAfterDirectActions: () => 1,
+      modelFullNormalPresentation: true,
     },
     8,
     2_600
   ),
   summarize(
     {
-      id: 'limsa_boss_with_network_support',
+      id: 'limsa_boss_limit_break_finish',
       target: limsaBoss,
       isCityBoss: true,
       influenceBonus: 0.03,
       supportSources: [limsaTransport, gridaniaBoss, starterFarm],
-      supportAfterDirectActions: () => 1,
+      supportAfterDirectActions: () => 2,
+      preferDirectInvestmentActions: 3,
+      preparedLimitBreak: {
+        tier: 1,
+        triggerAfterDirectActions: 3,
+        triggerAfterSupportActions: 3,
+        participants: [limsaTransport, gridaniaBoss, starterFarm],
+      },
+      requireChargedLimitBreak: true,
+      modelFullNormalPresentation: true,
     },
     8,
     2_700
@@ -3122,8 +3309,23 @@ assert.ok(
   'the first Gridania network contact adds free capital without requiring another direct investment'
 );
 assert.ok(
-  reportById.gridania_boss_with_network_support.maximumCapitalActions <= 5,
-  'the first network lesson remains compact even when its support call is counted'
+  reportById.gridania_boss_with_network_support.maximumCapitalActions <= 6,
+  'the first network lesson stays within one handful of visible commitments'
+);
+assert.equal(
+  reportById.gridania_boss_with_network_support.networkFinishes,
+  reportById.gridania_boss_with_network_support.battles,
+  'the second fight can end from the first ally stack after the player builds the lead'
+);
+assert.equal(
+  reportById.gridania_boss_with_network_support.medianDirectActions,
+  3,
+  'the second fight teaches three self-funded stacks before the ally finish'
+);
+assert.equal(
+  reportById.gridania_boss_with_network_support.medianSupportActions,
+  1,
+  'the first network request is the only ally command needed for the lesson'
 );
 for (const report of earlyNormalCadenceReports) {
   assert.equal(
@@ -3136,15 +3338,45 @@ for (const report of earlyNormalCadenceReports) {
       report.medianDirectActions <= 5 &&
       report.medianSupportActions >= 1 &&
       report.medianSupportActions <= 3 &&
-      report.medianDirectActions + report.medianSupportActions >= 3 &&
-      report.medianDirectActions + report.medianSupportActions <= 6,
+    report.medianDirectActions + report.medianSupportActions >= 3 &&
+      report.medianDirectActions + report.medianSupportActions <= 7,
     `${report.id} should resolve in one short handful of meaningful commands`
   );
   assert.ok(
-    report.p90Seconds <= 18,
-    `${report.id} should finish promptly after the early closeout is earned`
+    report.p90Seconds <= 40,
+    `${report.id} keeps the full normal pile cadence without a long post-action stall`
   );
 }
+const limsaFirstCadence = earlyNormalCadenceReports.find(
+  (report) => report.id === 'limsa_first_with_network_support'
+)!;
+assert.ok(
+  limsaFirstCadence.liquidityCloseoutActivations > 0 &&
+    limsaFirstCadence.liquidityCloseoutActivations <= limsaFirstCadence.battles,
+  'ordinary progression may sweep only in deterministic seeds where the rival actually runs dry'
+);
+assert.ok(
+  limsaFirstCadence.maximumLiquidityCloseoutSeconds <= 6.5,
+  'the visible liquidity sweep resolves before passive recovery funds another commitment'
+);
+const firstLimitBreakCadence = earlyNormalCadenceReports.find(
+  (report) => report.id === 'limsa_boss_limit_break_finish'
+)!;
+assert.equal(
+  firstLimitBreakCadence.limitBreakFinishes,
+  firstLimitBreakCadence.battles,
+  'the fourth authored fight supports a direct → network → LB I finishing route'
+);
+assert.equal(
+  firstLimitBreakCadence.medianDirectActions,
+  4,
+  'the fourth fight uses three direct investments and one LB command'
+);
+assert.equal(
+  firstLimitBreakCadence.medianSupportActions,
+  3,
+  'the fourth fight gives all three unlocked allies a visible stack before LB I'
+);
 assert.equal(
   reportById.city_8_radz_at_han_drain_drill.timedCapitalBuffActivations,
   reportById.city_8_radz_at_han_drain_drill.battles,

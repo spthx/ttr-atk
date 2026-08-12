@@ -193,31 +193,74 @@ assert.equal(
   shouldUseCompactCapitalPresentation({
     reducedMotion: false,
     isHighEndRaid: false,
-    isEarlyNormalBattle: true,
   }),
-  true
+  false
 );
 assert.equal(
   shouldUseCompactTerminalPresentation({
     reducedMotion: false,
-    isEarlyNormalBattle: true,
   }),
-  true
+  false
 );
 assert.match(
   campaignEncounterData,
   /CAMPAIGN_ENCOUNTER_DEFINITIONS\.slice\(0, EARLY_NORMAL_ENCOUNTER_COUNT\)/,
-  'the compact opening boundary must follow authored encounter order'
+  'the onboarding audit boundary must follow authored encounter order'
+);
+assert.doesNotMatch(
+  battleModal,
+  /isEarlyNormalBattle|isEarlyNormalEncounterPropertyId/,
+  'campaign position must never select a shorter live presentation'
 );
 assert.match(
   battleModal,
-  /const isEarlyNormalBattle =[\s\S]{0,220}!isTraining[\s\S]{0,220}!isHighEndRaid[\s\S]{0,220}!isExtremeBattle[\s\S]{0,220}isEarlyNormalEncounterPropertyId\(targetProperty\.id\)/,
-  'only first-clear normal encounters may use the accelerated presentation'
+  /applyNormalClosingMomentum\(\{[\s\S]{0,260}enemyReserve: isExtremeBattle[\s\S]{0,120}Number\.POSITIVE_INFINITY[\s\S]{0,120}enemyReserveRef\.current[\s\S]{0,80}enemyMinimumCommitment/,
+  'the live gauge may shorten only an ordinary rival cash-out with no affordable counter'
 );
 assert.match(
   battleModal,
-  /applyNormalClosingMomentum\(\{[\s\S]{0,240}acceleratedEarlyNormal: isEarlyNormalBattle/,
-  'the live gauge loop must opt into the player-only early closeout helper'
+  /const campaignNetworkSupportMultiplier =[\s\S]{0,220}!isTraining[\s\S]{0,80}!isHighEndRaid[\s\S]{0,80}!isExtremeBattle[\s\S]{0,100}networkRequestCount === 0[\s\S]{0,180}firstNetworkSupportMultiplier[\s\S]{0,80}: 1/,
+  'the decisive second-fight ally bonus must apply to the first visible network request only'
+);
+assert.match(
+  campaignEncounterData,
+  /targetPropertyId: 'prop_timber_ake',[\s\S]{0,140}firstNetworkSupportMultiplier: 4,[\s\S]{0,100}firstNetworkFinisher: true/,
+  'the second authored fight lets the first ally stack remain the finishing action'
+);
+assert.match(
+  battleModal,
+  /const liquidityCloseoutActive =[\s\S]{0,220}!isExtremeBattle[\s\S]{0,120}isNormalPlayerLiquidityCloseoutActive\(\{[\s\S]{0,220}enemyReserve,[\s\S]{0,100}enemyMinimumCommitment,[\s\S]{0,100}velocity: liveRawGaugeVelocity/,
+  'the onboarding hold must use synchronous capital pressure rather than the throttled visual direction'
+);
+assert.match(
+  battleModal,
+  /const onboardingLiquidityCloseoutLocked =[\s\S]{0,160}liquidityCloseoutActive && limitBreakCapacityTier === 0/,
+  'the cash-out sweep may suppress redundant commands only before LB I unlocks'
+);
+assert.match(
+  battleModal,
+  /const campaignNetworkFinisherActive =[\s\S]{0,300}campaignNetworkFinisherArmed[\s\S]{0,100}liveRawGaugeVelocity < 0[\s\S]{0,140}const onboardingFinisherLocked =[\s\S]{0,120}onboardingLiquidityCloseoutLocked \|\| campaignNetworkFinisherActive/,
+  'the ally lesson holds only while its committed stack still produces player pressure'
+);
+assert.match(
+  battleModal,
+  /const actionsLocked =[\s\S]{0,360}onboardingFinisherLocked/,
+  'redundant inputs stay disabled while either authored pre-LB finisher visibly resolves'
+);
+assert.match(
+  battleModal,
+  /const consumeCommand = \(\) => \{[\s\S]{0,360}presentationLocked \|\|[\s\S]{0,80}onboardingFinisherLocked/,
+  'the command guard enforces the same pre-LB finisher hold as the visible disabled state'
+);
+assert.match(
+  battleModal,
+  /onboardingLiquidityCloseoutLocked[\s\S]{0,180}競合の反撃資金が尽きました[\s\S]{0,160}所有率ゲージを押し切っています/,
+  'the player must be told why inputs pause while the final rich gauge sweep remains visible'
+);
+assert.match(
+  battleModal,
+  /campaignNetworkFinisherActive[\s\S]{0,180}味方の積み上げが効いています[\s\S]{0,180}競合の反撃を見届けながら、所有率ゲージを押し切っています/,
+  'the ally-finisher hold explains that the rival response and gauge remain live'
 );
 
 assert.doesNotMatch(
@@ -960,12 +1003,12 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /compact: shouldUseCompactCapitalPresentation\(\{[\s\S]{0,180}reducedMotion,[\s\S]{0,100}isHighEndRaid,[\s\S]{0,100}isEarlyNormalBattle/,
+  /compact: shouldUseCompactCapitalPresentation\(\{[\s\S]{0,180}reducedMotion,[\s\S]{0,100}isHighEndRaid/,
   'high-end repeated investments must use the compact pile timeline to preserve decision tempo'
 );
 assert.match(
   battleModal,
-  /const compact = shouldUseCompactCapitalPresentation\(\{[\s\S]{0,180}reducedMotion,[\s\S]{0,100}isHighEndRaid,[\s\S]{0,100}isEarlyNormalBattle/,
+  /const compact = shouldUseCompactCapitalPresentation\(\{[\s\S]{0,180}reducedMotion,[\s\S]{0,100}isHighEndRaid/,
   'high-end support and enemy capital previews must use the compact pile timeline too'
 );
 assert.match(
@@ -2173,7 +2216,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /battleCommandState[\s\S]{0,1400}終極査定 残り[\s\S]{0,1400}操作受付中[\s\S]{0,1400}次の操作を準備中/,
+  /battleCommandState[\s\S]{0,1800}終極査定 残り[\s\S]{0,2400}操作受付中[\s\S]{0,1800}次の操作を準備中/,
   'the live command lane must distinguish Cruel, presentation, ready, and recharge states'
 );
 assert.match(

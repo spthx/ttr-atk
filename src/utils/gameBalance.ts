@@ -638,28 +638,44 @@ export const calculateOwnershipFromGauge = (gauge: number) =>
 
 export const NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD = 85;
 export const NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND = 0.75;
-export const EARLY_NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD = 75;
-export const EARLY_NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND = 24;
+export const LIQUIDITY_CLOSEOUT_OWNERSHIP_THRESHOLD = 75;
+export const LIQUIDITY_CLOSEOUT_MIN_GAUGE_PER_SECOND = 8;
+
+export const isNormalPlayerLiquidityCloseoutActive = ({
+  playerOwnership,
+  enemyReserve,
+  enemyMinimumCommitment,
+  velocity,
+}: {
+  playerOwnership: number;
+  enemyReserve: number;
+  enemyMinimumCommitment: number;
+  velocity: number;
+}) =>
+  playerOwnership >= LIQUIDITY_CLOSEOUT_OWNERSHIP_THRESHOLD &&
+  enemyReserve < enemyMinimumCommitment &&
+  velocity < 0;
 
 /**
  * Resolves the player-side momentum floor without deciding whether the
- * current pressure actually points toward the player. The caller still has
- * to prove a negative velocity, so an enemy counter-investment immediately
- * cancels the accelerated closeout instead of being overwritten by it.
+ * current pressure actually points toward the player. A faster floor is used
+ * only after the rival cannot currently afford another commitment. This keeps
+ * the rich gauge sweep visible while removing a passive wait for an empty cash
+ * tank; any recovered counter-investment cancels the faster floor immediately.
  */
 export const resolveNormalPlayerCloseoutMinimumGaugePerSecond = ({
   playerOwnership,
-  acceleratedEarlyNormal = false,
+  enemyLiquidityExhausted = false,
 }: {
   playerOwnership: number;
-  acceleratedEarlyNormal?: boolean;
+  enemyLiquidityExhausted?: boolean;
 }) => {
-  const threshold = acceleratedEarlyNormal
-    ? EARLY_NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD
+  const threshold = enemyLiquidityExhausted
+    ? LIQUIDITY_CLOSEOUT_OWNERSHIP_THRESHOLD
     : NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD;
   if (playerOwnership < threshold) return 0;
-  return acceleratedEarlyNormal
-    ? EARLY_NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND
+  return enemyLiquidityExhausted
+    ? LIQUIDITY_CLOSEOUT_MIN_GAUGE_PER_SECOND
     : NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND;
 };
 
@@ -673,21 +689,25 @@ export const applyNormalClosingMomentum = ({
   gauge,
   isTraining,
   isHighEndRaid,
-  acceleratedEarlyNormal = false,
+  enemyReserve = Number.POSITIVE_INFINITY,
+  enemyMinimumCommitment = 0,
 }: {
   velocity: number;
   gauge: number;
   isTraining: boolean;
   isHighEndRaid: boolean;
-  acceleratedEarlyNormal?: boolean;
+  enemyReserve?: number;
+  enemyMinimumCommitment?: number;
 }) => {
   if (isTraining || isHighEndRaid) return velocity;
 
   const playerOwnership = calculateOwnershipFromGauge(gauge);
+  const enemyLiquidityExhausted =
+    enemyReserve < enemyMinimumCommitment;
   const playerCloseoutMinimum =
     resolveNormalPlayerCloseoutMinimumGaugePerSecond({
       playerOwnership,
-      acceleratedEarlyNormal,
+      enemyLiquidityExhausted,
     });
   if (playerCloseoutMinimum > 0 && velocity < 0) {
     return Math.min(velocity, -playerCloseoutMinimum);

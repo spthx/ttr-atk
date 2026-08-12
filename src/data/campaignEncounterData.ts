@@ -9,6 +9,10 @@ export interface CampaignEncounterDefinition {
   targetPropertyId: string;
   /** Normal-route correction; Extreme then layers its own multiplier on top. */
   enemyBudgetMultiplier?: number;
+  /** Visible lesson bonus for the first network request in this encounter. */
+  firstNetworkSupportMultiplier?: number;
+  /** Lets the first ally stack play out as the authored finishing move. */
+  firstNetworkFinisher?: boolean;
 }
 
 export const CAMPAIGN_ENCOUNTER_DEFINITIONS: readonly CampaignEncounterDefinition[] = [
@@ -17,6 +21,8 @@ export const CAMPAIGN_ENCOUNTER_DEFINITIONS: readonly CampaignEncounterDefinitio
   },
   {
     targetPropertyId: 'prop_timber_ake',
+    firstNetworkSupportMultiplier: 4,
+    firstNetworkFinisher: true,
   },
   {
     targetPropertyId: 'prop_land_transport',
@@ -73,10 +79,10 @@ export const CAMPAIGN_ENCOUNTER_DEFINITIONS: readonly CampaignEncounterDefinitio
 ] as const;
 
 /**
- * The first two city networks intentionally finish before the combat kit
- * expands with LIMIT BREAK I and 疾風怒濤. Keeping this authored boundary in
- * the encounter data avoids accidentally accelerating a later fight merely
- * because it happens to share the same region or price band.
+ * The first two city networks form the onboarding audit boundary: direct
+ * investment, the first network request, and the first LIMIT BREAK are checked
+ * against this authored order. It is deliberately not a presentation-speed
+ * switch; normal encounters inside this boundary use the full coin timeline.
  */
 export const EARLY_NORMAL_ENCOUNTER_COUNT = 4;
 

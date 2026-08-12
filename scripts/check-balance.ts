@@ -10,6 +10,7 @@ import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
 import {
   CAMPAIGN_ENCOUNTER_DEFINITIONS,
   EARLY_NORMAL_ENCOUNTER_COUNT,
+  getCampaignEncounterDefinition,
   isEarlyNormalEncounterPropertyId,
 } from '../src/data/campaignEncounterData';
 import {
@@ -200,8 +201,8 @@ import {
   applyCoverToGaugeDelta,
   applyTrainingGaugeSpeed,
   applyNormalClosingMomentum,
-  EARLY_NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND,
-  EARLY_NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD,
+  LIQUIDITY_CLOSEOUT_MIN_GAUGE_PER_SECOND,
+  LIQUIDITY_CLOSEOUT_OWNERSHIP_THRESHOLD,
   BOSS_COVER_BALANCE,
   BATTLE_CASH_RECOVERY_RATE_PER_SECOND,
   BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO,
@@ -227,6 +228,7 @@ import {
   PLAYER_BATTLE_CASH_CAP_RATIO,
   resolveBattleGaugeSpeedFactor,
   resolveNormalPlayerCloseoutMinimumGaugePerSecond,
+  isNormalPlayerLiquidityCloseoutActive,
   TACTICAL_SKILL_BALANCE,
   TRAINING_GAUGE_SPEED_MULTIPLIER,
   TRAINING_MIN_OWNERSHIP_PERCENT,
@@ -4759,6 +4761,66 @@ earlyNormalEncounterIds.forEach((propertyId) => {
   assert.equal(isEarlyNormalEncounterPropertyId(propertyId), true);
 });
 assert.equal(
+  getCampaignEncounterDefinition('prop_timber_ake')
+    ?.firstNetworkSupportMultiplier,
+  4,
+  'the second authored fight makes the first unlocked ally stack decisive'
+);
+assert.equal(
+  getCampaignEncounterDefinition('prop_timber_ake')
+    ?.firstNetworkFinisher,
+  true,
+  'the first ally lesson keeps that stack as the last meaningful command'
+);
+assert.equal(
+  getCampaignEncounterDefinition('prop_land_transport')
+    ?.firstNetworkSupportMultiplier,
+  undefined,
+  'the first-network lesson bonus must not leak into later encounters'
+);
+const firstLimitBreakLessonTarget = INITIAL_PROPERTIES.find(
+  (property) => property.id === 'prop_brewery_beer'
+)!;
+const firstLimitBreakLessonMembers = [
+  'prop_land_transport',
+  'prop_timber_ake',
+  'prop_starter_farm',
+].map(
+  (propertyId) =>
+    INITIAL_PROPERTIES.find((property) => property.id === propertyId)!
+);
+const firstLimitBreakLessonOrders = [
+  [0, 1, 2],
+  [0, 2, 1],
+  [1, 0, 2],
+  [1, 2, 0],
+  [2, 0, 1],
+  [2, 1, 0],
+] as const;
+for (const order of firstLimitBreakLessonOrders) {
+  const directCharge =
+    calculateLimitBreakChargeGain(
+      firstLimitBreakLessonTarget.marketPrice * 0.35,
+      firstLimitBreakLessonTarget.marketPrice
+    ) * 3;
+  const networkCharge = order.reduce(
+    (charge, memberIndex, requestIndex) =>
+      charge +
+      calculateLimitBreakChargeGain(
+        calculateSubsidiarySupportAmount(
+          firstLimitBreakLessonMembers[memberIndex],
+          requestIndex
+        ),
+        firstLimitBreakLessonTarget.marketPrice
+      ),
+    0
+  );
+  assert.ok(
+    directCharge + networkCharge >= 100,
+    `three self-funded stacks plus every member order must charge LB I without an enemy refill: ${order.join('-')}`
+  );
+}
+assert.equal(
   isEarlyNormalEncounterPropertyId(
     CAMPAIGN_ENCOUNTER_DEFINITIONS[EARLY_NORMAL_ENCOUNTER_COUNT]
       .targetPropertyId
@@ -4770,57 +4832,73 @@ assert.equal(
   shouldUseCompactCapitalPresentation({
     reducedMotion: false,
     isHighEndRaid: false,
-    isEarlyNormalBattle: true,
   }),
-  true
+  false,
+  'opening normal encounters keep the full coin-stacking presentation'
 );
 assert.equal(
   shouldUseCompactCapitalPresentation({
-    reducedMotion: false,
+    reducedMotion: true,
     isHighEndRaid: false,
-    isEarlyNormalBattle: false,
   }),
-  false
+  true,
+  'reduced motion keeps its compact accessibility presentation'
 );
 assert.equal(
   shouldUseCompactCapitalPresentation({
     reducedMotion: false,
     isHighEndRaid: true,
-    isEarlyNormalBattle: false,
   }),
   true,
   'high-end capital presentation keeps its existing compact cadence'
 );
 assert.equal(
   shouldUseCompactTerminalPresentation({
-    reducedMotion: false,
-    isEarlyNormalBattle: true,
+    reducedMotion: true,
   }),
   true
 );
 assert.equal(
   shouldUseCompactTerminalPresentation({
     reducedMotion: false,
-    isEarlyNormalBattle: false,
   }),
   false,
-  'later and high-end terminal presentations remain unchanged by default'
+  'normal terminal presentation is never shortened by campaign position'
 );
-assert.equal(EARLY_NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD, 75);
-assert.equal(EARLY_NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND, 24);
+assert.equal(LIQUIDITY_CLOSEOUT_OWNERSHIP_THRESHOLD, 75);
+assert.equal(LIQUIDITY_CLOSEOUT_MIN_GAUGE_PER_SECOND, 8);
+const liquidityCloseoutProbe = ({
+  playerOwnership = 75,
+  enemyReserve = 99,
+  enemyMinimumCommitment = 100,
+  velocity = -0.01,
+}: Partial<Parameters<typeof isNormalPlayerLiquidityCloseoutActive>[0]>) =>
+  isNormalPlayerLiquidityCloseoutActive({
+    playerOwnership,
+    enemyReserve,
+    enemyMinimumCommitment,
+    velocity,
+  });
+assert.equal(liquidityCloseoutProbe({ playerOwnership: 74.9 }), false);
+assert.equal(liquidityCloseoutProbe({ playerOwnership: 75 }), true);
+assert.equal(liquidityCloseoutProbe({ enemyReserve: 100 }), false);
+assert.equal(liquidityCloseoutProbe({ enemyReserve: 99 }), true);
+assert.equal(liquidityCloseoutProbe({ velocity: 0 }), false);
+assert.equal(liquidityCloseoutProbe({ velocity: Number.EPSILON }), false);
+assert.equal(liquidityCloseoutProbe({ velocity: -Number.EPSILON }), true);
 assert.equal(
   resolveNormalPlayerCloseoutMinimumGaugePerSecond({
     playerOwnership: 74.9,
-    acceleratedEarlyNormal: true,
+    enemyLiquidityExhausted: true,
   }),
   0
 );
 assert.equal(
   resolveNormalPlayerCloseoutMinimumGaugePerSecond({
     playerOwnership: 75,
-    acceleratedEarlyNormal: true,
+    enemyLiquidityExhausted: true,
   }),
-  24
+  8
 );
 assert.equal(
   applyNormalClosingMomentum({
@@ -4828,10 +4906,11 @@ assert.equal(
     gauge: -50,
     isTraining: false,
     isHighEndRaid: false,
-    acceleratedEarlyNormal: true,
+    enemyReserve: 99,
+    enemyMinimumCommitment: 100,
   }),
-  -24,
-  'an earned early lead closes immediately without changing the 100% terminal'
+  -8,
+  'an earned lead sweeps visibly to 100% once the rival cannot counter'
 );
 assert.equal(
   applyNormalClosingMomentum({
@@ -4839,10 +4918,11 @@ assert.equal(
     gauge: -50,
     isTraining: false,
     isHighEndRaid: false,
-    acceleratedEarlyNormal: true,
+    enemyReserve: 99,
+    enemyMinimumCommitment: 100,
   }),
   0.2,
-  'enemy-facing pressure cancels the accelerated player closeout'
+  'enemy-facing pressure cancels the liquidity closeout'
 );
 assert.equal(
   applyNormalClosingMomentum({
@@ -4850,10 +4930,23 @@ assert.equal(
     gauge: -50,
     isTraining: false,
     isHighEndRaid: true,
-    acceleratedEarlyNormal: true,
+    enemyReserve: 99,
+    enemyMinimumCommitment: 100,
   }),
   -0.2,
-  'high-end encounters never inherit the early normal closeout'
+  'high-end encounters never inherit the normal liquidity closeout'
+);
+assert.equal(
+  applyNormalClosingMomentum({
+    velocity: -0.2,
+    gauge: -50,
+    isTraining: false,
+    isHighEndRaid: false,
+    enemyReserve: 100,
+    enemyMinimumCommitment: 100,
+  }),
+  -0.2,
+  'a funded rival keeps the normal battle cadence at the same ownership'
 );
 assert.equal(
   applyNormalClosingMomentum({

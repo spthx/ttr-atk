@@ -47,7 +47,7 @@ import {
   getEnemyActionInterruptibility,
   type CruelScriptPhase,
 } from '../data/battleEncounterData';
-import { isEarlyNormalEncounterPropertyId } from '../data/campaignEncounterData';
+import { getCampaignEncounterDefinition } from '../data/campaignEncounterData';
 import {
   getWindPool,
   WIND_CONDITIONS,
@@ -193,6 +193,7 @@ import {
   LIMIT_BREAK_CHARGE_PER_BAR,
   LIMIT_BREAK_MULTIPLIERS,
   LIMIT_BREAK_OWNERSHIP_CAPS,
+  isNormalPlayerLiquidityCloseoutActive,
   advanceCriticalAutoResolution,
   holdTrainingGaugeAboveDefeat,
   resolveCriticalAutoInterception,
@@ -863,11 +864,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const isHighEndRaid = isSavage || isUltimate || isCruel || isPhantom;
   const isProtectedBattle = isHighEndRaid || isTraining;
   const isExtremeBattle = isExtremeReacquisition(targetProperty);
-  const isEarlyNormalBattle =
-    !isTraining &&
-    !isHighEndRaid &&
-    !isExtremeBattle &&
-    isEarlyNormalEncounterPropertyId(targetProperty.id);
+  const campaignEncounterDefinition =
+    getCampaignEncounterDefinition(targetProperty.id);
   const bossAbilityTier: BossAbilityTier = getBossAbilityTier({
     targetProperty,
     isCityBoss,
@@ -977,6 +975,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [battleSubs, setBattleSubs] = useState<Property[]>(ownedProperties);
   const [subRequestCounts, setSubRequestCounts] = useState<Record<string, number>>({});
   const [networkRequestCount, setNetworkRequestCount] = useState(0);
+  const [campaignNetworkFinisherArmed, setCampaignNetworkFinisherArmed] =
+    useState(false);
   const [rebelled, setRebelled] = useState<Property[]>([]);
   const [allianceUsed, setAllianceUsed] = useState(false);
   const [limitBreakUseCount, setLimitBreakUseCount] = useState(0);
@@ -1610,7 +1610,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const compact = shouldUseCompactCapitalPresentation({
         reducedMotion,
         isHighEndRaid,
-        isEarlyNormalBattle,
       });
       const previousOverflowTier = getBattleCapitalOverflowTier(
         previousCapital,
@@ -1715,7 +1714,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     },
     [
       clearCapitalPilePreview,
-      isEarlyNormalBattle,
       isHighEndRaid,
       releaseTerminalAfterCapital,
       targetProperty.marketPrice,
@@ -2030,6 +2028,30 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     progressionSynergyMultiplier;
   const effectiveEnemyInvested = enemyInvested * enemyCapitalMultiplier;
   const effectiveCapitalGap = effectivePlayerInvested - effectiveEnemyInvested;
+  const effectiveCapitalGapRatio =
+    Math.abs(effectiveCapitalGap) /
+    Math.max(targetProperty.marketPrice, 1);
+  const liveCapitalLeverage =
+    1 + Math.min(2.4, effectiveCapitalGapRatio * 3.2);
+  const liveCapitalDeadZone = effectiveCapitalGapRatio < 0.025 ? 0.32 : 1;
+  // This is the pressure the gauge will resume with after a presentation.
+  // Input locking must not depend on the throttled visual gaugeSpeed state,
+  // otherwise a command can slip through between the pile ending and the
+  // first 10 Hz visual commit.
+  const liveRawGaugeVelocity = applyTrainingGaugeSpeed(
+    calculateGaugeVelocity(
+      effectivePlayerInvested,
+      effectiveEnemyInvested,
+      targetProperty.marketPrice,
+      1 + influenceBonus
+    ) *
+      resolveBattleGaugeSpeedFactor({ isTraining, isHighEndRaid }) *
+      liveCapitalLeverage *
+      liveCapitalDeadZone *
+      currentWind.speedMultiplier -
+      (eraWindActive ? eraWindPushPerSecond : 0),
+    isTraining
+  );
   const displayedPlayerCapitalProgress =
     displayedPlayerInvested / Math.max(1, targetProperty.marketPrice) * 100;
   const extremeOpponentScaleRatio = Math.max(
@@ -2537,6 +2559,30 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const decisiveLocked = !!terminalRef.current || !!decisiveBlow;
   const impactPresentationActive =
     isBattleImpactPresentationActive(impactStop?.phase);
+  const liquidityCloseoutActive =
+    !isTraining &&
+    !isHighEndRaid &&
+    !isExtremeBattle &&
+    isNormalPlayerLiquidityCloseoutActive({
+      playerOwnership: normalizedOwnership,
+      enemyReserve,
+      enemyMinimumCommitment,
+      velocity: liveRawGaugeVelocity,
+    });
+  // Before LB I is unlocked, the first ally lesson should be the last
+  // meaningful command. The player still watches the full gauge/coin sweep;
+  // only redundant extra taps are held while the rival cannot counter.
+  const onboardingLiquidityCloseoutLocked =
+    liquidityCloseoutActive && limitBreakCapacityTier === 0;
+  const campaignNetworkFinisherActive =
+    !isTraining &&
+    !isHighEndRaid &&
+    !isExtremeBattle &&
+    limitBreakCapacityTier === 0 &&
+    campaignNetworkFinisherArmed &&
+    liveRawGaugeVelocity < 0;
+  const onboardingFinisherLocked =
+    onboardingLiquidityCloseoutLocked || campaignNetworkFinisherActive;
   const actionsLocked =
     !!winner ||
     battlePhase !== 'active' ||
@@ -2544,6 +2590,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     limitImpactActive ||
     decisiveLocked ||
     impactPresentationActive ||
+    onboardingFinisherLocked ||
     showHelp ||
     showLog;
   const primarySkillActionLocked = actionsLocked;
@@ -2613,6 +2660,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 tone: 'locked',
                 title: capitalCommitCueText,
                 detail: 'コイン積載中',
+              }
+          : campaignNetworkFinisherActive
+            ? {
+                tone: 'locked',
+                title: '味方の積み上げが効いています',
+                detail: '競合の反撃を見届けながら、所有率ゲージを押し切っています',
+              }
+          : onboardingLiquidityCloseoutLocked
+            ? {
+                tone: 'locked',
+                title: '競合の反撃資金が尽きました',
+                detail: '最後の積み上げで、所有率ゲージを押し切っています',
               }
           : presentationBlocksCommands
       ? {
@@ -3287,7 +3346,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       shouldUseCompactCapitalPresentation({
         reducedMotion: openingReducedMotion,
         isHighEndRaid,
-        isEarlyNormalBattle,
       });
     const openingTimeline = buildCapitalStackTimeline({
       id: `opening-enemy-${Date.now()}`,
@@ -3484,10 +3542,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       endedRef.current ||
       decisiveRef.current ||
       battlePhase !== 'active' ||
-      presentationLocked
+      presentationLocked ||
+      onboardingFinisherLocked
     ) {
       soundFx.playWarning();
       return false;
+    }
+    if (campaignNetworkFinisherArmed) {
+      setCampaignNetworkFinisherArmed(false);
     }
     if (openingDecisionPendingRef.current) {
       openingDecisionPendingRef.current = false;
@@ -3893,7 +3955,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ).matches ?? false;
     const compactCinematic = shouldUseCompactTerminalPresentation({
       reducedMotion,
-      isEarlyNormalBattle,
     });
     const finishNoticeDuration =
       terminalRef.current?.cause !== 'withdrawal'
@@ -4130,7 +4191,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ).matches ?? false;
     const compactCinematic = shouldUseCompactTerminalPresentation({
       reducedMotion,
-      isEarlyNormalBattle,
     });
     const anticipationMs = compactCinematic
       ? TERMINAL_CINEMATIC_TIMING.reducedMotionAnticipationMs
@@ -6068,32 +6128,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       }
       const dt = Math.min(0.1, elapsedMs / 1000) * timeScale;
       lastTickRef.current = now;
-      const baseVelocity = calculateGaugeVelocity(
-        totalPlayerInvested *
-          currentWind.playerMultiplier *
-          progressionSynergyMultiplier,
-        enemyInvested * enemyCapitalMultiplier,
-        targetProperty.marketPrice,
-        1 + influenceBonus
-      );
-      const gapRatio = Math.abs(effectiveCapitalGap) / Math.max(targetProperty.marketPrice, 1);
-      const leverage = 1 + Math.min(2.4, gapRatio * 3.2);
-      const deadZone = gapRatio < 0.025 ? 0.32 : 1;
-      const rawVelocity = applyTrainingGaugeSpeed(
-        baseVelocity *
-          resolveBattleGaugeSpeedFactor({ isTraining, isHighEndRaid }) *
-          leverage *
-          deadZone *
-          currentWind.speedMultiplier -
-          (eraWindActive ? eraWindPushPerSecond : 0),
-        isTraining
-      );
       const closingAdjustedVelocity = applyNormalClosingMomentum({
-        velocity: rawVelocity,
+        velocity: liveRawGaugeVelocity,
         gauge: gaugeRef.current,
         isTraining,
         isHighEndRaid,
-        acceleratedEarlyNormal: isEarlyNormalBattle,
+        enemyReserve: isExtremeBattle
+          ? Number.POSITIVE_INFINITY
+          : enemyReserveRef.current,
+        enemyMinimumCommitment,
       });
       const cruelAdjustedVelocity = resolveCruelRecoveryContinuousVelocity({
         velocity: closingAdjustedVelocity,
@@ -6135,7 +6178,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [battleFrameRate, criticalAutoReadyForTrigger, currentWind.playerMultiplier, currentWind.speedMultiplier, effectiveCapitalGap, enemyCapitalMultiplier, enemyInvested, enemyLimitBreakHoldRemaining, eraWindActive, eraWindPushPerSecond, influenceBonus, isCruel, isEarlyNormalBattle, isHighEndRaid, isTraining, progressionSynergyMultiplier, targetProperty.marketPrice, timeScale, totalPlayerInvested, updateGauge, winner]);
+  }, [battleFrameRate, criticalAutoReadyForTrigger, enemyLimitBreakHoldRemaining, enemyMinimumCommitment, eraWindActive, isCruel, isExtremeBattle, isHighEndRaid, isTraining, liveRawGaugeVelocity, timeScale, updateGauge, winner]);
 
   const startCompanyCapitalPresentation = (
     snapshot: CapitalCommitSnapshot,
@@ -6351,13 +6394,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       level: selectedLevel,
       previousCapital,
       previousOwnership,
-      // High-end fights repeat direct commitments often, while the first four
-      // normal encounters should resolve promptly. Both reuse the verified
-      // compact pile timeline without changing investment strength.
+      // High-end fights repeat direct commitments often. Normal campaign
+      // encounters keep the full pile timeline so every stack remains a
+      // visible part of learning the battle, regardless of campaign position.
       compact: shouldUseCompactCapitalPresentation({
         reducedMotion,
         isHighEndRaid,
-        isEarlyNormalBattle,
       }),
     };
     setTerminalCapitalSnapshot(presentationSnapshot);
@@ -6459,12 +6501,26 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     !!maxAffordableConfig &&
     cash >= selectedCost &&
     !actionsLocked;
+  const campaignNetworkSupportMultiplier =
+    !isTraining &&
+    !isHighEndRaid &&
+    !isExtremeBattle &&
+    networkRequestCount === 0
+      ? campaignEncounterDefinition?.firstNetworkSupportMultiplier ?? 1
+      : 1;
+  const campaignNetworkFinisherEnabled =
+    !isTraining &&
+    !isHighEndRaid &&
+    !isExtremeBattle &&
+    networkRequestCount === 0 &&
+    campaignEncounterDefinition?.firstNetworkFinisher === true;
   const getBattleSupportAmount = (property: Property) =>
     Math.round(
       calculateSubsidiarySupportAmount(
         property,
         networkRequestCount
       ) *
+        campaignNetworkSupportMultiplier *
         (isHighEndRaid
           ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
           : 1)
@@ -6516,6 +6572,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const amount = getBattleSupportAmount(property);
     setSubRequestCounts((current) => ({ ...current, [property.id]: (current[property.id] || 0) + 1 }));
     setNetworkRequestCount((current) => current + 1);
+    if (campaignNetworkFinisherEnabled) {
+      setCampaignNetworkFinisherArmed(true);
+    }
 
     setBattleSubs((current) => current.map((item) => item.id === property.id ? { ...item, loyaltyRisk: nextRisk } : item));
     const committedCapital = commitPlayerCapital('support', amount);
