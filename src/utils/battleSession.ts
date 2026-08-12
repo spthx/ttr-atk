@@ -51,6 +51,7 @@ const BATTLE_MODES: readonly BattleMode[] = [
   'savage',
   'ultimate',
   'cruel',
+  'phantom',
   'training',
 ];
 

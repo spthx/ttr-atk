@@ -9,7 +9,13 @@ import {
   getCapitalOverflowPassCount,
   getCapitalPresentationRecoveryAction,
   getMechanicalCapitalColumnFrames,
+  shouldUseCompactCapitalPresentation,
+  shouldUseCompactTerminalPresentation,
 } from '../src/utils/battlePresentation';
+import {
+  EARLY_NORMAL_ENCOUNTER_COUNT,
+  isEarlyNormalEncounterPropertyId,
+} from '../src/data/campaignEncounterData';
 import {
   BATTLE_CANVAS_MAX_DPR,
   resolveBattleCanvasDpr,
@@ -42,6 +48,7 @@ const gameBalance = readSource('src/utils/gameBalance.ts');
 const battleSettlement = readSource('src/utils/battleSettlement.ts');
 const helpText = readSource('src/data/helpText.ts');
 const battleEncounterData = readSource('src/data/battleEncounterData.ts');
+const campaignEncounterData = readSource('src/data/campaignEncounterData.ts');
 const cruelBattle = readSource('src/utils/cruelBattle.ts');
 const highEndRaidView = readSource('src/components/HighEndRaidView.tsx');
 const highEndRaidCss = readSource('src/high-end-raids.css');
@@ -52,6 +59,7 @@ const battleReadiness = readSource('src/utils/battleReadiness.ts');
 const indexCss = readSource('src/index.css');
 const saveData = readSource('src/utils/saveData.ts');
 const battleSession = readSource('src/utils/battleSession.ts');
+const phantomBattle = readSource('src/utils/phantomBattle.ts');
 const cartel = readSource('src/utils/cartel.ts');
 const audio = readSource('src/utils/audio.ts');
 const fankitAssets = readSource('src/data/fankitAssets.ts');
@@ -157,6 +165,46 @@ assert.doesNotMatch(
   battleModal,
   /const \[selectedLevel, setSelectedLevel\] = useState\(3\)/,
   'the old fixed mid-level default must not return'
+);
+assert.equal(EARLY_NORMAL_ENCOUNTER_COUNT, 4);
+for (const propertyId of [
+  'prop_starter_farm',
+  'prop_timber_ake',
+  'prop_land_transport',
+  'prop_brewery_beer',
+]) {
+  assert.equal(isEarlyNormalEncounterPropertyId(propertyId), true);
+}
+assert.equal(isEarlyNormalEncounterPropertyId('prop_iron_mine'), false);
+assert.equal(
+  shouldUseCompactCapitalPresentation({
+    reducedMotion: false,
+    isHighEndRaid: false,
+    isEarlyNormalBattle: true,
+  }),
+  true
+);
+assert.equal(
+  shouldUseCompactTerminalPresentation({
+    reducedMotion: false,
+    isEarlyNormalBattle: true,
+  }),
+  true
+);
+assert.match(
+  campaignEncounterData,
+  /CAMPAIGN_ENCOUNTER_DEFINITIONS\.slice\(0, EARLY_NORMAL_ENCOUNTER_COUNT\)/,
+  'the compact opening boundary must follow authored encounter order'
+);
+assert.match(
+  battleModal,
+  /const isEarlyNormalBattle =[\s\S]{0,220}!isTraining[\s\S]{0,220}!isHighEndRaid[\s\S]{0,220}!isExtremeBattle[\s\S]{0,220}isEarlyNormalEncounterPropertyId\(targetProperty\.id\)/,
+  'only first-clear normal encounters may use the accelerated presentation'
+);
+assert.match(
+  battleModal,
+  /applyNormalClosingMomentum\(\{[\s\S]{0,240}acceleratedEarlyNormal: isEarlyNormalBattle/,
+  'the live gauge loop must opt into the player-only early closeout helper'
 );
 
 assert.doesNotMatch(
@@ -666,13 +714,18 @@ assert.match(
   'the high-end route must pass and present actionable LB/build readiness before entry'
 );
 assert.match(
+  highEndRaidView,
+  /<details className="ultimate-raid-card__warning high-end-raid-hint">[\s\S]{0,120}<summary>攻略のヒント<\/summary>[\s\S]{0,320}安定攻略の準備例/,
+  'Ultimate strategy detail must start collapsed under the shared hint label'
+);
+assert.match(
   battleModal,
-  /compact: reducedMotion \|\| isHighEndRaid/,
+  /compact: shouldUseCompactCapitalPresentation\(\{[\s\S]{0,180}reducedMotion,[\s\S]{0,100}isHighEndRaid,[\s\S]{0,100}isEarlyNormalBattle/,
   'high-end repeated investments must use the compact pile timeline to preserve decision tempo'
 );
 assert.match(
   battleModal,
-  /const compact = reducedMotion \|\| isHighEndRaid/,
+  /const compact = shouldUseCompactCapitalPresentation\(\{[\s\S]{0,180}reducedMotion,[\s\S]{0,100}isHighEndRaid,[\s\S]{0,100}isEarlyNormalBattle/,
   'high-end support and enemy capital previews must use the compact pile timeline too'
 );
 assert.match(
@@ -1544,7 +1597,7 @@ assert.match(
 );
 assert.match(
   app,
-  /const isExtreme =\s*mode === 'normal' && isExtremeReacquisition\(targetProperty\);[\s\S]*battleMode: isExtreme \? 'extreme' : mode/,
+  /const isExtreme =\s*mode === 'normal' && isExtremeReacquisition\(targetProperty\);[\s\S]*battleMode:\s*isExtreme \? 'extreme' : mode/,
   'market cards must request the dedicated Extreme readiness assessment'
 );
 assert.match(
@@ -1745,8 +1798,8 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const \[companyInvested, setCompanyInvested\] = useState\(0\);[\s\S]*const \[reflectedCompanyInvested, setReflectedCompanyInvested\][\s\S]*const totalPlayerInvested = companyInvested \+ demandInvested;[\s\S]*const displayedCompanyInvested = companyInvested;[\s\S]*commitPlayerCapital\('company', retainedCapital\);[\s\S]*setReflectedCompanyInvested\([\s\S]*current \+ reflectedCapital[\s\S]*const companyCapitalAtRisk =[\s\S]*companyInvested \+ reflectedCompanyInvested;[\s\S]*const resultSettlementCost =[\s\S]*companyCapitalAtRisk \* \(winner === 'player' \? 0\.35 : 0\.75\)[\s\S]*companyFundsInvested: companyCapitalAtRisk/,
-  'capital reflected to the enemy must stay out of player pressure while remaining in settlement risk and BattleResult'
+  /const \[companyInvested, setCompanyInvested\] = useState\(0\);[\s\S]*const \[reflectedCompanyInvested, setReflectedCompanyInvested\][\s\S]*const totalPlayerInvested = companyInvested \+ demandInvested;[\s\S]*const displayedCompanyInvested = companyInvested;[\s\S]*commitPlayerCapital\('company', retainedCapital\);[\s\S]*setReflectedCompanyInvested\([\s\S]*current \+ reflectedCapital[\s\S]*const companyCapitalAtRisk =[\s\S]*companyInvested \+ reflectedCompanyInvested;[\s\S]*const resultSettlementCost = isRecordOnlyBattle[\s\S]*companyCapitalAtRisk \* \(winner === 'player' \? 0\.35 : 0\.75\)[\s\S]*companyFundsInvested: isRecordOnlyBattle \? 0 : companyCapitalAtRisk/,
+  'capital reflected to the enemy must stay out of player pressure, remain settlement risk in economic battles, and stay isolated from record-only results'
 );
 assert.doesNotMatch(
   battleModal,
@@ -1933,10 +1986,40 @@ assert.match(
   /勝負どころ：第二査定[\s\S]*10秒以内に所有率50%まで再建[\s\S]*未到達でも第二査定を強制開始[\s\S]*15秒[\s\S]*所有率75%＋自社直接10%/,
   'the Cruel card must disclose the ten-second forced recovery and final check in one concise plan'
 );
+assert.match(
+  highEndRaidView,
+  /<details className="cruel-raid-card__warning high-end-raid-hint">[\s\S]{0,120}<summary>攻略のヒント<\/summary>[\s\S]{0,320}勝負どころ：第二査定/,
+  'Cruel strategy detail must start collapsed under the same hint label'
+);
+assert.equal(
+  (highEndRaidView.match(/<summary>攻略のヒント<\/summary>/g) ?? []).length,
+  2,
+  'Ultimate and Cruel must expose exactly two consistent strategy disclosures'
+);
+assert.doesNotMatch(
+  highEndRaidView,
+  /<details[^>]*high-end-raid-hint[^>]*\sopen(?:\s|=|>)/,
+  'high-end strategy disclosures must not expand by default'
+);
+assert.match(
+  highEndRaidCss,
+  /\.high-end-raid-hint\s*>\s*summary\s*\{[\s\S]{0,280}min-height:\s*2\.75rem[\s\S]{0,420}cursor:\s*pointer/,
+  'high-end hint summaries must retain a 44px pointer-friendly control'
+);
 assert.doesNotMatch(
   highEndRaidView,
   /AI LEVEL 6/,
   'the high-difficulty list must not expose an internal AI level'
+);
+assert.match(
+  strengthComparison,
+  /人脈だけでは競合の手数に押されます。資金・アビリティ・LBも組み合わせてください。/,
+  'support timing risk must be explained as an actionable plan instead of a simulation count'
+);
+assert.doesNotMatch(
+  strengthComparison,
+  /expectedEnemyResponsesDuringSupport\.toFixed/,
+  'the player-facing comparison must not expose a false-precision enemy response count'
 );
 assert.match(
   highEndRaidCss,
@@ -1995,8 +2078,8 @@ assert.doesNotMatch(
 );
 assert.match(
   battleModal,
-  /const isHighEndRaid = isSavage \|\| isUltimate \|\| isCruel;[\s\S]*const isProtectedBattle = isHighEndRaid \|\| isTraining/,
-  'Cruel inherits the high-end retry-protection briefing path'
+  /const isHighEndRaid = isSavage \|\| isUltimate \|\| isCruel \|\| isPhantom;[\s\S]*const isProtectedBattle = isHighEndRaid \|\| isTraining/,
+  'Cruel and Phantom inherit the high-end protected briefing path'
 );
 assert.match(
   saveData,
@@ -2015,13 +2098,103 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const loyaltySettlementPersists =[\s\S]*!isTraining && winner === 'player' && resultVictoryReward > 0[\s\S]*const celebrationDecisionRequired =[\s\S]*loyaltySettlementPersists/,
-  'defeat, training and rewardless replays must never open or persist a loyalty settlement'
+  /const loyaltySettlementPersists =[\s\S]*!isRecordOnlyBattle && winner === 'player' && resultVictoryReward > 0[\s\S]*const celebrationDecisionRequired =[\s\S]*loyaltySettlementPersists/,
+  'defeat, training, Phantom and rewardless replays must never open or persist a loyalty settlement'
 );
 assert.match(
   app,
   /if \(ultimateCleared && !trueEndingSeen\)[\s\S]*setEndingNotice\('true'\)/,
   'Cruel completion must not become a second true-ending trigger'
+);
+assert.match(
+  phantomBattle,
+  /SAVAGE_RAID_DEFINITIONS[\s\S]*normalizeRandomUnit\(random\(\)\)[\s\S]*SAVAGE_RAID_DEFINITIONS\[index\]/,
+  'Phantom must choose directly from the twelve authored Savage encounters without cloning their mechanics'
+);
+assert.match(
+  highEndRaidView,
+  /\{phantomUnlocked && \([\s\S]*PHANTOM_TRADE_DUTY\.name[\s\S]*\{phantomWinStreak\}連勝[\s\S]*最高記録や層別戦績は保存しません[\s\S]*この幻影へ挑戦/,
+  'Cruel clear unlocks a Phantom card that presents only the current streak and current random opponent'
+);
+assert.doesNotMatch(
+  highEndRaidView,
+  /phantomBest|bestPhantom|phantomCleared/i,
+  'Phantom must not introduce a best score, per-layer record or permanent clear flag'
+);
+assert.match(
+  highEndRaidCss,
+  /\.phantom-raid-card[\s\S]*\.phantom-raid-card__streak[\s\S]*@media[\s\S]*\.phantom-raid-card__copy/,
+  'the unlocked Phantom duty has a responsive high-end card and readable streak treatment'
+);
+assert.match(
+  app,
+  /const phantomUnlocked = cruelCleared;[\s\S]*persistPendingBattleSession\('phantom', property\)[\s\S]*setActiveBattleMode\('phantom'\)/,
+  'Phantom remains locked to Cruel completion and starts as its own recoverable battle mode'
+);
+assert.match(
+  app,
+  /if \(activeBattleMode === 'phantom'\)[\s\S]*winner === 'player'[\s\S]*phantomWinStreak \+ 1[\s\S]*protectedTotalFunds[\s\S]*properties,[\s\S]*alliance,[\s\S]*limitBreakCharge,[\s\S]*phantomWinStreak: projectedPhantomWinStreak[\s\S]*setPhantomRaidId\(pickRandomPhantomRaid\(\)\.id\)[\s\S]*return true/,
+  'Phantom settlement is an early record-only branch that preserves the economic save and rerolls after every result'
+);
+assert.match(
+  app,
+  /setPhantomBattleLimitBreakCharge\(limitBreakCharge\)[\s\S]*limitBreakCharge=\{[\s\S]*activeBattleMode === 'phantom'[\s\S]*phantomBattleLimitBreakCharge[\s\S]*onLimitBreakChargeChange=\{[\s\S]*setPhantomBattleLimitBreakCharge[\s\S]*isPhantom=\{activeBattleMode === 'phantom'\}/,
+  'Phantom passes a battle-local LB copy and an explicit orthogonal mode flag to the presenter'
+);
+assert.match(
+  app,
+  /const usesSavageMechanics = mode === 'savage' \|\| mode === 'phantom';[\s\S]*const usesUltimateBasePower =[\s\S]*mode === 'ultimate' \|\| mode === 'phantom';[\s\S]*battleMode: isExtreme \? 'extreme' : mode,/,
+  'Phantom readiness keeps the sampled Savage gimmick while lifting only base power to Ultimate'
+);
+assert.match(
+  battleReadiness,
+  /battleMode === 'phantom';[\s\S]*battleMode === 'phantom'[\s\S]*幻は抽選された零式層[\s\S]*基礎資金力と判断速度だけが絶相当[\s\S]*battleMode === 'phantom'[\s\S]*\? 'severe'/,
+  'Phantom readiness must present its Ultimate-equivalent base power and sampled Savage mechanics as a severe warning'
+);
+assert.match(
+  battleModal,
+  /isPhantom\?: boolean;[\s\S]*isPhantom = false[\s\S]*const usesSavageMechanics = isSavage \|\| isPhantom;[\s\S]*const usesUltimateBasePower = isUltimate \|\| isPhantom;[\s\S]*const isRecordOnlyBattle = isTraining \|\| isPhantom;[\s\S]*const isHighEndRaid = isSavage \|\| isUltimate \|\| isCruel \|\| isPhantom;/,
+  'Phantom is an explicit orthogonal battle mode, Savage-mechanics host and record-only settlement'
+);
+assert.match(
+  battleModal,
+  /getEnemyDifficultyLevel\([\s\S]*usesSavageMechanics,[\s\S]*usesUltimateBasePower,[\s\S]*calculateEnemyBudget\(\{[\s\S]*isSavage,[\s\S]*isUltimate: usesUltimateBasePower[\s\S]*const savageRaidDefinition = usesSavageMechanics[\s\S]*getEnemySupportSkillProfile\(\{[\s\S]*isSavage: usesSavageMechanics,[\s\S]*isUltimate,[\s\S]*getEnemySupportAutoProfile\(\{[\s\S]*isSavage: usesSavageMechanics,[\s\S]*isUltimate,/,
+  'Phantom lifts only enemy budget and difficulty to Ultimate while retaining the sampled Savage support profile and AUTO'
+);
+assert.match(
+  battleModal,
+  /const limitedLimitBreakSpent =[\s\S]*isUltimate && limitBreakUseCount >= ULTIMATE_LIMIT_BREAK_LIMIT;[\s\S]*const networkSupportLimit = usesSavageMechanics[\s\S]*SAVAGE_NETWORK_SUPPORT_LIMIT[\s\S]*const capitalReversalRequired =[\s\S]*usesSavageMechanics && savageLayer >= 3[\s\S]*const forcedLiquidationRequired =[\s\S]*usesSavageMechanics && savageLayer >= 4/,
+  'Phantom retains Savage network limits and layer mechanics without inheriting the Ultimate one-use LB rule'
+);
+assert.match(
+  battleModal,
+  /const resultSettlementCost = isRecordOnlyBattle[\s\S]*const resultVictoryReward = isRecordOnlyBattle[\s\S]*brokerageFee: isRecordOnlyBattle \? 0 : brokerageFee[\s\S]*battleCashDelta: isRecordOnlyBattle \? 0 : -enemyDrainStolen[\s\S]*rebelledProperties: isRecordOnlyBattle \? \[\] : rebelled[\s\S]*survivingRiskUpdates: isRecordOnlyBattle/,
+  'Phantom returns an economy-neutral, loyalty-neutral BattleResult even before the App settlement guard'
+);
+assert.match(
+  battleModal,
+  /const phantomNoPlayerOpeningAction =[\s\S]{0,420}playerCommittedCapitalRef\.current <= 0[\s\S]{0,220}networkRequestCount === 0[\s\S]{0,220}usedSkillIds\.size === 0[\s\S]{0,220}usedBattleSynergyIds\.size === 0[\s\S]{0,220}limitBreakUseCount === 0[\s\S]{0,120}!allianceUsed/,
+  'Phantom must distinguish an opening wipe with no committed capital or player route used'
+);
+assert.match(
+  battleModal,
+  /: isUltimate[\s\S]{0,100}\? ultimateCapitalCollapseAnalysis[\s\S]{0,100}: phantomNoPlayerOpeningAction[\s\S]{0,520}味方資本の投入\$\{formatCurrency\(playerCommittedCapitalRef\.current\)\}[\s\S]{0,240}所有率0%へ到達[\s\S]{0,240}phantomOpeningDefensePlan[\s\S]{0,120}phantomOpeningFollowUpPlan/,
+  'Phantom zero-action advice must preserve Ultimate priority and report evidence plus a concrete opening plan'
+);
+assert.match(
+  battleModal,
+  /const phantomOpeningDefensePlan =[\s\S]{0,240}開幕AUTO「\$\{openingAutoSkill\.name\}」を維持[\s\S]{0,160}開幕AUTOをパッセへ変更[\s\S]{0,240}const phantomOpeningFollowUpPlan =[\s\S]{0,260}slice\(0, 2\)[\s\S]{0,180}最初の一手へ固定[\s\S]{0,180}人脈を1社以上編成し、LBを貯めてから再挑戦/,
+  'Phantom zero-action advice must tailor defense and one or two truthful available follow-up routes'
+);
+assert.match(
+  saveData,
+  /phantomWinStreak\?: number[\s\S]*phantomWinStreak:\s*normalizePhantomWinStreak\(parsed\.phantomWinStreak\)/,
+  'Phantom stores one backward-compatible normalized current streak field'
+);
+assert.match(
+  battleSession,
+  /'cruel',[\s\S]*'phantom',[\s\S]*'training'/,
+  'an interrupted Phantom attempt remains recoverable without masquerading as a normal battle'
 );
 assert.match(
   capitalCss,

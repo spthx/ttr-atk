@@ -136,7 +136,7 @@ export const StrengthComparison: React.FC<StrengthComparisonProps> = ({
       {result.sequentialSupportGradeCapped && (
         <div className="strength-comparison__meta strength-comparison__meta--critical">
           <span className="strength-comparison__risk">
-            <ShieldAlert />人脈への要請中に競合が約{result.expectedEnemyResponsesDuringSupport.toFixed(1)}回動くため、判定は接戦
+            <ShieldAlert />人脈だけでは競合の手数に押されます。資金・アビリティ・LBも組み合わせてください。
           </span>
         </div>
       )}

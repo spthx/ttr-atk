@@ -111,6 +111,16 @@ const savage = calculateBattleReadiness({
 assert.equal(savage.grade, 'even');
 assert.equal(savage.mechanicSeverity, 'warning');
 
+const phantom = calculateBattleReadiness({
+  ...baseInput,
+  battleMode: 'phantom',
+});
+assert.equal(phantom.grade, 'challenge');
+assert.equal(phantom.mechanicSeverity, 'severe');
+assert.match(phantom.mechanicWarning ?? '', /幻.*零式層/);
+assert.match(phantom.mechanicWarning ?? '', /基礎資金力と判断速度.*絶相当/);
+assert.match(phantom.mechanicWarning ?? '', /予告と対策を誤ると敗北/);
+
 const weakCapital = calculateBattleReadiness({
   ...baseInput,
   availableCash: 1_000,

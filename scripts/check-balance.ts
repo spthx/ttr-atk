@@ -7,7 +7,11 @@ import {
 } from '../src/data/initialData';
 import { ALLIANCE_CANDIDATES, GRAND_COMPANY_NAMES } from '../src/data/allianceData';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
-import { CAMPAIGN_ENCOUNTER_DEFINITIONS } from '../src/data/campaignEncounterData';
+import {
+  CAMPAIGN_ENCOUNTER_DEFINITIONS,
+  EARLY_NORMAL_ENCOUNTER_COUNT,
+  isEarlyNormalEncounterPropertyId,
+} from '../src/data/campaignEncounterData';
 import {
   decideEnemyAction,
   getEnemyBaseWaitMs,
@@ -82,6 +86,8 @@ import {
   selectBattleStatusMessage,
   SKILL_CINEMATIC_TIMING,
   shouldProcessGaugeFrame,
+  shouldUseCompactCapitalPresentation,
+  shouldUseCompactTerminalPresentation,
   shouldInertBattleFooter,
   TERMINAL_CINEMATIC_TIMING,
 } from '../src/utils/battlePresentation';
@@ -154,6 +160,11 @@ import {
   shouldTriggerCruelSecondPhase,
 } from '../src/utils/cruelBattle';
 import {
+  findPhantomProperty,
+  normalizePhantomWinStreak,
+  pickRandomPhantomRaid,
+} from '../src/utils/phantomBattle';
+import {
   BLACKEST_NIGHT_BALANCE,
   BATTLE_CONTENT_MANIFEST,
   BATTLE_CONTENT_SCHEMA_VERSION,
@@ -188,6 +199,8 @@ import {
   applyCoverToGaugeDelta,
   applyTrainingGaugeSpeed,
   applyNormalClosingMomentum,
+  EARLY_NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND,
+  EARLY_NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD,
   BOSS_COVER_BALANCE,
   BATTLE_CASH_RECOVERY_RATE_PER_SECOND,
   BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO,
@@ -212,6 +225,7 @@ import {
   PASSIVE_REVENUE_MULTIPLIER,
   PLAYER_BATTLE_CASH_CAP_RATIO,
   resolveBattleGaugeSpeedFactor,
+  resolveNormalPlayerCloseoutMinimumGaugePerSecond,
   TACTICAL_SKILL_BALANCE,
   TRAINING_GAUGE_SPEED_MULTIPLIER,
   TRAINING_MIN_OWNERSHIP_PERCENT,
@@ -991,6 +1005,36 @@ assert.equal(getVictoryConfettiParticleCount(402, true), 0);
 
 const pendingBattleNow = 1_800_000_000_000;
 const pendingBattleProperty = INITIAL_PROPERTIES[0];
+assert.equal(normalizePhantomWinStreak(undefined), 0);
+assert.equal(normalizePhantomWinStreak(-3), 0);
+assert.equal(normalizePhantomWinStreak(4.9), 4);
+assert.equal(normalizePhantomWinStreak(Number.POSITIVE_INFINITY), 0);
+assert.equal(
+  normalizePhantomWinStreak(Number.MAX_SAFE_INTEGER + 100),
+  Number.MAX_SAFE_INTEGER,
+  'Phantom streak storage is a non-negative safe integer'
+);
+assert.equal(
+  pickRandomPhantomRaid(() => 0).id,
+  SAVAGE_RAID_DEFINITIONS[0].id,
+  'the lower random boundary selects the first authored Savage encounter'
+);
+assert.equal(
+  pickRandomPhantomRaid(() => 1).id,
+  SAVAGE_RAID_DEFINITIONS.at(-1)?.id,
+  'an out-of-contract upper random boundary is safely clamped to the last encounter'
+);
+assert.deepEqual(
+  new Set(
+    SAVAGE_RAID_DEFINITIONS.map((_, index) =>
+      pickRandomPhantomRaid(
+        () => (index + 0.5) / SAVAGE_RAID_DEFINITIONS.length
+      ).id
+    )
+  ),
+  new Set(SAVAGE_RAID_DEFINITIONS.map((raid) => raid.id)),
+  'deterministic bucket samples cover all twelve Phantom candidates exactly once'
+);
 const pendingBattleSession = parsePendingBattleSession(
   JSON.stringify({
     version: 1,
@@ -1021,6 +1065,21 @@ assert.equal(
   pendingAllianceBattleSession?.normalOrigin,
   'cartels',
   'an interrupted Alliance battle restores its Alliance return context'
+);
+const pendingPhantomBattleSession = parsePendingBattleSession(
+  JSON.stringify({
+    version: 1,
+    mode: 'phantom',
+    targetProperty: pendingBattleProperty,
+    startedAt: pendingBattleNow - 5_000,
+  }),
+  pendingBattleNow
+);
+assert.equal(pendingPhantomBattleSession?.mode, 'phantom');
+assert.equal(
+  pendingPhantomBattleSession?.normalOrigin,
+  undefined,
+  'a restored Phantom attempt never acquires normal-market return context'
 );
 assert.equal(
   parsePendingBattleSession(
@@ -2228,6 +2287,18 @@ const savageProperties = buildSavageProperties(INITIAL_PROPERTIES, new Set(), '�
 assert.equal(savageTargetIds.length, 12);
 assert.equal(savageProperties.length, savageTargetIds.length);
 assert.equal(new Set(savageTargetIds).size, savageTargetIds.length);
+SAVAGE_RAID_DEFINITIONS.forEach((raid) => {
+  assert.equal(
+    findPhantomProperty(savageProperties, raid.id)?.id,
+    raid.id,
+    `Phantom can resolve the authored Savage encounter ${raid.id}`
+  );
+});
+assert.equal(
+  findPhantomProperty(savageProperties, 'missing-phantom-raid'),
+  null,
+  'Phantom refuses an unknown or retired encounter ID'
+);
 assert.deepEqual(
   SAVAGE_SERIES_DEFINITIONS.map((series) => series.series),
   [1, 2, 3]
@@ -2955,6 +3026,8 @@ assert.match(ultimateProperty.description, /単独・最終高難度交易戦/);
 
 const cruelProperty = buildCruelProperty(false, '検証商会');
 assert.equal(cruelProperty.id, CRUEL_RAID_DEFINITION.id);
+assert.equal(CRUEL_RAID_DEFINITION.name, '酷商戦');
+assert.equal(CRUEL_RAID_DEFINITION.subtitle, '酷-もう1人のわたし');
 assert.equal(
   cruelProperty.marketPrice,
   ULTIMATE_RAID_DEFINITION.marketPrice * 1.25,
@@ -3163,6 +3236,11 @@ assert.equal(
   calculateBattleVictoryReward(3_000_000_000, true, 'ultimate', true),
   0,
   'Ultimate replay cannot farm the settlement reward'
+);
+assert.equal(
+  calculateBattleVictoryReward(600_000_000, true, 'phantom', false),
+  0,
+  'Phantom never grants a settlement reward because only the current streak persists'
 );
 
 assert.deepEqual(
@@ -4661,6 +4739,116 @@ assert.equal(
   resolveBattleGaugeSpeedFactor({ isTraining: false, isHighEndRaid: true }),
   4
 );
+const earlyNormalEncounterIds = CAMPAIGN_ENCOUNTER_DEFINITIONS.slice(
+  0,
+  EARLY_NORMAL_ENCOUNTER_COUNT
+).map((definition) => definition.targetPropertyId);
+assert.deepEqual(earlyNormalEncounterIds, [
+  'prop_starter_farm',
+  'prop_timber_ake',
+  'prop_land_transport',
+  'prop_brewery_beer',
+]);
+earlyNormalEncounterIds.forEach((propertyId) => {
+  assert.equal(isEarlyNormalEncounterPropertyId(propertyId), true);
+});
+assert.equal(
+  isEarlyNormalEncounterPropertyId(
+    CAMPAIGN_ENCOUNTER_DEFINITIONS[EARLY_NORMAL_ENCOUNTER_COUNT]
+      .targetPropertyId
+  ),
+  false,
+  'the fifth authored encounter starts the full normal-battle cadence'
+);
+assert.equal(
+  shouldUseCompactCapitalPresentation({
+    reducedMotion: false,
+    isHighEndRaid: false,
+    isEarlyNormalBattle: true,
+  }),
+  true
+);
+assert.equal(
+  shouldUseCompactCapitalPresentation({
+    reducedMotion: false,
+    isHighEndRaid: false,
+    isEarlyNormalBattle: false,
+  }),
+  false
+);
+assert.equal(
+  shouldUseCompactCapitalPresentation({
+    reducedMotion: false,
+    isHighEndRaid: true,
+    isEarlyNormalBattle: false,
+  }),
+  true,
+  'high-end capital presentation keeps its existing compact cadence'
+);
+assert.equal(
+  shouldUseCompactTerminalPresentation({
+    reducedMotion: false,
+    isEarlyNormalBattle: true,
+  }),
+  true
+);
+assert.equal(
+  shouldUseCompactTerminalPresentation({
+    reducedMotion: false,
+    isEarlyNormalBattle: false,
+  }),
+  false,
+  'later and high-end terminal presentations remain unchanged by default'
+);
+assert.equal(EARLY_NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD, 75);
+assert.equal(EARLY_NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND, 24);
+assert.equal(
+  resolveNormalPlayerCloseoutMinimumGaugePerSecond({
+    playerOwnership: 74.9,
+    acceleratedEarlyNormal: true,
+  }),
+  0
+);
+assert.equal(
+  resolveNormalPlayerCloseoutMinimumGaugePerSecond({
+    playerOwnership: 75,
+    acceleratedEarlyNormal: true,
+  }),
+  24
+);
+assert.equal(
+  applyNormalClosingMomentum({
+    velocity: -0.2,
+    gauge: -50,
+    isTraining: false,
+    isHighEndRaid: false,
+    acceleratedEarlyNormal: true,
+  }),
+  -24,
+  'an earned early lead closes immediately without changing the 100% terminal'
+);
+assert.equal(
+  applyNormalClosingMomentum({
+    velocity: 0.2,
+    gauge: -50,
+    isTraining: false,
+    isHighEndRaid: false,
+    acceleratedEarlyNormal: true,
+  }),
+  0.2,
+  'enemy-facing pressure cancels the accelerated player closeout'
+);
+assert.equal(
+  applyNormalClosingMomentum({
+    velocity: -0.2,
+    gauge: -50,
+    isTraining: false,
+    isHighEndRaid: true,
+    acceleratedEarlyNormal: true,
+  }),
+  -0.2,
+  'high-end encounters never inherit the early normal closeout'
+);
 assert.equal(
   applyNormalClosingMomentum({
     velocity: -0.2,
@@ -5708,6 +5896,11 @@ assert.equal(
 );
 assert.deepEqual(restoredLegacySave.savageClearedPropertyIds, []);
 assert.equal(restoredLegacySave.normalEndingSeen, false);
+assert.equal(
+  restoredLegacySave.phantomWinStreak,
+  0,
+  'saves made before Phantom default to a zero current streak'
+);
 assert.equal(restoredLegacySave.savageEndingSeen, false);
 assert.equal(restoredLegacySave.ultimateCleared, false);
 assert.equal(restoredLegacySave.trueEndingSeen, false);
@@ -5889,6 +6082,11 @@ assert.equal(
   false,
   'schema-v3 saves made before Cruel default to an uncleared optional record'
 );
+assert.equal(
+  restoredUltimateSave?.phantomWinStreak,
+  0,
+  'schema-v3 saves made before Phantom do not fabricate a streak'
+);
 savedPayload = JSON.stringify({
   ...legacySchemaThreePayload,
   equippedSkillIds: ['skill_fast_horse', 'skill_era_wind'],
@@ -5910,14 +6108,30 @@ savedPayload = JSON.stringify({
   ultimateCleared: true,
   trueEndingSeen: true,
   cruelCleared: true,
+  phantomWinStreak: 7.9,
 });
 const restoredCruelSave = loadGameSave();
 assert.equal(restoredCruelSave?.cruelCleared, true);
 assert.equal(restoredCruelSave?.ultimateCleared, true);
 assert.equal(
+  restoredCruelSave?.phantomWinStreak,
+  7,
+  'only the normalized current Phantom win streak survives a save round trip'
+);
+assert.equal(
   restoredCruelSave?.trueEndingSeen,
   true,
   'the optional Cruel record never rewrites or replays the true ending'
+);
+savedPayload = JSON.stringify({
+  ...legacySchemaThreePayload,
+  cruelCleared: true,
+  phantomWinStreak: -99,
+});
+assert.equal(
+  loadGameSave()?.phantomWinStreak,
+  0,
+  'invalid negative Phantom records are safely reset instead of leaking into the UI'
 );
 Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
 

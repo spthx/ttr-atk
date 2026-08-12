@@ -15,6 +15,30 @@ export const BATTLE_GAUGE_VISUAL_COMMIT_MS = 100;
 export const BATTLE_STATE_UPDATE_INTERVAL_MS = 100;
 export const ENEMY_SUPPORT_POST_PILE_GRACE_MS = 800;
 
+/**
+ * Chooses the already-authored compact presentation without coupling visual
+ * timing to battle math. The opening normal encounters use it only until the
+ * player's combat kit expands; accessibility and high-end overrides retain
+ * their existing behavior.
+ */
+export const shouldUseCompactCapitalPresentation = ({
+  reducedMotion,
+  isHighEndRaid,
+  isEarlyNormalBattle,
+}: {
+  reducedMotion: boolean;
+  isHighEndRaid: boolean;
+  isEarlyNormalBattle: boolean;
+}) => reducedMotion || isHighEndRaid || isEarlyNormalBattle;
+
+export const shouldUseCompactTerminalPresentation = ({
+  reducedMotion,
+  isEarlyNormalBattle,
+}: {
+  reducedMotion: boolean;
+  isEarlyNormalBattle: boolean;
+}) => reducedMotion || isEarlyNormalBattle;
+
 export const getBattleClockScales = ({
   baseTimeScale,
   simulationPaused,

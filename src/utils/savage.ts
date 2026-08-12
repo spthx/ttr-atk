@@ -290,7 +290,8 @@ export const CRUEL_RAID_ID = 'cruel_another_trade';
 
 export const CRUEL_RAID_DEFINITION = {
   id: CRUEL_RAID_ID,
-  name: '酷・もうひとつの商戦',
+  name: '酷商戦',
+  subtitle: '酷-もう1人のわたし',
   coalitionName: '闇タタルの大繁盛商店',
   communities: ['ソリューション・ナイン'] as CommunityType[],
   marketPrice: Math.round(ULTIMATE_RAID_DEFINITION.marketPrice * 1.25),

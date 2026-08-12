@@ -28,6 +28,7 @@ export type BattleMode =
   | 'savage'
   | 'ultimate'
   | 'cruel'
+  | 'phantom'
   | 'training';
 
 export interface MarketCondition {

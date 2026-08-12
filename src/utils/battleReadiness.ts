@@ -201,7 +201,8 @@ const isHighDifficultyBattleMode = (
 ) =>
   battleMode === 'savage' ||
   battleMode === 'ultimate' ||
-  battleMode === 'cruel';
+  battleMode === 'cruel' ||
+  battleMode === 'phantom';
 
 const expectedSupport = (
   properties: Property[],
@@ -573,6 +574,8 @@ export const calculateBattleReadiness = ({
       ? `酷は約15秒後、投入資本・資金・LBを維持して所有率10%から立て直します。復帰中は自社へ進む継続速度が50%。10秒以内に50%へ戻すか、未到達でも15秒の第二査定が強制開始。終了時に所有率75%以上＋査定中の自社直接出資${Math.round(calculateCruelSignatureRequirement(targetMarketPrice) / 1_000_000)}M（相場10%）が必要です。直接出資2回分を温存してください。人脈・LB・SYNERGY・外部アライアンスは署名対象外です。`
       : battleMode === 'ultimate'
       ? '絶は開幕・瀕死アビリティを決着前に必ず解決します。短時間防御は開始直後に空撃ちせず、ドリルや敵LB3の危険予告へ合わせてください。戦力が足りても、構えへの対応を誤ると敗北します。'
+      : battleMode === 'phantom'
+        ? '幻は抽選された零式層の開幕・瀕死・防御ギミックをそのまま使い、競合の基礎資金力と判断速度だけが絶相当です。戦力比が足りても、層の予告と対策を誤ると敗北します。'
       : battleMode === 'savage'
         ? '零式は層ごとの開幕・瀕死・防御ギミックを含みます。戦力比だけでは勝利を保証しません。'
         : null;
@@ -582,7 +585,9 @@ export const calculateBattleReadiness = ({
       : requestedMechanicWarning;
   const mechanicSeverity =
     requestedMechanicSeverity ??
-    (battleMode === 'ultimate' || battleMode === 'cruel'
+    (battleMode === 'ultimate' ||
+      battleMode === 'cruel' ||
+      battleMode === 'phantom'
       ? 'severe'
       : battleMode === 'savage' || initialMechanicWarning
         ? 'warning'

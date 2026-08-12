@@ -11,14 +11,15 @@
 |敵支援と高難度戦闘データ|`src/data/battleEncounterData.ts`|Unity/editor用JSON境界あり。絶6パターンは開幕／瀕死行動と具体的な対処手順を同じ正本で持つ|
 |ファンキット論理キー|`src/data/fankitAssets.ts`|UIから実ファイル名を隠す|
 |ヘルプ|`src/data/helpText.ts`|操作説明、用語|
-|零式12章・絶・酷|`src/utils/savage.ts`|3シリーズ×4層|
+|零式12章・絶・酷商戦|`src/utils/savage.ts`|3シリーズ×4層、`酷商戦`／`酷-もう1人のわたし`|
+|幻・商戦の抽選・連勝正規化|`src/utils/phantomBattle.ts`|零式全12層から抽選。永続戦績は現在連勝数のみ|
 |戦闘数値|`src/utils/gameBalance.ts`|純粋関数を維持|
 |敵AI|`src/utils/enemyAi.ts`|毎フレーム判断しない|
 |酷の段階処理|`src/utils/cruelBattle.ts`|第一・第二宣告|
 |進行シナジー|`src/utils/synergy.ts`|自動置換優先度|
 |勝利後精算・離反|`src/utils/battleSettlement.ts`|利益独占0%／五分の祝儀50%／大盤振る舞い100%（離反防止・危険度30回復）|
-|セーブ|`src/utils/saveData.ts`|schemaVersion 3|
-|中断復帰|`src/utils/battleSession.ts`|決着前のセッション|
+|セーブ|`src/utils/saveData.ts`|schemaVersion 3。幻・商戦は現在連勝数のみ保存|
+|中断復帰|`src/utils/battleSession.ts`|決着前のセッション。幻・商戦のブリーフィング取消では抽選相手と連勝数を維持|
 |音声再生|`src/utils/audio.ts`|単一AudioContext、遅延デコード|
 |商戦UIと演出順|`src/components/BattleModal.tsx`|データではなく実行器へ縮小していく|
 |商戦フィールド描画|`src/components/BattleCapitalCanvas.tsx`、`src/components/BattleCapitalCanvas.css`、`src/utils/battleCanvasQuality.ts`、`src/battle-capital-layer.css`|両陣営共通1枚のCanvas2D。背景・所有率前線・圧力・22列×2・overflow・packet・風・VSを同一sceneへ投影。30fpsはDPR 1.5、60fpsはDPR 2を内部解像度の上限とする|
@@ -35,10 +36,11 @@
 
 1. `src/data/initialData.ts`: 物件、スキル、シナジーの名前と説明
 2. `src/data/battleEncounterData.ts`: 敵ジョブ、行動名、予兆文
-3. `src/utils/savage.ts`: 零式、絶、酷の名称と説明
-4. `src/data/helpText.ts`: ヘルプ本文
-5. `src/components/BattleModal.tsx`: 戦況、タタル分析、演出中の動作文
-6. `src/App.tsx`と各View: 画面見出し、解放説明、ボタン
+3. `src/utils/savage.ts`: 零式、絶、酷商戦の名称と説明
+4. `src/utils/phantomBattle.ts`: 幻・商戦の名称、説明、全12層からの抽選
+5. `src/data/helpText.ts`: ヘルプ本文
+6. `src/components/BattleModal.tsx`: 戦況、タタル分析、演出中の動作文
+7. `src/App.tsx`と各View: 画面見出し、解放説明、ボタン
 
 将来の移行先:
 
@@ -166,4 +168,7 @@ npm run build
 - 1戦2分、30出資の上限をシミュレーションで確認した。
 - リザルトの黒字・赤字、タタル分析、ご祝儀、戦闘記録の順が保たれている。
 - セーブと中断復帰が二重精算を起こさない。
+- 幻・商戦は酷商戦踏破後だけ解放され、抽選層の零式ギミックと絶相当の基礎力だけを組み合わせている。
+- 幻・商戦の敗北・戦闘中撤退は現在連勝数を0へ戻し、ブリーフィング取消は連勝数と抽選相手を維持する。
+- 幻・商戦の結果が通常資金、所有権、人脈、独立危険度、持越しLB、通常進行へ反映されない。
 - 画像、音、文章が論理キーで交換可能になっている。

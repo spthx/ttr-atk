@@ -72,6 +72,23 @@ export const CAMPAIGN_ENCOUNTER_DEFINITIONS: readonly CampaignEncounterDefinitio
   },
 ] as const;
 
+/**
+ * The first two city networks intentionally finish before the combat kit
+ * expands with LIMIT BREAK I and 疾風怒濤. Keeping this authored boundary in
+ * the encounter data avoids accidentally accelerating a later fight merely
+ * because it happens to share the same region or price band.
+ */
+export const EARLY_NORMAL_ENCOUNTER_COUNT = 4;
+
+const earlyNormalEncounterIds = new Set(
+  CAMPAIGN_ENCOUNTER_DEFINITIONS.slice(0, EARLY_NORMAL_ENCOUNTER_COUNT).map(
+    (definition) => definition.targetPropertyId
+  )
+);
+
+export const isEarlyNormalEncounterPropertyId = (propertyId: string) =>
+  earlyNormalEncounterIds.has(propertyId);
+
 const encounterByTargetId = new Map(
   CAMPAIGN_ENCOUNTER_DEFINITIONS.map((definition) => [
     definition.targetPropertyId,

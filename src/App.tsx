@@ -123,6 +123,11 @@ import {
   type UnlockExplanation,
 } from './utils/unlockExplanation';
 import { calculateCruelEntryRequirement } from './utils/cruelBattle';
+import {
+  findPhantomProperty,
+  normalizePhantomWinStreak,
+  pickRandomPhantomRaid,
+} from './utils/phantomBattle';
 
 export { PASSIVE_REVENUE_MULTIPLIER };
 
@@ -288,6 +293,8 @@ export default function App() {
   const [limitBreakCharge, setLimitBreakCharge] = useState<number>(
     initialSave?.limitBreakCharge ?? 0
   );
+  const [phantomBattleLimitBreakCharge, setPhantomBattleLimitBreakCharge] =
+    useState<number>(initialSave?.limitBreakCharge ?? 0);
   const [properties, setProperties] = useState<Property[]>(() => restoreProperties(initialSave));
   const [conqueredCommunityIds, setConqueredCommunityIds] = useState<
     CommunityType[]
@@ -346,6 +353,16 @@ export default function App() {
   );
   const [ultimateCleared, setUltimateCleared] = useState(initialUltimateCleared);
   const [cruelCleared, setCruelCleared] = useState(initialCruelCleared);
+  const [phantomWinStreak, setPhantomWinStreak] = useState(() =>
+    initialCruelCleared
+      ? normalizePhantomWinStreak(initialSave?.phantomWinStreak)
+      : 0
+  );
+  const [phantomRaidId, setPhantomRaidId] = useState(() =>
+    pendingBattleSession?.mode === 'phantom'
+      ? pendingBattleSession.targetProperty.id
+      : pickRandomPhantomRaid().id
+  );
   const [trueEndingSeen, setTrueEndingSeen] = useState(
     initialSave?.trueEndingSeen === true && initialUltimateCleared
   );
@@ -364,7 +381,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<AppTab>(
     pendingBattleSession?.mode === 'savage' ||
       pendingBattleSession?.mode === 'ultimate' ||
-      pendingBattleSession?.mode === 'cruel'
+      pendingBattleSession?.mode === 'cruel' ||
+      pendingBattleSession?.mode === 'phantom'
       ? 'savage'
       : pendingBattleSession?.mode === 'normal' &&
           pendingBattleSession.normalOrigin === 'cartels'
@@ -581,6 +599,11 @@ export default function App() {
   const cruelProperty = useMemo(
     () => buildCruelProperty(cruelCleared, companyName),
     [companyName, cruelCleared]
+  );
+  const phantomUnlocked = cruelCleared;
+  const phantomProperty = useMemo(
+    () => findPhantomProperty(savageProperties, phantomRaidId),
+    [phantomRaidId, savageProperties]
   );
   const savagePropertyRevenueMultipliers = useMemo(
     () =>
@@ -1093,6 +1116,7 @@ export default function App() {
       savageEndingSeen,
       ultimateCleared,
       cruelCleared,
+      phantomWinStreak,
       trueEndingSeen,
       selectedBattleSynergyId,
       grandCompanyEorzeaIntegrated,
@@ -1174,6 +1198,7 @@ export default function App() {
     trueEndingSeen,
     ultimateCleared,
     cruelCleared,
+    phantomWinStreak,
   ]);
 
   useEffect(() => {
@@ -1265,6 +1290,22 @@ export default function App() {
     setActiveBattleProperty(property);
   };
 
+  const handleStartPhantomBuyout = (property: Property) => {
+    if (!phantomUnlocked || property.id !== phantomRaidId) return;
+    soundFx.playWarning();
+    setSkillsStoryReturn(null);
+    highEndBattlePlaceholderHeightRef.current =
+      highEndViewRef.current?.getBoundingClientRect().height ?? 0;
+    // Phantom uses a battle-local copy. Any charge gained or spent during the
+    // record attempt is discarded when it closes.
+    setPhantomBattleLimitBreakCharge(limitBreakCharge);
+    persistGameState();
+    persistPendingBattleSession('phantom', property);
+    setBattleTimeScale(0);
+    setActiveBattleMode('phantom');
+    setActiveBattleProperty(property);
+  };
+
   // Battle Resolution Handler
   const handleBattleEnd = ({
     winner,
@@ -1285,6 +1326,49 @@ export default function App() {
       targetProperty.id !== activeBattleProperty.id
     ) {
       return false;
+    }
+    if (activeBattleMode === 'phantom') {
+      const projectedPhantomWinStreak =
+        winner === 'player'
+          ? normalizePhantomWinStreak(phantomWinStreak + 1)
+          : 0;
+      // Phantom is a record-only duty. Even if the presenter accidentally
+      // returns non-zero settlement values, the authoritative save accepts
+      // only normal passive income earned while the battle was open.
+      const protectedTotalFunds = Math.max(
+        0,
+        totalFunds + deferredBattleIncomeRef.current
+      );
+      if (!persistGameState({
+        totalFunds: protectedTotalFunds,
+        properties,
+        alliance,
+        limitBreakCharge,
+        savageClearedPropertyIds,
+        ultimateCleared,
+        cruelCleared,
+        phantomWinStreak: projectedPhantomWinStreak,
+      })) {
+        return false;
+      }
+      clearPendingBattleSession();
+      deferredBattleIncomeRef.current = 0;
+      setTotalFunds(protectedTotalFunds);
+      setPhantomWinStreak(projectedPhantomWinStreak);
+      setPhantomBattleLimitBreakCharge(limitBreakCharge);
+      setPhantomRaidId(pickRandomPhantomRaid().id);
+      addGameLog(
+        winner === 'player'
+          ? `【幻・商戦 勝利】${targetProperty.name}を退け、${projectedPhantomWinStreak}連勝。通常資金・所有権・人脈・LBは変化しません。次の幻影を抽選しました。`
+          : `【幻・商戦 連勝終了】${targetProperty.name}に敗れ、連勝記録は0へ戻りました。通常資金・所有権・人脈・LBは変化しません。次の幻影を抽選しました。`,
+        winner === 'player' ? 'success' : 'warning'
+      );
+      setSkillsStoryReturn(null);
+      setActiveTab('savage');
+      setActiveBattleProperty(null);
+      setActiveBattleMode('normal');
+      setBattleTimeScale(1);
+      return true;
     }
     const isNormalBattle = activeBattleMode === 'normal';
     const returnsToAlliance =
@@ -1887,7 +1971,13 @@ export default function App() {
     mode: BattleMode = 'normal'
   ): BattleReadinessResult => {
     const isHighEndRaid =
-      mode === 'savage' || mode === 'ultimate' || mode === 'cruel';
+      mode === 'savage' ||
+      mode === 'ultimate' ||
+      mode === 'cruel' ||
+      mode === 'phantom';
+    const usesSavageMechanics = mode === 'savage' || mode === 'phantom';
+    const usesUltimateBasePower =
+      mode === 'ultimate' || mode === 'phantom';
     const isTraining = mode === 'training';
     const isExtreme =
       mode === 'normal' && isExtremeReacquisition(targetProperty);
@@ -1920,7 +2010,7 @@ export default function App() {
           regionalInfluence: targetRegionalInfluence,
           isTutorial,
           isSavage: mode === 'savage',
-          isUltimate: mode === 'ultimate',
+          isUltimate: usesUltimateBasePower,
           isCruel: mode === 'cruel',
           isCityBoss: isTargetCityBoss,
         });
@@ -1928,28 +2018,28 @@ export default function App() {
       targetProperty,
       isTutorial,
       mode === 'savage',
-      mode === 'ultimate',
+      usesUltimateBasePower,
       isTargetCityBoss,
       mode === 'cruel'
     );
     const bossAbilityTier = getBossAbilityTier({
       targetProperty,
       isCityBoss: isTargetCityBoss,
-      isSavage: mode === 'savage',
+      isSavage: usesSavageMechanics,
       isUltimate: mode === 'ultimate',
       isCruel: mode === 'cruel',
     });
     const enemySupportProfile = getEnemySupportSkillProfile({
       targetProperty,
       isCityBoss: isTargetCityBoss,
-      isSavage: mode === 'savage',
+      isSavage: usesSavageMechanics,
       isUltimate: mode === 'ultimate',
       isCruel: mode === 'cruel',
     });
     const enemyAutoProfile = getEnemySupportAutoProfile({
       targetProperty,
       isCityBoss: isTargetCityBoss,
-      isSavage: mode === 'savage',
+      isSavage: usesSavageMechanics,
       isUltimate: mode === 'ultimate',
       isCruel: mode === 'cruel',
     });
@@ -1986,7 +2076,7 @@ export default function App() {
           ? 'severe' as const
           : 'warning' as const
         : undefined;
-    const brokerageFee = isTraining
+    const brokerageFee = isTraining || mode === 'phantom'
       ? 0
       : Math.round(targetProperty.marketPrice * 0.03);
 
@@ -2124,7 +2214,8 @@ export default function App() {
           activeBattleProperty &&
           (activeBattleMode === 'savage' ||
             activeBattleMode === 'ultimate' ||
-            activeBattleMode === 'cruel') ? (
+            activeBattleMode === 'cruel' ||
+            activeBattleMode === 'phantom') ? (
             <div
               aria-hidden="true"
               style={{
@@ -2150,10 +2241,14 @@ export default function App() {
                 cruelProperty={cruelProperty}
                 cruelUnlocked={cruelUnlocked}
                 cruelCleared={cruelCleared}
+                phantomProperty={phantomProperty}
+                phantomUnlocked={phantomUnlocked}
+                phantomWinStreak={phantomWinStreak}
                 getStrengthComparison={getBattleReadinessForTarget}
                 onStartSavage={handleStartSavageBuyout}
                 onStartUltimate={handleStartUltimateBuyout}
                 onStartCruel={handleStartCruelBuyout}
+                onStartPhantom={handleStartPhantomBuyout}
                 onReplayEnding={() => {
                   setEndingNotice('true');
                   soundFx.playVictory();
@@ -2460,6 +2555,8 @@ export default function App() {
           battleContextLabel={
             activeBattleMode === 'savage'
               ? getSavageRaidDefinition(activeBattleProperty.id)?.coalitionName
+              : activeBattleMode === 'phantom'
+                ? getSavageRaidDefinition(activeBattleProperty.id)?.coalitionName
               : activeBattleMode === 'ultimate'
                 ? ULTIMATE_RAID_DEFINITION.coalitionName
                 : activeBattleMode === 'cruel'
@@ -2471,6 +2568,8 @@ export default function App() {
           battleRegionLabel={
             activeBattleMode === 'savage'
               ? getSavageRaidDefinition(activeBattleProperty.id)?.communities.join('・')
+              : activeBattleMode === 'phantom'
+                ? `幻・商戦／${getSavageRaidDefinition(activeBattleProperty.id)?.communities.join('・') ?? '零式再現層'}`
               : activeBattleMode === 'ultimate'
                 ? `全${ULTIMATE_RAID_DEFINITION.communities.length}地域`
                 : activeBattleMode === 'cruel'
@@ -2480,8 +2579,16 @@ export default function App() {
                   : undefined
           }
           tradeNetworkBonus={activeBattleMode !== 'normal' ? 0 : tradeNetworkBonus}
-          limitBreakCharge={limitBreakCharge}
-          onLimitBreakChargeChange={setLimitBreakCharge}
+          limitBreakCharge={
+            activeBattleMode === 'phantom'
+              ? phantomBattleLimitBreakCharge
+              : limitBreakCharge
+          }
+          onLimitBreakChargeChange={
+            activeBattleMode === 'phantom'
+              ? setPhantomBattleLimitBreakCharge
+              : setLimitBreakCharge
+          }
           onTimeScaleChange={setBattleTimeScale}
           battleFrameRate={battleFrameRate}
           nextCommunity={(() => {
@@ -2510,6 +2617,7 @@ export default function App() {
           isSavage={activeBattleMode === 'savage'}
           isUltimate={activeBattleMode === 'ultimate'}
           isCruel={activeBattleMode === 'cruel'}
+          isPhantom={activeBattleMode === 'phantom'}
           isTraining={false}
           isCityBoss={
             activeBattleMode === 'normal' &&

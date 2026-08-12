@@ -4,6 +4,7 @@ import {
   INITIAL_PROPERTIES,
 } from '../src/data/initialData';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
+import { isEarlyNormalEncounterPropertyId } from '../src/data/campaignEncounterData';
 import { decideEnemyAction } from '../src/utils/enemyAi';
 import {
   BLACKEST_NIGHT_BALANCE,
@@ -41,6 +42,7 @@ import {
   getEnemySupportSkillProfile,
   getBossAbilityTier,
   getCampaignProperties,
+  isExtremeReacquisition,
   INITIAL_BATTLE_COMMAND_PROGRESS,
   LIMIT_BREAK_OWNERSHIP_CAPS,
   resolveEnemyDrainTransfer,
@@ -107,6 +109,7 @@ interface SimulationScenario {
   isSavage?: boolean;
   isUltimate?: boolean;
   isCruel?: boolean;
+  isPhantom?: boolean;
   ultimateAutoPatternIndex?: number;
   disableEnemySupport?: boolean;
   maxSeconds?: number;
@@ -162,6 +165,13 @@ interface SimulationResult {
   maximumEnemyRecoveryRatio: number;
   minimumEnemyReserve: number;
   enemyBossDefenseTier: ReturnType<typeof getBossAbilityTier>;
+  enemyBudget: number;
+  enemyDifficultyLevel: number;
+  enemySupportAutoProfile: ReturnType<typeof getEnemySupportAutoProfile>;
+  networkSupportLimit: number;
+  ultimateAppraisalEnabled: boolean;
+  ultimateLimitBreakUseLimit: 1 | null;
+  ultimateCriticalGateEnabled: boolean;
   enemyBossDefenseActivations: number;
   enemyBossDefenseAbsorbedGauge: number;
   timedCapitalBuffActivations: number;
@@ -242,7 +252,9 @@ const getAffordableInvestment = (cash: number, marketPrice: number) =>
 const getForcedLiquidationSimulationGraceMs = (
   scenario: SimulationScenario
 ) => {
-  const savageSeries = scenario.isSavage
+  const usesSavageMechanics =
+    scenario.isSavage === true || scenario.isPhantom === true;
+  const savageSeries = usesSavageMechanics
     ? SAVAGE_RAID_DEFINITIONS.find(
         (definition) => definition.id === scenario.target.id
       )?.series
@@ -320,12 +332,27 @@ const simulateBattle = (
   const isSavage = scenario.isSavage ?? false;
   const isUltimate = scenario.isUltimate ?? false;
   const isCruel = scenario.isCruel ?? false;
+  const isPhantom = scenario.isPhantom ?? false;
+  const usesSavageMechanics = isSavage || isPhantom;
+  const usesUltimateBasePower = isUltimate || isPhantom;
+  const isHighEndRaid =
+    usesSavageMechanics || isUltimate || isCruel;
+  const networkSupportLimit = usesSavageMechanics
+    ? SAVAGE_NETWORK_SUPPORT_LIMIT
+    : isUltimate
+      ? ULTIMATE_NETWORK_SUPPORT_LIMIT
+      : Number.POSITIVE_INFINITY;
+  const isEarlyNormalBattle =
+    !isTraining &&
+    !isHighEndRaid &&
+    !isExtremeReacquisition(scenario.target) &&
+    isEarlyNormalEncounterPropertyId(scenario.target.id);
   const enemySupportProfile = scenario.disableEnemySupport
     ? []
     : getEnemySupportSkillProfile({
         targetProperty: scenario.target,
         isCityBoss: scenario.isCityBoss ?? false,
-         isSavage,
+         isSavage: usesSavageMechanics,
          isUltimate,
          isCruel,
       });
@@ -334,7 +361,7 @@ const simulateBattle = (
     : getEnemySupportAutoProfile({
         targetProperty: scenario.target,
         isCityBoss: scenario.isCityBoss ?? false,
-         isSavage,
+         isSavage: usesSavageMechanics,
          isUltimate,
          isCruel,
         ultimatePatternIndex: scenario.ultimateAutoPatternIndex,
@@ -342,7 +369,7 @@ const simulateBattle = (
   const enemyBossDefenseTier = getBossAbilityTier({
     targetProperty: scenario.target,
     isCityBoss: scenario.isCityBoss ?? false,
-    isSavage,
+    isSavage: usesSavageMechanics,
     isUltimate,
     isCruel,
   });
@@ -356,7 +383,7 @@ const simulateBattle = (
           : null;
   const openingBossAbilityTier = getOpeningBossAbilityTier({
     targetProperty: scenario.target,
-    isSavage,
+    isSavage: usesSavageMechanics,
   });
   const openingBossDefenseBalance =
     openingBossAbilityTier === 'cover'
@@ -365,8 +392,8 @@ const simulateBattle = (
   const enemyDifficulty = getEnemyDifficultyLevel(
     scenario.target,
     isTutorial,
-    isSavage,
-    isUltimate,
+    usesSavageMechanics,
+    usesUltimateBasePower,
     scenario.isCityBoss ?? false,
     isCruel
   );
@@ -378,7 +405,7 @@ const simulateBattle = (
         regionalInfluence: NO_INFLUENCE,
         isTutorial,
         isSavage,
-        isUltimate,
+        isUltimate: usesUltimateBasePower,
         isCruel,
         isCityBoss: scenario.isCityBoss ?? false,
       });
@@ -590,7 +617,7 @@ const simulateBattle = (
       return null;
     }
     if (
-      (isSavage || isUltimate) &&
+      (usesSavageMechanics || isUltimate) &&
       enemySupportProfile.includes('capital_reversal') &&
       !usedEnemySupportSkills.has('capital_reversal') &&
       gauge <= 100 - CAPITAL_REVERSAL_BALANCE.triggerPlayerOwnership * 2
@@ -599,7 +626,7 @@ const simulateBattle = (
       return null;
     }
     if (
-      (isSavage || isUltimate) &&
+      (usesSavageMechanics || isUltimate) &&
       enemySupportProfile.includes('forced_liquidation') &&
       usedEnemySupportSkills.has('capital_reversal') &&
       !usedEnemySupportSkills.has('forced_liquidation') &&
@@ -646,6 +673,13 @@ const simulateBattle = (
         maximumEnemyRecoveryRatio,
         minimumEnemyReserve,
         enemyBossDefenseTier,
+        enemyBudget,
+        enemyDifficultyLevel: enemyDifficulty,
+        enemySupportAutoProfile,
+        networkSupportLimit,
+        ultimateAppraisalEnabled: isUltimate,
+        ultimateLimitBreakUseLimit: isUltimate ? 1 : null,
+        ultimateCriticalGateEnabled: isUltimate,
         enemyBossDefenseActivations,
         enemyBossDefenseAbsorbedGauge,
         timedCapitalBuffActivations,
@@ -669,6 +703,13 @@ const simulateBattle = (
         maximumEnemyRecoveryRatio,
         minimumEnemyReserve,
         enemyBossDefenseTier,
+        enemyBudget,
+        enemyDifficultyLevel: enemyDifficulty,
+        enemySupportAutoProfile,
+        networkSupportLimit,
+        ultimateAppraisalEnabled: isUltimate,
+        ultimateLimitBreakUseLimit: isUltimate ? 1 : null,
+        ultimateCriticalGateEnabled: isUltimate,
         enemyBossDefenseActivations,
         enemyBossDefenseAbsorbedGauge,
         timedCapitalBuffActivations,
@@ -701,7 +742,7 @@ const simulateBattle = (
     } else if (skill === 'drill') {
       const impact = getEnemyDrillImpact({
         enemyBudget,
-        isSavage,
+        isSavage: usesSavageMechanics,
         isUltimate,
         isCruel,
       });
@@ -712,7 +753,7 @@ const simulateBattle = (
     } else if (skill === 'divination') {
       divinationRemainingSeconds =
         getEnemyDivinationDurationMs({
-          isSavage,
+          isSavage: usesSavageMechanics,
           isUltimate,
           isCruel,
         }) / 1_000;
@@ -1249,11 +1290,6 @@ const simulateBattle = (
       }
       const preferDirectInvestment =
         directActions < (scenario.preferDirectInvestmentActions ?? 0);
-      const networkSupportLimit = isSavage
-        ? SAVAGE_NETWORK_SUPPORT_LIMIT
-        : isUltimate
-          ? ULTIMATE_NETWORK_SUPPORT_LIMIT
-          : Number.POSITIVE_INFINITY;
       const supportSource = cruelSignaturePending || preferDirectInvestment ||
         supportActions >= networkSupportLimit
         ? undefined
@@ -1270,7 +1306,7 @@ const simulateBattle = (
             supportSource,
             previousSupportUses
           ) *
-            (isSavage || isUltimate || isCruel
+            (isHighEndRaid
               ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
               : 1)
         );
@@ -1470,7 +1506,7 @@ const simulateBattle = (
       ) *
         resolveBattleGaugeSpeedFactor({
           isTraining,
-          isHighEndRaid: isSavage || isUltimate || isCruel,
+          isHighEndRaid,
         }) *
         leverage *
         deadZone -
@@ -1481,7 +1517,8 @@ const simulateBattle = (
       velocity: rawVelocity,
       gauge,
       isTraining,
-      isHighEndRaid: isSavage || isUltimate || isCruel,
+      isHighEndRaid,
+      acceleratedEarlyNormal: isEarlyNormalBattle,
     });
     const limitAdjustedVelocity =
       enemyLimitBreakHoldRemainingSeconds > 0
@@ -1536,6 +1573,13 @@ const simulateBattle = (
     maximumEnemyRecoveryRatio,
     minimumEnemyReserve,
     enemyBossDefenseTier,
+    enemyBudget,
+    enemyDifficultyLevel: enemyDifficulty,
+    enemySupportAutoProfile,
+    networkSupportLimit,
+    ultimateAppraisalEnabled: isUltimate,
+    ultimateLimitBreakUseLimit: isUltimate ? 1 : null,
+    ultimateCriticalGateEnabled: isUltimate,
     enemyBossDefenseActivations,
     enemyBossDefenseAbsorbedGauge,
     timedCapitalBuffActivations,
@@ -1603,7 +1647,7 @@ const summarize = (
     : getEnemySupportSkillProfile({
         targetProperty: scenario.target,
         isCityBoss: scenario.isCityBoss ?? false,
-        isSavage: scenario.isSavage,
+        isSavage: scenario.isSavage || scenario.isPhantom,
         isUltimate: scenario.isUltimate,
         isCruel: scenario.isCruel,
       });
@@ -1659,9 +1703,40 @@ const summarize = (
     ),
     activations,
     bossDefenseTier: results[0]?.enemyBossDefenseTier ?? 'none',
+    enemyBudget: results[0]?.enemyBudget ?? 0,
+    enemyDifficultyLevel: results[0]?.enemyDifficultyLevel ?? 0,
+    enemySupportAutoProfile:
+      results[0]?.enemySupportAutoProfile ?? {
+        opening: null,
+        critical: null,
+      },
+    networkSupportLimit:
+      results[0]?.networkSupportLimit ?? Number.POSITIVE_INFINITY,
+    ultimateAppraisalEnabled:
+      results[0]?.ultimateAppraisalEnabled ?? false,
+    ultimateLimitBreakUseLimit:
+      results[0]?.ultimateLimitBreakUseLimit ?? null,
+    ultimateCriticalGateEnabled:
+      results[0]?.ultimateCriticalGateEnabled ?? false,
+    allRuleSnapshotsStable: results.every(
+      (result) =>
+        result.enemyBudget === results[0]?.enemyBudget &&
+        result.enemyDifficultyLevel === results[0]?.enemyDifficultyLevel &&
+        result.networkSupportLimit === results[0]?.networkSupportLimit &&
+        result.ultimateAppraisalEnabled ===
+          results[0]?.ultimateAppraisalEnabled &&
+        result.ultimateLimitBreakUseLimit ===
+          results[0]?.ultimateLimitBreakUseLimit &&
+        result.ultimateCriticalGateEnabled ===
+          results[0]?.ultimateCriticalGateEnabled &&
+        result.enemySupportAutoProfile.opening ===
+          results[0]?.enemySupportAutoProfile.opening &&
+        result.enemySupportAutoProfile.critical ===
+          results[0]?.enemySupportAutoProfile.critical
+    ),
     openingBossDefenseTier: getOpeningBossAbilityTier({
       targetProperty: scenario.target,
-      isSavage: scenario.isSavage,
+      isSavage: scenario.isSavage || scenario.isPhantom,
     }),
     bossDefenseActivations: results.reduce(
       (total, result) =>
@@ -2093,6 +2168,37 @@ const normalScenarios = [
 const normalReports = normalScenarios.map((scenario, index) =>
   summarize(scenario, 8, 2_000 + index * 100)
 );
+
+/**
+ * Explicit first-two-city cadence probes stay outside the historical fixed
+ * 500-battle matrix so adding coverage does not silently weaken any later
+ * difficulty sample.
+ */
+const earlyNormalCadenceReports = [
+  summarize(
+    {
+      id: 'limsa_first_with_network_support',
+      target: limsaTransport,
+      influenceBonus: 0.03,
+      supportSources: [gridaniaBoss],
+      supportAfterDirectActions: () => 1,
+    },
+    8,
+    2_600
+  ),
+  summarize(
+    {
+      id: 'limsa_boss_with_network_support',
+      target: limsaBoss,
+      isCityBoss: true,
+      influenceBonus: 0.03,
+      supportSources: [limsaTransport, gridaniaBoss, starterFarm],
+      supportAfterDirectActions: () => 1,
+    },
+    8,
+    2_700
+  ),
+];
 
 const authoredCityBossTargets = COMMUNITY_CAMPAIGN_ORDER.map(
   (community) =>
@@ -2529,6 +2635,50 @@ const ultimateReports = [
   ...ultimateLegacyPreparedPatternReports,
   ultimateSupportDisabledReport,
 ];
+
+/**
+ * Phantom is a record-only rematch of one authored Savage layer. These
+ * probes deliberately stay outside the historical fixed 500-battle matrix:
+ * they verify the orthogonal ruleset rather than rebalance its sample sizes.
+ */
+const PHANTOM_SAMPLE_COUNT_PER_LAYER = 3;
+const PHANTOM_MAX_SECONDS = 240;
+const phantomScenarios: SimulationScenario[] = savageProperties.map(
+  (target, index) => ({
+    id: `phantom_savage_${Math.floor(index / 4) + 1}_${(index % 4) + 1}`,
+    target,
+    isPhantom: true,
+    maxSeconds: PHANTOM_MAX_SECONDS,
+    // A Cruel-cleared company brings the complete command kit and a full
+    // market-price war chest, but no Phantom-only progression or reward.
+    playerBaselineCash: target.marketPrice,
+    preferDirectInvestmentActions: 4,
+    openingPlayerPassage: true,
+    playerPassageOnLimitBreak: true,
+    manualCapitalBoostRatio:
+      TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
+    manualAllianceSupportRatio: ALLIANCE_SUPPORT_MARKET_RATIO,
+    supportSources: preparedUltimateSupportRotation,
+    supportAfterDirectActions: useHighDifficultySupport,
+    timedCapitalBuff: {
+      ...ultimateGrandCompanyEorzeaBurst,
+      triggerAfterSupportActions: 8,
+    },
+    preparedLimitBreak: {
+      tier: 3,
+      triggerAfterSupportActions: 12,
+      participants: preparedUltimateSupportRotation,
+    },
+  })
+);
+const phantomReports = phantomScenarios.map((scenario, index) =>
+  summarize(
+    scenario,
+    PHANTOM_SAMPLE_COUNT_PER_LAYER,
+    12_500 + index * 20
+  )
+);
+
 // The live Cruel battle receives only normal owned properties from App.tsx.
 // Ultimate and Savage records are not callable subsidiaries.
 const cruelSupportRotation = preparedUltimateSupportRotation;
@@ -2695,6 +2845,20 @@ assert.equal(
   500,
   'the deterministic audit executes exactly five hundred battles'
 );
+const phantomProbeBattles = phantomReports.reduce(
+  (total, report) => total + report.battles,
+  0
+);
+assert.equal(
+  phantomProbeBattles,
+  SAVAGE_RAID_DEFINITIONS.length * PHANTOM_SAMPLE_COUNT_PER_LAYER,
+  'Phantom samples all twelve authored Savage layers with three seeds each'
+);
+assert.equal(
+  allReports.some((report) => report.id.startsWith('phantom_')),
+  false,
+  'Phantom probes must remain outside the fixed 500-battle campaign matrix'
+);
 
 const reportById = Object.fromEntries(
   allReports.map((report) => [report.id, report])
@@ -2737,6 +2901,7 @@ console.log(JSON.stringify({
       0
     ),
     reports: normalReports,
+    earlyCadenceReports: earlyNormalCadenceReports,
   },
   cityBossAudit: {
     totalBattles: cityReports.reduce(
@@ -2788,6 +2953,11 @@ console.log(JSON.stringify({
       0
     ),
     reports: ultimateHumanReadinessReports,
+  },
+  phantomAudit: {
+    includedInFixed500: false,
+    totalBattles: phantomProbeBattles,
+    reports: phantomReports,
   },
   runtimeAlignmentProbes,
 }, null, 2));
@@ -2947,14 +3117,34 @@ assert.ok(
   reportById.gridania_boss_with_network_support.medianSupportActions >= 1
 );
 assert.ok(
-  reportById.gridania_boss_with_network_support.medianSeconds <
-    reportById.gridania_boss_without_network_support.medianSeconds,
-  'the first Gridania network contact saves a perceptible amount of time'
+  reportById.gridania_boss_with_network_support.medianDirectActions <=
+    reportById.gridania_boss_without_network_support.medianDirectActions,
+  'the first Gridania network contact adds free capital without requiring another direct investment'
 );
 assert.ok(
-  reportById.gridania_boss_with_network_support.maximumCapitalActions <= 8,
+  reportById.gridania_boss_with_network_support.maximumCapitalActions <= 5,
   'the first network lesson remains compact even when its support call is counted'
 );
+for (const report of earlyNormalCadenceReports) {
+  assert.equal(
+    report.wins,
+    report.battles,
+    `${report.id} must remain a deterministic first-clear victory`
+  );
+  assert.ok(
+    report.medianDirectActions >= 1 &&
+      report.medianDirectActions <= 5 &&
+      report.medianSupportActions >= 1 &&
+      report.medianSupportActions <= 3 &&
+      report.medianDirectActions + report.medianSupportActions >= 3 &&
+      report.medianDirectActions + report.medianSupportActions <= 6,
+    `${report.id} should resolve in one short handful of meaningful commands`
+  );
+  assert.ok(
+    report.p90Seconds <= 18,
+    `${report.id} should finish promptly after the early closeout is earned`
+  );
+}
 assert.equal(
   reportById.city_8_radz_at_han_drain_drill.timedCapitalBuffActivations,
   reportById.city_8_radz_at_han_drain_drill.battles,
@@ -3233,6 +3423,162 @@ for (let seriesIndex = 0; seriesIndex < 3; seriesIndex += 1) {
     );
   }
 }
+
+assert.equal(phantomScenarios.length, SAVAGE_RAID_DEFINITIONS.length);
+assert.equal(phantomReports.length, SAVAGE_RAID_DEFINITIONS.length);
+phantomReports.forEach((report, index) => {
+  const scenario = phantomScenarios[index];
+  const definition = SAVAGE_RAID_DEFINITIONS[index];
+  const seriesIndex = definition.series - 1;
+  const layerIndex = definition.layer - 1;
+  const expectedProfile =
+    SAVAGE_ENEMY_SUPPORT_PROFILES[seriesIndex][layerIndex];
+  const expectedAuto =
+    SAVAGE_ENEMY_AUTO_PROFILES[seriesIndex][layerIndex];
+  const expectedBossTier =
+    definition.layer === 1
+      ? 'cover'
+      : definition.layer < 4
+        ? 'enhanced_cover'
+        : 'invincible';
+  const ultimateBaseBudget = calculateEnemyBudget({
+    targetProperty: scenario.target,
+    industryInfluence: NO_INFLUENCE,
+    regionalInfluence: NO_INFLUENCE,
+    isTutorial: false,
+    isSavage: false,
+    isUltimate: true,
+    isCruel: false,
+    isCityBoss: false,
+  });
+  const savageBudget = calculateEnemyBudget({
+    targetProperty: scenario.target,
+    industryInfluence: NO_INFLUENCE,
+    regionalInfluence: NO_INFLUENCE,
+    isTutorial: false,
+    isSavage: true,
+    isUltimate: false,
+    isCruel: false,
+    isCityBoss: false,
+  });
+
+  assert.equal(report.targetId, definition.id);
+  assert.equal(report.battles, PHANTOM_SAMPLE_COUNT_PER_LAYER);
+  assert.equal(
+    report.wins + report.losses + report.timeouts,
+    report.battles,
+    `${report.id} must account for every Phantom sample`
+  );
+  assert.equal(
+    report.allWallTimesFinite,
+    true,
+    `${report.id} must execute only finite positive wall times`
+  );
+  assert.equal(
+    report.allRuleSnapshotsStable,
+    true,
+    `${report.id} must retain one deterministic Phantom ruleset across seeds`
+  );
+  assert.equal(
+    report.timeouts,
+    0,
+    `${report.id} must resolve without an Ultimate appraisal timeout`
+  );
+  assert.ok(
+    (scenario.maxSeconds ?? 0) > ULTIMATE_APPRAISAL_LIMIT_MS / 1_000,
+    `${report.id} must not inherit the 108-second Ultimate appraisal limit`
+  );
+  assert.ok(
+    report.maximumSeconds < PHANTOM_MAX_SECONDS,
+    `${report.id} must resolve inside the independent Phantom audit window`
+  );
+  assert.deepEqual(
+    report.profile,
+    expectedProfile,
+    `${report.id} must retain its authored Savage support profile`
+  );
+  assert.deepEqual(
+    report.enemySupportAutoProfile,
+    expectedAuto,
+    `${report.id} must retain its authored Savage AUTO instead of an Ultimate pattern`
+  );
+  assert.equal(report.bossDefenseTier, expectedBossTier);
+  assert.equal(
+    report.openingBossDefenseTier,
+    definition.layer === 2 ? 'cover' : 'none',
+    `${report.id} must retain the authored Savage opening defense`
+  );
+  assert.equal(
+    report.enemyBudget,
+    ultimateBaseBudget,
+    `${report.id} must use Ultimate-equivalent base capital`
+  );
+  assert.notEqual(
+    report.enemyBudget,
+    savageBudget,
+    `${report.id} must not fall back to the layer-scaled Savage budget`
+  );
+  assert.equal(
+    report.enemyDifficultyLevel,
+    6,
+    `${report.id} must use Ultimate-equivalent decision speed`
+  );
+  assert.equal(
+    report.networkSupportLimit,
+    SAVAGE_NETWORK_SUPPORT_LIMIT,
+    `${report.id} must keep the Savage eighteen-call network limit`
+  );
+  assert.equal(report.ultimateAppraisalEnabled, false);
+  assert.equal(report.ultimateLimitBreakUseLimit, null);
+  assert.equal(report.ultimateCriticalGateEnabled, false);
+  assert.equal(
+    getForcedLiquidationSimulationGraceMs(scenario),
+    definition.series === 1
+      ? FORCED_LIQUIDATION_BALANCE.firstClearRecoveryGraceMs
+      : FORCED_LIQUIDATION_BALANCE.laterSavageRecoveryGraceMs,
+    `${report.id} must retain its Savage forced-liquidation recovery window`
+  );
+
+  if (expectedAuto.opening) {
+    assert.equal(
+      report.activations[expectedAuto.opening],
+      report.battles,
+      `${report.id} must execute its authored Savage opening AUTO once per sample`
+    );
+  }
+  if (definition.layer >= 3) {
+    assert.equal(
+      report.activations.capital_reversal,
+      report.battles,
+      `${report.id} must retain the Savage capital-reversal gate`
+    );
+  }
+  if (definition.layer === 4) {
+    assert.equal(
+      report.activations.forced_liquidation,
+      report.battles,
+      `${report.id} must retain the Savage forced-liquidation gate`
+    );
+  }
+
+  const configuredSkills = new Set<EnemySupportSkillId>([
+    ...expectedProfile,
+    ...[expectedAuto.opening, expectedAuto.critical].filter(
+      (skill): skill is EnemySupportSkillId => skill !== null
+    ),
+  ]);
+  for (const skill of Object.keys(
+    createEnemySupportActivationCounts()
+  ) as EnemySupportSkillId[]) {
+    if (!configuredSkills.has(skill)) {
+      assert.equal(
+        report.activations[skill],
+        0,
+        `${report.id} must not inject unconfigured Ultimate action ${skill}`
+      );
+    }
+  }
+});
 
 assert.equal(savageEnemySupportDisabledReports.length, 12);
 for (const report of savageEnemySupportDisabledReports) {

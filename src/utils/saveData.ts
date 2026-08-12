@@ -5,6 +5,7 @@ import { LIMIT_BREAK_MAX_CHARGE } from './gameBalance';
 import type { SavageProgressVersion } from './savage';
 import { normalizeAbilityLoadout } from './abilityLoadout';
 import { ERA_WIND_SYNERGY_ID } from './synergy';
+import { normalizePhantomWinStreak } from './phantomBattle';
 
 export const SAVE_SCHEMA_VERSION = 3;
 export const SAVE_STORAGE_KEY = 'tataru-world-trade-save-v3';
@@ -47,6 +48,8 @@ export interface GameSaveData {
   ultimateCleared?: boolean;
   /** Optional post-Ultimate challenge record. Missing values remain uncleared. */
   cruelCleared?: boolean;
+  /** Current Phantom Trade win streak. No best score or encounter history is saved. */
+  phantomWinStreak?: number;
   trueEndingSeen?: boolean;
   /** One manual battle-synergy slot. Missing/unknown values fall back in App. */
   selectedBattleSynergyId?: string | null;
@@ -243,6 +246,7 @@ export const loadGameSave = (): GameSaveData | null => {
         (parsed.ultimateCleared === undefined && parsed.trueEndingSeen === true),
       ultimateCleared: parsed.ultimateCleared === true,
       cruelCleared: parsed.cruelCleared === true,
+      phantomWinStreak: normalizePhantomWinStreak(parsed.phantomWinStreak),
       trueEndingSeen:
         parsed.ultimateCleared === true && parsed.trueEndingSeen === true,
       selectedBattleSynergyId: migratedSelectedBattleSynergyId,

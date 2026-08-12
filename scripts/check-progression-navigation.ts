@@ -173,6 +173,20 @@ assert.equal(
   'A high-end wipe must identify the high-end list as its actual destination.'
 );
 
+assert.deepEqual(
+  getBattleResultCta({
+    battleMode: 'phantom',
+    winner: 'player',
+  }),
+  {
+    destination: 'high-end-list',
+    intent: 'continue',
+    label: '攻略結果を確定して高難度一覧へ',
+    departureLabel: '離脱報告を確認して高難度一覧へ',
+  },
+  'Phantom victories must return to the high-end list for the next random opponent.'
+);
+
 assert.equal(
   getBattleResultCta({
     battleMode: 'training',

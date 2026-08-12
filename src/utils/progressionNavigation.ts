@@ -63,7 +63,8 @@ export const getBattleResultCta = ({
   if (
     battleMode === 'savage' ||
     battleMode === 'ultimate' ||
-    battleMode === 'cruel'
+    battleMode === 'cruel' ||
+    battleMode === 'phantom'
   ) {
     return {
       destination: 'high-end-list',

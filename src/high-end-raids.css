@@ -521,6 +521,53 @@
   line-height: 1.5;
 }
 
+.high-end-raid-hint {
+  display: block;
+}
+
+.high-end-raid-hint > summary {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin: -.7rem -.8rem;
+  padding: .7rem .8rem;
+  border-radius: .65rem;
+  color: #fef08a;
+  cursor: pointer;
+  font-size: .8rem;
+  font-weight: 950;
+  list-style: none;
+}
+
+.high-end-raid-hint > summary::-webkit-details-marker {
+  display: none;
+}
+
+.high-end-raid-hint > summary::after {
+  content: '＋';
+  flex: 0 0 auto;
+  color: currentColor;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.high-end-raid-hint[open] > summary::after {
+  content: '−';
+}
+
+.high-end-raid-hint > summary:focus-visible {
+  outline: 2px solid #fef08a;
+  outline-offset: 2px;
+}
+
+.high-end-raid-hint__body {
+  margin-top: .7rem;
+  padding-top: .65rem;
+  border-top: 1px solid rgba(255, 255, 255, .14);
+}
+
 .ultimate-raid-card__actions {
   display: flex;
   flex-wrap: wrap;
@@ -644,6 +691,14 @@
   line-height: 1.6;
 }
 
+.cruel-raid-card__copy > .cruel-raid-card__subtitle {
+  margin-top: .2rem;
+  color: #fde68a;
+  font-size: .78rem;
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+
 .cruel-raid-card__copy > span {
   display: flex;
   align-items: center;
@@ -724,6 +779,193 @@
   font-weight: 900;
 }
 
+.phantom-raid-card {
+  position: relative;
+  min-height: 16rem;
+  overflow: hidden;
+  border: 1px solid rgba(103, 232, 249, .5);
+  border-radius: 1rem;
+  background:
+    radial-gradient(circle at 76% 28%, rgba(34, 211, 238, .2), transparent 32%),
+    radial-gradient(circle at 88% 72%, rgba(129, 140, 248, .2), transparent 38%),
+    linear-gradient(140deg, #061421, #10102a 60%, #06182a);
+  box-shadow: 0 0 38px rgba(34, 211, 238, .12);
+}
+
+.phantom-raid-card__art {
+  position: absolute;
+  inset: 0 0 0 50%;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  pointer-events: none;
+  opacity: .16;
+}
+
+.phantom-raid-card__art span {
+  position: absolute;
+  width: min(22rem, 92%);
+  aspect-ratio: 1;
+  border: 1px solid rgba(103, 232, 249, .24);
+  border-radius: 50%;
+  background: repeating-radial-gradient(
+    circle,
+    rgba(99, 102, 241, .18) 0 1rem,
+    transparent 1.05rem 2rem
+  );
+}
+
+.phantom-raid-card__art img {
+  position: relative;
+  width: clamp(3.4rem, 9vw, 6rem);
+  height: 13rem;
+  margin-left: -1rem;
+  object-fit: contain;
+  object-position: bottom;
+  filter: saturate(.7) hue-rotate(145deg) drop-shadow(0 0 .8rem rgba(34, 211, 238, .65));
+}
+
+.phantom-raid-card__copy {
+  position: relative;
+  z-index: 2;
+  max-width: 46rem;
+  padding: 1.2rem;
+}
+
+.phantom-raid-card__copy > small {
+  color: #a5f3fc;
+  font: 900 .72rem/1 ui-monospace, monospace;
+  letter-spacing: .16em;
+}
+
+.phantom-raid-card__boss-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: .22rem;
+  margin-right: .55rem;
+  padding: .18rem .42rem;
+  border: 1px solid rgba(103, 232, 249, .75);
+  border-radius: .38rem;
+  color: #cffafe;
+  background: rgba(30, 64, 175, .7);
+  box-shadow: 0 0 .75rem rgba(34, 211, 238, .24);
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+
+.phantom-raid-card__boss-mark svg {
+  width: .82rem;
+  height: .82rem;
+}
+
+.phantom-raid-card__copy h2 {
+  margin-top: .4rem;
+  color: #ecfeff;
+  font-size: clamp(1.4rem, 4vw, 2.1rem);
+  font-weight: 1000;
+}
+
+.phantom-raid-card__copy > p {
+  max-width: 39rem;
+  margin-top: .55rem;
+  color: #dbeafe;
+  font-size: .84rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.phantom-raid-card__streak {
+  display: grid;
+  width: fit-content;
+  min-width: 12rem;
+  margin-top: .8rem;
+  padding: .65rem .8rem;
+  border: 1px solid rgba(103, 232, 249, .34);
+  border-radius: .7rem;
+  background: rgba(8, 47, 73, .68);
+}
+
+.phantom-raid-card__streak small {
+  color: #67e8f9;
+  font: 900 .62rem/1.2 ui-monospace, monospace;
+  letter-spacing: .12em;
+}
+
+.phantom-raid-card__streak strong {
+  margin-top: .2rem;
+  color: #fef08a;
+  font-size: 1.35rem;
+  font-weight: 1000;
+}
+
+.phantom-raid-card__streak span {
+  margin-top: .15rem;
+  color: #bae6fd;
+  font-size: .68rem;
+  font-weight: 750;
+}
+
+.phantom-raid-card__opponent {
+  display: grid;
+  max-width: 38rem;
+  margin-top: .75rem;
+  padding: .65rem .75rem;
+  border-left: .22rem solid #22d3ee;
+  border-radius: .2rem .65rem .65rem .2rem;
+  background: rgba(15, 23, 42, .78);
+}
+
+.phantom-raid-card__opponent span,
+.phantom-raid-card__opponent small {
+  color: #93c5fd;
+  font-size: .68rem;
+  font-weight: 850;
+}
+
+.phantom-raid-card__opponent strong {
+  margin: .12rem 0;
+  color: #ecfeff;
+  font-size: .9rem;
+  font-weight: 1000;
+}
+
+.phantom-raid-card__copy > .phantom-raid-card__rule {
+  max-width: 38rem;
+  padding: .55rem .65rem;
+  border: 1px solid rgba(165, 180, 252, .28);
+  border-radius: .6rem;
+  color: #c7d2fe;
+  background: rgba(30, 27, 75, .62);
+  font-size: .72rem;
+}
+
+.phantom-raid-card__copy > button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: .42rem;
+  margin-top: .85rem;
+  padding: .65rem .95rem;
+  border: 1px solid rgba(103, 232, 249, .6);
+  border-radius: .65rem;
+  color: #ecfeff;
+  background: linear-gradient(135deg, #155e75, #3730a3);
+  font-size: .82rem;
+  font-weight: 1000;
+}
+
+.phantom-raid-card__copy > button:disabled {
+  border-color: #475569;
+  color: #64748b;
+  background: #1e293b;
+}
+
+.phantom-raid-card__copy > button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
 @media (max-width: 720px) {
   .savage-series {
     padding: .65rem;
@@ -763,17 +1005,29 @@
     opacity: .3;
   }
 
-  .cruel-raid-card__copy {
+  .phantom-raid-card__art {
+    left: 35%;
+    opacity: .1;
+  }
+
+  .cruel-raid-card__copy,
+  .phantom-raid-card__copy {
     padding: 1rem;
   }
 
   .cruel-raid-card__copy > p,
   .cruel-raid-card__warning,
-  .ultimate-raid-card__warning {
+  .ultimate-raid-card__warning,
+  .phantom-raid-card__copy > p,
+  .phantom-raid-card__opponent {
     max-width: 100%;
   }
 
   .cruel-raid-card__actions button {
+    width: 100%;
+  }
+
+  .phantom-raid-card__copy > button {
     width: 100%;
   }
 }

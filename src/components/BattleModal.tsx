@@ -47,6 +47,7 @@ import {
   getEnemyActionInterruptibility,
   type CruelScriptPhase,
 } from '../data/battleEncounterData';
+import { isEarlyNormalEncounterPropertyId } from '../data/campaignEncounterData';
 import {
   getWindPool,
   WIND_CONDITIONS,
@@ -92,6 +93,8 @@ import {
   resolveBattleSkillSelection,
   RESULT_CONFIRM_ARM_DELAY_MS,
   shouldProcessGaugeFrame,
+  shouldUseCompactCapitalPresentation,
+  shouldUseCompactTerminalPresentation,
   shouldInertBattleFooter,
   TERMINAL_CINEMATIC_TIMING,
   type BattleImpactStopPhase,
@@ -264,6 +267,7 @@ interface BattleModalProps {
   isSavage?: boolean;
   isUltimate?: boolean;
   isCruel?: boolean;
+  isPhantom?: boolean;
   isTraining?: boolean;
   isCityBoss?: boolean;
   returnToAlliance?: boolean;
@@ -840,6 +844,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   isSavage = false,
   isUltimate = false,
   isCruel = false,
+  isPhantom = false,
   isTraining = false,
   isCityBoss = false,
   returnToAlliance = false,
@@ -848,17 +853,25 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   onBattleEnd,
   onClose,
 }) => {
-  const brokerageFee = isTraining
+  const brokerageFee = isTraining || isPhantom
     ? 0
     : Math.round(targetProperty.marketPrice * 0.03);
   const influenceBonus = industryInfluence.playerBonus + regionalInfluence.playerBonus + tradeNetworkBonus;
-  const isHighEndRaid = isSavage || isUltimate || isCruel;
+  const usesSavageMechanics = isSavage || isPhantom;
+  const usesUltimateBasePower = isUltimate || isPhantom;
+  const isRecordOnlyBattle = isTraining || isPhantom;
+  const isHighEndRaid = isSavage || isUltimate || isCruel || isPhantom;
   const isProtectedBattle = isHighEndRaid || isTraining;
   const isExtremeBattle = isExtremeReacquisition(targetProperty);
+  const isEarlyNormalBattle =
+    !isTraining &&
+    !isHighEndRaid &&
+    !isExtremeBattle &&
+    isEarlyNormalEncounterPropertyId(targetProperty.id);
   const bossAbilityTier: BossAbilityTier = getBossAbilityTier({
     targetProperty,
     isCityBoss,
-    isSavage,
+    isSavage: usesSavageMechanics,
     isUltimate,
     isCruel,
   });
@@ -866,8 +879,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const enemyDifficultyLevel = getEnemyDifficultyLevel(
     targetProperty,
     isTutorial,
-    isSavage,
-    isUltimate,
+    usesSavageMechanics,
+    usesUltimateBasePower,
     isCityBoss,
     isCruel
   );
@@ -882,7 +895,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             regionalInfluence,
             isTutorial,
             isSavage,
-            isUltimate,
+            isUltimate: usesUltimateBasePower,
             isCruel,
             isCityBoss,
           }),
@@ -892,7 +905,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       isCityBoss,
       isTutorial,
       isTraining,
-      isUltimate,
+      usesUltimateBasePower,
       isCruel,
       regionalInfluence,
       targetProperty,
@@ -1119,6 +1132,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       category: 'system',
       text: isTraining
         ? `${companyName}が${targetProperty.name}の訓練準備へ入りました。`
+        : isPhantom
+          ? `${companyName}が${targetProperty.name}の幻・商戦へ挑みます。通常進行は変化せず、現在連勝数だけを記録します。`
         : `${companyName}が${targetProperty.name}の買収準備へ入りました。`,
     },
   ]);
@@ -1597,7 +1612,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const reducedMotion =
         window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ??
         false;
-      const compact = reducedMotion || isHighEndRaid;
+      const compact = shouldUseCompactCapitalPresentation({
+        reducedMotion,
+        isHighEndRaid,
+        isEarlyNormalBattle,
+      });
       const previousOverflowTier = getBattleCapitalOverflowTier(
         previousCapital,
         targetProperty.marketPrice
@@ -1713,6 +1732,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     },
     [
       clearCapitalPilePreview,
+      isEarlyNormalBattle,
       isHighEndRaid,
       releaseTerminalAfterCapital,
       targetProperty.marketPrice,
@@ -2045,40 +2065,42 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     : effectivePlayerShare <= 42
       ? isTraining ? '木人優勢' : '競合優勢'
       : isTraining ? '訓練資本拮抗' : '資本拮抗';
-  const savageRaidDefinition = isSavage
+  const savageRaidDefinition = usesSavageMechanics
     ? getSavageRaidDefinition(targetProperty.id)
     : null;
-  const savageLayerMatch = isSavage
+  const savageLayerMatch = usesSavageMechanics
     ? targetProperty.name.match(/第([1-4])層/)
     : null;
-  const savageLayer = isSavage
+  const savageLayer = usesSavageMechanics
     ? savageRaidDefinition?.layer ?? Number(savageLayerMatch?.[1] ?? 1)
     : 0;
-  const savageSeries = isSavage ? savageRaidDefinition?.series ?? 1 : 0;
+  const savageSeries = usesSavageMechanics
+    ? savageRaidDefinition?.series ?? 1
+    : 0;
   const enemySupportProfile = getEnemySupportSkillProfile({
     targetProperty,
     isCityBoss,
-    isSavage,
+    isSavage: usesSavageMechanics,
     isUltimate,
     isCruel,
   });
   const openingBossAbilityTier = getOpeningBossAbilityTier({
     targetProperty,
-    isSavage,
+    isSavage: usesSavageMechanics,
   });
   const enemySupportAutoProfile = useMemo(
     () =>
       getEnemySupportAutoProfile({
         targetProperty,
         isCityBoss,
-        isSavage,
+        isSavage: usesSavageMechanics,
         isUltimate,
         isCruel,
         ultimatePatternIndex: ultimateEnemyPatternIndex,
       }),
     [
       isCityBoss,
-      isSavage,
+      usesSavageMechanics,
       isUltimate,
       isCruel,
       targetProperty,
@@ -2105,7 +2127,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     : getFankitJobArt(opponentArtSeed);
   const bossEnemyPartySize = getBossEnemyPartySize({
     bossAbilityTier,
-    isSavage,
+    isSavage: usesSavageMechanics,
     isUltimate,
   });
   const bossEnemyPartyArts = useMemo(
@@ -2408,7 +2430,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ? calculateAllianceSupport(targetProperty.marketPrice)
     : 0;
   const hasNetworkSupport = battleSubs.length > 0 || alliance.active;
-  const networkSupportLimit = isSavage
+  const networkSupportLimit = usesSavageMechanics
     ? SAVAGE_NETWORK_SUPPORT_LIMIT
     : isUltimate
       ? ULTIMATE_NETWORK_SUPPORT_LIMIT
@@ -2419,7 +2441,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const limitedNetworkSupportExhausted =
     networkSupportLimit !== null &&
     !canRequestLimitedNetworkSupport(networkRequestCount, networkSupportLimit);
-  const limitedNetworkSupportModeLabel = isSavage ? '零式' : '絶';
+  const limitedNetworkSupportModeLabel = isPhantom
+    ? '幻'
+    : isSavage
+      ? '零式'
+      : '絶';
   const hasAvailableNetworkSupport =
     (!limitedNetworkSupportExhausted && battleSubs.length > 0) ||
     (alliance.active && !allianceUsed);
@@ -2463,9 +2489,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   }
   const normalReadinessMechanics = Array.from(new Set(readinessMechanics));
   const normalMechanicWarning =
-    !isSavage &&
-    !isUltimate &&
-    !isCruel &&
+    !isHighEndRaid &&
     normalReadinessMechanics.length > 0
       ? `固有ギミック：${normalReadinessMechanics.join('・')}。資金総額だけでなく、行動予告と防御時間を見て投入してください。`
       : undefined;
@@ -2500,13 +2524,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ? 'training'
         : isCruel
           ? 'cruel'
-        : isUltimate
-          ? 'ultimate'
-          : isSavage
-            ? 'savage'
-            : isExtremeBattle
-              ? 'extreme'
-              : 'normal',
+          : isPhantom
+            ? 'phantom'
+            : isUltimate
+              ? 'ultimate'
+              : usesSavageMechanics
+                ? 'savage'
+                : isExtremeBattle
+                  ? 'extreme'
+                  : 'normal',
       mechanicWarning: normalMechanicWarning,
       mechanicSeverity: normalMechanicSeverity,
     })
@@ -3295,6 +3321,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         : `${companyName}対${targetProperty.name}、争奪戦開始。競合が開幕資本${formatCurrency(initialEnemyCommitment)}を搬入します。`,
     };
     changeBattlePhase('active');
+    const openingReducedMotion =
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ??
+      false;
+    const openingUsesCompactPresentation =
+      shouldUseCompactCapitalPresentation({
+        reducedMotion: openingReducedMotion,
+        isHighEndRaid,
+        isEarlyNormalBattle,
+      });
     const openingTimeline = buildCapitalStackTimeline({
       id: `opening-enemy-${Date.now()}`,
       side: 'enemy',
@@ -3302,7 +3337,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       previousCapital: 0,
       nextCapital: initialEnemyCommitment,
       marketPrice: targetProperty.marketPrice,
-      intensity: 'heavy',
+      intensity: openingUsesCompactPresentation ? 'compact' : 'heavy',
       seed: capitalPilePreviewSerialRef.current.enemy,
     });
     const openingFrame = openingTimeline.frames[0];
@@ -3897,7 +3932,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const reducedMotion = window.matchMedia?.(
       '(prefers-reduced-motion: reduce)'
     ).matches ?? false;
-    const compactCinematic = reducedMotion;
+    const compactCinematic = shouldUseCompactTerminalPresentation({
+      reducedMotion,
+      isEarlyNormalBattle,
+    });
     const finishNoticeDuration =
       terminalRef.current?.cause !== 'withdrawal'
         ? compactCinematic
@@ -4131,7 +4169,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const reducedMotion = window.matchMedia?.(
       '(prefers-reduced-motion: reduce)'
     ).matches ?? false;
-    const compactCinematic = reducedMotion;
+    const compactCinematic = shouldUseCompactTerminalPresentation({
+      reducedMotion,
+      isEarlyNormalBattle,
+    });
     const anticipationMs = compactCinematic
       ? TERMINAL_CINEMATIC_TIMING.reducedMotionAnticipationMs
       : TERMINAL_CINEMATIC_TIMING.anticipationMs;
@@ -4501,7 +4542,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
     const candidateOwnership = calculateOwnershipFromGauge(nextGauge);
     const capitalReversalRequired =
-      (isUltimate || (isSavage && savageLayer >= 3)) &&
+      (isUltimate || (usesSavageMechanics && savageLayer >= 3)) &&
       cause !== 'enemy' &&
       candidateOwnership >= CAPITAL_REVERSAL_BALANCE.triggerPlayerOwnership &&
       !enemySupportUsedRef.current.has('capital_reversal');
@@ -4515,7 +4556,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     }
 
     const forcedLiquidationRequired =
-      (isUltimate || (isSavage && savageLayer >= 4)) &&
+      (isUltimate || (usesSavageMechanics && savageLayer >= 4)) &&
       cause !== 'enemy' &&
       candidateOwnership >= FORCED_LIQUIDATION_BALANCE.triggerPlayerOwnership &&
       enemySupportUsedRef.current.has('capital_reversal') &&
@@ -4919,7 +4960,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (skillId === 'forced_liquidation') {
       const recoveryMs = isUltimate
         ? FORCED_LIQUIDATION_BALANCE.ultimateRecoveryGraceMs
-        : isSavage && savageSeries === 1
+        : usesSavageMechanics && savageSeries === 1
           ? FORCED_LIQUIDATION_BALANCE.firstClearRecoveryGraceMs
           : FORCED_LIQUIDATION_BALANCE.laterSavageRecoveryGraceMs;
       const currentOwnership = calculateOwnershipFromGauge(gaugeRef.current);
@@ -4999,7 +5040,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (skillId === 'drill') {
       const impact = getEnemyDrillImpact({
         enemyBudget,
-        isSavage,
+        isSavage: usesSavageMechanics,
         isUltimate,
         isCruel,
       });
@@ -5117,7 +5158,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     }
 
     const durationMs = getEnemyDivinationDurationMs({
-      isSavage,
+      isSavage: usesSavageMechanics,
       isUltimate,
       isCruel,
     });
@@ -5637,7 +5678,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     eraWindActive,
     forcedLiquidationRecoveryRemaining,
     impactStop,
-    isSavage,
+    usesSavageMechanics,
     isCruel,
     isUltimate,
     limitImpactActive,
@@ -6094,6 +6135,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         gauge: gaugeRef.current,
         isTraining,
         isHighEndRaid,
+        acceleratedEarlyNormal: isEarlyNormalBattle,
       });
       const cruelAdjustedVelocity = resolveCruelRecoveryContinuousVelocity({
         velocity: closingAdjustedVelocity,
@@ -6135,7 +6177,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [battleFrameRate, criticalAutoReadyForTrigger, currentWind.playerMultiplier, currentWind.speedMultiplier, effectiveCapitalGap, enemyCapitalMultiplier, enemyInvested, enemyLimitBreakHoldRemaining, eraWindActive, eraWindPushPerSecond, influenceBonus, isCruel, isHighEndRaid, isTraining, progressionSynergyMultiplier, targetProperty.marketPrice, timeScale, totalPlayerInvested, updateGauge, winner]);
+  }, [battleFrameRate, criticalAutoReadyForTrigger, currentWind.playerMultiplier, currentWind.speedMultiplier, effectiveCapitalGap, enemyCapitalMultiplier, enemyInvested, enemyLimitBreakHoldRemaining, eraWindActive, eraWindPushPerSecond, influenceBonus, isCruel, isEarlyNormalBattle, isHighEndRaid, isTraining, progressionSynergyMultiplier, targetProperty.marketPrice, timeScale, totalPlayerInvested, updateGauge, winner]);
 
   const startCompanyCapitalPresentation = (
     snapshot: CapitalCommitSnapshot,
@@ -6357,9 +6399,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       level: selectedLevel,
       previousCapital,
       previousOwnership,
-      // High-end fights repeat direct commitments often. Keep their decision
-      // cadence intact while using the already-verified compact pile timeline.
-      compact: reducedMotion || isHighEndRaid,
+      // High-end fights repeat direct commitments often, while the first four
+      // normal encounters should resolve promptly. Both reuse the verified
+      // compact pile timeline without changing investment strength.
+      compact: shouldUseCompactCapitalPresentation({
+        reducedMotion,
+        isHighEndRaid,
+        isEarlyNormalBattle,
+      }),
     };
     setTerminalCapitalSnapshot(presentationSnapshot);
     const impact = calculateDirectInvestmentGaugeImpact({
@@ -6372,7 +6419,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const reversal = reversalActive
       ? resolveCapitalReversal(
           impact / 2,
-          isSavage && savageSeries === 1
+          usesSavageMechanics && savageSeries === 1
             ? CAPITAL_REVERSAL_BALANCE.reflectedOwnershipCap
             : Number.POSITIVE_INFINITY
         )
@@ -6466,7 +6513,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         property,
         networkRequestCount
       ) *
-        (isSavage || isUltimate || isCruel
+        (isHighEndRaid
           ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
           : 1)
     );
@@ -6828,7 +6875,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           getRepeatedNetworkSupportMultiplier(
             subRequestCounts[member.id] ?? 0
           ) *
-          (isSavage || isUltimate || isCruel
+          (isHighEndRaid
             ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
             : 1)
       );
@@ -7487,12 +7534,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   const companyCapitalAtRisk =
     companyInvested + reflectedCompanyInvested;
-  const resultSettlementCost = isTraining
+  const resultSettlementCost = isRecordOnlyBattle
     ? 0
     : Math.round(
         companyCapitalAtRisk * (winner === 'player' ? 0.35 : 0.75)
       );
-  const resultVictoryReward = isTraining
+  const resultVictoryReward = isRecordOnlyBattle
     ? 0
     : calculateBattleVictoryReward(
         targetProperty.marketPrice,
@@ -7527,7 +7574,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const celebrationRiskRecovery =
     celebrationGiftOption?.loyaltyRiskReduction ?? 0;
   const loyaltySettlementPersists =
-    !isTraining && winner === 'player' && resultVictoryReward > 0;
+    !isRecordOnlyBattle && winner === 'player' && resultVictoryReward > 0;
   const celebrationGiftCost =
     loyaltySettlementPersists
       ? celebrationGiftOption?.cost ?? 0
@@ -7553,7 +7600,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         new Map(rebelled.map((property) => [property.id, property])).values()
       ).reduce((total, property) => total + property.marketPrice, 0)
     : 0;
-  const resultSettlementSummary = isTraining
+  const resultSettlementSummary = isRecordOnlyBattle
     ? {
         transactionDelta: 0,
         fundsDelta: 0,
@@ -7593,11 +7640,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             ? '赤字攻略'
             : '赤字買収'
           : '赤字撤退';
-  const resultTransactionName = isHighEndRaid ? '攻略' : '買収';
+  const resultTransactionName = isPhantom
+    ? '連勝記録'
+    : isHighEndRaid
+      ? '攻略'
+      : '買収';
   const resultNavigationCta = winner
     ? getBattleResultCta({
         battleMode: isTraining
           ? 'training'
+          : isPhantom
+            ? 'phantom'
           : isCruel
             ? 'cruel'
             : isUltimate
@@ -7664,13 +7717,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (
       battlePhase !== 'result' ||
       winner !== 'player' ||
-      isTraining
+      isRecordOnlyBattle
     ) {
       setCompanyGrowthRevealed(false);
     }
   }, [
     battlePhase,
-    isTraining,
+    isRecordOnlyBattle,
     winner,
   ]);
 
@@ -7728,16 +7781,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const committed = onBattleEnd({
       winner,
       targetProperty,
-      companyFundsInvested: companyCapitalAtRisk,
-      demandFundsInvested: demandInvested,
-      brokerageFee,
+      companyFundsInvested: isRecordOnlyBattle ? 0 : companyCapitalAtRisk,
+      demandFundsInvested: isRecordOnlyBattle ? 0 : demandInvested,
+      brokerageFee: isRecordOnlyBattle ? 0 : brokerageFee,
       settlementCost: resultSettlementCost,
-      battleCashDelta: -enemyDrainStolen,
+      battleCashDelta: isRecordOnlyBattle ? 0 : -enemyDrainStolen,
       victoryReward: resultVictoryReward,
       celebrationGiftCost: appliedCelebrationGiftCost,
       celebrationGiftRate,
-      rebelledProperties: isTraining ? [] : rebelled,
-      survivingRiskUpdates: isTraining
+      rebelledProperties: isRecordOnlyBattle ? [] : rebelled,
+      survivingRiskUpdates: isRecordOnlyBattle
         ? []
         : battleSubs.map(({ id, loyaltyRisk }) => ({
             id,
@@ -7798,6 +7851,42 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     hasAvailableNetworkSupport ||
     limitBreakTier > 0 ||
     cash >= Math.round(targetProperty.marketPrice * 0.1);
+  const phantomNoPlayerOpeningAction =
+    isPhantom &&
+    winner === 'opponent' &&
+    playerCommittedCapitalRef.current <= 0 &&
+    networkRequestCount === 0 &&
+    usedSkillIds.size === 0 &&
+    usedBattleSynergyIds.size === 0 &&
+    limitBreakUseCount === 0 &&
+    !allianceUsed;
+  const phantomUnusedOpeningRoutes = [
+    ...(battleSubs.length > 0 && hasAvailableNetworkSupport ? ['人脈'] : []),
+    ...(alliance.active && !allianceUsed ? ['外部協力'] : []),
+    ...(equippedCapitalBoostSkill &&
+      !usedSkillIds.has(equippedCapitalBoostSkill.id)
+      ? [equippedCapitalBoostSkill.name]
+      : []),
+    ...(selectedBattleSynergy &&
+      battleSynergyReady &&
+      !usedBattleSynergyIds.has(selectedBattleSynergy.id)
+      ? [`SYNERGY「${selectedBattleSynergy.name}」`]
+      : []),
+    ...(limitBreakTier > 0 && limitBreakUseCount === 0
+      ? [`LB ${limitBreakTier}`]
+      : []),
+    ...(cash >= Math.round(targetProperty.marketPrice * 0.1)
+      ? ['相場10%の大口出資']
+      : []),
+  ];
+  const phantomOpeningDefensePlan =
+    openingAutoSkill?.effectType === 'COVER'
+      ? `開幕AUTO「${openingAutoSkill.name}」を維持し`
+      : '装備画面で開幕AUTOをパッセへ変更し';
+  const phantomOpeningFollowUpPlan =
+    phantomUnusedOpeningRoutes.length > 0
+      ? `${phantomUnusedOpeningRoutes.slice(0, 2).join('か')}を最初の一手へ固定する`
+      : '人脈を1社以上編成し、LBを貯めてから再挑戦する';
   const ultimateUnusedPreparationRoutes: string[] = [];
   if (
     isUltimate &&
@@ -7882,15 +7971,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           ? '強制清算で所有率3%まで崩れた後、反撃猶予内に立て直せなかったでっす。次は着弾直後へ人脈・SYNERGY・LBのどれか1回を温存するでっす。'
         : isUltimate
           ? ultimateCapitalCollapseAnalysis
-        : enemySupportUsed.has('blackest_night')
-          ? companyInvested <= 0
-            ? '清算後へ資源を抱えすぎ、ブラックナイトを越える前の押し込みが止まったでっす。危険域では人脈・SYNERGY・LBを使い、清算後へ残すのは反撃1回ぶんに絞るでっす。'
-            : 'ブラックナイトの障壁へ資金を使い、後半の再建資源が不足したでっす。障壁中は直接出資を温存し、終了後に人脈→SYNERGY→LBで押し返すでっす。'
-        : enemyDrainStolen > 0 && !isHighEndRaid
-          ? `ドレインで未投入資金${formatCurrency(enemyDrainStolen)}が競合予備資金へ移ったでっす。次は予告中に直接出資し、手元資金を積載へ退避するでっす。`
-        : rebelled.length > 0
-          ? `${rebelled.length}件の独立で資金の山が崩れたでっす。次は危険度の高い人脈へ頼る前に、ネマワシや祝儀で備えるでっす。`
-          : '風と支援を含めた競り値で劣勢となり、所有率を押し戻されたでっす。資金を積む順番から見直すでっす。';
+        : phantomNoPlayerOpeningAction
+          ? `幻影の零式${savageSeries}編・第${savageLayer}層は、味方資本の投入${formatCurrency(playerCommittedCapitalRef.current)}・人脈${networkRequestCount}回で、アビリティ・SYNERGY・LB・外部協力も未使用のまま所有率0%へ到達したでっす。次は${phantomOpeningDefensePlan}、${phantomOpeningFollowUpPlan}でっす。`
+          : enemySupportUsed.has('blackest_night')
+            ? companyInvested <= 0
+              ? '清算後へ資源を抱えすぎ、ブラックナイトを越える前の押し込みが止まったでっす。危険域では人脈・SYNERGY・LBを使い、清算後へ残すのは反撃1回ぶんに絞るでっす。'
+              : 'ブラックナイトの障壁へ資金を使い、後半の再建資源が不足したでっす。障壁中は直接出資を温存し、終了後に人脈→SYNERGY→LBで押し返すでっす。'
+          : enemyDrainStolen > 0 && !isHighEndRaid
+            ? `ドレインで未投入資金${formatCurrency(enemyDrainStolen)}が競合予備資金へ移ったでっす。次は予告中に直接出資し、手元資金を積載へ退避するでっす。`
+          : rebelled.length > 0
+            ? `${rebelled.length}件の独立で資金の山が崩れたでっす。次は危険度の高い人脈へ頼る前に、ネマワシや祝儀で備えるでっす。`
+            : '風と支援を含めた競り値で劣勢となり、所有率を押し戻されたでっす。資金を積む順番から見直すでっす。';
 
   const briefingSynergies = [
     ...(battleSubs.length + 1 >= 4
@@ -7916,7 +8007,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           }`,
         ]
       : []),
-    ...(isSavage || isUltimate || isCruel
+    ...(isHighEndRaid
       ? ['高難度支援：人脈・通常グループSYNERGYが強化（外部アライアンス・LBは別枠）']
       : []),
     ...(tradeNetworkBonus > 0 ? ['都市交易網：自社の押し込みを強化'] : []),
@@ -7935,7 +8026,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     decisiveBlow?.winner === 'player' && !terminalUsesDirectFinisher;
   const displayedLimitBreakTier =
     activeLimitBreakTier || limitBreakTier || 1;
-  const announcementEncounterName = isSavage
+  const announcementEncounterName = usesSavageMechanics
     ? targetProperty.name.replace(
         /\s*商戦 零式：第([1-4])層$/,
         '：第$1層'
@@ -7944,9 +8035,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const announcementDutySuffix = isTraining
     ? '訓練開始'
     : isCruel
-      ? '酷・もうひとつの商戦'
-    : isSavage
-      ? '争奪戦・零式'
+      ? '酷商戦'
+    : isPhantom
+      ? '幻・商戦'
+      : isSavage
+        ? '争奪戦・零式'
       : isExtremeBattle
         ? '争奪戦・極'
       : '争奪戦';
@@ -8030,7 +8123,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
       <header className="buyout-header" inert={backgroundInert}>
         <div>
-          <span>{isTraining ? '商戦木人 訓練中' : isCruel ? '酷・闇タタル 攻略中' : isUltimate ? '絶商戦 攻略中' : isSavage ? '商戦 零式 攻略中' : isExtremeBattle ? '離脱企業 再買収・極' : '買収交渉中'}</span>
+          <span>{isTraining ? '商戦木人 訓練中' : isCruel ? '酷商戦 攻略中' : isPhantom ? '幻・商戦 連勝挑戦中' : isUltimate ? '絶商戦 攻略中' : isSavage ? '商戦 零式 攻略中' : isExtremeBattle ? '離脱企業 再買収・極' : '買収交渉中'}</span>
           <strong className="battle-title-ticker">
             <MarqueeText text={targetProperty.name} />
           </strong>
@@ -8040,16 +8133,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           </small>
         </div>
         <div className="buyout-header__actions">
-          <button type="button" onClick={() => setShowHelp(true)} aria-label={isTraining ? '木人訓練の遊び方' : '買収交渉の遊び方'}><CircleHelp /></button>
+          <button type="button" onClick={() => setShowHelp(true)} aria-label={isTraining ? '木人訓練の遊び方' : isPhantom ? '幻・商戦の遊び方' : '買収交渉の遊び方'}><CircleHelp /></button>
           {battlePhase === 'briefing' && (
-            <button type="button" onClick={requestClose} aria-label={isTraining ? '木人一覧へ戻る' : '買収交渉を閉じる'}><X /></button>
+            <button type="button" onClick={requestClose} aria-label={isTraining ? '木人一覧へ戻る' : isPhantom ? '幻・商戦を閉じる' : '買収交渉を閉じる'}><X /></button>
           )}
         </div>
       </header>
 
       <main className="buyout-main">
         <section
-          className={`battle-stage integrated-battlefield integrated-battlefield--canvas2d integrated-battlefield--push-${battleDirection} integrated-battlefield--motion-${motion} ${conditionAnnouncement ? 'integrated-battlefield--condition-active' : ''} ${impactStop ? `integrated-battlefield--impact-${impactStop.phase} integrated-battlefield--impact-${impactStop.side} ${impactStop.heavy ? 'integrated-battlefield--impact-heavy' : ''}` : ''} ${capitalPresentationStage && activeCapitalTiming ? `integrated-battlefield--capital-commit integrated-battlefield--capital-${capitalPresentationStage} integrated-battlefield--capital-${activeCapitalTiming.tier}` : ''} ${skillCinematic ? `integrated-battlefield--skill-cinematic integrated-battlefield--skill-stage-${skillCinematic.stage} integrated-battlefield--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${windVisible && eraWindActive ? 'integrated-battlefield--era-wind integrated-battlefield--era-wind-3' : ''} ${windVisible && windTelegraphVisible ? 'integrated-battlefield--wind-telegraph' : ''} ${decisiveBlow?.winner === 'player' && terminalUsesDirectFinisher ? 'integrated-battlefield--finisher-player integrated-battlefield--finisher-direct' : decisiveBlow?.winner === 'player' ? 'integrated-battlefield--finisher-collapse' : decisiveBlow?.winner === 'opponent' ? 'integrated-battlefield--finisher-enemy' : ''} ${decisiveBlow?.impacted ? 'integrated-battlefield--finisher-impact' : ''} ${terminalCinematicStage ? `integrated-battlefield--terminal-${terminalCinematicStage} integrated-battlefield--terminal-winner-${terminalRef.current?.winner ?? 'player'} ${terminalUsesSelfCollapse ? 'integrated-battlefield--terminal-self-collapse' : 'integrated-battlefield--terminal-direct'}` : ''} ${winner ? `integrated-battlefield--settled integrated-battlefield--settled-${winner} ${terminalUsesDirectFinisher ? 'integrated-battlefield--settled-direct' : 'integrated-battlefield--settled-collapse'}` : ''} ownership-board--wind-${windSide} ${isSavage ? 'integrated-battlefield--savage' : ''} ${isUltimate ? 'integrated-battlefield--ultimate' : ''} ${isCruel ? 'integrated-battlefield--cruel' : ''} ${enemySupportUsed.has('omnicapitalization') ? 'integrated-battlefield--omnicapitalization' : ''}`}
+          className={`battle-stage integrated-battlefield integrated-battlefield--canvas2d integrated-battlefield--push-${battleDirection} integrated-battlefield--motion-${motion} ${conditionAnnouncement ? 'integrated-battlefield--condition-active' : ''} ${impactStop ? `integrated-battlefield--impact-${impactStop.phase} integrated-battlefield--impact-${impactStop.side} ${impactStop.heavy ? 'integrated-battlefield--impact-heavy' : ''}` : ''} ${capitalPresentationStage && activeCapitalTiming ? `integrated-battlefield--capital-commit integrated-battlefield--capital-${capitalPresentationStage} integrated-battlefield--capital-${activeCapitalTiming.tier}` : ''} ${skillCinematic ? `integrated-battlefield--skill-cinematic integrated-battlefield--skill-stage-${skillCinematic.stage} integrated-battlefield--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${windVisible && eraWindActive ? 'integrated-battlefield--era-wind integrated-battlefield--era-wind-3' : ''} ${windVisible && windTelegraphVisible ? 'integrated-battlefield--wind-telegraph' : ''} ${decisiveBlow?.winner === 'player' && terminalUsesDirectFinisher ? 'integrated-battlefield--finisher-player integrated-battlefield--finisher-direct' : decisiveBlow?.winner === 'player' ? 'integrated-battlefield--finisher-collapse' : decisiveBlow?.winner === 'opponent' ? 'integrated-battlefield--finisher-enemy' : ''} ${decisiveBlow?.impacted ? 'integrated-battlefield--finisher-impact' : ''} ${terminalCinematicStage ? `integrated-battlefield--terminal-${terminalCinematicStage} integrated-battlefield--terminal-winner-${terminalRef.current?.winner ?? 'player'} ${terminalUsesSelfCollapse ? 'integrated-battlefield--terminal-self-collapse' : 'integrated-battlefield--terminal-direct'}` : ''} ${winner ? `integrated-battlefield--settled integrated-battlefield--settled-${winner} ${terminalUsesDirectFinisher ? 'integrated-battlefield--settled-direct' : 'integrated-battlefield--settled-collapse'}` : ''} ownership-board--wind-${windSide} ${usesSavageMechanics ? 'integrated-battlefield--savage' : ''} ${isPhantom ? 'integrated-battlefield--phantom' : ''} ${isUltimate ? 'integrated-battlefield--ultimate' : ''} ${isCruel ? 'integrated-battlefield--cruel' : ''} ${enemySupportUsed.has('omnicapitalization') ? 'integrated-battlefield--omnicapitalization' : ''}`}
           aria-label="所有率、両陣営、投入資金、行動予兆の統合商戦フィールド"
           inert={backgroundInert && !conditionAnnouncement && !skillCinematic}
           data-company-invested={companyInvested}
@@ -8110,7 +8203,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               ? 'cruel'
               : isUltimate
                 ? 'ultimate'
-                : isSavage
+                : usesSavageMechanics
                   ? 'savage'
                   : 'normal'
           }
@@ -8203,10 +8296,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <span>{normalizeBattleStatusMessageText(conditionAnnouncement.text)}</span>
           </div>
         )}
-        {(isSavage || isUltimate || isCruel) && (
-          <div className={`battlefield-raid-marker ${isCruel ? 'battlefield-raid-marker--cruel' : isUltimate ? 'battlefield-raid-marker--ultimate' : ''}`}>
+        {isHighEndRaid && (
+          <div className={`battlefield-raid-marker ${isCruel ? 'battlefield-raid-marker--cruel' : isPhantom ? 'battlefield-raid-marker--phantom' : isUltimate ? 'battlefield-raid-marker--ultimate' : ''}`}>
             {isCruel ? (
-              <><b>酷・もうひとつの商戦</b><span>闇タタル</span></>
+              <><b>酷商戦</b><span>酷-もう1人のわたし</span></>
+            ) : isPhantom ? (
+              <><b>幻・商戦</b><span>零式 {savageSeries}編 {savageLayer}/4層・絶相当基礎力</span></>
             ) : isUltimate ? (
               <>
                 <b>絶商戦</b>
@@ -9136,7 +9231,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             }
             tabIndex={-1}
           >
-            <header><Swords /><strong>{isTraining ? 'TRAINING DUMMY DUTY' : isCruel ? 'CRUEL TRADE DUTY' : isUltimate ? 'ULTIMATE TRADE DUTY' : isSavage ? 'SAVAGE TRADE RAID' : isExtremeBattle ? 'EXTREME REACQUISITION' : '買収交渉'}</strong></header>
+            <header><Swords /><strong>{isTraining ? 'TRAINING DUMMY DUTY' : isCruel ? 'CRUEL TRADE DUTY' : isPhantom ? 'PHANTOM TRADE DUTY' : isUltimate ? 'ULTIMATE TRADE DUTY' : isSavage ? 'SAVAGE TRADE RAID' : isExtremeBattle ? 'EXTREME REACQUISITION' : '買収交渉'}</strong></header>
             <div className="briefing-versus">
               <b className="company-name-full" title={companyName}>{companyName}</b>
               <span>VS</span>
@@ -9148,8 +9243,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <dd>{formatCurrency(targetProperty.marketPrice)}</dd>
               </div>
               <div>
-                <dt>{isTraining ? '参加費' : '仲介手数料'}</dt>
-                <dd>{formatCurrency(brokerageFee)}</dd>
+                <dt>{isTraining ? '参加費' : isPhantom ? '参加費・報酬' : '仲介手数料'}</dt>
+                <dd>{isPhantom ? '0ギル / 0ギル' : formatCurrency(brokerageFee)}</dd>
               </div>
               <div>
                 <dt>{isTraining ? '訓練用持込資金' : '自社持込資金'}</dt>
@@ -9176,8 +9271,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <dt>{isTraining ? '木人の構え' : '競合の構え'}</dt>
                 <dd>{isTraining ? '追加行動なし' : `${battleReadiness.symbol} ${battleReadiness.label}`}<small>{battleReadiness.mechanicWarning ?? '戦闘中の予告を見て投入順を変える'}</small></dd>
               </div>
-              <div><dt>{isTraining ? '訓練用出資の精算' : '自社直接出資の確定損'}</dt><dd>{isTraining ? 'なし（セーブ資金差引 0）' : '勝利35%／敗北・撤退75%'}</dd></div>
-              <div><dt>LIMIT BREAK</dt><dd>{limitBreakCapacityTier === 0 ? '未解放（自社＋人脈が合計4枠で解放）' : limitBreakTier > 0 ? `LB ${limitBreakTier} 発動可能` : '蓄積中・次戦へ継承'}</dd></div>
+              <div><dt>{isTraining ? '訓練用出資の精算' : isPhantom ? '幻影内の出資' : '自社直接出資の確定損'}</dt><dd>{isRecordOnlyBattle ? '戦闘内のみ（セーブ資金差引 0）' : '勝利35%／敗北・撤退75%'}</dd></div>
+              <div><dt>LIMIT BREAK</dt><dd>{isPhantom ? (limitBreakCapacityTier === 0 ? '未解放' : limitBreakTier > 0 ? `LB ${limitBreakTier} 発動可能・終了後は開始前へ復元` : '戦闘内で蓄積・終了後は開始前へ復元') : limitBreakCapacityTier === 0 ? '未解放（自社＋人脈が合計4枠で解放）' : limitBreakTier > 0 ? `LB ${limitBreakTier} 発動可能` : '蓄積中・次戦へ継承'}</dd></div>
                 </dl>
                 <section className="briefing-section">
               <h3><Sparkles />今回の事業連携・戦闘連携</h3>
@@ -9223,8 +9318,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 </section>
                 {isProtectedBattle && (
                   <section className="briefing-section briefing-savage">
-                <h3><Swords />{isTraining ? '商戦木人ルール' : isCruel ? '酷・記録戦ルール' : isUltimate ? '絶商戦ルール' : '零式ルール'}</h3>
-                <p>{isTraining ? '参加費・報酬・精算・清算はすべて0。通常事業・契約の保有状態、独立危険度、零式・絶の進行は変化せず、同じLEVELへ何度でも再挑戦できます。' : isCruel ? '絶踏破後の単独記録戦です。敗北・撤退・報酬0の再戦では通常事業・人脈・独立危険度を保護します。初回勝利時だけ攻略報酬を配分し、離反と危険度を通常進行へ反映します。' : '通常編の地域・業界・交易網補正は無効。敗北・撤退・報酬0の再戦では通常事業・契約と独立危険度を保護します。初回勝利時だけ攻略報酬を配分し、離反と危険度を通常進行へ反映します。'}</p>
+                <h3><Swords />{isTraining ? '商戦木人ルール' : isCruel ? '酷商戦ルール' : isPhantom ? '幻・商戦ルール' : isUltimate ? '絶商戦ルール' : '零式ルール'}</h3>
+                <p>{isTraining ? '参加費・報酬・精算・清算はすべて0。通常事業・契約の保有状態、独立危険度、零式・絶の進行は変化せず、同じLEVELへ何度でも再挑戦できます。' : isPhantom ? `零式${savageSeries}編・第${savageLayer}層のギミックをそのまま使い、競合の基礎資金力と判断速度だけを絶相当へ引き上げた連勝戦です。参加費・報酬・精算・離反はなく、現在の連勝数だけを記録します。敗北・撤退で連勝は0へ戻ります。` : isCruel ? '絶踏破後の単独記録戦です。敗北・撤退・報酬0の再戦では通常事業・人脈・独立危険度を保護します。初回勝利時だけ攻略報酬を配分し、離反と危険度を通常進行へ反映します。' : '通常編の地域・業界・交易網補正は無効。敗北・撤退・報酬0の再戦では通常事業・契約と独立危険度を保護します。初回勝利時だけ攻略報酬を配分し、離反と危険度を通常進行へ反映します。'}</p>
                 {!isTraining && <p>人脈・通常グループSYNERGYの支援額は高難度補正で×{HIGH_DIFFICULTY_SUPPORT_MULTIPLIER.toFixed(2)}。外部アライアンスとLIMIT BREAKの威力は変わりません。</p>}
                 {isUltimate && <p>絶のLIMIT BREAKは1戦1回。防御を崩すか、強制清算後の反撃へ残すかを選びます。</p>}
                 {isUltimate && <p>絶は108秒の終極査定。敵予告・着弾演出中は商戦と査定が停止し、準備済みのコマンドで対策を選べます。期限までに所有率100%へ届かなければ攻略失敗です。人脈はボタン1回で使用回数の少ない有力先へ自動配分されます。8回を重要予告へ割り当て、回復待ちになる前に決着させます。</p>}
@@ -9246,8 +9341,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <button type="button" className="dialog-close briefing-start" onClick={startBattle}>
               {isTraining
                 ? '木人訓練を開始'
+                : isPhantom
+                  ? `幻・商戦を開始（${battleReadiness.symbol}${battleReadiness.label}）`
                 : isCruel
-                  ? `酷・もうひとつの商戦を開始（${battleReadiness.symbol}${battleReadiness.label}）`
+                  ? `酷商戦を開始（${battleReadiness.symbol}${battleReadiness.label}）`
                 : isUltimate
                 ? `絶商戦を開始（${battleReadiness.symbol}${battleReadiness.label}）`
                 : isSavage
@@ -9293,7 +9390,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   : '最後の一手で木人耐久を削り切った'
                 : '訓練を終了した'
               : winner === 'player'
-                ? terminalUsesSelfCollapse
+                ? isPhantom
+                  ? `${TERMINAL_CAUSE_LABELS[terminalRef.current?.cause ?? 'pressure']}で幻影を撃破！`
+                  : terminalUsesSelfCollapse
                   ? `${TERMINAL_CAUSE_LABELS[terminalRef.current?.cause ?? 'pressure']}で競合の防衛線が崩れた！`
                   : `${TERMINAL_CAUSE_LABELS[terminalRef.current?.cause ?? 'pressure']}で契約成立！`
                 : defeatReason === 'WALKING_DEAD_FAILED'
@@ -9310,11 +9409,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
       {showHelp && (
         <div className="buyout-overlay">
-          <article ref={helpDialogRef} className="buyout-dialog" role="dialog" aria-modal="true" aria-label={isTraining ? '木人訓練の遊び方' : '買収交渉の遊び方'} tabIndex={-1}>
-            <header><CircleHelp /><strong>{isTraining ? '木人訓練の遊び方' : '買収交渉の遊び方'}</strong><button type="button" data-modal-close onClick={() => setShowHelp(false)} aria-label="ヘルプを閉じる"><X /></button></header>
+          <article ref={helpDialogRef} className="buyout-dialog" role="dialog" aria-modal="true" aria-label={isTraining ? '木人訓練の遊び方' : isPhantom ? '幻・商戦の遊び方' : '買収交渉の遊び方'} tabIndex={-1}>
+            <header><CircleHelp /><strong>{isTraining ? '木人訓練の遊び方' : isPhantom ? '幻・商戦の遊び方' : '買収交渉の遊び方'}</strong><button type="button" data-modal-close onClick={() => setShowHelp(false)} aria-label="ヘルプを閉じる"><X /></button></header>
             <ol>
               <li><b>ギルを積む</b><span>左の投資レベルボタンで金額を5段階から選び、右の投資実行ボタンで1回投入します。人脈・SYNERGYの支援は上のアイコンから使います。</span></li>
               {isTraining && <li><b>木人訓練</b><span>参加費・報酬・精算・清算は0。木人は初期耐久資本を全配置し、追加防衛や敵AI行動を行いません。押されても自社1%で訓練を継続でき、その間も通常の毎秒収益とオフライン収益は自社資金へ加算されます。</span></li>}
+              {isPhantom && <li><b>幻・商戦</b><span>抽選された零式層の仕組みはそのまま、敵の基礎資金力と判断速度だけが絶相当です。勝敗後は次の層を再抽選し、現在連勝数以外の資金・所有・人脈・LB・進行は変化しません。</span></li>}
               <li>
                 <b>戦術選択</b>
                 <span>
@@ -9332,7 +9432,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <li><b>効果通知</b><span>味方への良い効果は青く上昇し、競合への妨害や悪い効果は赤く下降します。詳しい履歴は戦局ログで後から確認できます。</span></li>
               <li><b>リビングデッド</b><span>10秒の待機中に所有率0%へ到達すると表示上1%で耐えます。攻防の内部値は進み続け、その後10秒以内に30%以上へ戻せなければ敗北。1争奪戦につき1回です。</span></li>
               <li><b>協力協定</b><span>外部協力先から1争奪戦につき1回の支援です。LBの参加件数や投入額には含みません。</span></li>
-              <li><b>独立リスク</b><span>支援要求で危険度は上がりますが、商戦中には離脱しません。報酬のある勝利後は、利益独占（0%）・五分の祝儀（50%）・大盤振る舞い（100%）から配分を選びます。五分の祝儀は今回の離反率を大きく抑え、大盤振る舞いは今回の離反を防いで独立危険度も{BATTLE_LOYALTY_BALANCE.lavishRiskRecovery}回復します。零式・絶・酷も初回勝利では通常人脈へ反映し、敗北・撤退・報酬0の再戦では保護します。</span></li>
+              <li><b>独立リスク</b><span>支援要求で危険度は上がりますが、商戦中には離脱しません。報酬のある勝利後は、利益独占（0%）・五分の祝儀（50%）・大盤振る舞い（100%）から配分を選びます。五分の祝儀は今回の離反率を大きく抑え、大盤振る舞いは今回の離反を防いで独立危険度も{BATTLE_LOYALTY_BALANCE.lavishRiskRecovery}回復します。零式・絶・酷も初回勝利では通常人脈へ反映し、敗北・撤退・報酬0の再戦では保護します。幻・商戦は常に保護されます。</span></li>
               {!isTraining && <li><b>資金繰り逼迫</b><span>競合の手元資金が0になると小さく通知しますが、商戦は停止しません。競合は商流リジェネ後、通常のAI判断で再び防衛資金を投入できます。</span></li>}
               <li><b>決着</b><span>所有率100%到達を内部確定した時点ですべての数値を固定し、約1秒の最終提示演出後にDEAL CLOSED／DEAL LOSTを1回だけ表示します。追加のとどめ操作は不要です。</span></li>
               <li><b>OVERKILL</b><span>所有率100%をどれだけ超えて押し切ったかを示す派手さの評価です。</span></li>
@@ -9415,6 +9515,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             aria-label={
               isTraining
                 ? `${targetProperty.name}の訓練結果`
+                : isPhantom
+                  ? `${targetProperty.name}の幻・商戦結果`
                 : `${targetProperty.name}の交渉結果`
             }
             tabIndex={-1}
@@ -9426,8 +9528,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   ? '木人訓練成功'
                   : '木人訓練終了'
                 : winner === 'player'
-                ? isCruel
-                  ? '酷・もうひとつの商戦 踏破'
+                ? isPhantom
+                  ? '幻・商戦 勝利'
+                  : isCruel
+                  ? '酷商戦 踏破'
                   : isUltimate
                     ? '絶商戦 踏破'
                   : isSavage
@@ -9451,7 +9555,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <span>「{resultAnalysis}」</span>
               </p>
             </div>
-            {winner === 'player' && !isTraining && (
+            {isPhantom && (
+              <p className="briefing-skill-fallback" role="note">
+                この結果で変わるのは現在の連勝数だけです。資金・所有権・人脈・独立危険度・LB・零式／絶／酷の進行は開始前の状態を保ちます。
+              </p>
+            )}
+            {winner === 'player' && !isRecordOnlyBattle && (
               <CompanyGrowthResult
                 before={companyStrengthBefore}
                 after={companyStrengthAfter}
@@ -9459,7 +9568,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 onRevealed={revealCompanyGrowth}
               />
             )}
-            {!isTraining && (
+            {!isRecordOnlyBattle && (
               <section
                 className={`result-settlement-summary ${resultSettlementTone}`}
                 aria-label={`${resultTransactionName}収支の精算`}

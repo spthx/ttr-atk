@@ -608,6 +608,7 @@ export const calculateBattleVictoryReward = (
   if (
     !isPlayerVictory ||
     mode === 'training' ||
+    mode === 'phantom' ||
     (mode !== 'normal' && alreadyCleared)
   ) {
     return 0;
@@ -637,6 +638,30 @@ export const calculateOwnershipFromGauge = (gauge: number) =>
 
 export const NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD = 85;
 export const NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND = 0.75;
+export const EARLY_NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD = 75;
+export const EARLY_NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND = 24;
+
+/**
+ * Resolves the player-side momentum floor without deciding whether the
+ * current pressure actually points toward the player. The caller still has
+ * to prove a negative velocity, so an enemy counter-investment immediately
+ * cancels the accelerated closeout instead of being overwritten by it.
+ */
+export const resolveNormalPlayerCloseoutMinimumGaugePerSecond = ({
+  playerOwnership,
+  acceleratedEarlyNormal = false,
+}: {
+  playerOwnership: number;
+  acceleratedEarlyNormal?: boolean;
+}) => {
+  const threshold = acceleratedEarlyNormal
+    ? EARLY_NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD
+    : NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD;
+  if (playerOwnership < threshold) return 0;
+  return acceleratedEarlyNormal
+    ? EARLY_NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND
+    : NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND;
+};
 
 /**
  * Prevents a normal battle from lingering after one side has earned a decisive
@@ -648,20 +673,24 @@ export const applyNormalClosingMomentum = ({
   gauge,
   isTraining,
   isHighEndRaid,
+  acceleratedEarlyNormal = false,
 }: {
   velocity: number;
   gauge: number;
   isTraining: boolean;
   isHighEndRaid: boolean;
+  acceleratedEarlyNormal?: boolean;
 }) => {
   if (isTraining || isHighEndRaid) return velocity;
 
   const playerOwnership = calculateOwnershipFromGauge(gauge);
-  if (
-    playerOwnership >= NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD &&
-    velocity < 0
-  ) {
-    return Math.min(velocity, -NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND);
+  const playerCloseoutMinimum =
+    resolveNormalPlayerCloseoutMinimumGaugePerSecond({
+      playerOwnership,
+      acceleratedEarlyNormal,
+    });
+  if (playerCloseoutMinimum > 0 && velocity < 0) {
+    return Math.min(velocity, -playerCloseoutMinimum);
   }
   if (
     playerOwnership <= 100 - NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD &&

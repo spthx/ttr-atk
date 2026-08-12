@@ -4,6 +4,7 @@ import {
   Crown,
   Lock,
   ShieldAlert,
+  Shuffle,
   Sparkles,
   Swords,
   Zap,
@@ -18,6 +19,7 @@ import {
   calculateCruelSignatureRequirement,
 } from '../utils/cruelBattle';
 import { StrengthComparison } from './StrengthComparison';
+import { PHANTOM_TRADE_DUTY } from '../utils/phantomBattle';
 import {
   getChargedLimitBreakTier,
   getLimitBreakChargeCapacity,
@@ -52,6 +54,9 @@ interface HighEndRaidViewProps {
   cruelProperty: Property;
   cruelUnlocked: boolean;
   cruelCleared: boolean;
+  phantomProperty: Property | null;
+  phantomUnlocked: boolean;
+  phantomWinStreak: number;
   getStrengthComparison: (
     property: Property,
     mode: BattleMode
@@ -59,6 +64,7 @@ interface HighEndRaidViewProps {
   onStartSavage: (property: Property) => void;
   onStartUltimate: (property: Property) => void;
   onStartCruel: (property: Property) => void;
+  onStartPhantom: (property: Property) => void;
   onReplayEnding: () => void;
   onOpenCartels: () => void;
 }
@@ -78,10 +84,14 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
   cruelProperty,
   cruelUnlocked,
   cruelCleared,
+  phantomProperty,
+  phantomUnlocked,
+  phantomWinStreak,
   getStrengthComparison,
   onStartSavage,
   onStartUltimate,
   onStartCruel,
+  onStartPhantom,
   onReplayEnding,
   onOpenCartels,
 }) => {
@@ -99,6 +109,12 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
     cruelProperty,
     'cruel'
   );
+  const phantomStrengthComparison = phantomProperty
+    ? getStrengthComparison(phantomProperty, 'phantom')
+    : null;
+  const phantomRaid = phantomProperty
+    ? SAVAGE_RAID_DEFINITIONS.find((raid) => raid.id === phantomProperty.id) ?? null
+    : null;
   const cruelFee = Math.round(cruelProperty.marketPrice * 0.03);
   const cruelSignatureCapital = calculateCruelSignatureRequirement(
     cruelProperty.marketPrice
@@ -398,12 +414,15 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
           <span role="note" aria-label={`絶のLIMIT BREAK準備 ${limitBreakReadiness}`}>
             <Zap /> LIMIT BREAK準備：{limitBreakReadiness}
           </span>
-          <div className="ultimate-raid-card__warning" role="note">
-            <b>安定攻略の準備例</b>
-            <p>
-              開幕AUTOにパッセ、瀕死AUTOにリビングデッド。手動のぶんどると短時間防御を装備し、LB IIIを満たしてから敵の予告へ割り当てます。
-            </p>
-          </div>
+          <details className="ultimate-raid-card__warning high-end-raid-hint">
+            <summary>攻略のヒント</summary>
+            <div className="high-end-raid-hint__body" role="note">
+              <b>安定攻略の準備例</b>
+              <p>
+                開幕AUTOにパッセ、瀕死AUTOにリビングデッド。手動のぶんどると短時間防御を装備し、LB IIIを満たしてから敵の予告へ割り当てます。
+              </p>
+            </div>
+          </details>
           <StrengthComparison result={ultimateStrengthComparison} compact summaryOnly />
           <div className="ultimate-raid-card__actions">
             <button
@@ -450,6 +469,9 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
               CRUEL TRADE DUTY / 絶商戦踏破後
             </small>
             <h2>{CRUEL_RAID_DEFINITION.name}</h2>
+            <p className="cruel-raid-card__subtitle">
+              {CRUEL_RAID_DEFINITION.subtitle}
+            </p>
             <p>{CRUEL_RAID_DEFINITION.description}</p>
             <span>
               <ShieldAlert />
@@ -474,12 +496,15 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
             <span role="note" aria-label={`酷のLIMIT BREAK準備 ${limitBreakReadiness}`}>
               <Zap /> LIMIT BREAK準備：{limitBreakReadiness}
             </span>
-            <div className="cruel-raid-card__warning" role="note">
-              <b>勝負どころ：第二査定</b>
-              <p>
-                第一宣告後、10秒以内に所有率50%まで再建。未到達でも第二査定を強制開始します。続く15秒で所有率75%＋自社直接10%をそろえるため、直接出資2回分を残してください。
-              </p>
-            </div>
+            <details className="cruel-raid-card__warning high-end-raid-hint">
+              <summary>攻略のヒント</summary>
+              <div className="high-end-raid-hint__body" role="note">
+                <b>勝負どころ：第二査定</b>
+                <p>
+                  第一宣告後、10秒以内に所有率50%まで再建。未到達でも第二査定を強制開始します。続く15秒で所有率75%＋自社直接10%をそろえるため、直接出資2回分を残してください。
+                </p>
+              </div>
+            </details>
             <StrengthComparison result={cruelStrengthComparison} compact summaryOnly />
             <div className="cruel-raid-card__actions">
               <button
@@ -500,6 +525,58 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
                 </span>
               )}
             </div>
+          </div>
+        </section>
+      )}
+
+      {phantomUnlocked && (
+        <section className="phantom-raid-card">
+          <div className="phantom-raid-card__art" aria-hidden="true">
+            <span />
+            {FANKIT_ART.jobs.slice(0, 4).map((src) => (
+              <img key={src} src={src} alt="" />
+            ))}
+          </div>
+          <div className="phantom-raid-card__copy">
+            <small>
+              <span className="phantom-raid-card__boss-mark">
+                <Shuffle /> RANDOM
+              </span>
+              PHANTOM TRADE DUTY / 酷商戦踏破後
+            </small>
+            <h2>{PHANTOM_TRADE_DUTY.name}</h2>
+            <p>{PHANTOM_TRADE_DUTY.description}</p>
+            <div className="phantom-raid-card__streak" role="status">
+              <small>CURRENT WIN STREAK</small>
+              <strong>{phantomWinStreak}連勝</strong>
+              <span>敗北・戦闘中の撤退で0。最高記録や層別戦績は保存しません。</span>
+            </div>
+            <div className="phantom-raid-card__opponent">
+              <span>今回の幻影</span>
+              <strong>{phantomProperty?.name ?? '抽選準備中'}</strong>
+              {phantomRaid && (
+                <small>
+                  第{phantomRaid.series}編・第{phantomRaid.layer}層のギミック
+                </small>
+              )}
+            </div>
+            {phantomStrengthComparison && (
+              <StrengthComparison
+                result={phantomStrengthComparison}
+                compact
+                summaryOnly
+              />
+            )}
+            <p className="phantom-raid-card__rule" role="note">
+              参加費・攻略報酬・所有権・人脈・LBの永続変化はありません。記録されるのは現在の連勝数だけです。
+            </p>
+            <button
+              type="button"
+              disabled={!phantomProperty}
+              onClick={() => phantomProperty && onStartPhantom(phantomProperty)}
+            >
+              <Shuffle /> この幻影へ挑戦
+            </button>
           </div>
         </section>
       )}
