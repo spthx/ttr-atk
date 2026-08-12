@@ -8355,6 +8355,32 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <div className="ownership-track__ticks">{Array.from({ length: 9 }).map((_, index) => <i key={index} />)}</div>
               <div className="ownership-track__marker"><i /><i /><i /></div>
             </div>
+            <div
+              className="ownership-capital-readout"
+              role="group"
+              aria-label={`投入総額。自社${formatCurrency(displayedPlayerInvested)}、競合${formatCurrency(displayedEnemyInvested)}`}
+            >
+              <strong
+                className={
+                  capitalPresentationStage === 'impact' ||
+                  (!activeCapitalSnapshot && motion === 'player')
+                    ? 'is-acting'
+                    : ''
+                }
+                data-empty={displayedPlayerInvested <= 0}
+              >
+                <small>自社投入</small>
+                {formatCurrency(displayedPlayerInvested)}
+              </strong>
+              <span>CAPITAL</span>
+              <strong
+                className={motion === 'enemy' ? 'is-acting' : ''}
+                data-empty={displayedEnemyInvested <= 0}
+              >
+                <small>競合投入</small>
+                {formatCurrency(displayedEnemyInvested)}
+              </strong>
+            </div>
             {windVisible && !conditionAnnouncement && (
               <div
                 key={`${battleWindState.phase}-${presentedWind.type}-${selectedBattleSynergy?.id ?? 'none'}`}

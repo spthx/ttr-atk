@@ -13,6 +13,12 @@ import {
   type MechanicalCapitalColumnFrame,
 } from '../utils/battlePresentation';
 import { resolveBattleCanvasDpr } from '../utils/battleCanvasQuality';
+import {
+  easeBattleCapitalRackDepth,
+  resolveBattleCapitalCanvasLayout,
+  resolveBattleCapitalRackOffset,
+  resolveBattleCapitalVisualLayers,
+} from '../utils/battleCapitalCanvasLayout';
 import casinoWideUrl from '../assets/battle/battlefield-casino-wide.webp';
 import casinoMobileUrl from '../assets/battle/battlefield-casino-mobile.webp';
 import './BattleCapitalCanvas.css';
@@ -77,6 +83,7 @@ interface NormalizedCapitalFrame {
   packetProgress: number;
   beatDurationMs: number;
   rackCompressed: boolean;
+  rackDepth: number;
 }
 
 interface NormalizedCapitalSide {
@@ -106,6 +113,12 @@ export interface BattleCapitalCanvasMetrics {
 interface CapitalPacketClock {
   key: string;
   startedAt: number;
+}
+
+interface CapitalRackClock {
+  fromDepth: number;
+  startedAt: number;
+  targetDepth: number;
 }
 
 type BattleBackdropKind = 'wide' | 'mobile';
@@ -142,36 +155,6 @@ const loadBattleBackdrop = (kind: BattleBackdropKind) => {
   battleBackdropLoads.set(kind, load);
   return load;
 };
-
-const CAPITAL_COLUMN_SLOTS = [
-  // Four perspective rows on one broad treasury tray. The stacks fill almost
-  // level within a row and remain individually readable instead of converging
-  // into a triangular centre peak.
-  { x: 24, phoneX: 24, bottom: 24, depth: 0 },
-  { x: 42, phoneX: 42, bottom: 26, depth: 0 },
-  { x: 58, phoneX: 58, bottom: 26, depth: 0 },
-  { x: 76, phoneX: 76, bottom: 24, depth: 0 },
-  { x: 15, phoneX: 15, bottom: 16, depth: 1 },
-  { x: 32.5, phoneX: 32.5, bottom: 18, depth: 1 },
-  { x: 50, phoneX: 50, bottom: 19, depth: 1 },
-  { x: 67.5, phoneX: 67.5, bottom: 18, depth: 1 },
-  { x: 85, phoneX: 85, bottom: 16, depth: 1 },
-  { x: 8, phoneX: 8, bottom: 8, depth: 2 },
-  { x: 24.8, phoneX: 24.8, bottom: 10, depth: 2 },
-  { x: 41.6, phoneX: 41.6, bottom: 11, depth: 2 },
-  { x: 58.4, phoneX: 58.4, bottom: 11, depth: 2 },
-  { x: 75.2, phoneX: 75.2, bottom: 10, depth: 2 },
-  { x: 92, phoneX: 92, bottom: 8, depth: 2 },
-  { x: 5, phoneX: 5, bottom: 0, depth: 3 },
-  { x: 20, phoneX: 20, bottom: 1, depth: 3 },
-  { x: 35, phoneX: 35, bottom: 2, depth: 3 },
-  { x: 50, phoneX: 50, bottom: 2, depth: 3 },
-  { x: 65, phoneX: 65, bottom: 2, depth: 3 },
-  { x: 80, phoneX: 80, bottom: 1, depth: 3 },
-  { x: 95, phoneX: 95, bottom: 0, depth: 3 },
-] as const;
-
-const CAPITAL_ROW_HEIGHT_SCALE = [1, 0.84, 0.68, 0.54] as const;
 
 const SIDE_COLORS = {
   player: {
@@ -275,6 +258,10 @@ const normalizeSide = (
       beatDurationMs: Math.max(1, preview?.beatDurationMs ?? 90),
       rackCompressed:
         state.rackLowered === true || preview?.rackCompressed === true,
+      rackDepth:
+        state.rackLowered === true || preview?.rackCompressed === true
+          ? overflowTier + 1
+          : 0,
     },
   };
 };
@@ -510,62 +497,6 @@ const drawBackdrop = (
   }
 };
 
-const drawOwnershipTrack = (
-  context: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  scene: BattleCapitalCanvasScene
-) => {
-  const x = width * 0.085;
-  const y = height * 0.07;
-  const trackWidth = width * 0.83;
-  const trackHeight = clamp(height * 0.036, 8, 14);
-  const playerShare = scene.ownershipPercent / 100;
-  const markerX = x + trackWidth * playerShare;
-
-  roundedRect(context, x, y, trackWidth, trackHeight, trackHeight / 2);
-  context.fillStyle = 'rgba(0, 0, 0, .55)';
-  context.fill();
-  context.save();
-  roundedRect(context, x, y, trackWidth, trackHeight, trackHeight / 2);
-  context.clip();
-  context.fillStyle = SIDE_COLORS.player.edge;
-  context.globalAlpha = 0.78;
-  context.fillRect(x, y, trackWidth * playerShare, trackHeight);
-  context.fillStyle = SIDE_COLORS.enemy.edge;
-  context.fillRect(
-    markerX,
-    y,
-    trackWidth * (1 - playerShare),
-    trackHeight
-  );
-  context.restore();
-  context.globalAlpha = 1;
-
-  context.strokeStyle = '#f5e5ad';
-  context.lineWidth = 1;
-  context.beginPath();
-  context.moveTo(markerX, y - trackHeight * 0.8);
-  context.lineTo(markerX, y + trackHeight * 1.8);
-  context.stroke();
-
-  if (scene.pressureDirection !== 'even') {
-    const pointsRight = scene.pressureDirection === 'player';
-    const direction = pointsRight ? 1 : -1;
-    const arrowX = markerX + direction * trackHeight * 1.8;
-    const arrowY = y + trackHeight / 2;
-    context.fillStyle = pointsRight
-      ? SIDE_COLORS.player.edge
-      : SIDE_COLORS.enemy.edge;
-    context.beginPath();
-    context.moveTo(arrowX + direction * trackHeight, arrowY);
-    context.lineTo(arrowX - direction * trackHeight * 0.4, arrowY - trackHeight);
-    context.lineTo(arrowX - direction * trackHeight * 0.4, arrowY + trackHeight);
-    context.closePath();
-    context.fill();
-  }
-};
-
 const drawCoin = (
   context: CanvasRenderingContext2D,
   x: number,
@@ -757,16 +688,18 @@ const drawCapitalSide = (
 ) => {
   const playerSide = side.side === 'player';
   const areaLeft = playerSide ? width * 0.012 : width * 0.512;
-  const areaWidth = width * 0.476;
+  const layout = resolveBattleCapitalCanvasLayout(width, height);
+  const { areaWidth } = layout;
   const centerX = areaLeft + areaWidth / 2;
-  const compactScale = side.frame.rackCompressed ? 0.94 : 1;
-  const loweredBy = side.frame.rackCompressed
-    ? height * (0.025 + side.frame.overflowTier * 0.012)
-    : 0;
-  const baseY = height * (side.frame.rackCompressed ? 0.845 : 0.81) + loweredBy;
-  const coinWidth = clamp(areaWidth * 0.076, 8, 17) * compactScale;
-  const coinHeight = clamp(height * 0.022, 3.4, 6.8) * compactScale;
-  const layerStep = clamp(height * 0.0092, 1.9, 3.9) * compactScale;
+  const loweredBy = resolveBattleCapitalRackOffset(
+    height,
+    layout.landscape,
+    side.frame.rackDepth
+  );
+  const baseY = height * 0.82 + loweredBy;
+  const representativeColumn = layout.columns.at(-1) ?? layout.columns[0];
+  const coinWidth = representativeColumn.coinWidth;
+  const coinHeight = representativeColumn.coinHeight;
 
   const auraStrength = clamp(Math.log2(side.capitalRatio + 1) / 5, 0, 1);
   const pileGlow = context.createRadialGradient(
@@ -844,33 +777,30 @@ const drawCapitalSide = (
   context.fill();
   context.globalAlpha = 1;
 
-  const usePhoneSpread = width <= 620;
   const activeColumns = new Set(side.frame.activeColumnIndices);
-  const orderedSlots = CAPITAL_COLUMN_SLOTS.map((slot, index) => ({
-    slot,
-    index,
-  })).sort((left, right) => left.slot.depth - right.slot.depth);
+  const maxRawLayers = Math.max(0, ...side.frame.columnHeights);
 
-  for (const { slot, index } of orderedSlots) {
+  for (const [index, column] of layout.columns.entries()) {
     const layers = side.frame.columnHeights[index] ?? 0;
-    const rowScale = CAPITAL_ROW_HEIGHT_SCALE[slot.depth] ?? 1;
     const stackVariation = 0.94 + deterministicNoise(index * 37 + 11) * 0.1;
-    const visualLayers = layers > 0
-      ? Math.max(1, Math.round(layers * rowScale * stackVariation))
-      : 0;
-    const position = usePhoneSpread ? slot.phoneX : slot.x;
-    const mirroredPosition = playerSide ? position : 100 - position;
-    const x = areaLeft + (mirroredPosition / 100) * areaWidth;
-    const depthScale = 0.91 + slot.depth * 0.042;
+    const visualLayers = resolveBattleCapitalVisualLayers({
+      layers,
+      depth: column.depth,
+      maxRawLayers,
+      variation: stackVariation,
+    });
+    const mirroredPosition = playerSide ? column.xRatio : 1 - column.xRatio;
+    const x = areaLeft + mirroredPosition * areaWidth;
+    const depthScale = 0.91 + column.depth * 0.042;
     const columnBaseY =
-      baseY - (slot.bottom / 100) * height * 0.19 - slot.depth * 0.25;
+      baseY - (column.bottom / 100) * height * 0.19 - column.depth * 0.25;
     drawCoinColumn(
       context,
       x,
       columnBaseY,
-      coinWidth * depthScale,
-      coinHeight * depthScale,
-      layerStep * depthScale,
+      column.coinWidth * depthScale,
+      column.coinHeight * depthScale,
+      column.layerStep * depthScale,
       visualLayers,
       side.side,
       activeColumns.has(index)
@@ -887,9 +817,12 @@ const drawCapitalSide = (
       );
       const easedProgress = 1 - Math.pow(1 - staggeredProgress, 2.4);
       const packetHeight =
-        coinHeight + Math.max(0, packetLayers - 1) * layerStep;
+        column.coinHeight +
+        Math.max(0, packetLayers - 1) * column.layerStep;
       const landingBaseY =
-        columnBaseY - Math.max(coinHeight, visualLayers * layerStep) - coinHeight;
+        columnBaseY -
+        Math.max(column.coinHeight, visualLayers * column.layerStep) -
+        column.coinHeight;
       const startBaseY = height * 0.1 + packetHeight;
       const packetBaseY =
         startBaseY + (landingBaseY - startBaseY) * easedProgress;
@@ -897,9 +830,9 @@ const drawCapitalSide = (
         context,
         x,
         packetBaseY,
-        coinWidth * 1.08,
-        coinHeight,
-        layerStep,
+        column.coinWidth * 1.08,
+        column.coinHeight,
+        column.layerStep,
         packetLayers,
         side.side,
         true
@@ -1003,7 +936,6 @@ export const paintBattleCapitalCanvas = (
   context.imageSmoothingQuality = 'high';
 
   drawBackdrop(context, width, height, scene, backgroundImage);
-  drawOwnershipTrack(context, width, height, scene);
   drawCapitalSide(context, width, height, scene.player);
   drawCapitalSide(context, width, height, scene.enemy);
   drawCenterClash(context, width, height, scene.pressureDirection);
@@ -1048,6 +980,12 @@ export const BattleCapitalCanvas = ({
   >({
     player: { key: '', startedAt: 0 },
     enemy: { key: '', startedAt: 0 },
+  });
+  const rackClockRef = useRef<
+    Record<BattleCapitalCanvasSide, CapitalRackClock>
+  >({
+    player: { fromDepth: 0, startedAt: 0, targetDepth: 0 },
+    enemy: { fromDepth: 0, startedAt: 0, targetDepth: 0 },
   });
   const scene = createBattleCapitalCanvasScene({
     player,
@@ -1117,6 +1055,14 @@ export const BattleCapitalCanvas = ({
     const hasPackets = (['player', 'enemy'] as const).some(
       (side) => scene[side].frame.activeColumnIndices.length > 0
     );
+    const readRackDepth = (clock: CapitalRackClock, now: number) =>
+      reducedMotion
+        ? clock.targetDepth
+        : easeBattleCapitalRackDepth(
+            clock.fromDepth,
+            clock.targetDepth,
+            now - clock.startedAt
+          );
     for (const side of ['player', 'enemy'] as const) {
       const packetKey = getCapitalPacketAnimationKey(scene[side]);
       if (packetClockRef.current[side].key !== packetKey) {
@@ -1125,7 +1071,26 @@ export const BattleCapitalCanvas = ({
           startedAt: effectStartedAt,
         };
       }
+      const rackClock = rackClockRef.current[side];
+      const targetDepth = scene[side].frame.rackDepth;
+      if (targetDepth > rackClock.targetDepth) {
+        rackClockRef.current[side] = {
+          fromDepth: readRackDepth(rackClock, effectStartedAt),
+          startedAt: effectStartedAt,
+          targetDepth,
+        };
+      } else if (targetDepth < rackClock.targetDepth) {
+        rackClockRef.current[side] = {
+          fromDepth: targetDepth,
+          startedAt: effectStartedAt,
+          targetDepth,
+        };
+      }
     }
+    const hasRackMotion = (['player', 'enemy'] as const).some((side) => {
+      const clock = rackClockRef.current[side];
+      return readRackDepth(clock, effectStartedAt) < clock.targetDepth - 0.001;
+    });
     const intervalMs = 1_000 / frameRate;
 
     const project = (now: number): BattleCapitalCanvasScene => {
@@ -1142,6 +1107,7 @@ export const BattleCapitalCanvas = ({
                   0,
                   1
                 ),
+          rackDepth: readRackDepth(rackClockRef.current[side.side], now),
         },
       });
       return {
@@ -1159,9 +1125,15 @@ export const BattleCapitalCanvas = ({
         const projected = project(now);
         repaint(projected);
         const complete = (['player', 'enemy'] as const).every(
-          (side) =>
-            projected[side].frame.activeColumnIndices.length === 0 ||
-            projected[side].frame.packetProgress >= 1
+          (side) => {
+            const packetComplete =
+              projected[side].frame.activeColumnIndices.length === 0 ||
+              projected[side].frame.packetProgress >= 1;
+            const rackComplete =
+              projected[side].frame.rackDepth >=
+              rackClockRef.current[side].targetDepth - 0.001;
+            return packetComplete && rackComplete;
+          }
         );
         if (complete) return;
       }
@@ -1170,7 +1142,7 @@ export const BattleCapitalCanvas = ({
 
     const resume = () => {
       if (disposed || document.hidden || animationFrame) return;
-      if (hasPackets && !reducedMotion) {
+      if ((hasPackets || hasRackMotion) && !reducedMotion) {
         animationFrame = requestAnimationFrame(tick);
       } else {
         repaint(project(performance.now()));

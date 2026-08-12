@@ -2720,12 +2720,12 @@
 
   .integrated-battlefield
     .ownership-capital-readout > strong:first-child {
-    padding-left: .16rem;
+    padding-left: clamp(5.4rem, 12vw, 7rem);
   }
 
   .integrated-battlefield
     .ownership-capital-readout > strong:last-child {
-    padding-right: .16rem;
+    padding-right: clamp(5.4rem, 12vw, 7rem);
   }
 }
 
@@ -2801,28 +2801,14 @@
 
 .integrated-battlefield--canvas2d .ownership-track {
   opacity: 1;
-  animation: none !important;
 }
 
-.integrated-battlefield--canvas2d .ownership-track *,
-.integrated-battlefield--canvas2d .ownership-track *::before,
-.integrated-battlefield--canvas2d .ownership-track *::after,
 .integrated-battlefield--canvas2d .capital-clash,
 .integrated-battlefield--canvas2d .capital-clash * {
   animation: none !important;
   transition: none !important;
   will-change: auto !important;
   filter: none !important;
-}
-
-.integrated-battlefield--canvas2d .ownership-track__player,
-.integrated-battlefield--canvas2d .ownership-track__enemy-flow {
-  transition: transform var(--battle-gauge-interpolation, 110ms) linear !important;
-}
-
-.integrated-battlefield--canvas2d .ownership-track__tension,
-.integrated-battlefield--canvas2d .ownership-track__marker {
-  transition: left var(--battle-gauge-interpolation, 110ms) linear !important;
 }
 
 .integrated-battlefield--canvas2d .capital-clash,

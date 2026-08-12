@@ -20,6 +20,14 @@ import {
   BATTLE_CANVAS_MAX_DPR,
   resolveBattleCanvasDpr,
 } from '../src/utils/battleCanvasQuality';
+import {
+  BATTLE_CAPITAL_CANVAS_ROW_COUNTS,
+  BATTLE_CAPITAL_RACK_TWEEN_MS,
+  easeBattleCapitalRackDepth,
+  resolveBattleCapitalCanvasLayout,
+  resolveBattleCapitalRackOffset,
+  resolveBattleCapitalVisualLayers,
+} from '../src/utils/battleCapitalCanvasLayout';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const readSource = (path: string) =>
@@ -30,7 +38,11 @@ const app = readSource('src/App.tsx');
 const appPage = readSource('app/page.tsx');
 const battlePresentation = readSource('src/utils/battlePresentation.ts');
 const battleCanvasQuality = readSource('src/utils/battleCanvasQuality.ts');
+const battleCapitalCanvasLayout = readSource(
+  'src/utils/battleCapitalCanvasLayout.ts'
+);
 const capitalCss = readSource('src/battle-capital-layer.css');
+const balanceCss = readSource('src/battle-balance.css');
 const battleCapitalCanvas = readSource(
   'src/components/BattleCapitalCanvas.tsx'
 );
@@ -223,19 +235,10 @@ assert.doesNotMatch(
     `${path} must remain deleted so it cannot silently return as a fallback`
   );
 });
-const capitalColumnSlots =
-  battleCapitalCanvas.match(
-    /const CAPITAL_COLUMN_SLOTS = \[([\s\S]*?)\] as const;/
-  )?.[1] ?? '';
 assert.equal(
-  (capitalColumnSlots.match(/\{ x:/g) ?? []).length,
+  BATTLE_CAPITAL_CANVAS_ROW_COUNTS.reduce((sum, count) => sum + count, 0),
   22,
-  'the Canvas2D coin formation must retain exactly twenty-two fixed slots per side'
-);
-assert.equal(
-  (capitalColumnSlots.match(/phoneX:/g) ?? []).length,
-  22,
-  'every Canvas2D coin slot must have a portrait-phone spread position'
+  'the Canvas2D coin formation must retain exactly twenty-two columns per side'
 );
 assert.match(
   battleCapitalCanvas,
@@ -259,8 +262,8 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const orderedSlots = CAPITAL_COLUMN_SLOTS\.map\([\s\S]*drawCoinColumn\([\s\S]*activeColumns\.has\(index\)/,
-  'the Canvas2D renderer must paint the fixed slots from the staged column frame'
+  /const layout = resolveBattleCapitalCanvasLayout\(width, height\);[\s\S]*for \(const \[index, column\] of layout\.columns\.entries\(\)\)[\s\S]*drawCoinColumn\([\s\S]*activeColumns\.has\(index\)/,
+  'the Canvas2D renderer must paint the responsive twenty-two-column tray from the staged frame'
 );
 assert.equal(
   (battleCapitalCanvas.match(/<canvas\b/g) ?? []).length,
@@ -334,13 +337,28 @@ assert.match(
 );
 assert.match(
   capitalCss,
-  /\.integrated-battlefield--canvas2d \.ownership-track\s*\{[\s\S]{0,100}opacity:\s*1;[\s\S]{0,100}animation:\s*none !important;[\s\S]*\.integrated-battlefield--canvas2d \.ownership-track \*,[\s\S]{0,320}\.capital-clash \*\s*\{[\s\S]{0,120}animation:\s*none !important;[\s\S]{0,120}transition:\s*none !important;[\s\S]{0,120}filter:\s*none !important;/,
-  'the semantic ownership gauge must remain visibly mounted while its old ambient loops stay disabled'
+  /\.integrated-battlefield--canvas2d \.ownership-track\s*\{[\s\S]{0,80}opacity:\s*1;[\s\S]{0,160}\}[\s\S]{0,100}\.integrated-battlefield--canvas2d \.capital-clash/,
+  'the semantic ownership gauge must remain visibly mounted above the consolidated canvas'
 );
 assert.doesNotMatch(
   capitalCss,
-  /\.integrated-battlefield--canvas2d \.ownership-track\s*>\s*\*\s*\{[\s\S]{0,100}display:\s*none !important;/,
-  'the visible ownership gauge must not hide all of its player, enemy, tick and marker children'
+  /\.integrated-battlefield--canvas2d \.ownership-track[^,{]*\{[^}]*(?:animation|filter|transition):\s*none !important;/,
+  'the Canvas2D override must not flatten the gauge flow, glow or interpolation again'
+);
+assert.doesNotMatch(
+  capitalCss,
+  /\.integrated-battlefield--canvas2d \.ownership-track \*/,
+  'the Canvas2D override must not blanket-disable the gauge descendants again'
+);
+assert.match(
+  balanceCss,
+  /\.ownership-track\s*\{[\s\S]{0,260}animation:\s*enemy-bid-flow[\s\S]*\.ownership-track__player\s*\{[\s\S]{0,240}animation:\s*player-bid-flow[\s\S]*\.ownership-track__player::after,[\s\S]*animation:\s*bid-shimmer[\s\S]*\.ownership-track__tension\s*\{[\s\S]*animation:\s*tension-breathe[\s\S]*\.ownership-track__marker > i\s*\{[\s\S]*animation:\s*ownership-spark[\s\S]*knot-pull-player[\s\S]*knot-pull-enemy[\s\S]*track-impact/,
+  'the ownership gauge must retain moving bids, shimmer, tension, sparks, directional pull and impact feedback'
+);
+assert.match(
+  capitalCss,
+  /\.integrated-battlefield \.ownership-track__player,[\s\S]{0,100}\.ownership-track__enemy-flow\s*\{[\s\S]{0,180}transition:\s*transform var\(--battle-gauge-interpolation, 110ms\) linear;[\s\S]*\.ownership-track__tension,[\s\S]{0,100}\.ownership-track__marker\s*\{[\s\S]{0,180}transition:\s*left var\(--battle-gauge-interpolation, 110ms\) linear;/,
+  'the rich gauge must still bridge every logical ownership update smoothly'
 );
 assert.match(
   capitalCss,
@@ -357,20 +375,79 @@ assert.match(
   /if \(scene\.pressureDirection !== 'even'\) \{[\s\S]{0,500}for \(let row = 0; row < 5; row \+= 1\)[\s\S]{0,180}for \(let step = 1; step <= 3; step \+= 1\)[\s\S]{0,420}context\.lineTo\(tipX, y\);/,
   'the canvas battlefield must show a bounded directional chevron field when either side is pushing'
 );
-assert.match(
+assert.doesNotMatch(
   battleCapitalCanvas,
-  /const trackHeight = clamp\(height \* 0\.036, 8, 14\);/,
-  'the canvas ownership track must remain thick enough to read on portrait and landscape phones'
+  /drawOwnershipTrack/,
+  'the Canvas painter must not duplicate the richer semantic DOM gauge'
 );
-assert.match(
-  battleCapitalCanvas,
-  /const areaLeft = playerSide \? width \* 0\.012 : width \* 0\.512;[\s\S]{0,420}const areaWidth = width \* 0\.476;[\s\S]{0,420}const coinWidth = clamp\(areaWidth \* 0\.076, 8, 17\)[\s\S]{0,140}const coinHeight = clamp\(height \* 0\.022, 3\.4, 6\.8\)[\s\S]{0,140}const layerStep = clamp\(height \* 0\.0092, 1\.9, 3\.9\)/,
-  'both coin armies must keep the enlarged near-half-field geometry on portrait and landscape screens'
+const portraitCapitalLayout = resolveBattleCapitalCanvasLayout(402, 414);
+const landscapeCapitalLayout = resolveBattleCapitalCanvasLayout(874, 171);
+assert.equal(portraitCapitalLayout.columns.length, 22);
+assert.equal(landscapeCapitalLayout.columns.length, 22);
+for (const [label, layout, maxGapRatio] of [
+  ['portrait', portraitCapitalLayout, 0.15],
+  ['landscape', landscapeCapitalLayout, 0.09],
+] as const) {
+  const widestGapRatio = Math.max(
+    ...layout.columns.map((column) =>
+      Math.max(0, column.pitch - column.coinWidth) / column.pitch
+    )
+  );
+  assert.ok(
+    widestGapRatio <= maxGapRatio,
+    `${label} coin rows must stay dense instead of widening their empty gaps`
+  );
+}
+assert.ok(
+  portraitCapitalLayout.columns.every((column) => column.coinWidth >= 24),
+  'portrait coins must remain large enough to read as decorated rolls'
 );
+assert.ok(
+  landscapeCapitalLayout.columns.every((column) => column.coinWidth >= 47),
+  'landscape coins must grow with the tray instead of staying at the retired 17px cap'
+);
+assert.ok(
+  resolveBattleCapitalVisualLayers({
+    layers: 12,
+    depth: 0,
+    maxRawLayers: 12,
+    variation: 1,
+  }) >
+    resolveBattleCapitalVisualLayers({
+      layers: 12,
+      depth: 3,
+      maxRawLayers: 12,
+      variation: 1,
+    }),
+  'medium capital must keep a broad stepped treasury tray'
+);
+for (let depth = 0; depth < 4; depth += 1) {
+  assert.equal(
+    resolveBattleCapitalVisualLayers({
+      layers: 36,
+      depth,
+      maxRawLayers: 36,
+      variation: 0.94,
+    }),
+    36,
+    'a saturated tray must become a level wall instead of retaining a short front row'
+  );
+}
+assert.ok(
+  resolveBattleCapitalRackOffset(414, false, 4) >= 60,
+  'portrait overflow tier three must lower the rack by the original screen-scale distance'
+);
+assert.ok(
+  resolveBattleCapitalRackOffset(171, true, 4) >= 45,
+  'landscape overflow tier three must visibly scroll the rack beyond the short field'
+);
+assert.equal(BATTLE_CAPITAL_RACK_TWEEN_MS, 280);
+assert.equal(easeBattleCapitalRackDepth(0, 4, 0), 0);
+assert.equal(easeBattleCapitalRackDepth(0, 4, BATTLE_CAPITAL_RACK_TWEEN_MS), 4);
 assert.match(
-  battleCapitalCanvas,
-  /const CAPITAL_ROW_HEIGHT_SCALE = \[1, 0\.84, 0\.68, 0\.54\] as const;[\s\S]{0,30000}const visualLayers = layers > 0[\s\S]{0,160}layers \* rowScale \* stackVariation/,
-  'coin stacks must form broad stepped tray rows instead of a pointed centre mountain'
+  battleCapitalCanvasLayout,
+  /const span = ROW_SPANS\[depth\] \* \(landscape \? 0\.84 : 1\);[\s\S]{0,240}const coinWidth = clamp\(pitch \* \(landscape \? 0\.92 : 0\.86\), 12, 72\);/,
+  'coin width must follow each row pitch in both orientations'
 );
 assert.match(
   battleCapitalCanvas,
@@ -401,7 +478,7 @@ assert.match(
 assert.match(
   battleCapitalCanvas,
   /const hasPackets = \(\['player', 'enemy'\] as const\)\.some\([\s\S]*activeColumnIndices\.length > 0[\s\S]*const intervalMs = 1_000 \/ frameRate;/,
-  'the renderer must derive its 30/60fps loop only from active capital packets'
+  'the renderer must derive its 30/60fps loop only from bounded visual work'
 );
 assert.match(
   battleCapitalCanvas,
@@ -415,7 +492,12 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const resume = \(\) => \{[\s\S]*if \(disposed \|\| document\.hidden \|\| animationFrame\) return;[\s\S]*if \(hasPackets && !reducedMotion\) \{\s*animationFrame = requestAnimationFrame\(tick\);\s*\} else \{\s*repaint\(project\(performance\.now\(\)\)\);\s*\}/,
+  /const rackClockRef = useRef<[\s\S]*CapitalRackClock[\s\S]*fromDepth:\s*0[\s\S]*targetDepth:\s*0[\s\S]*const hasRackMotion = [\s\S]*readRackDepth\(clock, effectStartedAt\) < clock\.targetDepth - 0\.001/,
+  'each rack must keep one bounded 280ms descent clock without changing battle state'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const resume = \(\) => \{[\s\S]*if \(disposed \|\| document\.hidden \|\| animationFrame\) return;[\s\S]*if \(\(hasPackets \|\| hasRackMotion\) && !reducedMotion\) \{\s*animationFrame = requestAnimationFrame\(tick\);\s*\} else \{\s*repaint\(project\(performance\.now\(\)\)\);\s*\}/,
   'an idle or reduced-motion canvas must repaint once without starting an animation loop'
 );
 assert.match(
@@ -495,11 +577,22 @@ const actorZIndex = Number(
     /\.integrated-battlefield \.capital-visual-row \.ownership-fighter\s*\{[\s\S]*?z-index:\s*(-?\d+);/
   )?.[1]
 );
+const investedReadoutZIndex = Number(
+  integratedCss.match(
+    /\.integrated-battlefield \.ownership-capital-readout\s*\{[\s\S]*?z-index:\s*(-?\d+);/
+  )?.[1]
+);
 assert.ok(
   Number.isFinite(canvasZIndex) &&
     Number.isFinite(actorZIndex) &&
     canvasZIndex < actorZIndex,
   'the capital canvas must remain behind the interactive battle actors'
+);
+assert.ok(
+  Number.isFinite(investedReadoutZIndex) &&
+    canvasZIndex < investedReadoutZIndex &&
+    investedReadoutZIndex > actorZIndex,
+  'invested totals must stay readable above both coins and landscape actors'
 );
 
 assert.equal(
@@ -525,8 +618,39 @@ assert.match(
 );
 assert.doesNotMatch(
   liveBattlefield,
-  /className=(?:"|\{`)(?:ownership-capital-readout|player-budget-overlay|enemy-budget-overlay|capital-effective-detail|capital-source-bar|enemy-reserve-bar)/,
-  'numeric capital, budget, source and reserve overlays must not cover the live coin battlefield'
+  /className=(?:"|\{`)(?:player-budget-overlay|enemy-budget-overlay|capital-effective-detail|capital-source-bar|enemy-reserve-bar)/,
+  'budget, regeneration, source and reserve overlays must not cover the live coin battlefield'
+);
+assert.match(
+  liveBattlefield,
+  /className="ownership-capital-readout"[\s\S]{0,80}role="group"[\s\S]{0,220}aria-label=\{`[^`]*displayedPlayerInvested[^`]*displayedEnemyInvested[^`]*`\}/,
+  'the gauge must visibly restore both packet-synchronized invested totals without restoring budget noise'
+);
+const investedReadoutStart = liveBattlefield.indexOf(
+  'className="ownership-capital-readout"'
+);
+const investedReadoutEnd = liveBattlefield.indexOf(
+  '{windVisible && !conditionAnnouncement',
+  investedReadoutStart
+);
+const investedReadout = liveBattlefield.slice(
+  investedReadoutStart,
+  investedReadoutEnd
+);
+assert.match(
+  investedReadout,
+  /<small>自社投入<\/small>[\s\S]*displayedPlayerInvested[\s\S]*<span>CAPITAL<\/span>[\s\S]*<small>競合投入<\/small>[\s\S]*displayedEnemyInvested/,
+  'the restored row must label the player and rival totals directly below the gauge'
+);
+assert.match(
+  integratedCss,
+  /\.integrated-battlefield \.ownership-capital-readout\s*\{[\s\S]{0,220}z-index:\s*30;[\s\S]{0,220}display:\s*grid;[\s\S]{0,180}grid-template-columns:\s*minmax\(0, 1fr\) 4\.6rem minmax\(0, 1fr\);/,
+  'the restored invested totals must stay aligned immediately below the ownership gauge'
+);
+assert.match(
+  capitalCss,
+  /@media \(orientation: landscape\) and \(max-width: 950px\) and \(max-height: 500px\)[\s\S]*ownership-capital-readout > strong:first-child[\s\S]{0,100}padding-left:\s*clamp\(5\.4rem, 12vw, 7rem\);[\s\S]*ownership-capital-readout > strong:last-child[\s\S]{0,100}padding-right:\s*clamp\(5\.4rem, 12vw, 7rem\);/,
+  'landscape invested totals must clear both edge actors while staying under the gauge'
 );
 assert.doesNotMatch(
   liveBattlefield,
@@ -912,9 +1036,9 @@ assert.match(
   'late-game alliance funding must always receive the heavy stacking presentation'
 );
 assert.match(
-  battleCapitalCanvas,
-  /const usePhoneSpread = width <= 620;[\s\S]{0,2400}const position = usePhoneSpread \? slot\.phoneX : slot\.x;/,
-  'portrait canvases must use the reviewed wider capital-column spread'
+  battleCapitalCanvasLayout,
+  /const landscape = safeWidth \/ safeHeight >= 1\.45;[\s\S]{0,1200}xRatio:\s*0\.5 \+ centered \* \(pitch \/ areaWidth\)/,
+  'portrait and landscape canvases must resolve a real orientation-specific dense spread'
 );
 assert.doesNotMatch(
   battleModal,
@@ -1419,8 +1543,8 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const loweredBy = side\.frame\.rackCompressed[\s\S]{0,120}side\.frame\.overflowTier[\s\S]{0,180}const baseY = height \* \(side\.frame\.rackCompressed/,
-  'the Canvas2D rack must combine its latched compression and overflow depth without a DOM transition'
+  /const loweredBy = resolveBattleCapitalRackOffset\([\s\S]{0,120}layout\.landscape,[\s\S]{0,80}side\.frame\.rackDepth[\s\S]{0,100}const baseY = height \* 0\.82 \+ loweredBy;/,
+  'the Canvas2D rack must project its latched compression and overflow depth into a screen-scale descent'
 );
 assert.match(
   battleModal,

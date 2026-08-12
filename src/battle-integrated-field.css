@@ -3663,7 +3663,7 @@
 
 .integrated-battlefield .ownership-capital-readout {
   position: absolute;
-  z-index: 20;
+  z-index: 30;
   top: 2.18rem;
   right: -30.65%;
   left: -30.65%;
