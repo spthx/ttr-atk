@@ -230,7 +230,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <ShieldCheck className="w-4 h-4" />
-            アライアンス
+            協力・企業連合
           </button>
         )}
 
@@ -254,10 +254,11 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Mobile Sticky Bottom Command Navigation Bar */}
-      <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 grid ${savageUnlocked ? 'grid-cols-5' : tradeAllianceUnlocked ? 'grid-cols-4' : 'grid-cols-3'} h-14 px-1 shadow-2xl touch-manipulation select-none pb-safe`}>
+      <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900 border-t border-slate-800 grid ${savageUnlocked ? 'grid-cols-5' : tradeAllianceUnlocked ? 'grid-cols-4' : 'grid-cols-3'} h-14 px-1 shadow-lg touch-manipulation select-none pb-safe`}>
         <button
           onClick={onOpenMap}
           aria-label={marketReturnAttention ? '次の交渉対象へ戻る' : '都市地図を開く'}
+          aria-current={activeTab === 'market' ? 'page' : undefined}
           className={`relative flex flex-col items-center justify-center py-1 transition-colors ${
             activeTab === 'market'
               ? 'text-amber-400 font-extrabold'
@@ -279,6 +280,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={() => setActiveTab('portfolio')}
+          aria-current={activeTab === 'portfolio' ? 'page' : undefined}
           className={`flex flex-col items-center justify-center py-1 transition-colors relative ${
             activeTab === 'portfolio' ? 'text-amber-400 font-extrabold' : 'text-slate-400'
           }`}
@@ -294,6 +296,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={() => setActiveTab('skills')}
+          aria-current={activeTab === 'skills' ? 'page' : undefined}
           className={`flex flex-col items-center justify-center py-1 transition-colors ${
             activeTab === 'skills' ? 'text-amber-400 font-extrabold' : 'text-slate-400'
           }`}
@@ -305,18 +308,20 @@ export const Header: React.FC<HeaderProps> = ({
         {tradeAllianceUnlocked && (
           <button
             onClick={() => setActiveTab('cartels')}
+            aria-current={activeTab === 'cartels' ? 'page' : undefined}
             className={`flex flex-col items-center justify-center py-1 transition-colors ${
               activeTab === 'cartels' ? 'text-amber-400 font-extrabold' : 'text-slate-400'
             }`}
           >
             <ShieldCheck className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px] leading-none">アライアンス</span>
+            <span className="text-[11px] leading-none">連合攻略</span>
           </button>
         )}
 
         {savageUnlocked && (
           <button
             onClick={() => setActiveTab('savage')}
+            aria-current={activeTab === 'savage' ? 'page' : undefined}
             className={`relative flex flex-col items-center justify-center py-1 transition-colors ${
               activeTab === 'savage' ? 'text-rose-300 font-extrabold' : 'text-rose-300/70'
             }`}

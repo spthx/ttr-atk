@@ -319,28 +319,53 @@ export const SAVAGE_ENEMY_AUTO_PROFILES = [
 }[])[];
 
 export const ULTIMATE_ENEMY_AUTO_PATTERNS = [
-  { id: 'drain_drill', opening: 'drain', critical: 'drill' },
+  {
+    id: 'drain_drill',
+    opening: 'drain',
+    critical: 'drill',
+    counterPlan:
+      'ドレイン予告中に大口出資で手元資金を退避。ドリル予告へパッセかブラックナイトを合わせ、着弾後に人脈とLBを重ねる。',
+  },
   {
     id: 'divination_blackest_night',
     opening: 'divination',
     critical: 'blackest_night',
+    counterPlan:
+      'ディヴィネーション予告を時代の風で解除。敵ブラックナイト中は直接出資を止め、障壁終了後に人脈、LB、大口出資を重ねる。',
   },
-  { id: 'rapid_assault_drill', opening: 'rapid_assault', critical: 'drill' },
-  { id: 'drain_limit_break_3', opening: 'drain', critical: 'limit_break_3' },
+  {
+    id: 'rapid_assault_drill',
+    opening: 'rapid_assault',
+    critical: 'drill',
+    counterPlan:
+      '疾風怒濤中は支援を使い切らず、ドリル予告へパッセかブラックナイトを合わせる。防御後に人脈と大口出資で押し返す。',
+  },
+  {
+    id: 'drain_limit_break_3',
+    opening: 'drain',
+    critical: 'limit_break_3',
+    counterPlan:
+      'ドレイン予告中に大口出資で手元資金を退避。敵LB3の予告へブラックナイトを合わせ、着弾後に人脈、自社LB、大口出資で再建する。',
+  },
   {
     id: 'limit_break_3_blackest_night',
     opening: 'limit_break_3',
     critical: 'blackest_night',
+    counterPlan:
+      '開幕LB3の予告へパッセかブラックナイトを合わせる。後半の敵ブラックナイト中は直接出資を止め、終了後に残した人脈とLBを重ねる。',
   },
   {
     id: 'rapid_assault_limit_break_3',
     opening: 'rapid_assault',
     critical: 'limit_break_3',
+    counterPlan:
+      '疾風怒濤中は防御とLBを温存。敵LB3の予告へブラックナイトを合わせ、着弾後に人脈、自社LB、大口出資をまとめて使う。',
   },
 ] as const satisfies readonly {
   id: string;
   opening: EnemySupportSkillId;
   critical: EnemySupportSkillId;
+  counterPlan: string;
 }[];
 
 export type CruelScriptPhase =
@@ -359,7 +384,7 @@ export const CRUEL_SCRIPTED_BATTLE = {
   recoveryEnemyPressureMultiplier: 0.58,
   recoveryPlayerFavorablePressureMultiplier: 0.5,
   secondTriggerPlayerOwnership: 50,
-  forcedSecondTriggerRecoveryMs: 35_000,
+  forcedSecondTriggerRecoveryMs: 10_000,
   secondActionId: 'cruel_reckoning' as EnemySupportSkillId,
   successPlayerOwnership: 75,
   secondSignatureMarketRatio: 0.1,

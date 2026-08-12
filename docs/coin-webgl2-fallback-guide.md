@@ -1,16 +1,16 @@
-# コイン描画 WebGL2 フォールバック実装手引き
+# 商戦フィールド描画 WebGL2 フォールバック実装手引き
 
 ## 1. 目的
 
-現行のReact／DOM/CSS版をゲーム本体の正本として維持しながら、コイン積載演出が端末上で性能ゲートを満たさない場合に限り、**コイン描画層だけ**をWebGL2へ切り替えられるようにする。
+現行React版は、両陣営のコイン山・所有率前線・戦場背景・風・VSを共通1枚のCanvas2Dへ投影し、人物・固定台帳・テロップ・semantic progressbar・操作UIをDOMに残す構成を製品既定とする。対象実機でCanvas2D版がperformance gateを満たさない場合に限り、同じ描画sceneをWebGL2へ交換できるようにする。旧DOM/CSS列は比較基準であり、製品既定ではない。
 
-WebGL2化はゲームルール、投入額、所有率、AI、演出時間、音声予約、画面遷移を変更する理由にしてはならない。変更するのは、`CapitalStackTimeline`を画面へ投影するrendererだけである。
+WebGL2化はゲームルール、投入額、所有率、AI、演出時間、音声予約、画面遷移を変更する理由にしてはならない。変更するのは、React側で確定した`BattleCapitalCanvasScene`と積載preview frameを画面へ投影するrendererだけである。
 
 この手引きはUnity WebGLへのゲーム全体移植ではない。ゲーム全体の将来移植は[`unity-webgl-migration-spec.md`](./unity-webgl-migration-spec.md)を参照する。
 
 ## 2. 採用判断の原則
 
-DOM/CSS、Canvas2D、WebGL2を、次の条件を完全にそろえて測るまで採用方式を断定しない。
+Canvas2DをCurrent、旧DOM/CSSをReference、WebGL2を候補として、次の条件を完全にそろえて測るまでWebGL2採用を断定しない。
 
 - 同一scene
 - 同一`CapitalStackEvent`
@@ -24,9 +24,9 @@ DOM/CSS、Canvas2D、WebGL2を、次の条件を完全にそろえて測るま�
 
 WebGL2を採用する最低条件は次の三つを同時に満たすことである。
 
-1. DOM/CSS版が対象実機のperformance gateを外れる。
+1. Canvas2D製品既定版が対象実機のperformance gateを外れる。
 2. WebGL2版が同一条件で定量的に改善する。
-3. human blind A/Bでコインの物量感、山の成長、人物・金額・ゲージの可読性がCurrent以上になる。
+3. human blind A/Bでコインの物量感、山の成長、人物・金額・ゲージの可読性がCanvas2D Current以上になる。
 
 Canvas2Dが同じ条件をより小さい複雑性で満たす場合は、WebGL2を優先しない。
 
@@ -61,7 +61,7 @@ rendererは`activeColumnIndices`、`columnHeights`、`rackCompressed`、`packetS
 
 ## 4. renderer interface
 
-最初にDOM実装を次の境界の背後へ移す。Canvas2DとWebGL2は同じinterfaceを実装する。
+現行製品の描画境界は`BattleCapitalCanvasProps -> createBattleCapitalCanvasScene -> paintBattleCapitalCanvas`である。次の`CoinSceneRenderer`は三方式比較を再開する場合の将来ハーネス案であり、現行製品のモジュール構成ではない。
 
 ```ts
 export type CoinRendererKind = 'dom' | 'canvas2d' | 'webgl2';
@@ -97,7 +97,7 @@ export interface CoinSceneRenderer {
 }
 ```
 
-推奨配置:
+将来の比較ハーネス推奨配置（現行製品の実装先は`src/components/BattleCapitalCanvas.tsx`）:
 
 ```text
 src/coin-rendering/
@@ -111,23 +111,25 @@ src/coin-rendering/
 scripts/coin-renderer-benchmark/
 ```
 
-`BattleModal.tsx`はrenderer種別を意識せず、確定済みtimelineと経過時間だけを`CoinSceneHost`へ渡す。
+現行の`BattleModal.tsx`は確定済みscene snapshotとpreview frameを`BattleCapitalCanvas`へ渡す。将来`CoinSceneHost`を導入する場合も、simulationを再計算させてはならない。
 
 ## 5. 三方式の実装契約
 
-### 5.1 DOM/CSS
+### 5.1 DOM/CSS（比較用Reference）
 
-- 現行22列を維持する。
+- 旧22列の見た目と上限を比較契約として維持する。
 - 金額比例DOMを作らない。
 - 一時packetも固定上限を維持する。
 - 現行版の見た目と操作を比較基準にする。
+- 製品画面でCanvas2Dと同時にlive mountしない。
 
 ### 5.2 Canvas2D
 
-- 1陣営につき1枚、または両陣営共通1枚のcanvasを使う。
-- 毎frameの配列・Path2D・gradient生成を避ける。
-- DPRを反映して内部解像度を設定し、CSS寸法はDOM版と一致させる。
-- 固定台帳、テロップ、人物、ゲージ、操作UIはDOMのまま残す。
+- 現行製品は両陣営共通1枚のcanvasを使う。
+- 背景、所有率前線、圧力、左右22列、overflow、落下packet、風、VSを同じsceneで描く。
+- idle時は`requestAnimationFrame`を回さない。active packet中だけ30/60fpsで更新し、`document.hidden`ではrendererの更新だけを止める。
+- CSS寸法は統合商戦フィールドへ一致させたまま、内部解像度だけを30fps時DPR 1.5、60fps時DPR 2までに制限する。高密度iPhoneで描画画素が過剰に増えるのを防ぎ、勝敗・入力・演出時間には触れない。
+- 固定台帳、テロップ、人物、semantic progressbar、操作UIはDOMのまま残す。
 
 ### 5.3 WebGL2
 
@@ -160,7 +162,7 @@ scripts/coin-renderer-benchmark/
 
 ### 7.1 初期導入
 
-検証期間はURLパラメータだけで明示的に選択する。
+将来の比較ビルドでは、URLパラメータだけで明示的に選択する。
 
 ```text
 ?coin-renderer=dom
@@ -168,7 +170,7 @@ scripts/coin-renderer-benchmark/
 ?coin-renderer=webgl2
 ```
 
-未指定時はDOM/CSSを使う。この段階では端末判定だけでWebGL2を自動採用しない。
+これらのURLは将来の比較ビルド向け契約であり、現行製品版では未提供である。製品未指定時はCanvas2Dを使う。端末判定だけでWebGL2を自動採用しない。
 
 ### 7.2 自動切替
 
@@ -177,7 +179,7 @@ scripts/coin-renderer-benchmark/
 1. WebGL2 context生成可否を確認する。
 2. 保存済みの同一browser major／viewport帯／DPR帯の計測結果を読む。
 3. 結果がなければ、通常UIを妨げない短い固定sceneで校正する。
-4. DOM/CSSがperformance gateを外れ、WebGL2が合格した端末だけWebGL2を選ぶ。
+4. Canvas2Dがperformance gateを外れ、WebGL2が合格した端末だけWebGL2を選ぶ。
 5. renderer種別をその商戦中は固定する。
 
 **積載途中、シネマティック途中、決着待ちでrendererを切り替えてはならない。** 切替予約は次の商戦開始時、またはコインsceneが完全にidleになった時だけ適用する。
@@ -192,16 +194,16 @@ scripts/coin-renderer-benchmark/
 |音とpacket着地のずれ|50ms以下|50ms以下|
 |1戦後の未解放renderer資源|0|0|
 
-WebGL2採用には、DOM/CSSに対してp95 frame intervalまたはlate frame率が25%以上改善することを探索開始条件とする。最終閾値は実機データから決める。
+WebGL2採用には、Canvas2Dに対してp95 frame intervalまたはlate frame率が25%以上改善することを探索開始条件とする。最終閾値は実機データから決める。
 
 ### 7.3 context loss
 
 - `webglcontextlost`では`preventDefault()`し、同じ戦闘中のsimulationを止めない。
 - その時点の確定済み列高と`presentedCapital`を保持する。
 - 可能ならcontext restore後に同じtimelineの現在時刻へ復帰する。
-- 復元できない場合は、次のpacket境界またはscene idleでDOMへ戻す。
+- 復元できない場合は、次のpacket境界またはscene idleでCanvas2Dへ戻す。
 - ledgerの再投入、音の再発火、勝敗の再判定を行わない。
-- 同一セッションでcontext lossが再発した場合はWebGL2を無効化し、次回起動までDOMを使う。
+- 同一セッションでcontext lossが再発した場合はWebGL2を無効化し、次回起動までCanvas2Dを使う。
 
 ## 8. benchmark計画
 
@@ -261,18 +263,18 @@ hardwareを取得できないブラウザでは推測せず`TBD`とする。`per
 - source timeline上の時間を動画の実測値として扱わない。
 - blind A/Bではrenderer名、commit、対応表、音量差を隠す。
 
-## 9. 段階実装
+## 9. 段階実装（現行完了と将来比較）
 
-1. 現行DOM/CSSを`CoinSceneRenderer`へ包み、見た目を変えずに回帰検査を通す。
-2. `timelineSampler`を純粋関数化し、30/60fpsで同じ最終sceneになるgolden testを作る。
-3. benchmark harnessと固定preset、CSV/JSON出力を先に作る。
-4. Canvas2D rendererを最小実装し、同一sceneの画像差分を取る。
-5. WebGL2 rendererを固定buffer・固定atlasで実装する。
-6. 三方式を同じ実機群で測る。
-7. blind A/Bとperformance gateを同時に通った方式だけ候補にする。
-8. URL指定で限定公開し、402×874・30fpsの通しテストを行う。
-9. context loss、タブ復帰、画面回転、戦闘中断、再挑戦を検査する。
-10. 実測で必要と確認できた場合だけ`auto`切替を有効にする。
+1. [完了] 共通1枚の`BattleCapitalCanvas`へ背景・前線・両陣営コイン・風を統合し、回帰検査を通す。
+2. [完了] `battlePresentation`の確定済みtimelineから30/60fpsで同じ最終sceneを描く。
+3. [完了] active packet中だけrendererの描画frameを進め、idle時と非表示タブでは止める。simulation、音、戦闘時計は変更しない。
+4. [将来] 旧DOM/CSS ReferenceとWebGL2候補を同一sceneで比較できるbenchmark harness、固定preset、CSV/JSON出力を作る。
+5. [将来] WebGL2 rendererを固定buffer・固定atlasで実装する。
+6. [将来] 三方式を同じ実機群で測る。
+7. [将来] blind A/Bとperformance gateを同時に通った方式だけ候補にする。
+8. [将来] URL指定で限定公開し、402×874・30fpsの通しテストを行う。
+9. [将来] context loss、タブ復帰、画面回転、戦闘中断、再挑戦を検査する。
+10. [将来] 実測で必要と確認できた場合だけ`auto`切替を有効にする。
 
 ## 10. 必須回帰検査
 
@@ -293,7 +295,7 @@ hardwareを取得できないブラウザでは推測せず`TBD`とする。`per
 
 ## 11. 完了条件
 
-次の三条件が同時に成立するまで、DOM/CSSを製品既定のまま維持する。
+次の三条件が同時に成立するまで、Canvas2Dを製品既定のまま維持する。
 
 1. Referenceとの差が定量的に縮小する。
 2. human blind A/BでCurrentより改善する。

@@ -2761,6 +2761,80 @@
   }
 }
 
+/*
+ * Canvas2D battlefield consolidation.
+ *
+ * The canvas is a read-only projection of the existing battle ledger and
+ * capital timeline. Removing these visual-only DOM layers prevents Safari
+ * from continuously repainting gradients, masks and forty-four filtered coin
+ * columns; actors, commands, readouts and all semantic progress remain DOM.
+ */
+.buyout-screen .integrated-battlefield--canvas2d {
+  background: #03100c !important;
+}
+
+.integrated-battlefield--canvas2d::after,
+.integrated-battlefield--canvas2d .battlefield-territory,
+.integrated-battlefield--canvas2d .battlefield-pressure-lane,
+.integrated-battlefield--canvas2d .battle-commerce-flow {
+  display: none !important;
+  content: none !important;
+  animation: none !important;
+  filter: none !important;
+}
+
+.integrated-battlefield--canvas2d
+  :is(
+    .player-capital-stack .capital-visual-row,
+    .enemy-capital-stack .capital-visual-row
+  )::before,
+.integrated-battlefield--canvas2d
+  :is(
+    .player-capital-stack .capital-visual-row,
+    .enemy-capital-stack .capital-visual-row
+  )::after {
+  display: none !important;
+  content: none !important;
+  animation: none !important;
+  filter: none !important;
+}
+
+.integrated-battlefield--canvas2d .ownership-track {
+  opacity: 0;
+  animation: none !important;
+}
+
+.integrated-battlefield--canvas2d .ownership-track *,
+.integrated-battlefield--canvas2d .ownership-track *::before,
+.integrated-battlefield--canvas2d .ownership-track *::after,
+.integrated-battlefield--canvas2d .capital-clash,
+.integrated-battlefield--canvas2d .capital-clash * {
+  animation: none !important;
+  transition: none !important;
+  will-change: auto !important;
+  filter: none !important;
+}
+
+.integrated-battlefield--canvas2d .ownership-track > * {
+  display: none !important;
+}
+
+.integrated-battlefield--canvas2d .capital-clash,
+.integrated-battlefield--canvas2d .capital-vs {
+  visibility: hidden;
+}
+
+.battle-capital-canvas-a11y {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+}
+
 /* At the 402px portrait baseline, the result and profit-sharing copy was only
  * one line taller than the former 88dvh dialog. Use the safe-area viewport and
  * allow borderline labels to wrap instead of hiding the final line. */

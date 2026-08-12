@@ -395,9 +395,9 @@ export const calculateForcedLiquidationGaugeDelta = (
 /**
  * Resolves the continuous ownership velocity during 強制清算 recovery.
  *
- * Enemy pressure remains suspended for the whole authored grace. Player-side
- * pressure is also suspended until the first manual counter-command, so a
- * pre-cast continuous effect cannot settle the battle before the player acts.
+ * Both sides pause during the authored grace. If the player lets that grace
+ * expire without answering, enemy pressure resumes but pre-cast player-side
+ * pressure stays suspended until the first genuine counter-command.
  */
 export const resolveForcedLiquidationContinuousVelocity = ({
   velocity,
@@ -408,9 +408,10 @@ export const resolveForcedLiquidationContinuousVelocity = ({
   recoveryRemaining: number;
   awaitingManualCounter: boolean;
 }) => {
-  if (recoveryRemaining <= 0) return velocity;
-  if (awaitingManualCounter) return 0;
-  return Math.min(0, velocity);
+  if (awaitingManualCounter) {
+    return recoveryRemaining > 0 ? 0 : Math.max(0, velocity);
+  }
+  return recoveryRemaining > 0 ? Math.min(0, velocity) : velocity;
 };
 
 /** @deprecated Use the Blackest Night names in current runtime code. */
@@ -606,10 +607,8 @@ export const calculateBattleVictoryReward = (
 ) => {
   if (
     !isPlayerVictory ||
-    mode === 'ultimate' ||
-    mode === 'cruel' ||
     mode === 'training' ||
-    (mode === 'savage' && alreadyCleared)
+    (mode !== 'normal' && alreadyCleared)
   ) {
     return 0;
   }
@@ -859,7 +858,6 @@ export const REPEATED_NETWORK_SUPPORT_BALANCE = {
  */
 export const SAVAGE_NETWORK_SUPPORT_LIMIT = 18;
 export const ULTIMATE_NETWORK_SUPPORT_LIMIT = 8;
-export const SAVAGE_LIMIT_BREAK_LIMIT = 1;
 export const ULTIMATE_LIMIT_BREAK_LIMIT = 1;
 export const ULTIMATE_APPRAISAL_LIMIT_MS = 108_000;
 
@@ -899,9 +897,10 @@ export const BATTLE_LOYALTY_BALANCE = {
   individualRiskIncrease: 12,
   limitBreakRiskIncrease: 8,
   synergyRiskIncrease: 10,
-  // 山分けは勝利利益の50%を人脈全体へ均等に配る。
-  // 独立危険度の保存値は下げず、今回の離反判定だけを強く抑える。
+  // 五分の祝儀は勝利利益の50%を人脈全体へ均等に配る。
+  // 大盤振る舞いは利益をすべて配り、今回の離反を防いで危険度も回復する。
   profitShareRewardRatio: 0.5,
+  lavishRiskRecovery: 30,
   reacquisitionSupportBonusPerLevel: 0.1,
   reacquisitionRiskReductionPerLevel: 2,
   maxReacquisitionLevel: 2,
@@ -917,16 +916,25 @@ export const HIGH_DIFFICULTY_SUPPORT_MULTIPLIER = 1.7;
 export const PROFIT_ALLOCATION_OPTIONS = [
   {
     id: 'keep',
-    label: '独占',
+    label: '利益独占',
     rate: 0,
     departureProbabilityMultiplier: 1,
+    loyaltyRiskReduction: 0,
   },
   {
     id: 'share50',
-    label: '山分け',
+    label: '五分の祝儀',
     rate: 0.5,
     // 高コストに見合う強い抑止。ただし離反を保証で0にはしない。
     departureProbabilityMultiplier: 0.2,
+    loyaltyRiskReduction: 0,
+  },
+  {
+    id: 'share100',
+    label: '大盤振る舞い',
+    rate: 1,
+    departureProbabilityMultiplier: 0,
+    loyaltyRiskReduction: BATTLE_LOYALTY_BALANCE.lavishRiskRecovery,
   },
 ] as const;
 

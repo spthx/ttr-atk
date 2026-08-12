@@ -4,7 +4,7 @@ import { COMMUNITY_CAMPAIGN_ORDER, TRADE_COMMUNITIES } from '../data/worldData';
 import { formatCurrency } from '../utils/formatter';
 import { INITIAL_GROUP_SYNERGIES } from '../data/initialData';
 import { soundFx } from '../utils/audio';
-import { ArrowRight, ShieldAlert, CheckCircle2, Crown, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole, Gauge, WalletCards } from 'lucide-react';
+import { ArrowRight, ShieldAlert, CheckCircle2, Crown, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole } from 'lucide-react';
 import { BeginnerGuide } from './BeginnerGuide';
 import { HelpTip } from './HelpTip';
 import { StrengthComparison } from './StrengthComparison';
@@ -154,7 +154,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
   const showOwnedCards = showOwnedProperties || selectedOwnerFilter === 'PLAYER';
   const visibleProperties = filteredProperties.filter((property) => showOwnedCards || property.owner !== 'player');
   const activeTargetCount = filteredProperties.length - ownedFilteredCount;
-  const ownedProperties = properties.filter((property) => property.owner === 'player');
   const readinessSource =
     viewMode === 'targets'
       ? filteredProperties
@@ -175,28 +174,9 @@ export const MarketView: React.FC<MarketViewProps> = ({
     { advantage: 0, even: 0, challenge: 0, danger: 0 }
   );
   const companyStrengthSummary = (
-    <section
-      className="market-readiness-overview"
-      aria-label={`${viewMode === 'targets' ? '表示中' : '挑戦可能'}の相手。余力あり${readinessCounts.advantage}件、接戦${readinessCounts.even}件、要工夫${readinessCounts.challenge}件、準備不足${readinessCounts.danger}件`}
-    >
-      <header>
-        <span><Gauge />{viewMode === 'targets' ? '表示中の挑戦目安' : '挑戦可能な相手'}</span>
-        <small>自社動員と競合防衛を比較</small>
-      </header>
-      <dl className="market-readiness-overview__grades">
-        {(Object.keys(READINESS_PRESENTATION) as BattleReadinessResult['grade'][]).map((grade) => (
-          <div key={grade} data-grade={grade}>
-            <dt>{READINESS_PRESENTATION[grade].label}</dt>
-            <dd>{readinessCounts[grade]}<small>件</small></dd>
-          </div>
-        ))}
-      </dl>
-      <footer>
-        <span><WalletCards />自社資金 <b>{formatCurrency(totalFunds)}</b></span>
-        <span>人脈 <b>{ownedProperties.length}件</b></span>
-        <small>勝率ではなく、商戦へ持ち込める資本の準備目安です。</small>
-      </footer>
-    </section>
+    <p className="sr-only">
+      {`${viewMode === 'targets' ? '表示中' : '挑戦可能'}の相手。余力あり${readinessCounts.advantage}件、接戦${readinessCounts.even}件、要工夫${readinessCounts.challenge}件、準備不足${readinessCounts.danger}件。`}
+    </p>
   );
 
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
@@ -530,7 +510,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 {!isPlayerOwned && (
                   <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-950/25 px-3 py-2 text-[11px] text-emerald-100">
                     <b className="block text-emerald-300">勝利すると強くなること</b>
-                    <span>人脈1件・毎秒収益 +{formatCurrency(prop.annualRevenue)}</span>
+                    <span>この企業が人脈に加わり、毎秒収益が増える</span>
                     {linkedSynergies.length > 0 && (
                       <small className="mt-1 block text-cyan-200">有効な事業連携：{linkedSynergies.map((synergy) => synergy.name).join('／')}</small>
                     )}
@@ -599,6 +579,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       </small>
                     )}
                     {!isPlayerOwned && <small>基準となる交渉規模：{formatCurrency(activePrice)}</small>}
+                    {!isPlayerOwned && <small>勝利後の毎秒収益：+{formatCurrency(prop.annualRevenue)}</small>}
                   </div>
                 </details>
               </div>

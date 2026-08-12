@@ -48,6 +48,79 @@ export interface BattleReadinessCapitalComponent {
   amount: number;
 }
 
+export interface MobilizationPointComponent {
+  key: BattleReadinessCapitalComponent['key'];
+  label: string;
+  points: number;
+  amount: number;
+}
+
+const MOBILIZATION_COMPONENT_LABELS: Record<
+  BattleReadinessCapitalComponent['key'],
+  string
+> = {
+  cash: '手元資金',
+  subsidiaries: '人脈',
+  synergy: 'SYNERGY',
+  limit_break: 'LIMIT BREAK',
+  alliance: '外部協力',
+  capital_boost: '資金アビリティ',
+  battle_synergy: 'SYNERGY',
+};
+
+/**
+ * Converts the real-gil readiness model into an exact, additive score with
+ * enemy defense fixed at 100. Largest-remainder rounding keeps the displayed
+ * component equation equal to the displayed mobilization total.
+ */
+export const buildMobilizationPointBreakdown = (
+  components: ReadonlyArray<BattleReadinessCapitalComponent>,
+  enemyBudget: number
+): MobilizationPointComponent[] => {
+  const normalizedEnemyBudget = Math.max(1, Math.round(enemyBudget));
+  const prepared = components
+    .filter((component) => Number.isFinite(component.amount) && component.amount > 0)
+    .map((component, index) => {
+      const rawPoints = (component.amount / normalizedEnemyBudget) * 100;
+      const points = Math.floor(rawPoints);
+      return {
+        key: component.key,
+        label: MOBILIZATION_COMPONENT_LABELS[component.key],
+        amount: component.amount,
+        points,
+        remainder: rawPoints - points,
+        index,
+      };
+    });
+
+  if (prepared.length === 0) return [];
+
+  const targetTotal = Math.round(
+    (prepared.reduce((total, component) => total + component.amount, 0) /
+      normalizedEnemyBudget) *
+      100
+  );
+  const flooredTotal = prepared.reduce(
+    (total, component) => total + component.points,
+    0
+  );
+  const rankedForRounding = [...prepared].sort(
+    (left, right) =>
+      right.remainder - left.remainder || left.index - right.index
+  );
+
+  for (let offset = 0; offset < targetTotal - flooredTotal; offset += 1) {
+    rankedForRounding[offset].points += 1;
+  }
+
+  return prepared.map(({ key, label, amount, points }) => ({
+    key,
+    label,
+    amount,
+    points,
+  }));
+};
+
 export interface BattleReadinessInput {
   targetMarketPrice: number;
   availableCash: number;
@@ -120,8 +193,7 @@ interface SupportRoute {
   actionCount: number;
   maxFailureProbability: number;
   cumulativeFailureProbability: number;
-  componentKey: BattleReadinessCapitalComponent['key'] | null;
-  componentLabel: string;
+  components: BattleReadinessCapitalComponent[];
 }
 
 const isHighDifficultyBattleMode = (
@@ -204,21 +276,27 @@ const getBestSupportRoute = ({
         Math.round(calculateSubsidiarySupportAmount(property) * supportMultiplier)
       )
       .sort((a, b) => b - a);
+    const networkTotal = orderedSupportAmounts.reduce(
+      (total, amount, requestIndex) =>
+        total +
+        Math.round(
+          amount * getRepeatedNetworkSupportMultiplier(requestIndex)
+        ),
+      0
+    );
     routes.push({
       name: '人脈一巡',
-      amount: orderedSupportAmounts.reduce(
-        (total, amount, requestIndex) =>
-          total +
-          Math.round(
-            amount * getRepeatedNetworkSupportMultiplier(requestIndex)
-          ),
-        0
-      ),
+      amount: networkTotal,
       actionCount: subsidiaries.length,
       maxFailureProbability: onePass.maxFailureProbability,
       cumulativeFailureProbability: 1 - onePass.allSucceedProbability,
-      componentKey: 'subsidiaries',
-      componentLabel: `人脈${subsidiaries.length}件を強い順に要請（2回目から全体減衰）${highDifficultyLabel}`,
+      components: [
+        {
+          key: 'subsidiaries',
+          label: `人脈${subsidiaries.length}件を強い順に要請（2回目から全体減衰）${highDifficultyLabel}`,
+          amount: networkTotal,
+        },
+      ],
     });
   }
 
@@ -237,19 +315,31 @@ const getBestSupportRoute = ({
         BATTLE_SUPPORT_BALANCE.synergyMemberMarketRatio,
         supportMultiplier
       );
+      const synergyMultiplier =
+        selectedBattleSynergy.battleGroupMultiplier ??
+        BATTLE_SUPPORT_BALANCE.synergyDefaultMultiplier;
+      const synergyTotal = Math.round(
+        synergySupport.amount * synergyMultiplier
+      );
       routes.push({
         name: '戦闘連携',
-        amount: Math.round(
-          synergySupport.amount *
-            (selectedBattleSynergy.battleGroupMultiplier ??
-              BATTLE_SUPPORT_BALANCE.synergyDefaultMultiplier)
-        ),
+        amount: synergyTotal,
         actionCount: 1,
         maxFailureProbability: synergySupport.maxFailureProbability,
         cumulativeFailureProbability:
           1 - synergySupport.allSucceedProbability,
-        componentKey: 'synergy',
-        componentLabel: `SYNERGY「${selectedBattleSynergy.name}」1回${highDifficultyLabel}`,
+        components: [
+          {
+            key: 'subsidiaries',
+            label: `人脈${members.length}件（SYNERGY参加企業）${highDifficultyLabel}`,
+            amount: synergySupport.amount,
+          },
+          {
+            key: 'synergy',
+            label: `SYNERGY「${selectedBattleSynergy.name}」の上乗せ`,
+            amount: Math.max(0, synergyTotal - synergySupport.amount),
+          },
+        ],
       });
     }
   }
@@ -268,18 +358,31 @@ const getBestSupportRoute = ({
       BATTLE_LOYALTY_BALANCE.limitBreakRiskIncrease,
       0.28
     );
+    const limitMultiplier = LIMIT_BREAK_MULTIPLIERS[chargedLimitTier];
+    const limitTotal = Math.round(
+      (Math.round(targetMarketPrice * 0.28) + limitSupport.amount) *
+        limitMultiplier
+    );
+    const limitNetworkAmount = limitSupport.amount;
     routes.push({
       name: 'LIMIT BREAK',
-      amount: Math.round(
-        (Math.round(targetMarketPrice * 0.28) + limitSupport.amount) *
-          LIMIT_BREAK_MULTIPLIERS[chargedLimitTier]
-      ),
+      amount: limitTotal,
       actionCount: 1,
       maxFailureProbability: limitSupport.maxFailureProbability,
       cumulativeFailureProbability:
         1 - limitSupport.allSucceedProbability,
-      componentKey: 'limit_break',
-      componentLabel: `LB${chargedLimitTier}（蓄積分を全消費）`,
+      components: [
+        {
+          key: 'subsidiaries',
+          label: `人脈${subsidiaries.length}件（LB参加企業）`,
+          amount: limitNetworkAmount,
+        },
+        {
+          key: 'limit_break',
+          label: `LB${chargedLimitTier}の上乗せ（蓄積分を全消費）`,
+          amount: Math.max(0, limitTotal - limitNetworkAmount),
+        },
+      ],
     });
   }
 
@@ -291,8 +394,7 @@ const getBestSupportRoute = ({
       actionCount: 0,
       maxFailureProbability: 0,
       cumulativeFailureProbability: 0,
-      componentKey: null,
-      componentLabel: '支援なし',
+      components: [],
     }
   );
 };
@@ -468,9 +570,9 @@ export const calculateBattleReadiness = ({
     : ratio;
   const builtInMechanicWarning =
     battleMode === 'cruel'
-      ? `酷は約15秒後、投入資本・資金・LBを維持して所有率10%から立て直します。復帰中は自社へ進む継続速度が50%。50%へ戻すと15秒の第二査定。終了時に所有率75%以上＋査定中の自社直接出資${Math.round(calculateCruelSignatureRequirement(targetMarketPrice) / 1_000_000)}M（相場10%）が必要です。直接出資2回分を温存してください。人脈・LB・SYNERGY・外部アライアンスは署名対象外です。`
+      ? `酷は約15秒後、投入資本・資金・LBを維持して所有率10%から立て直します。復帰中は自社へ進む継続速度が50%。10秒以内に50%へ戻すか、未到達でも15秒の第二査定が強制開始。終了時に所有率75%以上＋査定中の自社直接出資${Math.round(calculateCruelSignatureRequirement(targetMarketPrice) / 1_000_000)}M（相場10%）が必要です。直接出資2回分を温存してください。人脈・LB・SYNERGY・外部アライアンスは署名対象外です。`
       : battleMode === 'ultimate'
-      ? '絶は開幕・瀕死アビリティを決着前に必ず解決します。戦力が足りても、構えへの対応を誤ると敗北します。'
+      ? '絶は開幕・瀕死アビリティを決着前に必ず解決します。短時間防御は開始直後に空撃ちせず、ドリルや敵LB3の危険予告へ合わせてください。戦力が足りても、構えへの対応を誤ると敗北します。'
       : battleMode === 'savage'
         ? '零式は層ごとの開幕・瀕死・防御ギミックを含みます。戦力比だけでは勝利を保証しません。'
         : null;
@@ -518,13 +620,9 @@ export const calculateBattleReadiness = ({
       amount: deployableCash,
     },
   ];
-  if (supportRoute.componentKey && supportRoute.amount > 0) {
-    capitalComponents.push({
-      key: supportRoute.componentKey,
-      label: supportRoute.componentLabel,
-      amount: supportRoute.amount,
-    });
-  }
+  capitalComponents.push(
+    ...supportRoute.components.filter((component) => component.amount > 0)
+  );
   if (allianceSupport > 0) {
     capitalComponents.push({
       key: 'alliance',

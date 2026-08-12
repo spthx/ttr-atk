@@ -72,7 +72,7 @@ export function calculateGaugeVelocity(
 
 /**
  * Independence judgement is deliberately forgiving at low and medium risk.
- * A subsidiary is checked only once after a victorious normal battle, so the
+ * A subsidiary is checked only once after a rewarded victory, so the
  * curve represents that single settlement-time judgement rather than every
  * support request made during combat.
  */

@@ -111,8 +111,14 @@ interface SimulationScenario {
   disableEnemySupport?: boolean;
   maxSeconds?: number;
   playerBaselineCash?: number;
+  /** Legacy-only preload used by older deterministic baselines. */
   openingCapitalBoostRatio?: number;
+  /** Legacy-only preload used by older deterministic baselines. */
   openingAllianceSupportRatio?: number;
+  /** Executes ぶんどる as a real ready-command action instead of preloading it. */
+  manualCapitalBoostRatio?: number;
+  /** Executes external-alliance support as a real ready-command action. */
+  manualAllianceSupportRatio?: number;
   openingPlayerPassage?: boolean;
   playerPassageOnLimitBreak?: boolean;
   influenceBonus?: number;
@@ -138,6 +144,8 @@ interface SimulationScenario {
   reactionDelayExtraSeconds?: number;
   /** Allows audits to distinguish a prepared route from one that ignores regen. */
   playerRecoveryCapRatio?: number;
+  /** Captures the first expired 強制清算 tick without a real counter-command. */
+  captureForcedLiquidationNoCounter?: boolean;
 }
 
 type EnemySupportActivationCounts = Record<EnemySupportSkillId, number>;
@@ -147,6 +155,7 @@ interface SimulationResult {
   wallSeconds: number;
   directActions: number;
   supportActions: number;
+  manualOpeningActions: number;
   finalOwnership: number;
   enemySupportActivations: EnemySupportActivationCounts;
   maximumPlayerRecoveryRatio: number;
@@ -158,6 +167,13 @@ interface SimulationResult {
   timedCapitalBuffActivations: number;
   cruelSecondSignatureInvested: number;
   cruelSecondStartOwnership: number | null;
+  forcedLiquidationNoCounterSnapshot?: {
+    actionCountAtImpact: number;
+    actionCountAtExpiry: number;
+    awaitingManualCounter: boolean;
+    rawVelocity: number;
+    appliedVelocity: number;
+  } | null;
 }
 
 const createEnemySupportActivationCounts =
@@ -251,6 +267,18 @@ const runForcedLiquidationManualCounterProbe = () => {
     recoveryRemaining,
     awaitingManualCounter,
   });
+  const expiredWaitingPlayerVelocity =
+    resolveForcedLiquidationContinuousVelocity({
+      velocity: -6,
+      recoveryRemaining: 0,
+      awaitingManualCounter,
+    });
+  const expiredWaitingEnemyVelocity =
+    resolveForcedLiquidationContinuousVelocity({
+      velocity: 6,
+      recoveryRemaining: 0,
+      awaitingManualCounter,
+    });
   gauge += waitingVelocity * STEP_SECONDS;
   const winnerBeforeManual = gauge <= -100 ? 'player' : null;
 
@@ -272,6 +300,8 @@ const runForcedLiquidationManualCounterProbe = () => {
   return {
     recoveryRemaining,
     waitingVelocity,
+    expiredWaitingPlayerVelocity,
+    expiredWaitingEnemyVelocity,
     winnerBeforeManual,
     manualCommandConsumed,
     awaitingManualCounter,
@@ -377,6 +407,9 @@ const simulateBattle = (
   let reactionDelaySeconds = getScenarioReactionDelay(scenario, seed, 0);
   let directActions = 0;
   let supportActions = 0;
+  let manualOpeningActions = 0;
+  let manualCapitalBoostUsed = false;
+  let manualAllianceSupportUsed = false;
   const supportUseCounts: Record<string, number> = {};
   let wallSeconds = 0;
   let enemyBlackestNightRemainingSeconds = 0;
@@ -384,6 +417,10 @@ const simulateBattle = (
   let capitalReversalRemainingSeconds = 0;
   let forcedLiquidationRecoveryRemainingSeconds = 0;
   let forcedLiquidationAwaitingManualCounter = false;
+  let forcedLiquidationActionCountAtImpact: number | null = null;
+  let forcedLiquidationNoCounterSnapshot:
+    | NonNullable<SimulationResult['forcedLiquidationNoCounterSnapshot']>
+    | null = null;
   let playerPassageRemainingSeconds = scenario.openingPlayerPassage
     ? TACTICAL_SKILL_BALANCE.cover.durationMs / 1_000
     : 0;
@@ -602,6 +639,7 @@ const simulateBattle = (
         wallSeconds,
         directActions,
         supportActions,
+        manualOpeningActions,
         finalOwnership: (100 - gauge) / 2,
         enemySupportActivations,
         maximumPlayerRecoveryRatio,
@@ -613,6 +651,9 @@ const simulateBattle = (
         timedCapitalBuffActivations,
         cruelSecondSignatureInvested,
         cruelSecondStartOwnership,
+        ...(scenario.captureForcedLiquidationNoCounter
+          ? { forcedLiquidationNoCounterSnapshot }
+          : {}),
       };
     }
     if (!isTraining && gauge >= 100) {
@@ -621,6 +662,7 @@ const simulateBattle = (
         wallSeconds,
         directActions,
         supportActions,
+        manualOpeningActions,
         finalOwnership: 0,
         enemySupportActivations,
         maximumPlayerRecoveryRatio,
@@ -632,6 +674,9 @@ const simulateBattle = (
         timedCapitalBuffActivations,
         cruelSecondSignatureInvested,
         cruelSecondStartOwnership,
+        ...(scenario.captureForcedLiquidationNoCounter
+          ? { forcedLiquidationNoCounterSnapshot }
+          : {}),
       };
     }
     if (isTraining) gauge = Math.min(gauge, 98);
@@ -709,6 +754,9 @@ const simulateBattle = (
       forcedLiquidationRecoveryRemainingSeconds =
         getForcedLiquidationSimulationGraceMs(scenario) / 1_000;
       forcedLiquidationAwaitingManualCounter = true;
+      if (scenario.captureForcedLiquidationNoCounter) {
+        forcedLiquidationActionCountAtImpact = directActions + supportActions;
+      }
       commandProgress = 100;
     } else if (skill === 'omnicapitalization') {
       const ownership = (100 - gauge) / 2;
@@ -839,9 +887,6 @@ const simulateBattle = (
       0,
       forcedLiquidationRecoveryRemainingSeconds - STEP_SECONDS
     );
-    if (forcedLiquidationRecoveryRemainingSeconds <= 0) {
-      forcedLiquidationAwaitingManualCounter = false;
-    }
     if (playerPassageRemainingSeconds > 0) {
       playerPassageRemainingSeconds = Math.max(
         0,
@@ -1053,6 +1098,50 @@ const simulateBattle = (
     );
 
     if (commandProgress >= 100 && reactionDelaySeconds <= 0) {
+      const manualCapitalBoostRatio = Math.max(
+        0,
+        scenario.manualCapitalBoostRatio ?? 0
+      );
+      if (!manualCapitalBoostUsed && manualCapitalBoostRatio > 0) {
+        forcedLiquidationAwaitingManualCounter = false;
+        manualCapitalBoostUsed = true;
+        manualOpeningActions += 1;
+        playerInvested += Math.round(marketPrice * manualCapitalBoostRatio);
+        commandProgress = 0;
+        lastPlayerAction = 'SYNERGY';
+        presentationLockSeconds = 1.8;
+        reactionDelaySeconds = getScenarioReactionDelay(
+          scenario,
+          seed,
+          directActions + supportActions + manualOpeningActions
+        );
+        const terminal = finish();
+        if (terminal) return terminal;
+        continue;
+      }
+
+      const manualAllianceSupportRatio = Math.max(
+        0,
+        scenario.manualAllianceSupportRatio ?? 0
+      );
+      if (!manualAllianceSupportUsed && manualAllianceSupportRatio > 0) {
+        forcedLiquidationAwaitingManualCounter = false;
+        manualAllianceSupportUsed = true;
+        manualOpeningActions += 1;
+        playerInvested += Math.round(marketPrice * manualAllianceSupportRatio);
+        commandProgress = 0;
+        lastPlayerAction = 'ALLIANCE';
+        presentationLockSeconds = 0.23;
+        reactionDelaySeconds = getScenarioReactionDelay(
+          scenario,
+          seed,
+          directActions + supportActions + manualOpeningActions
+        );
+        const terminal = finish();
+        if (terminal) return terminal;
+        continue;
+      }
+
       const cruelSignaturePending =
         isCruel &&
         (cruelPhase as CruelScriptPhase) === 'second_countdown' &&
@@ -1152,7 +1241,7 @@ const simulateBattle = (
         reactionDelaySeconds = getScenarioReactionDelay(
           scenario,
           seed,
-          directActions + supportActions
+          directActions + supportActions + manualOpeningActions
         );
         const terminal = finish();
         if (terminal) return terminal;
@@ -1250,7 +1339,7 @@ const simulateBattle = (
       reactionDelaySeconds = getScenarioReactionDelay(
         scenario,
         seed,
-        directActions + supportActions
+        directActions + supportActions + manualOpeningActions
       );
       const terminal = finish();
       if (terminal) return terminal;
@@ -1404,6 +1493,21 @@ const simulateBattle = (
       recoveryRemaining: forcedLiquidationRecoveryRemainingSeconds,
       awaitingManualCounter: forcedLiquidationAwaitingManualCounter,
     });
+    if (
+      scenario.captureForcedLiquidationNoCounter &&
+      !forcedLiquidationNoCounterSnapshot &&
+      forcedLiquidationActionCountAtImpact !== null &&
+      forcedLiquidationRecoveryRemainingSeconds <= 0 &&
+      forcedLiquidationAwaitingManualCounter
+    ) {
+      forcedLiquidationNoCounterSnapshot = {
+        actionCountAtImpact: forcedLiquidationActionCountAtImpact,
+        actionCountAtExpiry: directActions + supportActions,
+        awaitingManualCounter: true,
+        rawVelocity: limitAdjustedVelocity,
+        appliedVelocity: forcedLiquidationAdjustedVelocity,
+      };
+    }
     const velocity = resolveCruelRecoveryContinuousVelocity({
       velocity: forcedLiquidationAdjustedVelocity,
       isCruel,
@@ -1425,6 +1529,7 @@ const simulateBattle = (
     wallSeconds,
     directActions,
     supportActions,
+    manualOpeningActions,
     finalOwnership: (100 - gauge) / 2,
     enemySupportActivations,
     maximumPlayerRecoveryRatio,
@@ -1436,6 +1541,9 @@ const simulateBattle = (
     timedCapitalBuffActivations,
     cruelSecondSignatureInvested,
     cruelSecondStartOwnership,
+    ...(scenario.captureForcedLiquidationNoCounter
+      ? { forcedLiquidationNoCounterSnapshot }
+      : {}),
   };
 };
 
@@ -1534,10 +1642,19 @@ const summarize = (
       results.map((result) => result.supportActions),
       0.9
     ),
+    minimumManualOpeningActions: Math.min(
+      ...results.map((result) => result.manualOpeningActions)
+    ),
+    maximumManualOpeningActions: Math.max(
+      ...results.map((result) => result.manualOpeningActions)
+    ),
     maximumSeconds: Math.max(...results.map((result) => result.wallSeconds)),
     maximumCapitalActions: Math.max(
       ...results.map(
-        (result) => result.directActions + result.supportActions
+        (result) =>
+          result.directActions +
+          result.supportActions +
+          result.manualOpeningActions
       )
     ),
     activations,
@@ -2265,7 +2382,12 @@ const savageEnemySupportComparison = savageReports.map(
     };
   }
 );
-const ultimateScenarioBase = {
+/**
+ * Historical deterministic baseline. These two opening ratios predate the
+ * command-lane audit and intentionally remain here only to keep the fixed
+ * 500-battle campaign sample comparable with earlier reports.
+ */
+const ultimateFreePreloadScenarioBase = {
   id: 'ultimate_pattern_base',
   target: ultimateSanityTarget,
   isUltimate: true,
@@ -2287,7 +2409,7 @@ const ultimatePatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
   (pattern, patternIndex) =>
     summarize(
       {
-        ...ultimateScenarioBase,
+        ...ultimateFreePreloadScenarioBase,
         id: `ultimate_pattern_${pattern.id}`,
         ultimateAutoPatternIndex: patternIndex,
       },
@@ -2295,12 +2417,12 @@ const ultimatePatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
       9_000 + patternIndex * 100
     )
 );
-const ultimatePreparedPatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
+const ultimateLegacyPreparedPatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
   (pattern, patternIndex) =>
     summarize(
       {
-        ...ultimateScenarioBase,
-        id: `ultimate_prepared_${pattern.id}`,
+        ...ultimateFreePreloadScenarioBase,
+        id: `ultimate_legacy_preload_${pattern.id}`,
         ultimateAutoPatternIndex: patternIndex,
         playerBaselineCash: Math.round(
           ultimateSanityTarget.marketPrice
@@ -2324,25 +2446,51 @@ const ultimatePreparedPatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
       9_600 + patternIndex * 10
     )
 );
+
+/**
+ * Runtime-shaped prepared route. Passage occupies opening AUTO, while
+ * ぶんどる and the external alliance each wait for and consume a real command.
+ * Their capital is no longer present before the first interactive action.
+ */
+const ultimateManualPreparedScenarioBase = {
+  ...ultimateFreePreloadScenarioBase,
+  id: 'ultimate_manual_prepared_base',
+  openingCapitalBoostRatio: 0,
+  openingAllianceSupportRatio: 0,
+  manualCapitalBoostRatio: TACTICAL_SKILL_BALANCE.capitalBoost.marketRatio,
+  manualAllianceSupportRatio: ALLIANCE_SUPPORT_MARKET_RATIO,
+  playerBaselineCash: ultimateSanityTarget.marketPrice,
+  preferDirectInvestmentActions: 4,
+  openingPlayerPassage: true,
+  timedCapitalBuff: {
+    ...eraWindBurst,
+    triggerAfterSupportActions: 8,
+  },
+  supportSources: preparedUltimateSupportRotation,
+  preparedLimitBreak: {
+    tier: 3,
+    triggerAfterSupportActions: 8,
+    participants: preparedUltimateSupportRotation,
+  },
+} as const satisfies SimulationScenario;
+const ultimatePreparedPatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
+  (pattern, patternIndex) =>
+    summarize(
+      {
+        ...ultimateManualPreparedScenarioBase,
+        id: `ultimate_prepared_manual_${pattern.id}`,
+        ultimateAutoPatternIndex: patternIndex,
+      },
+      5,
+      9_700 + patternIndex * 20
+    )
+);
 const ultimateHumanReadinessReports = ULTIMATE_ENEMY_AUTO_PATTERNS.flatMap(
   (pattern, patternIndex) => {
     const preparedScenario: SimulationScenario = {
-      ...ultimateScenarioBase,
+      ...ultimateManualPreparedScenarioBase,
       id: `ultimate_human_${pattern.id}`,
       ultimateAutoPatternIndex: patternIndex,
-      playerBaselineCash: ultimateSanityTarget.marketPrice,
-      preferDirectInvestmentActions: 4,
-      openingPlayerPassage: true,
-      timedCapitalBuff: {
-        ...eraWindBurst,
-        triggerAfterSupportActions: 8,
-      },
-      supportSources: preparedUltimateSupportRotation,
-      preparedLimitBreak: {
-        tier: 3,
-        triggerAfterSupportActions: 8,
-        participants: preparedUltimateSupportRotation,
-      },
     };
     const auditSeed = 10_000 + patternIndex * 20;
     return [
@@ -2352,7 +2500,7 @@ const ultimateHumanReadinessReports = ULTIMATE_ENEMY_AUTO_PATTERNS.flatMap(
           id: `${preparedScenario.id}_no_recovery`,
           playerRecoveryCapRatio: 0,
         },
-        3,
+        5,
         auditSeed
       ),
       summarize(
@@ -2361,7 +2509,7 @@ const ultimateHumanReadinessReports = ULTIMATE_ENEMY_AUTO_PATTERNS.flatMap(
           id: `${preparedScenario.id}_careless`,
           reactionDelayExtraSeconds: 2,
         },
-        3,
+        5,
         auditSeed + 10
       ),
     ];
@@ -2369,7 +2517,7 @@ const ultimateHumanReadinessReports = ULTIMATE_ENEMY_AUTO_PATTERNS.flatMap(
 );
 const ultimateSupportDisabledReport = summarize(
   {
-    ...ultimateScenarioBase,
+    ...ultimateFreePreloadScenarioBase,
     id: 'ultimate_support_disabled',
     disableEnemySupport: true,
   },
@@ -2378,7 +2526,7 @@ const ultimateSupportDisabledReport = summarize(
 );
 const ultimateReports = [
   ...ultimatePatternReports,
-  ...ultimatePreparedPatternReports,
+  ...ultimateLegacyPreparedPatternReports,
   ultimateSupportDisabledReport,
 ];
 // The live Cruel battle receives only normal owned properties from App.tsx.
@@ -2477,6 +2625,19 @@ const runtimeAlignmentProbes = {
     runDivinationEraWindCancelProbe(),
   forcedLiquidationManualCounter:
     runForcedLiquidationManualCounterProbe(),
+  forcedLiquidationNoCounterBattle: simulateBattle(
+    {
+      id: 'savage_first_fourth_no_counter',
+      target: savageProperties[3],
+      isSavage: true,
+      maxSeconds: 120,
+      playerBaselineCash: savageProperties[3].marketPrice * 2.5,
+      openingCapitalBoostRatio: 1.25,
+      playerRecoveryCapRatio: 0,
+      captureForcedLiquidationNoCounter: true,
+    },
+    12_000
+  ),
   forcedBossDefense: [
     runForcedBossDefenseProbe({
       id: 'city_4_cover_forced',
@@ -2648,6 +2809,12 @@ const conservativeCruelReport =
 const fullCashCruelReport = reportById.cruel_prepared_full_cash;
 const noLimitBreakCruelReport = reportById.cruel_no_limit_break_full_cash;
 const supportOnlyCruelReport = reportById.cruel_support_only_full_cash;
+const noRecoveryCruelReport = cruelHumanReadinessReports.find(
+  (report) => report.id === 'cruel_prepared_no_recovery'
+)!;
+const carelessCruelReport = cruelHumanReadinessReports.find(
+  (report) => report.id === 'cruel_prepared_careless'
+)!;
 assert.equal(conservativeCruelReport.wins, 10);
 assert.equal(
   conservativeCruelReport.medianCruelSecondSignatureRatio,
@@ -2676,19 +2843,73 @@ assert.equal(
   0,
   'support and SYNERGY cannot masquerade as the direct-capital signature'
 );
+assert.equal(
+  noRecoveryCruelReport.wins,
+  noRecoveryCruelReport.battles,
+  'a fully prepared direct-capital route may clear without waiting for passive revenue'
+);
+assert.equal(
+  carelessCruelReport.wins,
+  0,
+  'the ten-second rebuild rejects a prepared route that delays every decision by two seconds'
+);
 assert.deepEqual(
   runtimeAlignmentProbes.forcedLiquidationManualCounter,
   {
     recoveryRemaining: FORCED_LIQUIDATION_BALANCE.laterSavageRecoveryGraceMs,
     waitingVelocity: 0,
+    expiredWaitingPlayerVelocity: 0,
+    expiredWaitingEnemyVelocity: 6,
     winnerBeforeManual: null,
     manualCommandConsumed: true,
     awaitingManualCounter: false,
     commandProgress: 0,
     winnerAfterManual: 'player',
   },
-  'Forced Liquidation waits for one ready manual command, then permits the same command to settle immediately'
+  'Forced Liquidation resumes only enemy pressure after expiry until one ready manual command answers it'
 );
+const forcedLiquidationNoCounterBattle =
+  runtimeAlignmentProbes.forcedLiquidationNoCounterBattle;
+const forcedLiquidationNoCounterSnapshot =
+  forcedLiquidationNoCounterBattle.forcedLiquidationNoCounterSnapshot;
+assert.equal(
+  forcedLiquidationNoCounterBattle.enemySupportActivations.forced_liquidation,
+  1,
+  'the no-counter battle probe must reach 強制清算 exactly once'
+);
+assert.ok(
+  forcedLiquidationNoCounterSnapshot,
+  'the no-counter battle probe must capture the first expired recovery tick'
+);
+assert.equal(forcedLiquidationNoCounterSnapshot.awaitingManualCounter, true);
+assert.ok(
+  forcedLiquidationNoCounterSnapshot.rawVelocity < 0,
+  'pre-liquidation committed capital must still favor the player before the gate'
+);
+assert.equal(
+  forcedLiquidationNoCounterSnapshot.appliedVelocity,
+  0,
+  'pre-liquidation player pressure must remain stopped after grace expiry'
+);
+assert.equal(
+  forcedLiquidationNoCounterSnapshot.actionCountAtImpact,
+  forcedLiquidationNoCounterSnapshot.actionCountAtExpiry,
+  'no player command may slip into the recovery window'
+);
+assert.equal(
+  forcedLiquidationNoCounterSnapshot.actionCountAtExpiry,
+  forcedLiquidationNoCounterBattle.directActions +
+    forcedLiquidationNoCounterBattle.supportActions,
+  'the battle must end without a post-liquidation counter-command'
+);
+assert.equal(
+  forcedLiquidationNoCounterBattle.directActions +
+    forcedLiquidationNoCounterBattle.supportActions,
+  8,
+  'the probe must exhaust all eight direct actions before 強制清算'
+);
+assert.equal(forcedLiquidationNoCounterBattle.winner, 'opponent');
+assert.equal(forcedLiquidationNoCounterBattle.finalOwnership, 0);
 assert.equal(
   getForcedLiquidationSimulationGraceMs({
     id: 'first_savage_grace_probe',
@@ -2763,7 +2984,11 @@ const savageAutoSkillsByReportId = new Map(
   })
 );
 const ultimateAutoSkillsByReportId = new Map(
-  [...ultimatePatternReports, ...ultimatePreparedPatternReports].map(
+  [
+    ...ultimatePatternReports,
+    ...ultimateLegacyPreparedPatternReports,
+    ...ultimatePreparedPatternReports,
+  ].map(
     (report, index) => {
       const pattern =
         ULTIMATE_ENEMY_AUTO_PATTERNS[
@@ -3102,9 +3327,51 @@ const ultimatePreparedWins = ultimatePreparedPatternReports.reduce(
   (total, report) => total + report.wins,
   0
 );
+const ultimatePreparedBattles = ultimatePreparedPatternReports.reduce(
+  (total, report) => total + report.battles,
+  0
+);
+const ultimatePreparedWinRate =
+  ultimatePreparedWins / Math.max(1, ultimatePreparedBattles);
 assert.ok(
-  ultimatePreparedWins > 0,
-  'a prepared route that rotates through the full acquired network can clear at least one Ultimate pattern'
+  ultimatePreparedPatternReports.every(
+    (report) =>
+      report.battles >= 5 &&
+      report.minimumManualOpeningActions === 2 &&
+      report.maximumManualOpeningActions === 2
+  ),
+  'every prepared Ultimate pattern must sample multiple seeds and execute ぶんどる plus external alliance through the command lane'
+);
+assert.ok(
+  ultimatePreparedWinRate >= 0.25 && ultimatePreparedWinRate <= 0.4,
+  `the runtime-shaped prepared Ultimate route must clear 25-40% of attempts (actual ${(ultimatePreparedWinRate * 100).toFixed(1)}%)`
+);
+const ultimateNoRecoveryReports = ultimateHumanReadinessReports.filter(
+  (report) => report.id.endsWith('_no_recovery')
+);
+const ultimateCarelessReports = ultimateHumanReadinessReports.filter(
+  (report) => report.id.endsWith('_careless')
+);
+const ultimateNoRecoveryWins = ultimateNoRecoveryReports.reduce(
+  (total, report) => total + report.wins,
+  0
+);
+const ultimateCarelessWins = ultimateCarelessReports.reduce(
+  (total, report) => total + report.wins,
+  0
+);
+const ultimateCarelessBattles = ultimateCarelessReports.reduce(
+  (total, report) => total + report.battles,
+  0
+);
+assert.equal(
+  ultimateNoRecoveryWins,
+  0,
+  'disabling passive recovery must defeat every runtime-shaped prepared Ultimate sample'
+);
+assert.ok(
+  ultimateCarelessWins / Math.max(1, ultimateCarelessBattles) <= 0.2,
+  'adding two seconds to every prepared command must keep Ultimate clears at or below 20%'
 );
 assert.deepEqual(ultimateSupportDisabledReport.profile, []);
 assert.deepEqual(

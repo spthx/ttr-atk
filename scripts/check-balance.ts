@@ -18,6 +18,7 @@ import {
   calculateBattleSynergyReadinessEquivalent,
 } from '../src/utils/battleReadiness';
 import {
+  applyLoyaltySettlementPropertyUpdates,
   applyNormalBattlePropertyUpdates,
   calculateAtLeastOneDepartureProbability,
   calculateBattleSettlementSummary,
@@ -253,7 +254,6 @@ import {
   SAVAGE_NETWORK_SUPPORT_LIMIT,
   ULTIMATE_APPRAISAL_LIMIT_MS,
   ULTIMATE_NETWORK_SUPPORT_LIMIT,
-  SAVAGE_LIMIT_BREAK_LIMIT,
   ULTIMATE_LIMIT_BREAK_LIMIT,
   canRequestLimitedNetworkSupport,
   advanceCriticalAutoResolution,
@@ -2346,7 +2346,10 @@ SAVAGE_SERIES_DEFINITIONS.forEach((series) => {
 savageProperties.forEach((property) => {
   assert.match(property.name, /商戦 零式：第[1-4]層$/);
   assert.equal(property.annualRevenue, 0);
-  assert.match(property.description, /所有権・毎秒収益・独立危険度は変化しません/);
+  assert.match(
+    property.description,
+    /敗北・撤退・再戦では通常人脈を保護し、初回踏破では攻略報酬と人脈清算が発生します/
+  );
 });
 assert.deepEqual(
   Array.from(getUnlockedSavageRaidIds(new Set())),
@@ -2891,6 +2894,11 @@ assert.ok(
   'Ultimate LB3 can be selected either as the opening shock or the critical surprise'
 );
 ULTIMATE_ENEMY_AUTO_PATTERNS.forEach((pattern, index) => {
+  assert.match(
+    pattern.counterPlan,
+    /予告.*(パッセ|ブラックナイト|時代の風|大口出資).*(人脈|LB|大口出資|直接出資)/,
+    `${pattern.id} must expose a concrete warning-to-counter plan`
+  );
   assert.deepEqual(
     getEnemySupportAutoProfile({
       targetProperty: ultimateProperty,
@@ -2984,8 +2992,13 @@ assert.deepEqual(
 );
 assert.equal(
   calculateBattleVictoryReward(cruelProperty.marketPrice, true, 'cruel'),
+  Math.round(cruelProperty.marketPrice * 0.05),
+  'first Cruel clear grants a one-time settlement reward'
+);
+assert.equal(
+  calculateBattleVictoryReward(cruelProperty.marketPrice, true, 'cruel', true),
   0,
-  'Cruel awards only its record and title, never repeatable cash'
+  'Cruel replay cannot farm the settlement reward'
 );
 
 const exportedBattleContent = JSON.parse(
@@ -3029,10 +3042,19 @@ assert.equal(
   shouldTriggerCruelSecondPhase({
     phase: 'recovery',
     currentPlayerOwnership: 20,
-    recoveryElapsedMs: 35_000,
+    recoveryElapsedMs: 9_999,
+  }),
+  false,
+  'Cruel keeps the full ten-second recovery window before forcing appraisal'
+);
+assert.equal(
+  shouldTriggerCruelSecondPhase({
+    phase: 'recovery',
+    currentPlayerOwnership: 20,
+    recoveryElapsedMs: 10_000,
   }),
   true,
-  'the second declaration is forced before a two-minute mud fight'
+  'the second declaration is forced after ten seconds instead of allowing a passive rebuild'
 );
 const cruelSignatureRequirement = calculateCruelSignatureRequirement(
   cruelProperty.marketPrice
@@ -3134,8 +3156,13 @@ assert.equal(
 );
 assert.equal(
   calculateBattleVictoryReward(3_000_000_000, true, 'ultimate', false),
+  150_000_000,
+  'first Ultimate clear grants its one-time settlement reward'
+);
+assert.equal(
+  calculateBattleVictoryReward(3_000_000_000, true, 'ultimate', true),
   0,
-  'Ultimate is an honor clear and never a repeatable cash source'
+  'Ultimate replay cannot farm the settlement reward'
 );
 
 assert.deepEqual(
@@ -3285,7 +3312,6 @@ assert.equal(
 );
 assert.equal(SAVAGE_NETWORK_SUPPORT_LIMIT, 18);
 assert.equal(ULTIMATE_NETWORK_SUPPORT_LIMIT, 8);
-assert.equal(SAVAGE_LIMIT_BREAK_LIMIT, 1);
 assert.equal(ULTIMATE_LIMIT_BREAK_LIMIT, 1);
 assert.equal(ULTIMATE_APPRAISAL_LIMIT_MS, 108_000);
 assert.equal(canRequestLimitedNetworkSupport(17, SAVAGE_NETWORK_SUPPORT_LIMIT), true);
@@ -4037,6 +4063,7 @@ assert.deepEqual(BATTLE_LOYALTY_BALANCE, {
   limitBreakRiskIncrease: 8,
   synergyRiskIncrease: 10,
   profitShareRewardRatio: 0.5,
+  lavishRiskRecovery: 30,
   reacquisitionSupportBonusPerLevel: 0.1,
   reacquisitionRiskReductionPerLevel: 2,
   maxReacquisitionLevel: 2,
@@ -4044,21 +4071,30 @@ assert.deepEqual(BATTLE_LOYALTY_BALANCE, {
 assert.deepEqual(PROFIT_ALLOCATION_OPTIONS, [
   {
     id: 'keep',
-    label: '独占',
+    label: '利益独占',
     rate: 0,
     departureProbabilityMultiplier: 1,
+    loyaltyRiskReduction: 0,
   },
   {
     id: 'share50',
-    label: '山分け',
+    label: '五分の祝儀',
     rate: 0.5,
     departureProbabilityMultiplier: 0.2,
+    loyaltyRiskReduction: 0,
+  },
+  {
+    id: 'share100',
+    label: '大盤振る舞い',
+    rate: 1,
+    departureProbabilityMultiplier: 0,
+    loyaltyRiskReduction: 30,
   },
 ]);
 assert.equal(
   PROFIT_ALLOCATION_OPTIONS.length,
-  2,
-  'victory settlement exposes only the exclusive and equal-share choices'
+  3,
+  'victory settlement exposes exclusive, half-share and lavish choices'
 );
 const returningSubsidiary = {
   ...readinessProperty,
@@ -4133,6 +4169,18 @@ assert.equal(
 );
 assert.equal(
   calculateProfitAllocationCost(
+    [
+      { ...readinessProperty, id: 'lavish-a' },
+      { ...readinessProperty, id: 'lavish-b' },
+    ],
+    10_000,
+    PROFIT_ALLOCATION_OPTIONS[2].rate
+  ),
+  10_000,
+  'the lavish choice shares the full victory reward once across the whole network'
+);
+assert.equal(
+  calculateProfitAllocationCost(
     [{ ...readinessProperty, marketPrice: 100_000 }],
     300,
     PROFIT_ALLOCATION_OPTIONS[1].rate
@@ -4181,15 +4229,41 @@ const projectedProfitAllocationChoices = getVictoryProfitAllocationChoices(
   10_000
 );
 assert.deepEqual(
-  projectedProfitAllocationChoices.map(({ id, label, rate, cost }) => ({
+  projectedProfitAllocationChoices.map(({
     id,
     label,
     rate,
     cost,
+    loyaltyRiskReduction,
+  }) => ({
+    id,
+    label,
+    rate,
+    cost,
+    loyaltyRiskReduction,
   })),
   [
-    { id: 'keep', label: '独占', rate: 0, cost: 0 },
-    { id: 'share50', label: '山分け', rate: 0.5, cost: 5_000 },
+    {
+      id: 'keep',
+      label: '利益独占',
+      rate: 0,
+      cost: 0,
+      loyaltyRiskReduction: 0,
+    },
+    {
+      id: 'share50',
+      label: '五分の祝儀',
+      rate: 0.5,
+      cost: 5_000,
+      loyaltyRiskReduction: 0,
+    },
+    {
+      id: 'share100',
+      label: '大盤振る舞い',
+      rate: 1,
+      cost: 10_000,
+      loyaltyRiskReduction: 30,
+    },
   ],
   'the pure settlement projection is the sole source for UI choice labels and total costs'
 );
@@ -4257,6 +4331,22 @@ assert.equal(
   1,
   'the 50% share suppresses departure strongly but never guarantees survival'
 );
+const lavishLoyaltySettlement = resolvePostVictoryLoyalty(
+  [highRiskSettlementProperty],
+  PROFIT_ALLOCATION_OPTIONS[2].departureProbabilityMultiplier,
+  () => 0,
+  PROFIT_ALLOCATION_OPTIONS[2].loyaltyRiskReduction
+);
+assert.equal(
+  lavishLoyaltySettlement.leaving.length,
+  0,
+  'the 100% lavish share guarantees no departure in this settlement'
+);
+assert.equal(
+  lavishLoyaltySettlement.survivors[0].loyaltyRisk,
+  20,
+  'the lavish share recovers 30 saved loyalty risk for every survivor'
+);
 assert.equal(
   highRiskSettlementProperty.loyaltyRisk,
   50,
@@ -4269,7 +4359,7 @@ assert.equal(
 assert.equal(
   normalizeDepartureProbabilityMultiplier(true),
   PROFIT_ALLOCATION_OPTIONS[1].departureProbabilityMultiplier,
-  'the temporary boolean compatibility path maps true to the strongest allocation'
+  'the temporary boolean compatibility path keeps mapping true to the legacy 50% share'
 );
 assert.equal(normalizeDepartureProbabilityMultiplier(-1), 0);
 assert.equal(normalizeDepartureProbabilityMultiplier(2), 1);
@@ -4322,6 +4412,14 @@ assert.ok(
       PROFIT_ALLOCATION_OPTIONS[0].departureProbabilityMultiplier
     ),
   'equal sharing lowers aggregate departure probability for the whole network'
+);
+assert.equal(
+  calculateAtLeastOneDepartureProbability(
+    twoMaximumRiskSubsidiaries,
+    PROFIT_ALLOCATION_OPTIONS[2].departureProbabilityMultiplier
+  ),
+  0,
+  'the lavish share guarantees zero aggregate departure probability'
 );
 assert.deepEqual(
   resolvePostVictoryLoyalty([], true, () => 0),
@@ -4395,6 +4493,38 @@ assert.equal(
   }).outcome,
   'balanced',
   'zero transaction profit is reported as balanced rather than black ink'
+);
+const highEndNetworkSettlement = applyLoyaltySettlementPropertyUpdates({
+  properties: [
+    rebelledSettlementProperty,
+    survivingSettlementProperty,
+    targetSettlementProperty,
+  ],
+  rebelledProperties: [rebelledSettlementProperty],
+  survivingRiskUpdates: [
+    { id: survivingSettlementProperty.id, loyaltyRisk: 20 },
+  ],
+});
+assert.equal(
+  highEndNetworkSettlement.find(
+    (property) => property.id === rebelledSettlementProperty.id
+  )?.owner,
+  'independent',
+  'a high-end victory can persist a network departure'
+);
+assert.equal(
+  highEndNetworkSettlement.find(
+    (property) => property.id === survivingSettlementProperty.id
+  )?.loyaltyRisk,
+  20,
+  'a high-end victory persists the surviving network risk update'
+);
+assert.equal(
+  highEndNetworkSettlement.find(
+    (property) => property.id === targetSettlementProperty.id
+  )?.owner,
+  'independent',
+  'network-only settlement never acquires a synthetic high-end target'
 );
 const settledProperties = applyNormalBattlePropertyUpdates({
   properties: [
@@ -5034,8 +5164,17 @@ assert.equal(
     recoveryRemaining: 0,
     awaitingManualCounter: true,
   }),
-  -6,
-  'grace expiry releases player continuous pressure even without a manual command'
+  0,
+  'grace expiry cannot release pre-cast player pressure without a manual counter-command'
+);
+assert.equal(
+  resolveForcedLiquidationContinuousVelocity({
+    velocity: 6,
+    recoveryRemaining: 0,
+    awaitingManualCounter: true,
+  }),
+  6,
+  'grace expiry resumes enemy pressure while the player still owes a counter-command'
 );
 assert.equal(
   resolveForcedLiquidationContinuousVelocity({

@@ -10,6 +10,10 @@ import {
   getCapitalPresentationRecoveryAction,
   getMechanicalCapitalColumnFrames,
 } from '../src/utils/battlePresentation';
+import {
+  BATTLE_CANVAS_MAX_DPR,
+  resolveBattleCanvasDpr,
+} from '../src/utils/battleCanvasQuality';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const readSource = (path: string) =>
@@ -19,7 +23,14 @@ const battleModal = readSource('src/components/BattleModal.tsx');
 const app = readSource('src/App.tsx');
 const appPage = readSource('app/page.tsx');
 const battlePresentation = readSource('src/utils/battlePresentation.ts');
+const battleCanvasQuality = readSource('src/utils/battleCanvasQuality.ts');
 const capitalCss = readSource('src/battle-capital-layer.css');
+const battleCapitalCanvas = readSource(
+  'src/components/BattleCapitalCanvas.tsx'
+);
+const battleCapitalCanvasCss = readSource(
+  'src/components/BattleCapitalCanvas.css'
+);
 const finalWindCss = readSource('src/battle-final-wind.css');
 const buyoutCss = readSource('src/battle-buyout.css');
 const integratedCss = readSource('src/battle-integrated-field.css');
@@ -36,6 +47,8 @@ const highEndRaidView = readSource('src/components/HighEndRaidView.tsx');
 const highEndRaidCss = readSource('src/high-end-raids.css');
 const marketView = readSource('src/components/MarketView.tsx');
 const strengthComparison = readSource('src/components/StrengthComparison.tsx');
+const strengthComparisonCss = readSource('src/strength-comparison.css');
+const battleReadiness = readSource('src/utils/battleReadiness.ts');
 const indexCss = readSource('src/index.css');
 const saveData = readSource('src/utils/saveData.ts');
 const battleSession = readSource('src/utils/battleSession.ts');
@@ -43,6 +56,37 @@ const cartel = readSource('src/utils/cartel.ts');
 const audio = readSource('src/utils/audio.ts');
 const fankitAssets = readSource('src/data/fankitAssets.ts');
 const pagesWorkflow = readSource('.github/workflows/deploy-pages.yml');
+
+const liveBattlefieldStart = battleModal.indexOf(
+  '<main className="buyout-main">'
+);
+const liveBattlefieldEnd = battleModal.indexOf(
+  '<footer className={`buyout-footer',
+  liveBattlefieldStart
+);
+assert.ok(
+  liveBattlefieldStart >= 0 && liveBattlefieldEnd > liveBattlefieldStart,
+  'the live battle markup must remain discoverable for renderer regression checks'
+);
+const liveBattlefield = battleModal.slice(
+  liveBattlefieldStart,
+  liveBattlefieldEnd
+);
+const liveCapitalCanvasStart = liveBattlefield.indexOf(
+  '<BattleCapitalCanvas'
+);
+const liveCapitalCanvasEnd = liveBattlefield.indexOf(
+  '/>',
+  liveCapitalCanvasStart
+);
+assert.ok(
+  liveCapitalCanvasStart >= 0 && liveCapitalCanvasEnd > liveCapitalCanvasStart,
+  'the live battle must mount the capital canvas'
+);
+const liveCapitalCanvas = liveBattlefield.slice(
+  liveCapitalCanvasStart,
+  liveCapitalCanvasEnd + 2
+);
 
 assert.match(
   capitalCss,
@@ -132,38 +176,271 @@ assert.doesNotMatch(
   );
 });
 const capitalColumnSlots =
-  battleModal.match(
+  battleCapitalCanvas.match(
     /const CAPITAL_COLUMN_SLOTS = \[([\s\S]*?)\] as const;/
   )?.[1] ?? '';
 assert.equal(
   (capitalColumnSlots.match(/\{ x:/g) ?? []).length,
   22,
-  'coin formation DOM must retain exactly twenty-two fixed columns per side'
+  'the Canvas2D coin formation must retain exactly twenty-two fixed slots per side'
 );
 assert.equal(
   (capitalColumnSlots.match(/phoneX:/g) ?? []).length,
   22,
-  'every fixed coin column must have a portrait-phone spread position'
+  'every Canvas2D coin slot must have a portrait-phone spread position'
 );
 assert.match(
-  battleModal,
-  /CAPITAL_COLUMN_SLOTS\.map\([\s\S]*className="capital-fixed-column"/,
-  'coin formation must paint the fixed columns instead of amount-scaled DOM'
+  battleCapitalCanvas,
+  /import casinoWideUrl from '\.\.\/assets\/battle\/battlefield-casino-wide\.webp';[\s\S]*import casinoMobileUrl from '\.\.\/assets\/battle\/battlefield-casino-mobile\.webp';[\s\S]*import '\.\/BattleCapitalCanvas\.css';/,
+  'the Canvas2D renderer must own both approved responsive backdrops and its non-interactive surface CSS'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const sourceHeights =\s*preview\?\.columnHeights \?\? getCapitalColumnHeights\(visibleUnits\);[\s\S]{0,260}sourceHeights\[index\] \?\? 0/,
+  'the Canvas2D rack must consume the renderer-neutral staged column heights'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const overflowTier = Math\.round\([\s\S]{0,120}Math\.max\([\s\S]{0,160}preview\?\.overflowTier \?\?[\s\S]{0,120}getBattleCapitalOverflowTier\(amount, marketPrice\)[\s\S]{0,100}state\.rackFloorTier \?\? 0/,
+  'the Canvas2D rack must retain the deepest preview or battle-lifetime overflow footing'
+);
+assert.match(
+  battleCapitalCanvas,
+  /rackCompressed:\s*state\.rackLowered === true \|\| preview\?\.rackCompressed === true/,
+  'the Canvas2D rack must retain a latched descent after its active preview ends'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const orderedSlots = CAPITAL_COLUMN_SLOTS\.map\([\s\S]*drawCoinColumn\([\s\S]*activeColumns\.has\(index\)/,
+  'the Canvas2D renderer must paint the fixed slots from the staged column frame'
+);
+assert.equal(
+  (battleCapitalCanvas.match(/<canvas\b/g) ?? []).length,
+  1,
+  'the capital renderer must own one canvas and no auxiliary canvas layers'
+);
+assert.match(
+  battleCapitalCanvas,
+  /getContext\('2d',\s*\{\s*alpha:\s*false,\s*desynchronized:\s*true,?\s*\}\)/,
+  'the capital renderer must request one opaque Canvas2D surface'
+);
+assert.match(
+  battleCapitalCanvas,
+  /<canvas[\s\S]{0,260}data-renderer="canvas2d-snapshot"[\s\S]{0,120}aria-hidden="true"/,
+  'the decorative canvas must stay hidden from assistive technology'
+);
+assert.match(
+  battleCapitalCanvasCss,
+  /\.battle-capital-canvas\s*\{[\s\S]*background:\s*#02070c;[\s\S]*pointer-events:\s*none;/,
+  'the opaque capital canvas must never intercept battle controls'
+);
+assert.match(
+  battleCapitalCanvas,
+  /createBattleCapitalCanvasScene[\s\S]*player:\s*normalizeSide\('player', player\),[\s\S]*enemy:\s*normalizeSide\('enemy', enemy\),/,
+  'player and enemy capital must be normalized into the same canvas scene'
+);
+assert.match(
+  battleCapitalCanvas,
+  /drawCapitalSide\(context, width, height, scene\.player\);[\s\S]*drawCapitalSide\(context, width, height, scene\.enemy\);/,
+  'one opaque frame must paint both armies from the same scene snapshot'
+);
+assert.equal(
+  (liveBattlefield.match(/<BattleCapitalCanvas\b/g) ?? []).length,
+  1,
+  'the live arena must mount exactly one shared capital canvas'
+);
+assert.match(
+  liveBattlefield,
+  /integrated-battlefield--canvas2d/,
+  'the live arena must opt into the Canvas2D consolidation layer'
+);
+assert.match(
+  liveBattlefield,
+  /data-capital-renderer="canvas2d"/,
+  'the live arena must expose its active renderer for runtime QA'
+);
+assert.match(
+  liveCapitalCanvas,
+  /player=\{\{[\s\S]*amount:\s*displayedPlayerInvested,[\s\S]*previewFrame:\s*capitalPreviewStage \?\? playerCapitalPilePreviewStage,[\s\S]*rackLowered:\s*playerCapitalRackLowered,[\s\S]*rackFloorTier:\s*playerCapitalRackFloorTier,[\s\S]*enemy=\{\{[\s\S]*amount:\s*displayedEnemyInvested,[\s\S]*previewFrame:\s*enemyCapitalPilePreviewStage,[\s\S]*rackLowered:\s*enemyCapitalRackLowered,[\s\S]*rackFloorTier:\s*enemyCapitalRackFloorTier,/,
+  'both live capital ledgers and their latched rack state must feed the shared canvas'
+);
+assert.match(
+  liveCapitalCanvas,
+  /ownershipPercent=\{displayedOwnership\}[\s\S]*pressureDirection=\{battleDirection\}[\s\S]*windSide=\{[\s\S]*difficulty=\{[\s\S]*compact=\{isHighEndRaid\}[\s\S]*frameRate=\{battleFrameRate\}/,
+  'the shared canvas must receive the live ownership, pressure, wind, difficulty, compact and frame-rate state'
+);
+assert.doesNotMatch(
+  liveBattlefield,
+  /<GilTower\b|<GilPileVisual\b|className="(?:gil-column-field|capital-fixed-column)"|className="(?:battlefield-territory|battlefield-pressure-lane|battle-commerce-flow)"/,
+  'the live arena must not mount the retired forty-four column or ambient DOM renderer'
+);
+assert.match(
+  capitalCss,
+  /\.integrated-battlefield--canvas2d::after,[\s\S]*\.battlefield-territory,[\s\S]*\.battlefield-pressure-lane,[\s\S]*\.battle-commerce-flow\s*\{[\s\S]*display:\s*none !important;[\s\S]*animation:\s*none !important;[\s\S]*filter:\s*none !important;/,
+  'the Canvas2D arena must keep legacy ambient fallback layers disabled'
+);
+assert.match(
+  capitalCss,
+  /\.integrated-battlefield--canvas2d[\s\S]{0,180}\.player-capital-stack \.capital-visual-row,[\s\S]{0,180}\.enemy-capital-stack \.capital-visual-row[\s\S]{0,120}::before,[\s\S]{0,260}::after\s*\{[\s\S]{0,180}display:\s*none !important;[\s\S]{0,120}animation:\s*none !important;/,
+  'the retired capital-row aura pseudos must not repaint over the canvas'
+);
+assert.match(
+  capitalCss,
+  /\.integrated-battlefield--canvas2d \.ownership-track\s*\{[\s\S]{0,100}opacity:\s*0;[\s\S]{0,100}animation:\s*none !important;[\s\S]*\.integrated-battlefield--canvas2d \.ownership-track \*,[\s\S]{0,260}\.capital-clash \*\s*\{[\s\S]{0,120}animation:\s*none !important;[\s\S]{0,100}filter:\s*none !important;/,
+  'the semantic ownership track must stay accessible without reviving its old wind or gauge animations'
+);
+assert.match(
+  capitalCss,
+  /\.integrated-battlefield--canvas2d \.capital-clash,[\s\S]{0,100}\.integrated-battlefield--canvas2d \.capital-vs\s*\{[\s\S]{0,80}visibility:\s*hidden;/,
+  'the retired DOM clash marker must stay hidden behind the canvas-owned VS marker'
+);
+
+assert.match(
+  battleCapitalCanvas,
+  /frameRate\?:\s*30 \| 60;/,
+  'the capital canvas cadence must be restricted to the supported 30/60fps modes'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const hasPackets = \(\['player', 'enemy'\] as const\)\.some\([\s\S]*activeColumnIndices\.length > 0[\s\S]*const intervalMs = 1_000 \/ frameRate;/,
+  'the renderer must derive its 30/60fps loop only from active capital packets'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const packetKey = getCapitalPacketAnimationKey\(scene\[side\]\);[\s\S]{0,160}packetClockRef\.current\[side\] = \{[\s\S]{0,100}startedAt: effectStartedAt[\s\S]*packetProgress:[\s\S]{0,260}\(now - packetClockRef\.current\[side\.side\]\.startedAt\) \/[\s\S]{0,80}side\.frame\.beatDurationMs/,
+  'each bounded packet must retain its keyed start clock and interpolate against its renderer-neutral frame duration'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const packetLayers =\s*6 \+ Math\.abs\(side\.frame\.packetSeed \+ index \* 3\) % 7;[\s\S]{0,220}side\.frame\.packetProgress - Math\.max\(0, packetOrder\) \* 0\.025/,
+  'each active Canvas2D column must receive one deterministic six-to-twelve-layer staggered packet'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const resume = \(\) => \{[\s\S]*if \(disposed \|\| document\.hidden \|\| animationFrame\) return;[\s\S]*if \(hasPackets && !reducedMotion\) \{\s*animationFrame = requestAnimationFrame\(tick\);\s*\} else \{\s*repaint\(project\(performance\.now\(\)\)\);\s*\}/,
+  'an idle or reduced-motion canvas must repaint once without starting an animation loop'
+);
+assert.match(
+  battleCapitalCanvas,
+  /if \(complete\) return;\s*\}[\s\S]{0,100}animationFrame = requestAnimationFrame\(tick\);/,
+  'the active packet loop must stop scheduling frames as soon as both sides settle'
+);
+assert.equal(
+  (battleCapitalCanvas.match(/requestAnimationFrame\(tick\)/g) ?? []).length,
+  2,
+  'capital Canvas2D must schedule frames only when starting or continuing an active packet'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const handleVisibility = \(\) => \{\s*if \(document\.hidden\) \{\s*if \(animationFrame\) cancelAnimationFrame\(animationFrame\);\s*animationFrame = 0;\s*return;\s*\}\s*resume\(\);\s*\};/,
+  'backgrounding must stop and foregrounding must resume only the renderer-owned frame'
+);
+assert.match(
+  battleCapitalCanvas,
+  /document\.addEventListener\('visibilitychange', handleVisibility\);[\s\S]{0,220}disposed = true;[\s\S]{0,120}cancelAnimationFrame\(animationFrame\);[\s\S]{0,120}document\.removeEventListener\('visibilitychange', handleVisibility\);/,
+  'unmount and StrictMode replay must cancel the renderer frame and visibility listener'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const BATTLE_BACKDROP_SOURCES:[\s\S]{0,160}wide: casinoWideUrl,[\s\S]{0,80}mobile: casinoMobileUrl[\s\S]{0,180}const battleBackdropCache = new Map[\s\S]{0,160}const battleBackdropLoads = new Map[\s\S]*const ensureResponsiveBackdrop = useCallback\([\s\S]{0,180}const kind: BattleBackdropKind = width <= 620 \? 'mobile' : 'wide';[\s\S]{0,160}loadBattleBackdrop\(kind\)[\s\S]{0,180}backgroundsRef\.current\[kind\] = image;[\s\S]{0,80}repaint\(\);/,
+  'the responsive casino backdrop must cache and decode only the currently required width variant before repainting'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const handleResize = \(\) => \{[\s\S]{0,120}ensureResponsiveBackdrop\(canvas\.getBoundingClientRect\(\)\.width\);[\s\S]{0,80}repaint\(\);[\s\S]{0,100}if \(typeof ResizeObserver !== 'undefined'\) \{[\s\S]{0,120}const observer = new ResizeObserver\(handleResize\);[\s\S]{0,80}observer\.observe\(canvas\);[\s\S]{0,80}return \(\) => observer\.disconnect\(\);[\s\S]{0,180}window\.addEventListener\('resize', handleResize, \{ passive: true \}\);[\s\S]{0,120}window\.removeEventListener\('resize', handleResize\);/,
+  'orientation and layout changes must repaint once and release either resize observer path'
+);
+assert.doesNotMatch(
+  battleCapitalCanvas,
+  /setInterval\(|setTimeout\(|simulationPaused|setBattlePhase|setOwnership/,
+  'the visibility-aware renderer must not own or pause battle progression state'
+);
+
+const paintCapitalCanvasStart = battleCapitalCanvas.indexOf(
+  'export const paintBattleCapitalCanvas'
+);
+const paintCapitalCanvasEnd = battleCapitalCanvas.indexOf(
+  'export const BattleCapitalCanvas =',
+  paintCapitalCanvasStart
+);
+assert.ok(
+  paintCapitalCanvasStart >= 0 && paintCapitalCanvasEnd > paintCapitalCanvasStart,
+  'the pure Canvas2D painter must remain discoverable for DPR checks'
+);
+const paintCapitalCanvas = battleCapitalCanvas.slice(
+  paintCapitalCanvasStart,
+  paintCapitalCanvasEnd
+);
+assert.match(
+  paintCapitalCanvas,
+  /const nativeDpr =\s*typeof window === 'undefined' \? 1 : window\.devicePixelRatio \|\| 1;[\s\S]*const requestedDpr = Number\.isFinite\(devicePixelRatio\)[\s\S]*:\s*nativeDpr;[\s\S]*resolveBattleCanvasDpr\(\{ requestedDpr, frameRate \}\)/,
+  'the production canvas must send native or test DPR through the frame-rate quality policy'
+);
+assert.match(
+  battleCanvasQuality,
+  /BATTLE_CANVAS_MAX_DPR = \{[\s\S]*30:\s*1\.5[\s\S]*60:\s*2[\s\S]*Math\.min\(normalizedDpr, BATTLE_CANVAS_MAX_DPR\[frameRate\]\)/,
+  '30fps must cap Canvas2D at DPR 1.5 and 60fps at DPR 2 without changing CSS size'
+);
+assert.deepEqual(BATTLE_CANVAS_MAX_DPR, { 30: 1.5, 60: 2 });
+assert.equal(resolveBattleCanvasDpr({ requestedDpr: 3, frameRate: 30 }), 1.5);
+assert.equal(resolveBattleCanvasDpr({ requestedDpr: 3, frameRate: 60 }), 2);
+assert.equal(resolveBattleCanvasDpr({ requestedDpr: 1.25, frameRate: 30 }), 1.25);
+assert.equal(resolveBattleCanvasDpr({ requestedDpr: Number.NaN, frameRate: 30 }), 1);
+
+const canvasZIndex = Number(
+  battleCapitalCanvasCss.match(
+    /\.battle-capital-canvas\s*\{[\s\S]*?z-index:\s*(-?\d+);/
+  )?.[1]
+);
+const actorZIndex = Number(
+  capitalCss.match(
+    /\.integrated-battlefield \.capital-visual-row \.ownership-fighter\s*\{[\s\S]*?z-index:\s*(-?\d+);/
+  )?.[1]
+);
+const readoutZIndex = Number(
+  integratedCss.match(
+    /\.integrated-battlefield \.ownership-capital-readout\s*\{[\s\S]*?z-index:\s*(-?\d+);/
+  )?.[1]
+);
+assert.ok(
+  Number.isFinite(canvasZIndex) &&
+    Number.isFinite(actorZIndex) &&
+    Number.isFinite(readoutZIndex) &&
+    canvasZIndex < actorZIndex &&
+    canvasZIndex < readoutZIndex,
+  'the capital canvas must remain behind interactive actors and numeric readouts'
+);
+
+assert.equal(
+  (liveBattlefield.match(/className="battle-capital-canvas-a11y"/g) ?? [])
+    .length,
+  2,
+  'both Canvas2D armies must retain semantic capital descriptions'
+);
+assert.match(
+  liveBattlefield,
+  /className="battle-capital-canvas-a11y"[\s\S]{0,100}role="img"[\s\S]{0,180}displayedPlayerInvested[\s\S]{0,100}cash/,
+  'the player canvas pile must retain its invested and reserve accessibility readout'
+);
+assert.match(
+  liveBattlefield,
+  /className="battle-capital-canvas-a11y"[\s\S]{0,100}role="img"[\s\S]{0,180}displayedEnemyInvested/,
+  'the enemy canvas pile must retain its invested-capital accessibility readout'
+);
+assert.match(
+  liveBattlefield,
+  /className=\{`ownership-track[\s\S]{0,240}role="progressbar"[\s\S]{0,220}aria-valuenow=\{Number\(displayedOwnership\.toFixed\(1\)\)\}/,
+  'the canvas ownership track must keep its DOM progressbar semantics'
 );
 assert.match(
   battleModal,
   /const timeline = buildCapitalStackTimeline\(\{[\s\S]*intensity,[\s\S]*seed: serial/,
-  'every live funding wave must consume the renderer-neutral fixed-column timeline'
-);
-assert.match(
-  battleModal,
-  /overflowTier:\s*getBattleCapitalOverflowTier\(committedCapital, marketPrice\)/,
-  'exceptional committed capital must keep the fixed rack seated after the burst ends'
+  'every live funding wave must consume the renderer-neutral capital timeline'
 );
 assert.doesNotMatch(
   battleModal,
   /className="capital-overflow-stamp"/,
-  'thin overflow ellipses must not compete with the new fixed-column bundles'
+  'thin overflow ellipses must not compete with the Canvas2D capital bundles'
 );
 assert.match(
   battleModal,
@@ -174,6 +451,84 @@ assert.match(
   battleModal,
   /selectedBattleSynergyEffectLabel[\s\S]*圧力\+\$\{Math\.round/,
   'the synergy button must expose its active pressure bonus and duration'
+);
+const actionStripStart = battleModal.indexOf(
+  'className="battle-action-strip"'
+);
+const limitBreakActionStart = battleModal.indexOf(
+  '{limitBreakCapacityTier > 0 && (',
+  actionStripStart
+);
+const synergyActionStart = battleModal.indexOf(
+  '{selectedBattleSynergy && (',
+  limitBreakActionStart
+);
+const skillSelectionActionStart = battleModal.indexOf(
+  '{primarySkill && (',
+  synergyActionStart
+);
+const networkActionStart = battleModal.indexOf(
+  '{hasNetworkSupport && (',
+  skillSelectionActionStart
+);
+const actionStripEnd = battleModal.indexOf('</section>', networkActionStart);
+assert.ok(
+  actionStripStart >= 0 &&
+    limitBreakActionStart > actionStripStart &&
+    synergyActionStart > limitBreakActionStart &&
+    skillSelectionActionStart > synergyActionStart &&
+    networkActionStart > skillSelectionActionStart &&
+    actionStripEnd > networkActionStart,
+  'the visible action-strip blocks must remain discoverable in their reviewed order'
+);
+const limitBreakAction = battleModal.slice(
+  limitBreakActionStart,
+  synergyActionStart
+);
+const synergyAction = battleModal.slice(
+  synergyActionStart,
+  skillSelectionActionStart
+);
+const networkAction = battleModal.slice(networkActionStart, actionStripEnd);
+assert.match(
+  battleModal,
+  /const actionsLocked =[\s\S]{0,320}limitImpactActive/,
+  'the LIMIT BREAK impact cut-in must lock every executable action'
+);
+assert.match(
+  limitBreakAction,
+  /^\{limitBreakCapacityTier > 0 && \([\s\S]*aria-label=\{actionsLocked[\s\S]{0,180}演出中のため発動できません[\s\S]{0,180}: limitedLimitBreakSpent[\s\S]{0,180}使用済み[\s\S]{0,240}発動可能/,
+  'LIMIT BREAK must stay visible and announce the cut-in lock before spent or available state'
+);
+assert.match(
+  limitBreakAction,
+  /<b>\{actionsLocked \? 'LB 演出中' : limitedLimitBreakSpent[\s\S]{0,120}<small>\{actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent[\s\S]*<em>\{actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent/,
+  'the visible LIMIT BREAK title, detail and badge must all prioritize the cut-in lock'
+);
+assert.match(
+  synergyAction,
+  /^\{selectedBattleSynergy && \([\s\S]*disabled=\{[\s\S]{0,180}actionsLocked[\s\S]{0,180}aria-label=\{`\$\{selectedBattleSynergy\.name\}（SYNERGY）[\s\S]{0,240}\$\{actionsLocked \? '演出中のため発動できません'/,
+  'SYNERGY must stay visible, disabled and labelled as presentation-locked during the cut-in'
+);
+assert.match(
+  networkAction,
+  /^\{hasNetworkSupport && \([\s\S]*disabled=\{[\s\S]{0,140}actionsLocked[\s\S]{0,240}aria-label=\{`人脈。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'/,
+  'network support must stay visible, disabled and labelled as presentation-locked during the cut-in'
+);
+assert.match(
+  battleModal,
+  /aria-label=\{actionsLocked[\s\S]{0,160}演出中のため発動できません[\s\S]{0,180}: limitedLimitBreakSpent[\s\S]{0,180}: `LIMIT BREAK \$\{limitBreakTier > 0 \? `\$\{limitBreakTier\}発動可能`/,
+  'LIMIT BREAK accessibility text must announce the presentation lock before spent or available-state messages'
+);
+assert.match(
+  battleModal,
+  /aria-label=\{`\$\{selectedBattleSynergy\.name\}（SYNERGY）[\s\S]{0,180}\$\{actionsLocked \? '演出中のため発動できません' : battleSynergyReady \? '選択中の事業連携を発動'/,
+  'SYNERGY accessibility text must announce the presentation lock before an available-state message'
+);
+assert.match(
+  battleModal,
+  /aria-label=\{`人脈。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'[\s\S]{0,160}: commandReady[\s\S]{0,180}'利用可能な支援へ即時要請可能'/,
+  'network accessibility text must announce the presentation lock before an available-state message'
 );
 assert.match(
   battleModal,
@@ -207,13 +562,18 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const limitedLimitBreakSpent = isSavage[\s\S]{0,180}SAVAGE_LIMIT_BREAK_LIMIT[\s\S]{0,180}isUltimate[\s\S]{0,180}ULTIMATE_LIMIT_BREAK_LIMIT/,
-  'Savage and Ultimate must treat Limit Break as a battle-local finite decision'
+  /const limitedLimitBreakSpent =\s*isUltimate && limitBreakUseCount >= ULTIMATE_LIMIT_BREAK_LIMIT/,
+  'only Ultimate must treat Limit Break as a battle-local finite decision'
+);
+assert.doesNotMatch(
+  battleModal,
+  /SAVAGE_LIMIT_BREAK_LIMIT|limitedLimitBreakSpent = isSavage/,
+  'Savage must allow Limit Break again after the gauge is recharged'
 );
 assert.match(
   battleModal,
-  /\{!limitedLimitBreakSpent && <em>\{actionsLocked[\s\S]{0,260}\? '発動可'/,
-  'a spent high-difficulty Limit Break must omit the redundant ready-state badge'
+  /<em>\{actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent[\s\S]{0,120}\? '使用済み'[\s\S]{0,220}\? '発動可'/,
+  'the Limit Break badge must prioritize the active presentation lock, then report a spent high-difficulty use'
 );
 assert.match(
   battleModal,
@@ -242,6 +602,71 @@ assert.match(
 );
 assert.match(
   battleModal,
+  /briefing-ultimate-loadout[\s\S]{0,420}開幕AUTOパッセ[\s\S]{0,180}瀕死AUTOリビングデッド[\s\S]{0,180}手動ぶんどる[\s\S]{0,180}LB III/,
+  'Ultimate briefing must compare the current build with one stable prepared route'
+);
+assert.match(
+  battleModal,
+  /briefing-ultimate-pattern[\s\S]{0,220}今回の敵手順[\s\S]{0,220}counterPlan[\s\S]{0,180}開始直後に空撃ちせず[\s\S]{0,120}危険予告/,
+  'Ultimate must disclose the selected attempt pattern and its counter before battle'
+);
+assert.match(
+  battleModal,
+  /playerBlackestNightUnusedOwnershipAtFadeRef = useRef\(0\)/,
+  'Ultimate loss telemetry must retain unused player Blackest Night capacity'
+);
+assert.match(
+  battleModal,
+  /const startBattle = \(\) => \{[\s\S]{0,900}playerBlackestNightUnusedOwnershipAtFadeRef\.current = 0/,
+  'Ultimate loss telemetry must reset at the start of every attempt'
+);
+assert.match(
+  battleModal,
+  /const releaseBlackestNight = \([\s\S]{0,600}if \(isPlayer && !broke && capacityRef\.current > 0\)[\s\S]{0,420}capacityRef\.current \/ 2/,
+  'Ultimate loss telemetry must capture unused player Blackest Night capacity on fade'
+);
+assert.match(
+  battleModal,
+  /const ultimateUnusedPreparationRoutes[\s\S]{0,260}equippedCapitalBoostSkill &&[\s\S]{0,160}!usedSkillIds\.has\(equippedCapitalBoostSkill\.id\)[\s\S]{0,220}ultimateUnusedPreparationRoutes\.push/,
+  'Ultimate result analysis must inspect unused Buntoru preparation'
+);
+assert.match(
+  battleModal,
+  /alliance\.active && !allianceUsed[\s\S]{0,260}ultimateUnusedPreparationRoutes\.push[\s\S]{0,180}外部協力/,
+  'Ultimate result analysis must inspect unused alliance preparation'
+);
+assert.match(
+  battleModal,
+  /const passagePreparedOrUsed =[\s\S]{0,320}equippedPassageSkill[\s\S]{0,260}ultimateUnusedPreparationRoutes\.push/,
+  'Ultimate result analysis must inspect unused Passage preparation'
+);
+assert.match(
+  battleModal,
+  /ブラックナイトが所有率\$\{fadedBlackestNightOwnership[\s\S]{0,280}障壁を残したまま[\s\S]{0,220}開始直後ではなく[\s\S]{0,180}ドリルや敵LB3の危険予告中/,
+  'an expired player Blackest Night must report measured waste and one exact timing correction'
+);
+assert.match(
+  highEndRaidView,
+  /limitBreakCharge: number/,
+  'high-end entry cards must receive the persistent LB charge'
+);
+assert.match(
+  highEndRaidView,
+  /const preparedLimitBreakTier = getChargedLimitBreakTier\([\s\S]{0,650}LB IIIまであと/,
+  'high-end entry cards must derive current LB tier and remaining preparation'
+);
+assert.match(
+  app,
+  /<HighEndRaidView[\s\S]{0,1200}limitBreakCharge=\{limitBreakCharge\}/,
+  'the high-end route must pass persistent LB readiness before entry'
+);
+assert.match(
+  highEndRaidView,
+  /安定攻略の準備例[\s\S]{0,260}開幕AUTOにパッセ[\s\S]{0,220}LB III/,
+  'the high-end route must pass and present actionable LB/build readiness before entry'
+);
+assert.match(
+  battleModal,
   /compact: reducedMotion \|\| isHighEndRaid/,
   'high-end repeated investments must use the compact pile timeline to preserve decision tempo'
 );
@@ -262,8 +687,28 @@ assert.equal(
 );
 assert.match(
   battleModal,
-  /onClick=\{\(\) => \{[\s\S]{0,120}!isHighEndRaid[\s\S]{0,320}demandFromProperty\(quickNetworkSupportProperty\)[\s\S]{0,120}requestAlliance\(\)/,
-  'high-end network support must avoid a repeated drawer round-trip while retaining its timing decision'
+  /const highEndNetworkChoiceRequired =[\s\S]{0,260}quickNetworkSupportProperty[\s\S]{0,220}alliance\.active &&[\s\S]{0,80}!allianceUsed/,
+  'high-end support must detect when owned-network and external-alliance routes both need a visible choice'
+);
+assert.match(
+  battleModal,
+  /onClick=\{\(\) => \{[\s\S]{0,180}!isHighEndRaid \|\| highEndNetworkChoiceRequired[\s\S]{0,160}setPanel\('funds'\)[\s\S]{0,360}demandFromProperty\(quickNetworkSupportProperty\)[\s\S]{0,140}requestAlliance\(\)/,
+  'high-end support must open one source choice when both routes exist, then return to direct requests after that choice is resolved'
+);
+assert.match(
+  battleModal,
+  /highEndNetworkChoiceRequired\s*\?\s*'仲間か外部協力を選択可能'/,
+  'the compact high-end action must announce when tapping it opens the network-versus-alliance choice'
+);
+assert.match(
+  battleModal,
+  /highEndNetworkChoiceRequired\s*\?\s*'選択可'/,
+  'the compact high-end action badge must switch from immediate request to source selection'
+);
+assert.match(
+  battleModal,
+  /仲間\$\{battleSubs\.length\}件\$\{alliance\.active && !allianceUsed \? '＋協力' : ''\}/,
+  'the compact support summary must stop advertising external cooperation after its one use'
 );
 assert.match(
   battleEncounterData,
@@ -292,8 +737,18 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /enemySupportUsed\.has\('blackest_night'\)[\s\S]{0,260}障壁中は直接出資を温存し、終了後に人脈→SYNERGY→LB/,
-  'a Blackest Night defeat must explain the post-barrier rebuild order'
+  /enemySupportUsed\.has\('blackest_night'\)[\s\S]{0,120}companyInvested <= 0[\s\S]{0,260}清算後へ残すのは反撃1回ぶん[\s\S]{0,260}障壁中は直接出資を温存し、終了後に人脈→SYNERGY→LB/,
+  'a Blackest Night defeat must distinguish over-saving from spending direct capital into the barrier'
+);
+assert.match(
+  battleModal,
+  /const recoveryResourceAvailableAtResult =\s*hasAvailableNetworkSupport \|\|\s*limitBreakTier > 0 \|\|\s*cash >= Math\.round\(targetProperty\.marketPrice \* 0\.1\)/,
+  'Walking Dead recovery advice must inspect remaining network, LB, and large-investment resources'
+);
+assert.match(
+  battleModal,
+  /defeatReason === 'WALKING_DEAD_FAILED'[\s\S]{0,120}recoveryResourceAvailableAtResult[\s\S]{0,300}清算後へ抱えたままにせず、猶予中にすぐ投入/,
+  'Walking Dead advice must tell players to use recovery resources that were still available at defeat'
 );
 assert.match(
   battleEncounterData,
@@ -331,29 +786,9 @@ assert.match(
   'late-game alliance funding must always receive the heavy stacking presentation'
 );
 assert.match(
-  capitalCss,
-  /--capital-packet-visible-layers:[\s\S]*repeating-linear-gradient[\s\S]*capital-column-machine-feed var\(--capital-stack-beat-ms/,
-  'an incoming beat must be a thick striped bundle synchronized to the JS timeline'
-);
-assert.match(
-  capitalCss,
-  /@media \(max-width: 430px\)[\s\S]*--coin-column-width: clamp\(\.7rem, 3\.25vw, \.84rem\)[\s\S]*--coin-layer-step: clamp\(\.17rem, \.88vw, \.22rem\)[\s\S]*left: var\(--column-phone-x\)/,
-  'portrait phones must use the oversized, taller fixed capital formation'
-);
-assert.match(
-  capitalCss,
-  /@media \(max-width: 639px\) and \(min-height: 701px\)[\s\S]*gil-tower--player \.gil-tower__chips[\s\S]*top: -3rem;[\s\S]*right: -10%;[\s\S]*left: 20%;/,
-  'tall portrait phones must spend their free vertical area on the coin mountain'
-);
-assert.match(
-  capitalCss,
-  /capital-fixed-column\[data-machine-active="true"\][^{]*\{[^}]*z-index:\s*calc\(6 \+ var\(--column-depth\)\)/,
-  'incoming bundles may cross settled rows but remain below the actor layer'
-);
-assert.match(
-  capitalCss,
-  /gil-tower__chips[\s\S]*isolation: isolate;[\s\S]*ownership-fighter[\s\S]*z-index:\s*24/,
-  'coin depth must remain inside an isolated layer below actors and readouts'
+  battleCapitalCanvas,
+  /const usePhoneSpread = width <= 620;[\s\S]{0,520}const position = usePhoneSpread \? slot\.phoneX : slot\.x;/,
+  'portrait canvases must use the reviewed wider capital-column spread'
 );
 assert.doesNotMatch(
   battleModal,
@@ -361,8 +796,8 @@ assert.doesNotMatch(
   'the renderer must not add a second amount-like overflow particle system'
 );
 assert.match(
-  battleModal,
-  /const packetLayers = activeColumns\.has\(index\)[\s\S]*6 \+ Math\.abs\(frame\.packetSeed \+ index \* 3\) % 7/,
+  battleCapitalCanvas,
+  /const packetLayers =\s*6 \+ Math\.abs\(side\.frame\.packetSeed \+ index \* 3\) % 7/,
   'each of the fixed active columns must receive one deterministic six-to-twelve-layer packet'
 );
 assert.match(
@@ -662,9 +1097,9 @@ assert.match(
   'progression SYNERGY must use the same synchronous once-per-battle claim'
 );
 assert.match(
-  battleModal,
-  /disabled=\{[\s\S]*!battleSynergyReady[\s\S]*battleSynergyUsed[\s\S]*<em>\{battleSynergyUsed\s*\? '使用済み'/,
-  'the SYNERGY action must disable and visibly report every used synergy type'
+  synergyAction,
+  /disabled=\{[\s\S]*!battleSynergyReady[\s\S]*battleSynergyUsed[\s\S]*<em>\{actionsLocked[\s\S]{0,120}: battleSynergyUsed[\s\S]{0,80}\? '使用済み'/,
+  'the SYNERGY action must disable every used synergy and report it whenever a cut-in is not the higher-priority state'
 );
 assert.match(
   battleModal,
@@ -727,7 +1162,7 @@ assert.match(
 assert.match(
   battleModal,
   /sequenceCapitalPresentation[\s\S]*deferCapitalPile: sequenceCapitalPresentation[\s\S]*presentation\(onComplete\)/,
-  'critical capital skills must show their card before the deferred fixed-DOM pile'
+  'critical capital skills must show their card before the deferred renderer-neutral pile'
 );
 assert.match(
   battleModal,
@@ -847,84 +1282,19 @@ assert.match(
   'the enemy opening pile and readout must stay empty until the zero-to-final timeline owns them'
 );
 assert.match(
-  battleModal,
-  /<GilTower[\s\S]{0,180}amount=\{displayedEnemyInvested\}[\s\S]{0,180}side="enemy"/,
-  'the enemy renderer must consume the staged opening amount instead of flashing the committed ledger'
+  liveCapitalCanvas,
+  /enemy=\{\{[\s\S]{0,120}amount:\s*displayedEnemyInvested,[\s\S]{0,160}previewFrame:\s*enemyCapitalPilePreviewStage,/,
+  'the enemy canvas must consume both the staged opening amount and its preview frame instead of flashing the committed ledger'
 );
 assert.match(
   battleModal,
   /enemyOpeningCapitalPending[\s\S]*startCapitalPilePreview\(\s*'enemy',\s*0,\s*initialEnemyCommitment,[\s\S]*'pause'/,
   'the opening pile must block battle clocks until its queue is complete'
 );
-const activeCapitalColumnStart = capitalCss.indexOf(
-  '.capital-fixed-column[data-machine-active="true"]'
-);
-const activeCapitalColumnCss = capitalCss.slice(
-  activeCapitalColumnStart,
-  capitalCss.indexOf('.capital-overflow-stamp', activeCapitalColumnStart)
-);
-assert.ok(
-  activeCapitalColumnCss.length > 0,
-  'the active fixed-column CSS section must remain discoverable'
-);
 assert.match(
-  activeCapitalColumnCss,
-  /data-machine-active="true"\]::before[\s\S]*animation:\s*capital-column-machine-feed/,
-  'an active column must show an incoming stacked bundle instead of flashing the whole pillar'
-);
-assert.doesNotMatch(
-  activeCapitalColumnCss,
-  /filter:\s*brightness|capital-column-machine-seat/,
-  'mechanical column loading must not use brightness flashing'
-);
-assert.doesNotMatch(
-  capitalCss,
-  /@keyframes capital-column-machine-seat/,
-  'the retired whole-column brightness animation must not return'
-);
-assert.match(
-  capitalCss,
-  /gil-column-field\s*\{[\s\S]*--capital-rack-compression:\s*0rem;[\s\S]*translate:\s*0 min\([\s\S]*var\(--capital-rack-sink, 0rem\) \+ var\(--capital-rack-compression\)[\s\S]*\)/,
-  'the fixed rack must combine its persistent overflow sink with the loading-time descent'
-);
-for (const tier of [1, 2, 3]) {
-  assert.match(
-    capitalCss,
-    new RegExp(
-      `gil-column-field\\[data-overflow-tier="${tier}"\\]\\s*\\{[\\s\\S]*?--capital-rack-sink:`
-    ),
-    `overflow tier ${tier} must keep a persistent downward rack offset`
-  );
-}
-assert.match(
-  capitalCss,
-  /gil-column-field\[data-rack-compressed="true"\]\s*\{[\s\S]*?--capital-rack-compression:\s*clamp\(1\.8rem, 4\.2vh, 2\.5rem\);/,
-  'a heavy funding frame must lower the fixed rack without hiding the entire early mound'
-);
-assert.match(
-  capitalCss,
-  /@media \(max-width: 430px\)[\s\S]*gil-column-field\[data-rack-compressed="true"\]\s*\{[\s\S]*?--capital-rack-compression:\s*clamp\(2\.25rem, 4\.6vh, 2\.8rem\);/,
-  'portrait phones must keep the measured 402x874 loading descent'
-);
-assert.match(
-  battleModal,
-  /data-packet-active=\{activeColumns\.size > 0 \? 'true' : 'false'\}/,
-  'the bounded rack must expose whether a packet is currently acting'
-);
-assert.match(
-  capitalCss,
-  /gil-column-field\[data-packet-active="true"\]\s*\{\s*z-index:\s*26;/,
-  'the packet field must rise within its own rack while loading'
-);
-assert.match(
-  battleModal,
-  /visualFrame\.activeColumnIndices\.length > 0 \? 'gil-tower--packet-active' : ''/,
-  'the outer coin tower must expose packet activity outside its isolated chip layer'
-);
-assert.match(
-  capitalCss,
-  /capital-visual-row > \.gil-tower--packet-active\s*\{\s*z-index:\s*23;/,
-  'falling wealth may rise above the settled rack but must remain below the portrait at z-index 24'
+  battleCapitalCanvas,
+  /const loweredBy = side\.frame\.rackCompressed[\s\S]{0,120}side\.frame\.overflowTier[\s\S]{0,180}const baseY = height \* \(side\.frame\.rackCompressed/,
+  'the Canvas2D rack must combine its latched compression and overflow depth without a DOM transition'
 );
 assert.match(
   battleModal,
@@ -937,29 +1307,19 @@ assert.match(
   'Tataru must return to the fixed origin early while the remaining coin packets continue'
 );
 assert.match(
-  activeCapitalColumnCss,
-  /animation-delay:\s*calc\(var\(--capital-packet-order, 0\) \* -12ms\);/,
+  battleCapitalCanvas,
+  /const packetOrder = side\.frame\.activeColumnIndices\.indexOf\(index\);[\s\S]{0,120}side\.frame\.packetProgress - Math\.max\(0, packetOrder\) \* 0\.025/,
   'the four-to-five fixed packet columns must arrive as a short cascade rather than one flat flash'
 );
 assert.match(
-  capitalCss,
-  /@media \(prefers-reduced-motion: reduce\)[\s\S]*gil-column-field\[data-rack-compressed="true"\]\s*\{[\s\S]*transition-duration:\s*1ms;/,
-  'reduced motion must override the more specific compressed-rack transition'
+  battleCapitalCanvas,
+  /const reducedMotion =[\s\S]{0,120}prefers-reduced-motion: reduce[\s\S]*packetProgress:[\s\S]{0,180}activeColumnIndices\.length === 0 \|\| reducedMotion[\s\S]{0,80}\? 1/,
+  'reduced motion must settle Canvas2D packets without starting a falling animation'
 );
 assert.match(
   integratedCss,
   /--battle-gauge-interpolation:\s*110ms;[\s\S]*recast-meter > i > u[\s\S]*transition:\s*width var\(--battle-gauge-interpolation\) linear;/,
   'player and enemy recast meters must bridge every 100ms logical update without an idle gap'
-);
-assert.match(
-  capitalCss,
-  /ownership-track__player,[\s\S]*ownership-track__enemy-flow[\s\S]*transition:\s*transform var\(--battle-gauge-interpolation, 110ms\) linear;[\s\S]*ownership-track__tension,[\s\S]*ownership-track__marker[\s\S]*transition:\s*left var\(--battle-gauge-interpolation, 110ms\) linear;/,
-  'ownership fill and its visible boundary must share the same continuous interpolation'
-);
-assert.match(
-  battleModal,
-  /data-rack-compressed=\{frame\.rackCompressed \? 'true' : 'false'\}/,
-  'the mechanical overflow frame must remain connected to the rack descent CSS'
 );
 assert.match(
   battleModal,
@@ -972,8 +1332,8 @@ assert.match(
   'a generic heavy pour must latch the lowered footing for the acting side'
 );
 assert.match(
-  battleModal,
-  /persistentOverflowTier = Math\.max\([\s\S]{0,500}rackLowered \|\| baseVisualFrame\.rackCompressed[\s\S]{0,120}overflowTier: persistentOverflowTier/,
+  liveCapitalCanvas,
+  /rackLowered:\s*playerCapitalRackLowered,[\s\S]{0,100}rackFloorTier:\s*playerCapitalRackFloorTier,[\s\S]*rackLowered:\s*enemyCapitalRackLowered,[\s\S]{0,100}rackFloorTier:\s*enemyCapitalRackFloorTier/,
   'ending or replacing a preview must not raise a rack that was already lowered'
 );
 assert.doesNotMatch(
@@ -1000,16 +1360,6 @@ assert.deepEqual(
   CAPITAL_STACK_BEAT_MS,
   { standard: 90, heavy: 128, compact: 62 },
   'coin painting should use the approved slightly faster cadence at every intensity'
-);
-assert.match(
-  capitalCss,
-  /--capital-stack-beat-ms:\s*128ms;[\s\S]*var\(--capital-stack-beat-ms, 128ms\)/,
-  'CSS packet timing fallbacks must match the faster heavy timeline'
-);
-assert.match(
-  capitalCss,
-  /completed mass never climbs back into frame[\s\S]{0,180}transition:\s*translate 280ms/,
-  'the rack descent must be one-way instead of retaining the old 560ms return'
 );
 assert.match(
   fankitAssets,
@@ -1067,11 +1417,6 @@ assert.doesNotMatch(
   /soundFx\.playCoin\(\)/,
   'direct investment must not layer the retired metal coin chime over the rapid-fire stream'
 );
-assert.doesNotMatch(
-  capitalCss,
-  /gil-tower--impact \.capital-fixed-column\s*\{[\s\S]*?translate:/,
-  'a hit must not move every fixed column root and then snap it back'
-);
 assert.match(
   capitalCss,
   /integrated-battlefield--terminal-direct\.integrated-battlefield--terminal-winner-player[\s\S]*integrated-battlefield--settled-player\.integrated-battlefield--settled-direct[\s\S]*ownership-fighter--player[\s\S]*z-index:\s*66/,
@@ -1085,7 +1430,12 @@ assert.match(
 assert.match(
   buyoutCss,
   /result-celebration-choice > div\s*\{[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/,
-  'the two profit-allocation choices must remain equal side-by-side columns on phones'
+  'the three allocation choices must use a readable two-column base on phones'
+);
+assert.match(
+  buyoutCss,
+  /result-celebration-choice > div > button:nth-child\(3\)[\s\S]*grid-column:\s*1 \/ -1/,
+  'the lavish allocation must span the second row instead of becoming a narrow orphan column'
 );
 assert.match(
   buyoutCss,
@@ -1095,7 +1445,7 @@ assert.match(
 assert.doesNotMatch(
   buyoutCss,
   /@media \(max-width:\s*390px\)[\s\S]*result-celebration-choice > div[\s\S]*grid-template-columns:\s*1fr/,
-  'narrow phones must not collapse the two allocation choices into a clipped vertical stack'
+  'narrow phones must keep the 2+1 allocation layout inside the scrollable result card'
 );
 assert.match(
   capitalCss,
@@ -1113,29 +1463,74 @@ assert.match(
   'the result modal must only map the pure settlement choice projections'
 );
 assert.match(
+  battleModal,
+  /celebrationProjectionRef\.current = \{[\s\S]*baseDepartureProbability:\s*liveBaseDepartureProbability[\s\S]*selectedDepartureProbability:\s*option\.departureProbability[\s\S]*resolvePostVictoryLoyalty\([\s\S]*option\.loyaltyRiskReduction/,
+  'the confirmed settlement must preserve its pre-choice risk projection and apply the selected risk recovery'
+);
+assert.match(
   `${gameBalance}\n${battleSettlement}`,
-  /id:\s*'keep'[\s\S]*label:\s*'独占'[\s\S]*id:\s*'share50'[\s\S]*label:\s*'山分け'[\s\S]*departureProbabilityMultiplier:\s*0\.2/,
-  'the portable settlement contract must define exclusive or 50% sharing with nonzero departure risk'
+  /id:\s*'keep'[\s\S]*label:\s*'利益独占'[\s\S]*id:\s*'share50'[\s\S]*label:\s*'五分の祝儀'[\s\S]*departureProbabilityMultiplier:\s*0\.2[\s\S]*id:\s*'share100'[\s\S]*label:\s*'大盤振る舞い'[\s\S]*departureProbabilityMultiplier:\s*0[\s\S]*loyaltyRiskReduction:\s*BATTLE_LOYALTY_BALANCE\.lavishRiskRecovery/,
+  'the portable settlement contract must define 0%, 50% and 100% choices with explicit loyalty effects'
 );
 assert.doesNotMatch(
   `${gameBalance}\n${battleSettlement}\n${battleModal}\n${app}\n${helpText}`,
   /'gift10'|'gift20'|ご祝儀なし|標準のご祝儀|安心のご祝儀/,
-  'the retired three-choice gift contract must not return in logic or player-facing copy'
+  'the retired fixed-amount gift contract must not return in logic or player-facing copy'
 );
 assert.match(
   battleModal,
-  /const growthLabel =[\s\S]*大きく成長[\s\S]*着実に成長[\s\S]*aria-label="商店戦力の変化"[\s\S]*<small>今回の成長<\/small>/,
-  'the result growth card must present qualitative growth instead of another finance-sized strength number'
+  /const growthLabel =[\s\S]*戦力を再編[\s\S]*大きく成長[\s\S]*着実に成長[\s\S]*aria-label="商店戦力の変化"[\s\S]*<small>今回の変化<\/small>[\s\S]*祝儀・離反を含む精算後の戦力/,
+  'the result strength card must describe both growth and post-settlement decline without exposing another finance-sized score'
 );
 assert.match(
   strengthComparison,
-  /summaryOnly[\s\S]*競合の手数は\$\{enemyPace\}[\s\S]*有効な準備：\{supportLabel\}/,
-  'summary readiness must prioritize a strength category, enemy pace, and useful preparation'
+  /buildMobilizationPointBreakdown[\s\S]*味方の動員力[\s\S]*競合の防衛力[\s\S]*<b>100<\/b>[\s\S]*strength-comparison__equation[\s\S]*component\.label[\s\S]*component\.points[\s\S]*相手の手数：\{enemyPace\}/,
+  'readiness must show an additive mobilization equation against defense 100'
+);
+assert.match(
+  battleReadiness,
+  /cash:\s*'手元資金'[\s\S]*subsidiaries:\s*'人脈'[\s\S]*synergy:\s*'SYNERGY'[\s\S]*limit_break:\s*'LIMIT BREAK'[\s\S]*alliance:\s*'外部協力'[\s\S]*battle_synergy:\s*'SYNERGY'/,
+  'the 100-point equation must use player-facing resource names and distinguish external cooperation'
+);
+assert.match(
+  battleReadiness,
+  /name:\s*'戦闘連携'[\s\S]*key:\s*'subsidiaries'[\s\S]*SYNERGY参加企業[\s\S]*key:\s*'synergy'[\s\S]*SYNERGY.*上乗せ[\s\S]*synergyTotal - synergySupport\.amount/,
+  'regular SYNERGY must expose network capital plus its additive bonus without changing the route total'
+);
+assert.match(
+  battleReadiness,
+  /name:\s*'LIMIT BREAK'[\s\S]*key:\s*'subsidiaries'[\s\S]*LB参加企業[\s\S]*key:\s*'limit_break'[\s\S]*LB.*上乗せ[\s\S]*limitTotal - limitNetworkAmount/,
+  'LIMIT BREAK must expose participating network capital plus its additive bonus'
+);
+assert.doesNotMatch(
+  strengthComparison,
+  /判定用戦力比|AI Lv|基準反応 約|戦力換算は自社が|戦力換算は競合が/,
+  'internal assessment ratios and AI tuning numbers must stay off the readiness surface'
+);
+assert.match(
+  strengthComparison,
+  /<details className="strength-comparison__details">[\s\S]*実際のギル額と計算条件[\s\S]*formatCurrency\(result\.playerExpectedCapital\)[\s\S]*formatCurrency\(result\.enemyBudget\)/,
+  'real gil values remain available on demand instead of competing with the primary equation'
+);
+assert.match(
+  strengthComparisonCss,
+  /\.strength-comparison__equation\s*\{[\s\S]{0,180}flex-wrap:\s*wrap[\s\S]{0,400}min-width:\s*3\.25rem/,
+  'the additive equation must wrap without forcing horizontal page overflow on portrait phones'
 );
 assert.match(
   marketView,
-  /勝利すると強くなること[\s\S]*人脈1件・毎秒収益[\s\S]*有効な事業連携/,
-  'market targets must explain how defeating them grows the company and advances synergies'
+  /勝利すると強くなること[\s\S]*この企業が人脈に加わり、毎秒収益が増える[\s\S]*有効な事業連携[\s\S]*<details className="trade-target-card__details">[\s\S]*勝利後の毎秒収益：\+\{formatCurrency\(prop\.annualRevenue\)\}/,
+  'market targets must lead with qualitative growth and keep exact revenue in optional details'
+);
+assert.match(
+  marketView,
+  /const companyStrengthSummary = \([\s\S]*className="sr-only"[\s\S]*余力あり\$\{readinessCounts\.advantage\}件[\s\S]*準備不足\$\{readinessCounts\.danger\}件/,
+  'the map keeps readiness totals for assistive technology without another visible finance strip'
+);
+assert.doesNotMatch(
+  marketView,
+  /className="market-readiness-overview"/,
+  'the progress map must not repeat funds, contacts, and four readiness totals in a visible dashboard'
 );
 assert.match(
   battleModal,
@@ -1162,14 +1557,30 @@ assert.match(
   /isExtremeReacquisitionBattle[\s\S]*getNormalBattleNavigation\([\s\S]*isReacquisition: isExtremeReacquisitionBattle/,
   'Extreme settlement must identify itself to navigation so an old city unlock is not replayed'
 );
-assert.ok(
-  (header.match(/アライアンス/g) ?? []).length >= 2,
-  'desktop and mobile navigation must both call the cooperation tab アライアンス'
+assert.match(
+  header,
+  /協力・企業連合[\s\S]*aria-current=\{activeTab === 'market'[\s\S]*aria-current=\{activeTab === 'portfolio'[\s\S]*aria-current=\{activeTab === 'skills'[\s\S]*aria-current=\{activeTab === 'cartels'[\s\S]*連合攻略[\s\S]*aria-current=\{activeTab === 'savage'/,
+  'desktop navigation names both concepts while mobile uses a short alliance goal and exposes the current page'
+);
+assert.doesNotMatch(
+  header,
+  /fixed bottom-0[^>]*backdrop-blur/,
+  'the always-visible mobile navigation must avoid a continuous backdrop blur layer'
 );
 assert.match(
   cartelAllianceView,
-  /EXTERNAL ALLIANCE[\s\S]*相場75%固定（高難度補正なし）[\s\S]*人脈疲労なし[\s\S]*離反なし[\s\S]*OWNED NETWORK[\s\S]*1回目100%、以後1回ごとに10ポイント低下（下限50%）[\s\S]*独立リスクあり/,
-  'the alliance screen must contrast risk-free external support with the reusable but risky owned network'
+  /味方の外部協力[\s\S]*外部協力：\$\{alliance\.allyName\}[\s\S]*毎戦1回・手元資金の消費なし・離反なし[\s\S]*<details[\s\S]*協力内容を確認・変更[\s\S]*対象相場の75%相当[\s\S]*保有する人脈は複数回[\s\S]*現在の協定を解除[\s\S]*攻略対象：競合企業連合[\s\S]*参加企業を味方にする → 本部の守りが下がる → 本部へ挑戦/,
+  'the alliance screen must keep friendly support compact and lead into the rival alliance objective above the fold'
+);
+assert.match(
+  cartelAllianceView,
+  /const defensePercent = Math\.round[\s\S]*本部の守り[\s\S]*最大時の\{defensePercent\}%[\s\S]*味方になった参加企業 \{ownedSubsCount\} \/ \{totalSubsCount\}/,
+  'rival alliance progress must lead with relative defense and recruited companies instead of another finance-sized total'
+);
+assert.doesNotMatch(
+  cartelAllianceView,
+  /EXTERNAL ALLIANCE|OWNED NETWORK|未提携組織:|企業連合（競合）攻略|animate-pulse/,
+  'retired alliance jargon and ambient pulse must not return to the progression screen'
 );
 assert.match(
   highEndRaidView,
@@ -1299,13 +1710,13 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const consumeCommand = \(\) => \{[\s\S]*forcedLiquidationRecoveryRemainingRef\.current > 0[\s\S]*forcedLiquidationAwaitingManualCounterRef\.current = false[\s\S]*setCommandProgress\(0\)/,
-  'the first successfully consumed manual command must release player continuous pressure'
+  /const consumeCommand = \(\) => \{[\s\S]*forcedLiquidationAwaitingManualCounterRef\.current[\s\S]*forcedLiquidationAwaitingManualCounterRef\.current = false[\s\S]*setCommandProgress\(0\)/,
+  'the first successfully consumed manual command must release player continuous pressure even after grace expiry'
 );
-assert.match(
+assert.doesNotMatch(
   battleModal,
   /if \(nextRecovery <= 0\) \{[\s\S]*forcedLiquidationAwaitingManualCounterRef\.current = false/,
-  '強制清算 grace expiry must release player continuous pressure without requiring a command'
+  '強制清算 grace expiry must not release pre-cast player pressure without a command'
 );
 assert.match(
   battleModal,
@@ -1314,8 +1725,13 @@ assert.match(
 );
 assert.match(
   gameBalance,
-  /if \(recoveryRemaining <= 0\) return velocity;[\s\S]*if \(awaitingManualCounter\) return 0;[\s\S]*return Math\.min\(0, velocity\);/,
-  'the gate must freeze both sides before a counter, then keep only enemy pressure frozen for the remaining grace'
+  /if \(awaitingManualCounter\) \{[\s\S]*recoveryRemaining > 0 \? 0 : Math\.max\(0, velocity\)[\s\S]*return recoveryRemaining > 0 \? Math\.min\(0, velocity\) : velocity;/,
+  'the gate must freeze both sides during grace, then resume only enemy pressure until a real counter-command'
+);
+assert.match(
+  battleModal,
+  /反撃猶予が終了。競合は行動を再開するが、自社の事前圧力は反撃の一手まで停止する/,
+  'the battle log must explain why pre-liquidation pressure cannot auto-recover after grace expiry'
 );
 assert.match(
   battleModal,
@@ -1498,9 +1914,9 @@ assert.match(
   'Extreme must retain real capital scaling for the pile without exposing another numeric comparison label'
 );
 assert.match(
-  battleModal,
-  /<GilTower[\s\S]{0,320}amount=\{displayedPlayerInvested\}[\s\S]{0,220}marketPrice=\{targetProperty\.marketPrice\}/,
-  'Extreme reuses the real gil amount and company scale without inflating game state or DOM units'
+  liveCapitalCanvas,
+  /player=\{\{[\s\S]{0,120}amount:\s*displayedPlayerInvested,[\s\S]{0,120}marketPrice:\s*targetProperty\.marketPrice,[\s\S]{0,180}previewFrame:\s*capitalPreviewStage \?\? playerCapitalPilePreviewStage,/,
+  'Extreme reuses the real gil amount and staged player frame without inflating game state or DOM units'
 );
 assert.match(
   gameBalance,
@@ -1514,8 +1930,8 @@ assert.match(
 );
 assert.match(
   highEndRaidView,
-  /勝負どころ：第二査定[\s\S]*所有率50%まで再建[\s\S]*15秒[\s\S]*所有率75%＋自社直接10%/,
-  'the Cruel card must disclose both recovery checks once in a concise plan'
+  /勝負どころ：第二査定[\s\S]*10秒以内に所有率50%まで再建[\s\S]*未到達でも第二査定を強制開始[\s\S]*15秒[\s\S]*所有率75%＋自社直接10%/,
+  'the Cruel card must disclose the ten-second forced recovery and final check in one concise plan'
 );
 assert.doesNotMatch(
   highEndRaidView,
@@ -1529,8 +1945,13 @@ assert.match(
 );
 assert.match(
   battleEncounterData,
-  /firstTriggerActiveMs:\s*15_000[\s\S]*firstImpactPlayerOwnership:\s*10[\s\S]*secondTriggerPlayerOwnership:\s*50[\s\S]*forcedSecondTriggerRecoveryMs:\s*35_000[\s\S]*successPlayerOwnership:\s*75[\s\S]*secondFailureOutcome:\s*'player_defeat'[\s\S]*secondFailureDisplayedOwnership:\s*0/,
+  /firstTriggerActiveMs:\s*15_000[\s\S]*firstImpactPlayerOwnership:\s*10[\s\S]*secondTriggerPlayerOwnership:\s*50[\s\S]*forcedSecondTriggerRecoveryMs:\s*10_000[\s\S]*successPlayerOwnership:\s*75[\s\S]*secondFailureOutcome:\s*'player_defeat'[\s\S]*secondFailureDisplayedOwnership:\s*0/,
   'Cruel must retain the authored first collapse, recovery trigger, timeout, and second check'
+);
+assert.match(
+  battleModal,
+  /回復猶予10秒[\s\S]*10秒以内に50%へ[\s\S]*10秒以内に所有率50%へ戻せなくても第二査定を強制開始/,
+  'Cruel must show the shortened recovery deadline before the forced second appraisal'
 );
 assert.match(
   cruelBattle,
@@ -1575,7 +1996,7 @@ assert.doesNotMatch(
 assert.match(
   battleModal,
   /const isHighEndRaid = isSavage \|\| isUltimate \|\| isCruel;[\s\S]*const isProtectedBattle = isHighEndRaid \|\| isTraining/,
-  'Cruel inherits the high-end protection path for ownership and departure state'
+  'Cruel inherits the high-end retry-protection briefing path'
 );
 assert.match(
   saveData,
@@ -1589,8 +2010,13 @@ assert.match(
 );
 assert.match(
   app,
-  /projectedProperties = isNormalBattle[\s\S]*:\s*properties;[\s\S]*projectedCruelCleared[\s\S]*cruelCleared:\s*projectedCruelCleared/,
-  'Cruel settlement saves only its record while normal properties stay protected'
+  /const settlesHighEndVictory =[\s\S]*winner === 'player'[\s\S]*victoryReward > 0[\s\S]*activeBattleMode === 'cruel'[\s\S]*applyLoyaltySettlementPropertyUpdates[\s\S]*projectedCruelCleared[\s\S]*cruelCleared:\s*projectedCruelCleared/,
+  'a rewarded high-end victory persists only its network settlement and clear record'
+);
+assert.match(
+  battleModal,
+  /const loyaltySettlementPersists =[\s\S]*!isTraining && winner === 'player' && resultVictoryReward > 0[\s\S]*const celebrationDecisionRequired =[\s\S]*loyaltySettlementPersists/,
+  'defeat, training and rewardless replays must never open or persist a loyalty settlement'
 );
 assert.match(
   app,

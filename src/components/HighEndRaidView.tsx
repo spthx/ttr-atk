@@ -6,6 +6,7 @@ import {
   ShieldAlert,
   Sparkles,
   Swords,
+  Zap,
 } from 'lucide-react';
 import type { BattleMode, Cartel, GroupSynergy, Property } from '../types';
 import { FANKIT_ART } from '../data/fankitAssets';
@@ -17,6 +18,11 @@ import {
   calculateCruelSignatureRequirement,
 } from '../utils/cruelBattle';
 import { StrengthComparison } from './StrengthComparison';
+import {
+  getChargedLimitBreakTier,
+  getLimitBreakChargeCapacity,
+  getLimitBreakTier,
+} from '../utils/gameBalance';
 import {
   SAVAGE_GROUP_MULTIPLIER_BASE,
   SAVAGE_GROUP_MULTIPLIER_BONUS_PER_RANK,
@@ -39,6 +45,7 @@ interface HighEndRaidViewProps {
   savageUnlockedIds: ReadonlySet<string>;
   groupSynergies: GroupSynergy[];
   totalFunds: number;
+  limitBreakCharge: number;
   ultimateProperty: Property;
   ultimateUnlocked: boolean;
   ultimateCleared: boolean;
@@ -64,6 +71,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
   savageUnlockedIds,
   groupSynergies,
   totalFunds,
+  limitBreakCharge,
   ultimateProperty,
   ultimateUnlocked,
   ultimateCleared,
@@ -100,6 +108,32 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
     cruelFee
   );
   const cruelAffordable = totalFunds >= cruelEntryRequirement;
+  const ownedNormalPropertyCount = properties.filter(
+    (property) => property.owner === 'player'
+  ).length;
+  const limitBreakCapacityTier = getLimitBreakTier(
+    ownedNormalPropertyCount + 1
+  );
+  const limitBreakChargeCapacity = getLimitBreakChargeCapacity(
+    limitBreakCapacityTier
+  );
+  const preparedLimitBreakTier = getChargedLimitBreakTier(
+    limitBreakCharge,
+    limitBreakCapacityTier
+  );
+  const visibleLimitBreakCharge = Math.min(
+    limitBreakChargeCapacity,
+    Math.max(0, Math.floor(limitBreakCharge))
+  );
+  const limitBreakReadiness =
+    limitBreakCapacityTier < 3
+      ? `LB III未解放（現在LB ${preparedLimitBreakTier || 0}）`
+      : preparedLimitBreakTier >= 3
+        ? `LB III発動可能（${visibleLimitBreakCharge}/${limitBreakChargeCapacity}）`
+        : `現在LB ${preparedLimitBreakTier || 0}・LB IIIまであと${Math.max(
+            0,
+            limitBreakChargeCapacity - visibleLimitBreakCharge
+          )}`;
   const ownedNormalPropertyIds = new Set(
     properties
       .filter((property) => property.owner === 'player')
@@ -260,7 +294,8 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
               )}
 
               <section className="savage-layer-card__reward">
-                <span><Sparkles />初回踏破報酬：通常編の事業・連携強化</span>
+                <span><Sparkles />初回踏破報酬：攻略利益＋通常編の事業・連携強化</span>
+                <small>攻略利益は相場5%。勝利後に0%／50%／100%の3択で人脈へ配分します。</small>
                 <p>
                   <b>連合地域の通常事業 {raid.memberPropertyIds.length}件</b>
                   <small>基礎収益 +{Math.round(SAVAGE_PROPERTY_YIELD_BONUS * 100)}%</small>
@@ -352,8 +387,23 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
           </span>
           <span>
             <ShieldAlert />
-            地域／業界補正なし・通常事業と収益は保護
+            地域／業界補正なし・敗北／再戦では通常事業を保護
           </span>
+          <span>
+            <Sparkles />
+            {ultimateCleared
+              ? '再戦報酬0・人脈清算なし'
+              : '初回攻略利益は相場5%・勝利後に3択配分'}
+          </span>
+          <span role="note" aria-label={`絶のLIMIT BREAK準備 ${limitBreakReadiness}`}>
+            <Zap /> LIMIT BREAK準備：{limitBreakReadiness}
+          </span>
+          <div className="ultimate-raid-card__warning" role="note">
+            <b>安定攻略の準備例</b>
+            <p>
+              開幕AUTOにパッセ、瀕死AUTOにリビングデッド。手動のぶんどると短時間防御を装備し、LB IIIを満たしてから敵の予告へ割り当てます。
+            </p>
+          </div>
           <StrengthComparison result={ultimateStrengthComparison} compact summaryOnly />
           <div className="ultimate-raid-card__actions">
             <button
@@ -413,12 +463,21 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
             </span>
             <span>
               <ShieldAlert />
-              強化かばう・通常事業と進行は保護
+              強化かばう・敗北／再戦では通常事業を保護
+            </span>
+            <span>
+              <Sparkles />
+              {cruelCleared
+                ? '再戦報酬0・人脈清算なし'
+                : '初回攻略利益は相場5%・勝利後に3択配分'}
+            </span>
+            <span role="note" aria-label={`酷のLIMIT BREAK準備 ${limitBreakReadiness}`}>
+              <Zap /> LIMIT BREAK準備：{limitBreakReadiness}
             </span>
             <div className="cruel-raid-card__warning" role="note">
               <b>勝負どころ：第二査定</b>
               <p>
-                第一宣告後に所有率50%まで再建。続く15秒で所有率75%＋自社直接10%をそろえるため、直接出資2回分を残してください。
+                第一宣告後、10秒以内に所有率50%まで再建。未到達でも第二査定を強制開始します。続く15秒で所有率75%＋自社直接10%をそろえるため、直接出資2回分を残してください。
               </p>
             </div>
             <StrengthComparison result={cruelStrengthComparison} compact summaryOnly />

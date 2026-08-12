@@ -8,7 +8,7 @@
 |初期物件・スキル・シナジー|`src/data/initialData.ts`|IDを保存互換キーとして扱う|
 |都市・時代順|`src/data/worldData.ts`|通常進行の順序|
 |企業連合・候補|`src/data/allianceData.ts`|世界観上の一般名は一括改名しない|
-|敵支援と高難度戦闘データ|`src/data/battleEncounterData.ts`|Unity/editor用JSON境界あり|
+|敵支援と高難度戦闘データ|`src/data/battleEncounterData.ts`|Unity/editor用JSON境界あり。絶6パターンは開幕／瀕死行動と具体的な対処手順を同じ正本で持つ|
 |ファンキット論理キー|`src/data/fankitAssets.ts`|UIから実ファイル名を隠す|
 |ヘルプ|`src/data/helpText.ts`|操作説明、用語|
 |零式12章・絶・酷|`src/utils/savage.ts`|3シリーズ×4層|
@@ -16,17 +16,17 @@
 |敵AI|`src/utils/enemyAi.ts`|毎フレーム判断しない|
 |酷の段階処理|`src/utils/cruelBattle.ts`|第一・第二宣告|
 |進行シナジー|`src/utils/synergy.ts`|自動置換優先度|
-|勝利後精算・離反|`src/utils/battleSettlement.ts`|独占0%／山分け50%|
+|勝利後精算・離反|`src/utils/battleSettlement.ts`|利益独占0%／五分の祝儀50%／大盤振る舞い100%（離反防止・危険度30回復）|
 |セーブ|`src/utils/saveData.ts`|schemaVersion 3|
 |中断復帰|`src/utils/battleSession.ts`|決着前のセッション|
 |音声再生|`src/utils/audio.ts`|単一AudioContext、遅延デコード|
 |商戦UIと演出順|`src/components/BattleModal.tsx`|データではなく実行器へ縮小していく|
-|コイン・商戦CSS|`src/battle-capital-layer.css`|固定列、transform/opacity中心|
+|商戦フィールド描画|`src/components/BattleCapitalCanvas.tsx`、`src/components/BattleCapitalCanvas.css`、`src/utils/battleCanvasQuality.ts`、`src/battle-capital-layer.css`|両陣営共通1枚のCanvas2D。背景・所有率前線・圧力・22列×2・overflow・packet・風・VSを同一sceneへ投影。30fpsはDPR 1.5、60fpsはDPR 2を内部解像度の上限とする|
 
 関連する設計基準:
 
 - [難易度進行・敗北学習設計](./difficulty-progression-design.md)
-- [コイン描画 WebGL2 フォールバック実装手引き](./coin-webgl2-fallback-guide.md)
+- [商戦フィールド描画 WebGL2 フォールバック実装手引き](./coin-webgl2-fallback-guide.md)
 - [Unity / WebGL 移植仕様書](./unity-webgl-migration-spec.md)
 
 ## 2. テキストの所在
@@ -78,7 +78,7 @@ ui.battle.commit
 
 ### 3.2 コイン画像
 
-コインは少数の正式スプライトをCSSで固定列へ配置する。額に比例して画像要素を生成しない。将来差し替える際は、同じ論理キーで次を用意する。
+コインは`BattleCapitalCanvas`のCanvas2Dへ決定論的に描き、左右22列を固定sceneとして扱う。投入額に比例してDOM nodeや描画資源を無制限に生成しない。将来texture atlasへ差し替える際は、同じ論理キーで次を用意する。
 
 ```text
 coin_player_unit
@@ -162,7 +162,7 @@ npm run build
 - 開幕・窮地オートと通常枠が重複していない。
 - 敵アクションの割込区分が定義されている。
 - 無敵後の有限防御とナイト退場が検証されている。
-- コイン列と一時要素の上限が固定されている。
+- コイン列と一時packet表示数の上限が固定されている。
 - 1戦2分、30出資の上限をシミュレーションで確認した。
 - リザルトの黒字・赤字、タタル分析、ご祝儀、戦闘記録の順が保たれている。
 - セーブと中断復帰が二重精算を起こさない。

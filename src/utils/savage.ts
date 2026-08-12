@@ -283,7 +283,7 @@ export const ULTIMATE_RAID_DEFINITION = {
   industry: '娯楽・商業' as IndustryType,
   community: 'ソリューション・ナイン' as CommunityType,
   description:
-    '商戦 零式3編・全12章を踏破した商会だけが挑める、本作独自の単独・最終高難度交易戦。通常の所有権と収益からは独立した名誉記録です。',
+    '商戦 零式3編・全12章を踏破した商会だけが挑める、本作独自の単独・最終高難度交易戦。ボス自体は取得せず、初回踏破では攻略報酬と人脈清算が発生します。',
 } as const;
 
 export const CRUEL_RAID_ID = 'cruel_another_trade';
@@ -297,7 +297,7 @@ export const CRUEL_RAID_DEFINITION = {
   industry: '娯楽・商業' as IndustryType,
   community: 'ソリューション・ナイン' as CommunityType,
   description:
-    '絶商戦の踏破後に現れる、本作独自の超高難度・単独記録戦。闇タタルが既存の商戦術を容赦なく組み合わせます。通常事業・人脈・独立危険度は保護され、踏破報酬は称号と記録のみです。',
+    '絶商戦の踏破後に現れる、本作独自の超高難度・単独記録戦。闇タタルが既存の商戦術を容赦なく組み合わせます。敗北・撤退・再戦では通常人脈を保護し、初回踏破では称号・記録・攻略報酬と人脈清算が発生します。',
 } as const;
 
 const propertyById = (properties: Property[], id: string) =>
@@ -438,7 +438,7 @@ export const buildSavageProperties = (
       countsTowardCityConquest: false,
       groupKeys: raid.rewardSynergyIds,
       description:
-        `第${raid.series}編「${getSavageSeriesDefinition(raid.series).name}」。${raid.description} 通常物件の所有権・毎秒収益・独立危険度は変化しません。`,
+        `第${raid.series}編「${getSavageSeriesDefinition(raid.series).name}」。${raid.description} 敗北・撤退・再戦では通常人脈を保護し、初回踏破では攻略報酬と人脈清算が発生します。`,
     }];
   });
 

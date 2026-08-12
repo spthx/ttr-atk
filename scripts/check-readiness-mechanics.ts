@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  buildMobilizationPointBreakdown,
   calculateBattleReadiness,
   type BattleReadinessInput,
 } from '../src/utils/battleReadiness';
@@ -36,6 +37,41 @@ assert.equal(
     ?.label,
   '外部アライアンス1回（高難度補正なし）'
 );
+const capitalOnlyPoints = buildMobilizationPointBreakdown(
+  capitalOnly.capitalComponents,
+  capitalOnly.enemyBudget
+);
+assert.deepEqual(
+  capitalOnlyPoints.map(({ key, label, points }) => ({ key, label, points })),
+  [
+    { key: 'cash', label: '手元資金', points: 100 },
+    { key: 'alliance', label: '外部協力', points: 50 },
+  ],
+  'the simple UI must show cash plus external cooperation against defense 100'
+);
+assert.equal(
+  capitalOnlyPoints.reduce((total, component) => total + component.points, 0),
+  Math.round((capitalOnly.playerExpectedCapital / capitalOnly.enemyBudget) * 100)
+);
+
+const roundingSource = [
+  { key: 'cash' as const, label: 'cash detail', amount: 333 },
+  { key: 'alliance' as const, label: 'alliance detail', amount: 333 },
+  { key: 'battle_synergy' as const, label: 'synergy detail', amount: 334 },
+];
+const roundingSnapshot = structuredClone(roundingSource);
+assert.deepEqual(
+  buildMobilizationPointBreakdown(roundingSource, 1_000).map(
+    ({ key, label, points }) => ({ key, label, points })
+  ),
+  [
+    { key: 'cash', label: '手元資金', points: 33 },
+    { key: 'alliance', label: '外部協力', points: 33 },
+    { key: 'battle_synergy', label: 'SYNERGY', points: 34 },
+  ],
+  'largest-remainder rounding must keep the displayed equation equal to 100'
+);
+assert.deepEqual(roundingSource, roundingSnapshot, 'point conversion is non-mutating');
 
 const warning = calculateBattleReadiness({
   ...baseInput,
@@ -62,7 +98,11 @@ const ultimate = calculateBattleReadiness({
 });
 assert.equal(ultimate.grade, 'challenge');
 assert.equal(ultimate.mechanicSeverity, 'severe');
-assert.match(ultimate.mechanicWarning ?? '', /絶/);
+assert.match(
+  ultimate.mechanicWarning ?? '',
+  /絶.*短時間防御.*開始直後に空撃ちせず.*ドリルや敵LB3.*危険予告/,
+  'Ultimate readiness must teach where short defenses belong before entry'
+);
 
 const savage = calculateBattleReadiness({
   ...baseInput,
@@ -171,29 +211,69 @@ const highDifficultyGroupReadiness = calculateBattleReadiness({
 });
 assert.equal(normalGroupReadiness.supportRoute, '戦闘連携');
 assert.equal(highDifficultyGroupReadiness.supportRoute, '戦闘連携');
+const highDifficultyGroupBaseSupport = regularGroupMembers.reduce(
+  (total, member) =>
+    total +
+    Math.round(
+      member.marketPrice *
+        BATTLE_SUPPORT_BALANCE.synergyMemberMarketRatio *
+        getSubsidiarySupportMultiplier(member) *
+        HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
+    ),
+  0
+);
 assert.equal(
   highDifficultyGroupReadiness.supportCapital,
   Math.round(
-    regularGroupMembers.reduce(
-      (total, member) =>
-        total +
-        Math.round(
-          member.marketPrice *
-            BATTLE_SUPPORT_BALANCE.synergyMemberMarketRatio *
-            getSubsidiarySupportMultiplier(member) *
-            HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
-        ),
-      0
-    ) *
+    highDifficultyGroupBaseSupport *
       (regularGroupSynergy.battleGroupMultiplier ??
         BATTLE_SUPPORT_BALANCE.synergyDefaultMultiplier)
   )
 );
 assert.match(
   highDifficultyGroupReadiness.capitalComponents.find(
-    (component) => component.key === 'synergy'
+    (component) => component.key === 'subsidiaries'
   )?.label ?? '',
   /高難度×1\.70/
+);
+assert.equal(
+  highDifficultyGroupReadiness.capitalComponents.find(
+    (component) => component.key === 'subsidiaries'
+  )?.amount,
+  highDifficultyGroupBaseSupport,
+  'regular SYNERGY shows the participating network capital as its own addend'
+);
+assert.match(
+  highDifficultyGroupReadiness.capitalComponents.find(
+    (component) => component.key === 'synergy'
+  )?.label ?? '',
+  /SYNERGY.*上乗せ/
+);
+assert.equal(
+  highDifficultyGroupReadiness.capitalComponents
+    .filter(
+      (component) =>
+        component.key === 'subsidiaries' || component.key === 'synergy'
+    )
+    .reduce((total, component) => total + component.amount, 0),
+  highDifficultyGroupReadiness.supportCapital,
+  'network capital plus the SYNERGY bonus must equal the unchanged route total'
+);
+assert.equal(
+  highDifficultyGroupReadiness.capitalComponents.reduce(
+    (total, component) => total + component.amount,
+    0
+  ),
+  highDifficultyGroupReadiness.playerExpectedCapital,
+  'the decomposed SYNERGY route must preserve total expected capital'
+);
+assert.equal(
+  buildMobilizationPointBreakdown(
+    highDifficultyGroupReadiness.capitalComponents,
+    highDifficultyGroupReadiness.enemyBudget
+  ).reduce((total, component) => total + component.points, 0),
+  highDifficultyGroupReadiness.ratioPercent,
+  'the decomposed SYNERGY point equation must preserve the displayed total'
 );
 
 const lowValueContacts = Array.from({ length: 3 }, (_, index) => ({
@@ -224,7 +304,72 @@ assert.equal(
   normalLimitReadiness.supportCapital,
   'the high-difficulty support multiplier must not increase LIMIT BREAK'
 );
+const visibleLimitContacts = Array.from({ length: 3 }, (_, index) => ({
+  ...contact,
+  id: `visible_lb_contact_${index}`,
+  marketPrice: 100_000,
+}));
+const visibleLimitReadiness = calculateBattleReadiness({
+  ...baseInput,
+  targetMarketPrice: 1_000_000,
+  availableCash: 2_000,
+  subsidiaries: visibleLimitContacts,
+  selectedBattleSynergy: null,
+  limitBreakCharge: 100,
+  allianceSupport: 0,
+  enemyBudget: 1_000_000,
+});
+assert.equal(visibleLimitReadiness.supportRoute, 'LIMIT BREAK');
+const visibleLimitComponents = visibleLimitReadiness.capitalComponents.filter(
+  (component) =>
+    component.key === 'subsidiaries' || component.key === 'limit_break'
+);
+assert.deepEqual(
+  visibleLimitComponents.map((component) => component.key),
+  ['subsidiaries', 'limit_break'],
+  'LIMIT BREAK displays the participating network and technique bonus separately'
+);
+assert.equal(
+  visibleLimitComponents.reduce((total, component) => total + component.amount, 0),
+  visibleLimitReadiness.supportCapital,
+  'network capital plus the LIMIT BREAK bonus must equal the unchanged route total'
+);
+assert.equal(
+  visibleLimitReadiness.capitalComponents.reduce(
+    (total, component) => total + component.amount,
+    0
+  ),
+  visibleLimitReadiness.playerExpectedCapital,
+  'the decomposed LIMIT BREAK route must preserve total expected capital'
+);
+assert.equal(
+  buildMobilizationPointBreakdown(
+    visibleLimitReadiness.capitalComponents,
+    visibleLimitReadiness.enemyBudget
+  ).reduce((total, component) => total + component.points, 0),
+  visibleLimitReadiness.ratioPercent,
+  'the decomposed LIMIT BREAK point equation must preserve the displayed total'
+);
+const visibleLimitNetworkBase = visibleLimitContacts.reduce(
+  (total, member) =>
+    total +
+    Math.round(
+      member.marketPrice *
+        0.28 *
+        getSubsidiarySupportMultiplier(member)
+    ),
+  0
+);
+assert.equal(
+  visibleLimitComponents[0].amount,
+  visibleLimitNetworkBase,
+  'the network addend stays unamplified so the LIMIT BREAK addend owns the technique bonus'
+);
+assert.match(visibleLimitComponents[0].label, /人脈3件.*LB参加企業/);
+assert.match(visibleLimitComponents[1].label, /LB.*上乗せ.*蓄積分を全消費/);
 assert.match(highDifficultyLimitReadiness.mechanicWarning ?? '', /15秒/);
+assert.match(highDifficultyLimitReadiness.mechanicWarning ?? '', /10秒以内/);
+assert.match(highDifficultyLimitReadiness.mechanicWarning ?? '', /未到達でも/);
 assert.match(highDifficultyLimitReadiness.mechanicWarning ?? '', /直接出資2回分/);
 assert.match(highDifficultyLimitReadiness.mechanicWarning ?? '', /所有率75%以上/);
 assert.match(highDifficultyLimitReadiness.mechanicWarning ?? '', /自社直接出資/);

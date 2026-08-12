@@ -50,6 +50,7 @@ import {
   type AbilityActivationMode,
 } from './utils/abilityLoadout';
 import {
+  BATTLE_LOYALTY_BALANCE,
   calculateEnemyBudget,
   calculateTotalAssetValue,
   getBossAbilityTier,
@@ -75,6 +76,7 @@ import {
   type BattleReadinessResult,
 } from './utils/battleReadiness';
 import {
+  applyLoyaltySettlementPropertyUpdates,
   applyNormalBattlePropertyUpdates,
   calculateLiquidationCashback,
 } from './utils/battleSettlement';
@@ -215,7 +217,7 @@ const FEATURE_UNLOCKS: Record<
   },
   trade_alliance: {
     kicker: 'ENTERPRISE ALLIANCE',
-    title: 'アライアンス解放',
+    title: '外部協力・企業連合 解放',
     dialogue: 'クリスタリウムまで交易路を広げた実績で、企業連合との大商戦が開いたでっす！',
     detail: '段階式の企業連合戦、外部企業との協力協定、グランドカンパニーへの公的後援申請が解放されます。',
   },
@@ -1289,6 +1291,14 @@ export default function App() {
       isNormalBattle && normalBattleOrigin === 'cartels';
     const isExtremeReacquisitionBattle =
       isNormalBattle && isExtremeReacquisition(targetProperty);
+    const settlesHighEndVictory =
+      winner === 'player' &&
+      victoryReward > 0 &&
+      (activeBattleMode === 'savage' ||
+        activeBattleMode === 'ultimate' ||
+        activeBattleMode === 'cruel');
+    const appliesPersistentLoyaltySettlement =
+      isNormalBattle || settlesHighEndVictory;
     const projectedProperties = isNormalBattle
       ? applyNormalBattlePropertyUpdates({
           properties,
@@ -1298,8 +1308,14 @@ export default function App() {
           rebelledProperties,
           survivingRiskUpdates,
         })
+      : settlesHighEndVictory
+        ? applyLoyaltySettlementPropertyUpdates({
+            properties,
+            rebelledProperties,
+            survivingRiskUpdates,
+          })
       : properties;
-    const liquidationCashback = isNormalBattle
+    const liquidationCashback = appliesPersistentLoyaltySettlement
       ? calculateLiquidationCashback(rebelledProperties)
       : 0;
     // 仲介手数料に加え、直接出資の一部が買収費用・撤退損として確定する。
@@ -1475,9 +1491,6 @@ export default function App() {
           'warning'
         );
       }
-      if (rebelledProperties.length > 0) {
-        addGameLog('【零式保護規定】記録戦中の離反判定は通常市場へ持ち越されません。', 'info');
-      }
       if (gainsAbilityExplanation) {
         setSkillsStoryReturn({ destination: 'savage' });
       }
@@ -1486,7 +1499,11 @@ export default function App() {
       if (winner === 'player') {
         setUltimateCleared(true);
         addGameLog(
-          `【絶商戦踏破】${targetProperty.name} を攻略しました。最終記録と称号を獲得しました！`,
+          `【絶商戦踏破】${targetProperty.name} を攻略しました。最終記録と称号を獲得しました！${
+            victoryReward > 0
+              ? ` 初回攻略報酬 ${formatCurrency(victoryReward)} の配分と人脈清算も確定しました。`
+              : ' 再戦のため攻略報酬と人脈清算はありません。'
+          }`,
           'success'
         );
       } else {
@@ -1494,9 +1511,6 @@ export default function App() {
           `【絶商戦ワイプ】${targetProperty.name} の攻略に失敗。通常事業・契約は保護され、最初から再挑戦できます。`,
           'warning'
         );
-      }
-      if (rebelledProperties.length > 0) {
-        addGameLog('【絶保護規定】記録戦中の離反判定は通常市場へ持ち越されません。', 'info');
       }
       if (gainsAbilityExplanation) {
         setSkillsStoryReturn({ destination: 'savage' });
@@ -1506,19 +1520,17 @@ export default function App() {
       if (winner === 'player') {
         setCruelCleared(true);
         addGameLog(
-          `【酷・商戦踏破】${targetProperty.name} を攻略しました。闇タタルとの最終記録と称号を獲得しました！`,
+          `【酷・商戦踏破】${targetProperty.name} を攻略しました。闇タタルとの最終記録と称号を獲得しました！${
+            victoryReward > 0
+              ? ` 初回攻略報酬 ${formatCurrency(victoryReward)} の配分と人脈清算も確定しました。`
+              : ' 再戦のため攻略報酬と人脈清算はありません。'
+          }`,
           'success'
         );
       } else {
         addGameLog(
           `【酷・商戦ワイプ】${targetProperty.name} の攻略に失敗。通常事業・人脈・独立危険度は保護され、最初から再挑戦できます。`,
           'warning'
-        );
-      }
-      if (rebelledProperties.length > 0) {
-        addGameLog(
-          '【酷・保護規定】記録戦中の離反判定は通常市場へ持ち越されません。',
-          'info'
         );
       }
       if (gainsAbilityExplanation) {
@@ -1587,12 +1599,15 @@ export default function App() {
       setActiveTab(returnsToAlliance ? 'cartels' : 'market');
     }
 
-    if (isNormalBattle) {
+    if (appliesPersistentLoyaltySettlement) {
       setProperties(projectedProperties);
     }
 
     // 2. Handle Rebellion & Strategic Bankruptcy Liquidation Cashback
-    if (isNormalBattle && rebelledProperties.length > 0) {
+    if (
+      appliesPersistentLoyaltySettlement &&
+      rebelledProperties.length > 0
+    ) {
       rebelledProperties.forEach((rebel) => {
         addGameLog(
           `【独立発生・強制清算】${rebel.name} の不満が高まり独立離脱しました。現在評価額 ${formatCurrency(
@@ -1602,14 +1617,31 @@ export default function App() {
         );
       });
     }
-    if (isNormalBattle && celebrationGiftCost > 0) {
+    if (
+      appliesPersistentLoyaltySettlement &&
+      winner === 'player' &&
+      victoryReward > 0 &&
+      rebelledProperties.length + survivingRiskUpdates.length > 0
+    ) {
+      const allocationLabel =
+        celebrationGiftRate === 1
+          ? '大盤振る舞い'
+          : celebrationGiftRate === 0.5
+            ? '五分の祝儀'
+            : '利益独占';
+      const allocationMessage =
+        celebrationGiftRate === 1
+          ? `勝利利益${formatCurrency(
+              celebrationGiftCost
+            )}を人脈全体へ均等に分配し、今回の離反を防いで独立危険度を${BATTLE_LOYALTY_BALANCE.lavishRiskRecovery}回復しました。`
+          : celebrationGiftRate === 0.5
+            ? `${formatCurrency(
+                celebrationGiftCost
+              )}（報酬の50%）を人脈全体へ均等に分配し、今回の離反確率を大きく抑えました。独立危険度は持ち越されます。`
+            : '勝利利益を自社へ全額残しました。各人脈の独立危険度に応じて離反判定が行われました。';
       addGameLog(
-        `【勝利利益・山分け】${formatCurrency(
-          celebrationGiftCost
-        )}（報酬の${Math.round(
-          celebrationGiftRate * 100
-        )}%）を人脈全体へ均等に分配し、今回の離反確率を大きく抑えました。離反の可能性と独立危険度そのものは残ります。`,
-        'success'
+        `【勝利利益・${allocationLabel}】${allocationMessage}`,
+        celebrationGiftRate > 0 ? 'success' : 'info'
       );
     }
 
@@ -2074,7 +2106,7 @@ export default function App() {
 
       {/* Main View Area */}
       <main className="max-w-7xl w-full mx-auto px-3 sm:px-6 py-3 pb-20 md:py-6 md:pb-6 flex-1 space-y-4 md:space-y-6">
-        {activeTab !== 'market' && (
+        {activeTab !== 'market' && activeTab !== 'cartels' && (
           <TatarAdvisor
             activeTab={activeTab}
             ownedCount={ownedProperties.length}
@@ -2124,6 +2156,7 @@ export default function App() {
                 savageUnlockedIds={savageUnlockedIds}
                 groupSynergies={groupSynergies}
                 totalFunds={totalFunds}
+                limitBreakCharge={limitBreakCharge}
                 ultimateProperty={ultimateProperty}
                 ultimateUnlocked={ultimateUnlocked}
                 ultimateCleared={ultimateCleared}
@@ -2178,7 +2211,7 @@ export default function App() {
               skillsStoryReturn?.destination === 'savage'
                 ? '零式の攻略一覧へ戻る'
                 : skillsStoryReturn?.destination === 'cartels'
-                  ? 'アライアンス攻略へ戻る'
+                  ? '企業連合攻略へ戻る'
                 : skillsStoryReturn?.destination === 'market'
                   ? `${skillsStoryReturn.community}の交渉先へ戻る`
                   : undefined
@@ -2401,7 +2434,7 @@ export default function App() {
             </span>
             <span className="relative z-10 mt-4 inline-block rounded-lg bg-amber-400 px-4 py-2 text-xs font-black text-slate-950">
               {normalBattleOrigin === 'cartels'
-                ? 'アライアンス攻略へ戻る'
+                ? '企業連合攻略へ戻る'
                 : '次の都市の交渉先へ'}
             </span>
           </span>

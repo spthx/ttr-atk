@@ -4,7 +4,7 @@
 
 本書は、現行Web版のゲーム性を保ったまま、将来オリジナルの画像・名称・文章へ交換し、UnityおよびUnity WebGLへ段階移植するための実装契約を定める。
 
-> React版を維持したまま、重い端末だけコイン描画層をWebGL2へ切り替える手順は[`coin-webgl2-fallback-guide.md`](./coin-webgl2-fallback-guide.md)を参照する。
+> React版で正式採用したCanvas2D商戦フィールドを維持しながら、実機測定で必要な場合に限り同じ描画層をWebGL2へ切り替える手順は[商戦フィールド描画 WebGL2 フォールバック実装手引き](./coin-webgl2-fallback-guide.md)を参照する。
 
 移植対象は、企業買収バトル、進行、難易度、保存、演出順序、コンテンツデータである。ReactのDOM構造やCSSをそのままUnityへ複製することは目的ではない。
 
@@ -26,7 +26,7 @@
 |純粋な数値計算|`src/utils/gameBalance.ts`、`src/utils/enemyAi.ts`、`src/utils/cruelBattle.ts`|C#ドメイン層|
 |保存と互換処理|`src/utils/saveData.ts`、`src/utils/battleSession.ts`|バージョン付きSave DTO|
 |画面状態と演出オーケストレーション|`src/components/BattleModal.tsx`|BattlePresenter / Timeline Runner|
-|Web固有描画|`src/battle-capital-layer.css`|Canvas UI / Sprite Renderer|
+|Web固有描画|`src/components/BattleCapitalCanvas.tsx`、`src/components/BattleCapitalCanvas.css`、`src/battle-capital-layer.css`|Canvas UI / Sprite Renderer|
 |効果音|`src/utils/audio.ts`、`public/ff14-fankit/audio/`|AudioMixer + AudioClip Catalog|
 
 `BATTLE_CONTENT_MANIFEST` はブラウザAPIや関数を含まないJSON境界であり、Unity向けエクスポートの起点とする。`schemaVersion` を必ず保持する。
@@ -122,14 +122,14 @@ Leave / Complete
 - アクティブ時間約15秒で第一宣告。
 - 所有率を最大10%へ落とすが、投入済み資本・残資金・LBを消さない。
 - 回復区間の敵圧力倍率は0.58。
-- 所有率50%到達、または回復35秒で第二宣告。
+- 所有率50%到達、または回復10秒で第二宣告。未到達でも強制開始する。
 - 15秒のカウント中も投入とアビリティを許可。コイン演出待ちを含めても直接出資2回を受け付ける。
 - 75%以上なら成功。それ未満は査定失敗を確定し、カードの余韻完走後に一度だけ敗北へ遷移する。
 - 第一・第二宣告は`unstoppable`。敵LB3は`delay_only`でスタンによる2.4秒延期のみ。
 
 この仕様は特定のアビリティ装備を必須にしない。
 
-## 5. コイン描画
+## 5. 商戦フィールド／コイン描画
 
 ### 5.1 論理モデル
 
@@ -139,7 +139,7 @@ Leave / Complete
 
 - 左右22本の固定列
 - 1列最大36層
-- 最大792表示単位/陣営をDOM増減なしで表現
+- 最大792表示単位/陣営を両陣営共通1枚のCanvas2D上で表現（投入額によるDOM増減なし）
 - 投入1回の一時落下コイン最大16枚
 - 表示閾値60段階
 

@@ -294,7 +294,7 @@ assert.match(
 );
 assert.match(
   appSource,
-  /destination === 'cartels'[\s\S]*アライアンス攻略へ戻る/,
+  /destination === 'cartels'[\s\S]*企業連合攻略へ戻る/,
   'The ability screen must name the Alliance return destination explicitly.'
 );
 assert.match(

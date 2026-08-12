@@ -499,6 +499,28 @@
   width: 1rem;
 }
 
+.ultimate-raid-card__warning {
+  max-width: 38rem;
+  margin-top: .8rem;
+  padding: .7rem .8rem;
+  border: 1px solid rgba(196, 181, 253, .42);
+  border-radius: .65rem;
+  background: rgba(46, 16, 101, .68);
+}
+
+.ultimate-raid-card__warning b {
+  color: #fef08a;
+  font-size: .8rem;
+}
+
+.ultimate-raid-card__warning p {
+  margin-top: .2rem;
+  color: #ede9fe;
+  font-size: .74rem;
+  font-weight: 750;
+  line-height: 1.5;
+}
+
 .ultimate-raid-card__actions {
   display: flex;
   flex-wrap: wrap;
@@ -746,7 +768,8 @@
   }
 
   .cruel-raid-card__copy > p,
-  .cruel-raid-card__warning {
+  .cruel-raid-card__warning,
+  .ultimate-raid-card__warning {
     max-width: 100%;
   }
 

@@ -212,8 +212,8 @@ export interface BattleResult {
   victoryReward: number;
   /** 勝利利益から人脈全体へ均等に分配した総額。 */
   celebrationGiftCost: number;
-  /** 独占は0、山分けは勝利利益全体の50%。 */
-  celebrationGiftRate: 0 | 0.5;
+  /** 利益独占は0、五分の祝儀は50%、大盤振る舞いは100%。 */
+  celebrationGiftRate: 0 | 0.5 | 1;
   rebelledProperties: Property[];
   survivingRiskUpdates: Array<{
     id: string;
