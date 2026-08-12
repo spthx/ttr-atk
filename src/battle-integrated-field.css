@@ -3757,12 +3757,11 @@
 
 .integrated-battlefield .player-capital-stack,
 .integrated-battlefield .enemy-capital-stack {
-  --capital-info-height: 3.25rem;
   position: relative;
   display: grid;
   min-height: 0;
   flex: 1 1 auto;
-  grid-template-rows: minmax(0, 1fr) var(--capital-info-height);
+  grid-template-rows: minmax(0, 1fr);
   overflow: visible;
 }
 
@@ -3986,13 +3985,8 @@
     padding-top: 4.2rem !important;
   }
 
-  .integrated-battlefield .player-capital-stack,
-  .integrated-battlefield .enemy-capital-stack {
-    --capital-info-height: 2.9rem;
-  }
-
   .integrated-battlefield .capital-visual-row {
-    min-height: 6.35rem;
+    min-height: 8rem;
   }
 
   .integrated-battlefield .capital-visual-row .ownership-fighter {

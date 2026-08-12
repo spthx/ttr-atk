@@ -970,7 +970,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   );
   const [battleCashRecovered, setBattleCashRecovered] = useState(0);
   const battleCashRecoveredRef = useRef(0);
-  const [enemyCashRecovered, setEnemyCashRecovered] = useState(0);
   const enemyCashRecoveredRef = useRef(0);
   const [enemyDrainStolen, setEnemyDrainStolen] = useState(0);
   const enemyDrainStolenRef = useRef(0);
@@ -2047,24 +2046,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     progressionSynergyMultiplier;
   const effectiveEnemyInvested = enemyInvested * enemyCapitalMultiplier;
   const effectiveCapitalGap = effectivePlayerInvested - effectiveEnemyInvested;
-  const effectiveCapitalTotal = effectivePlayerInvested + effectiveEnemyInvested;
-  const effectivePlayerShare = effectiveCapitalTotal > 0
-    ? effectivePlayerInvested / effectiveCapitalTotal * 100
-    : 50;
   const displayedPlayerCapitalProgress =
     displayedPlayerInvested / Math.max(1, targetProperty.marketPrice) * 100;
   const extremeOpponentScaleRatio = Math.max(
     0,
     Math.round(displayedPlayerCapitalProgress)
   );
-  const displayedCompanyInvested = companyInvested;
-  const enemyCapitalProgress =
-    enemyInvested / Math.max(1, targetProperty.marketPrice) * 100;
-  const capitalPressureLabel = effectivePlayerShare >= 58
-    ? '自社優勢'
-    : effectivePlayerShare <= 42
-      ? isTraining ? '木人優勢' : '競合優勢'
-      : isTraining ? '訓練資本拮抗' : '資本拮抗';
   const savageRaidDefinition = usesSavageMechanics
     ? getSavageRaidDefinition(targetProperty.id)
     : null;
@@ -2270,20 +2257,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const enemyReservePercent = enemyReserve <= 0
     ? 0
     : Math.min(100, (enemyReserve / enemyReserveCapacity) * 100);
-  const enemyReserveState = isTraining
-    ? 'healthy'
-    : enemyReservePercent <= 0 ? 'short' : enemyReservePercent <= 10 ? 'critical'
-      : enemyReservePercent <= 25 ? 'danger' : enemyReservePercent <= 50 ? 'warning' : 'healthy';
-  const playerReserveCapacity = Math.max(1, initialBattleCashRef.current);
-  const playerReservePercent = Math.max(0, Math.min(100, (cash / playerReserveCapacity) * 100));
-  const playerRecoveryPercent = initialBattleCashRef.current > 0
-    ? Math.min(20, battleCashRecovered / initialBattleCashRef.current * 100)
-    : 0;
-  const enemyRecoveryPercent = enemyBudget > 0
-    ? Math.min(20, enemyCashRecovered / enemyBudget * 100)
-    : 0;
-  const playerReserveState = playerReservePercent <= 0 ? 'short' : playerReservePercent <= 10 ? 'critical'
-    : playerReservePercent <= 25 ? 'danger' : playerReservePercent <= 50 ? 'warning' : 'healthy';
   const windEnabled = !isTraining && windProgressionStage > 0;
   const windTelegraphVisible =
     windEnabled &&
@@ -2458,12 +2431,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const networkSupportSummary = battleSubs.length > 0
     ? limitedNetworkSupportExhausted
       ? alliance.active && !allianceUsed
-        ? `${limitedNetworkSupportModeLabel}支援枠0＋協力`
-        : `${limitedNetworkSupportModeLabel}支援枠を使用済み`
-      : `${limitedNetworkSupportRemaining !== null ? `残り${limitedNetworkSupportRemaining}/` : ''}仲間${battleSubs.length}件${alliance.active && !allianceUsed ? '＋協力' : ''}`
+        ? `人脈 残り0回／外部協力 残り1回`
+        : `人脈 残り0回`
+      : limitedNetworkSupportRemaining !== null
+        ? `人脈 残り${limitedNetworkSupportRemaining}回${alliance.active && !allianceUsed ? '／外部協力 1回' : ''}`
+        : `仲間${battleSubs.length}件${alliance.active && !allianceUsed ? '＋外部協力' : ''}`
     : allianceUsed
       ? '協力支援は要請済み'
-      : '協力支援1件';
+      : '外部協力 残り1回';
   const readinessMechanics: string[] = [];
   if (bossAbilityTier === 'invincible') {
     readinessMechanics.push('インビンシブル5秒→有限パッセ6秒');
@@ -5960,7 +5935,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         enemyCashRecoveredRef.current =
           enemyRecovery.cumulativeRecovered;
         enemyReserveRef.current = enemyRecovery.availableFunds;
-        setEnemyCashRecovered(enemyRecovery.cumulativeRecovered);
         setEnemyReserve(enemyRecovery.availableFunds);
         if (enemyRecovery.availableFunds > 0) {
           liquidityWarningShownRef.current = false;
@@ -8381,34 +8355,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <div className="ownership-track__ticks">{Array.from({ length: 9 }).map((_, index) => <i key={index} />)}</div>
               <div className="ownership-track__marker"><i /><i /><i /></div>
             </div>
-            <div
-              className="ownership-capital-readout"
-              aria-label={`投入総額。自社${formatCurrency(displayedPlayerInvested)}、競合${formatCurrency(displayedEnemyInvested)}`}
-            >
-              <strong
-                className={
-                  capitalPresentationStage === 'impact' ||
-                  (
-                    !activeCapitalSnapshot &&
-                    motion === 'player'
-                  )
-                    ? 'is-acting'
-                    : ''
-                }
-                data-empty={displayedPlayerInvested <= 0}
-              >
-                <small>自社投入</small>
-                {formatCurrency(displayedPlayerInvested)}
-              </strong>
-              <span>CAPITAL</span>
-              <strong
-                className={motion === 'enemy' ? 'is-acting' : ''}
-                data-empty={displayedEnemyInvested <= 0}
-              >
-                <small>競合投入</small>
-                {formatCurrency(displayedEnemyInvested)}
-              </strong>
-            </div>
             {windVisible && !conditionAnnouncement && (
               <div
                 key={`${battleWindState.phase}-${presentedWind.type}-${selectedBattleSynergy?.id ?? 'none'}`}
@@ -8533,27 +8479,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   </div>
                 </div>
               </div>
-              <div className={`player-budget-overlay player-budget-overlay--${playerReserveState}`}>
-                <small>{isTraining ? '訓練用未投入資金' : '未投入資金'}</small>
-                <strong>{formatCurrency(cash)}</strong>
-                <span className="battle-budget-meta">
-                  <b>{playerReservePercent <= 0 ? '回復待ち' : playerReservePercent <= 10 ? '枯渇寸前' : '投入可能'}</b>
-                  <em>{playerRecoveryPercent >= 20 ? '商流回復は上限' : '商流から回復中'}</em>
-                </span>
-              </div>
             </div>
-            <small className="capital-effective-detail">
-              <span>
-                {demandInvested > displayedCompanyInvested ? '人脈中心の資本構成' : '自社資金中心の資本構成'}
-              </span>
-              {(windVisible || progressionSynergyRemaining > 0) && <b>風・SYNERGYの後押しあり</b>}
-            </small>
-            <div className="capital-source-bar"><i style={{ width: `${displayedPlayerInvested > 0 ? displayedCompanyInvested / displayedPlayerInvested * 100 : 0}%` }} /><span /></div>
           </div>
           <div className="capital-arena__center">
             <div className={`capital-clash capital-clash--${battleDirection}`}><i /><i /><i /></div>
             <b className="capital-vs">VS</b>
-            <strong>{capitalPressureLabel}</strong>
           </div>
           <div className={`capital-arena__side ${motion === 'enemy' ? 'is-acting' : motion === 'player' ? 'is-hit' : ''}`}>
             <div className="enemy-capital-stack">
@@ -8731,20 +8661,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   </div>
                 </div>
               </div>
-              <div className={`enemy-budget-overlay enemy-budget-overlay--${enemyReserveState}`}>
-                <small>{isTraining ? '木人保留資金' : '追加防衛の余力'}</small>
-                <strong>{isTraining ? '追加なし' : !enemyCanCommit ? '回復待ち' : enemyReservePercent <= 10 ? '残りわずか' : enemyReservePercent <= 50 ? '消耗中' : '潤沢'}</strong>
-                <span className="battle-budget-meta">
-                  <b>{isTraining ? '追加行動なし' : !enemyCanCommit ? '次の防衛を準備中' : '追加投入の可能性あり'}</b>
-                  <em>{enemyRecoveryPercent >= 20 ? '商流回復は上限' : '商流から回復中'}</em>
-                </span>
-              </div>
             </div>
-            <small className="capital-effective-detail">
-              <span>{isTraining ? '固定耐久・追加防衛なし' : `競合資本は${enemyCapitalProgress >= 70 ? '大きな山' : enemyCapitalProgress >= 35 ? '成長中' : 'まだ小さい'}`}</span>
-              {windVisible && <b>市場の風による影響あり</b>}
-            </small>
-            <div className="enemy-reserve-bar"><i style={{ width: `${enemyReservePercent}%` }} /></div>
           </div>
         </section>
         {(enemySupportCinematic?.skillId === 'omnicapitalization' ||
@@ -9028,7 +8945,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               disabled={
                 !commandReady || actionsLocked || !hasAvailableNetworkSupport
               }
-              aria-label={`人脈。${
+              aria-label={`人脈${limitedNetworkSupportRemaining !== null ? `、残り${limitedNetworkSupportRemaining}回` : ''}。${
                 actionsLocked
                   ? '演出中のため要請できません'
                   : !hasAvailableNetworkSupport
@@ -9051,6 +8968,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 ? '演出待ち'
                 : !hasAvailableNetworkSupport
                   ? '要請済み'
+                  : limitedNetworkSupportRemaining !== null
+                    ? `残${limitedNetworkSupportRemaining}回${alliance.active && !allianceUsed ? '＋協力' : ''}`
                   : commandReady
                     ? isHighEndRaid
                       ? highEndNetworkChoiceRequired
@@ -9098,7 +9017,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 className={`investment-execute-button ${canConfirmInvestment ? 'is-ready' : 'is-recharging'}`}
                 onClick={investCompanyFunds}
                 disabled={!canConfirmInvestment}
-                aria-label={`投資実行。${selectedInvestmentConfig.label} ${formatCurrency(selectedCost)}を1回投入`}
+                aria-label={`投資実行。${selectedInvestmentConfig.label} ${formatCurrency(selectedCost)}を1回投入。現在の手元資金${formatCurrency(cash)}`}
                 data-investment-level={selectedLevel}
                 data-investment-cost={selectedCost}
                 data-command-ready={commandReady}
@@ -9112,10 +9031,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <span>
                   <b>投資実行</b>
                   <small>{!maxAffordableConfig
-                    ? '資金不足'
-                    : commandReady
-                      ? formatCurrency(selectedCost)
-                      : '準備中'}</small>
+                    ? `手元${formatCurrency(cash).replace(' ギル', '')}｜資金不足`
+                    : `投入${formatCurrency(selectedCost).replace(' ギル', '')}｜手元${formatCurrency(cash).replace(' ギル', '')}`}</small>
                 </span>
               </button>
             </div>
@@ -9132,7 +9049,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             <button type="button" className="battle-drawer-backdrop" onClick={() => setPanel('capital')} aria-label="人脈を閉じる" />
             <section ref={fundsDrawerRef} className="battle-drawer" role="dialog" aria-modal="true" aria-label="人脈" tabIndex={-1}>
               <header>
-                <span><Building2 /><b>人脈</b><small>{networkSupportLimit !== null ? `${limitedNetworkSupportModeLabel}支援枠 残り${limitedNetworkSupportRemaining}/${networkSupportLimit}・` : ''}第{networkRequestCount + 1}波 ×{getRepeatedNetworkSupportMultiplier(networkRequestCount).toFixed(2)}・選択中は停止</small></span>
+                <span>
+                  <Building2 />
+                  <b>人脈</b>
+                  <small>
+                    {networkSupportLimit !== null
+                      ? `残り${limitedNetworkSupportRemaining}回・`
+                      : `第${networkRequestCount + 1}波 ×${getRepeatedNetworkSupportMultiplier(networkRequestCount).toFixed(2)}・`}
+                    選択中は停止
+                  </small>
+                </span>
                 <button type="button" data-modal-close onClick={() => setPanel('capital')} aria-label="人脈を閉じる"><X /></button>
               </header>
               {windVisible && (
@@ -9142,31 +9068,61 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 </div>
               )}
               <div className="command-panel command-panel--funds">
-              {alliance.active && (
-                <button type="button" className="alliance-fund" onClick={requestAlliance} disabled={!commandReady || allianceUsed || actionsLocked}>
-                  <Users /><span>{alliancePublicPatronage ? '公的後援' : '協力協定'}：{alliance.allyName}</span><b>{allianceUsed ? '要請済み' : `+${formatCurrency(allianceSupport)}相当`}</b>
-                </button>
-              )}
-
-              <div className="property-funds">
-                {sortedBattleSubs.map((property) => {
-                  const risk = riskPresentation(property.loyaltyRisk);
-                  return (
-                    <button type="button" key={property.id} onClick={() => demandFromProperty(property)} disabled={!commandReady || actionsLocked || limitedNetworkSupportExhausted}>
-                      <span><b>{property.name}</b><small>個別要求 {subRequestCounts[property.id] || 0}回・人脈全体 {networkRequestCount}回</small></span>
-                      <em className={risk.className}>
-                        {getReacquisitionLevel(property) > 0 &&
-                          `復帰強化${getReacquisitionLevel(property)}・`}
-                        {risk.label} {property.loyaltyRisk}%
-                      </em>
-                      <strong>
-                        +{formatCurrency(getBattleSupportAmount(property))}
-                      </strong>
+              {isHighEndRaid ? (
+                <div className="property-funds property-funds--high-end">
+                  {quickNetworkSupportProperty && (
+                    <button
+                      type="button"
+                      onClick={() => demandFromProperty(quickNetworkSupportProperty)}
+                      disabled={!commandReady || actionsLocked || limitedNetworkSupportExhausted}
+                    >
+                      <span>
+                        <b>人脈から要請</b>
+                        <small>有力な支援先を自動選択</small>
+                      </span>
+                      <em>回数制</em>
+                      <strong>{limitedNetworkSupportRemaining !== null ? `残り${limitedNetworkSupportRemaining}回` : '要請可'}</strong>
                     </button>
-                  );
-                })}
-              </div>
-              {battleSubs.length === 0 && <p className="empty-funds">資金を要求できる人脈がありません。</p>}
+                  )}
+                  {alliance.active && (
+                    <button
+                      type="button"
+                      className="alliance-fund"
+                      onClick={requestAlliance}
+                      disabled={!commandReady || allianceUsed || actionsLocked}
+                    >
+                      <Users />
+                      <span>{alliancePublicPatronage ? '公的後援' : '外部協力'}：{alliance.allyName}</span>
+                      <b>{allianceUsed ? '要請済み' : '残り1回'}</b>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {alliance.active && (
+                    <button type="button" className="alliance-fund" onClick={requestAlliance} disabled={!commandReady || allianceUsed || actionsLocked}>
+                      <Users /><span>{alliancePublicPatronage ? '公的後援' : '協力協定'}：{alliance.allyName}</span><b>{allianceUsed ? '要請済み' : `+${formatCurrency(allianceSupport)}相当`}</b>
+                    </button>
+                  )}
+                  <div className="property-funds">
+                    {sortedBattleSubs.map((property) => {
+                      const risk = riskPresentation(property.loyaltyRisk);
+                      return (
+                        <button type="button" key={property.id} onClick={() => demandFromProperty(property)} disabled={!commandReady || actionsLocked || limitedNetworkSupportExhausted}>
+                          <span><b>{property.name}</b><small>個別要求 {subRequestCounts[property.id] || 0}回・人脈全体 {networkRequestCount}回</small></span>
+                          <em className={risk.className}>
+                            {getReacquisitionLevel(property) > 0 &&
+                              `復帰強化${getReacquisitionLevel(property)}・`}
+                            {risk.label} {property.loyaltyRisk}%
+                          </em>
+                          <strong>+{formatCurrency(getBattleSupportAmount(property))}</strong>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+              {battleSubs.length === 0 && !alliance.active && <p className="empty-funds">資金を要求できる人脈がありません。</p>}
               </div>
             </section>
           </div>

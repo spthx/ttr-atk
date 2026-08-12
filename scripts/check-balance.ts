@@ -35,6 +35,7 @@ import {
   BATTLE_CINEMATIC_TIMING,
   BATTLE_GAUGE_VISUAL_COMMIT_MS,
   BATTLE_CAPITAL_VISUAL_STAGE_COUNT,
+  MAX_BATTLE_CAPITAL_COLUMN_LAYERS,
   BATTLE_STATE_UPDATE_INTERVAL_MS,
   BATTLE_HIT_STOP_TIMING,
   BATTLE_STATUS_MESSAGE_DURATION_MS,
@@ -1450,7 +1451,7 @@ assert.equal(
     );
     assert.ok(
       heights.every((height) => height >= 0),
-      'terrace columns never require negative or hidden correction units'
+      'showcase stacks never require negative or hidden correction units'
     );
     assert.deepEqual(
       getCapitalColumnHeights(units),
@@ -1466,21 +1467,26 @@ for (let units = 1; units <= MAX_BATTLE_CAPITAL_VISIBLE_UNITS; units += 1) {
     nextTerrace.every(
       (height, columnIndex) => height >= previousTerrace[columnIndex]
     ),
-    `terrace growth remains monotonic at visible unit ${units}`
+    `showcase growth remains monotonic at visible unit ${units}`
   );
   previousTerrace = nextTerrace;
 }
-const saturatedTerrace = getCapitalColumnHeights(
+const saturatedShowcase = getCapitalColumnHeights(
   MAX_BATTLE_CAPITAL_VISIBLE_UNITS
 );
-assert.ok(
-  Math.max(...saturatedTerrace) - Math.min(...saturatedTerrace) >= 20,
-  'the fixed rack finishes as a central terrace instead of a level wall'
+assert.deepEqual(
+  saturatedShowcase,
+  Array(22).fill(MAX_BATTLE_CAPITAL_COLUMN_LAYERS),
+  'a full display must finish as twenty-two separate level coin rolls rather than a pointed centre mountain'
 );
 assert.ok(
-  saturatedTerrace[6] > saturatedTerrace[20] &&
-    saturatedTerrace[17] > saturatedTerrace[21],
-  'the two central spines rise above the outer shoulders'
+  [1, 19, 20, 21, 22, 279, 280, MAX_BATTLE_CAPITAL_VISIBLE_UNITS].every(
+    (units) => {
+      const stacks = getCapitalColumnHeights(units);
+      return Math.max(...stacks) - Math.min(...stacks) <= 1;
+    }
+  ),
+  'every layer must spread across the display before any stack rises a second step'
 );
 assert.equal(
   getCapitalOverflowPassCount(0, 350_000, 1_000_000, true),
@@ -2601,7 +2607,7 @@ const playerHoseSweepGroups = [
 ];
 const playerHoseSweepCycle = [
   ...playerHoseSweepGroups,
-  ...playerHoseSweepGroups.slice(1, -1).reverse(),
+  ...[...playerHoseSweepGroups].reverse(),
 ];
 mechanicalRackFrames
   .slice(0, playerHoseSweepCycle.length * 2)

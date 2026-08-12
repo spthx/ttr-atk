@@ -144,29 +144,34 @@ const loadBattleBackdrop = (kind: BattleBackdropKind) => {
 };
 
 const CAPITAL_COLUMN_SLOTS = [
-  { x: 42.5, phoneX: 28.4, bottom: 30, depth: 0 },
-  { x: 47.5, phoneX: 42.9, bottom: 32, depth: 0 },
-  { x: 52.5, phoneX: 57.1, bottom: 32, depth: 0 },
-  { x: 57.5, phoneX: 71.6, bottom: 30, depth: 0 },
-  { x: 40, phoneX: 21.3, bottom: 20, depth: 1 },
-  { x: 45, phoneX: 35.7, bottom: 22, depth: 1 },
-  { x: 50, phoneX: 50, bottom: 23, depth: 1 },
-  { x: 55, phoneX: 64.4, bottom: 22, depth: 1 },
-  { x: 60, phoneX: 78.7, bottom: 20, depth: 1 },
-  { x: 37.5, phoneX: 14.2, bottom: 10, depth: 2 },
-  { x: 42.5, phoneX: 28.4, bottom: 12, depth: 2 },
-  { x: 47.5, phoneX: 42.9, bottom: 13, depth: 2 },
-  { x: 52.5, phoneX: 57.1, bottom: 13, depth: 2 },
-  { x: 57.5, phoneX: 71.6, bottom: 12, depth: 2 },
-  { x: 62.5, phoneX: 85.8, bottom: 10, depth: 2 },
-  { x: 40, phoneX: 21.3, bottom: 0, depth: 3 },
-  { x: 45, phoneX: 35.7, bottom: 2, depth: 3 },
-  { x: 50, phoneX: 50, bottom: 3, depth: 3 },
-  { x: 55, phoneX: 64.4, bottom: 2, depth: 3 },
-  { x: 60, phoneX: 78.7, bottom: 0, depth: 3 },
-  { x: 35, phoneX: 7, bottom: 9, depth: 2 },
-  { x: 65, phoneX: 93, bottom: 9, depth: 2 },
+  // Four perspective rows on one broad treasury tray. The stacks fill almost
+  // level within a row and remain individually readable instead of converging
+  // into a triangular centre peak.
+  { x: 24, phoneX: 24, bottom: 24, depth: 0 },
+  { x: 42, phoneX: 42, bottom: 26, depth: 0 },
+  { x: 58, phoneX: 58, bottom: 26, depth: 0 },
+  { x: 76, phoneX: 76, bottom: 24, depth: 0 },
+  { x: 15, phoneX: 15, bottom: 16, depth: 1 },
+  { x: 32.5, phoneX: 32.5, bottom: 18, depth: 1 },
+  { x: 50, phoneX: 50, bottom: 19, depth: 1 },
+  { x: 67.5, phoneX: 67.5, bottom: 18, depth: 1 },
+  { x: 85, phoneX: 85, bottom: 16, depth: 1 },
+  { x: 8, phoneX: 8, bottom: 8, depth: 2 },
+  { x: 24.8, phoneX: 24.8, bottom: 10, depth: 2 },
+  { x: 41.6, phoneX: 41.6, bottom: 11, depth: 2 },
+  { x: 58.4, phoneX: 58.4, bottom: 11, depth: 2 },
+  { x: 75.2, phoneX: 75.2, bottom: 10, depth: 2 },
+  { x: 92, phoneX: 92, bottom: 8, depth: 2 },
+  { x: 5, phoneX: 5, bottom: 0, depth: 3 },
+  { x: 20, phoneX: 20, bottom: 1, depth: 3 },
+  { x: 35, phoneX: 35, bottom: 2, depth: 3 },
+  { x: 50, phoneX: 50, bottom: 2, depth: 3 },
+  { x: 65, phoneX: 65, bottom: 2, depth: 3 },
+  { x: 80, phoneX: 80, bottom: 1, depth: 3 },
+  { x: 95, phoneX: 95, bottom: 0, depth: 3 },
 ] as const;
+
+const CAPITAL_ROW_HEIGHT_SCALE = [1, 0.84, 0.68, 0.54] as const;
 
 const SIDE_COLORS = {
   player: {
@@ -178,10 +183,10 @@ const SIDE_COLORS = {
   },
   enemy: {
     edge: '#ff708d',
-    glow: 'rgba(255, 77, 116, .18)',
-    coinLight: '#ffd58a',
-    coinMid: '#c77b2c',
-    coinDark: '#68401f',
+    glow: 'rgba(255, 61, 101, .28)',
+    coinLight: '#ffc2b8',
+    coinMid: '#dc3d49',
+    coinDark: '#68131f',
   },
 } as const;
 
@@ -393,15 +398,64 @@ const drawBackdrop = (
 
   const frontX = width * (scene.ownershipPercent / 100);
   const playerTerritory = context.createLinearGradient(0, 0, frontX, 0);
-  playerTerritory.addColorStop(0, 'rgba(14, 165, 233, .18)');
-  playerTerritory.addColorStop(1, 'rgba(56, 189, 248, .08)');
+  playerTerritory.addColorStop(0, 'rgba(14, 165, 233, .31)');
+  playerTerritory.addColorStop(0.72, 'rgba(56, 189, 248, .18)');
+  playerTerritory.addColorStop(1, 'rgba(125, 225, 255, .09)');
   context.fillStyle = playerTerritory;
   context.fillRect(0, 0, frontX, height);
   const enemyTerritory = context.createLinearGradient(frontX, 0, width, 0);
-  enemyTerritory.addColorStop(0, 'rgba(251, 113, 133, .08)');
-  enemyTerritory.addColorStop(1, 'rgba(225, 29, 72, .18)');
+  enemyTerritory.addColorStop(0, 'rgba(255, 162, 179, .09)');
+  enemyTerritory.addColorStop(0.28, 'rgba(251, 113, 133, .18)');
+  enemyTerritory.addColorStop(1, 'rgba(225, 29, 72, .31)');
   context.fillStyle = enemyTerritory;
   context.fillRect(frontX, 0, width - frontX, height);
+
+  // The battlefield itself must communicate which side is winning. This is a
+  // static snapshot tied to ownership updates, not a continuous ambient loop.
+  const frontlineWidth = clamp(width * 0.026, 7, 18);
+  const frontlineGlow = context.createLinearGradient(
+    frontX - frontlineWidth,
+    0,
+    frontX + frontlineWidth,
+    0
+  );
+  frontlineGlow.addColorStop(0, 'rgba(64, 211, 255, 0)');
+  frontlineGlow.addColorStop(0.42, 'rgba(132, 231, 255, .45)');
+  frontlineGlow.addColorStop(0.5, 'rgba(255, 244, 190, .92)');
+  frontlineGlow.addColorStop(0.58, 'rgba(255, 121, 151, .45)');
+  frontlineGlow.addColorStop(1, 'rgba(255, 75, 114, 0)');
+  context.fillStyle = frontlineGlow;
+  context.fillRect(frontX - frontlineWidth, 0, frontlineWidth * 2, height);
+  context.strokeStyle = 'rgba(255, 246, 204, .78)';
+  context.lineWidth = clamp(width * 0.004, 1.5, 3);
+  context.beginPath();
+  context.moveTo(frontX, height * 0.12);
+  context.lineTo(frontX, height * 0.91);
+  context.stroke();
+
+  if (scene.pressureDirection !== 'even') {
+    const playerPush = scene.pressureDirection === 'player';
+    const direction = playerPush ? 1 : -1;
+    const pressureColor = playerPush
+      ? 'rgba(88, 218, 255, .52)'
+      : 'rgba(255, 103, 139, .52)';
+    const chevronWidth = clamp(width * 0.04, 10, 25);
+    context.strokeStyle = pressureColor;
+    context.lineWidth = clamp(width * 0.006, 2, 4);
+    context.lineCap = 'round';
+    for (let row = 0; row < 5; row += 1) {
+      const y = height * (0.22 + row * 0.13);
+      for (let step = 1; step <= 3; step += 1) {
+        const tipX = frontX - direction * chevronWidth * (step + 0.12);
+        context.beginPath();
+        context.moveTo(tipX - direction * chevronWidth, y - chevronWidth * 0.52);
+        context.lineTo(tipX, y);
+        context.lineTo(tipX - direction * chevronWidth, y + chevronWidth * 0.52);
+        context.stroke();
+      }
+    }
+    context.lineCap = 'butt';
+  }
 
   const horizonY = height * (scene.compact ? 0.48 : 0.43);
   const horizon = context.createLinearGradient(0, horizonY, width, horizonY);
@@ -465,7 +519,7 @@ const drawOwnershipTrack = (
   const x = width * 0.085;
   const y = height * 0.07;
   const trackWidth = width * 0.83;
-  const trackHeight = clamp(height * 0.028, 3, 7);
+  const trackHeight = clamp(height * 0.036, 8, 14);
   const playerShare = scene.ownershipPercent / 100;
   const markerX = x + trackWidth * playerShare;
 
@@ -532,7 +586,7 @@ const drawCoin = (
   context.ellipse(x, y, width / 2, height / 2, 0, 0, Math.PI * 2);
   context.fill();
   context.strokeStyle = colors.coinLight;
-  context.lineWidth = Math.max(0.5, height * 0.16);
+  context.lineWidth = Math.max(0.75, height * 0.18);
   context.beginPath();
   context.ellipse(x, y - height * 0.05, width * 0.34, height * 0.28, 0, 0, Math.PI * 2);
   context.stroke();
@@ -600,30 +654,56 @@ const drawCoinColumn = (
 ) => {
   if (layers <= 0) return;
   const colors = SIDE_COLORS[side];
+  const bandShadow = side === 'player' ? '#4b2d0b' : '#430b17';
+  const bandGlint = side === 'player' ? '#f5bd46' : '#ff7780';
   const bodyHeight = coinHeight + Math.max(0, layers - 1) * layerStep;
   const topY = baseY - bodyHeight;
+  context.save();
+  context.shadowColor = active ? colors.edge : 'rgba(255, 192, 64, .38)';
+  context.shadowBlur = active ? width * 0.72 : width * 0.28;
+  context.shadowOffsetY = Math.max(1, coinHeight * 0.3);
   const gradient = context.createLinearGradient(
     x - width / 2,
     0,
     x + width / 2,
     0
   );
-  gradient.addColorStop(0, colors.coinDark);
-  gradient.addColorStop(0.42, colors.coinMid);
-  gradient.addColorStop(0.72, colors.coinLight);
+  gradient.addColorStop(0, bandShadow);
+  gradient.addColorStop(0.16, colors.coinDark);
+  gradient.addColorStop(0.46, colors.coinMid);
+  gradient.addColorStop(0.7, colors.coinLight);
+  gradient.addColorStop(0.84, bandGlint);
   gradient.addColorStop(1, colors.coinDark);
   context.fillStyle = gradient;
-  context.fillRect(x - width / 2, topY, width, bodyHeight);
+  roundedRect(
+    context,
+    x - width / 2,
+    topY,
+    width,
+    bodyHeight + coinHeight * 0.12,
+    Math.min(width * 0.16, coinHeight * 0.5)
+  );
+  context.fill();
+  context.shadowBlur = 0;
 
-  const seamCount = Math.min(9, Math.max(0, layers - 1));
+  const seamCount = Math.min(15, Math.max(0, layers - 1));
   if (seamCount > 0) {
-    context.strokeStyle = 'rgba(63, 38, 10, .42)';
-    context.lineWidth = 0.55;
+    context.lineWidth = Math.max(0.65, coinHeight * 0.1);
     for (let seam = 1; seam <= seamCount; seam += 1) {
       const seamY = topY + (bodyHeight * seam) / (seamCount + 1);
+      context.strokeStyle = side === 'player'
+        ? 'rgba(62, 31, 5, .65)'
+        : 'rgba(70, 6, 18, .72)';
       context.beginPath();
       context.moveTo(x - width / 2, seamY);
       context.lineTo(x + width / 2, seamY);
+      context.stroke();
+      context.strokeStyle = side === 'player'
+        ? 'rgba(255, 224, 125, .42)'
+        : 'rgba(255, 184, 175, .46)';
+      context.beginPath();
+      context.moveTo(x - width * 0.44, seamY + Math.max(0.65, coinHeight * 0.12));
+      context.lineTo(x + width * 0.4, seamY + Math.max(0.65, coinHeight * 0.12));
       context.stroke();
     }
   }
@@ -637,8 +717,36 @@ const drawCoinColumn = (
   context.ellipse(x, topY, width / 2, coinHeight / 2, 0, 0, Math.PI * 2);
   context.fill();
   context.strokeStyle = active ? colors.edge : colors.coinLight;
-  context.lineWidth = active ? 1.25 : 0.65;
+  context.lineWidth = active ? 1.65 : 1;
   context.stroke();
+  context.strokeStyle = side === 'player'
+    ? 'rgba(111, 61, 8, .72)'
+    : 'rgba(112, 13, 29, .78)';
+  context.lineWidth = Math.max(0.7, coinHeight * 0.13);
+  context.beginPath();
+  context.ellipse(
+    x,
+    topY - coinHeight * 0.04,
+    width * 0.29,
+    coinHeight * 0.27,
+    0,
+    0,
+    Math.PI * 2
+  );
+  context.stroke();
+  context.fillStyle = 'rgba(255, 249, 202, .9)';
+  context.beginPath();
+  context.ellipse(
+    x - width * 0.17,
+    topY - coinHeight * 0.18,
+    width * 0.09,
+    coinHeight * 0.08,
+    -0.3,
+    0,
+    Math.PI * 2
+  );
+  context.fill();
+  context.restore();
 };
 
 const drawCapitalSide = (
@@ -648,27 +756,40 @@ const drawCapitalSide = (
   side: NormalizedCapitalSide
 ) => {
   const playerSide = side.side === 'player';
-  const areaLeft = playerSide ? width * 0.035 : width * 0.535;
-  const areaWidth = width * 0.43;
+  const areaLeft = playerSide ? width * 0.012 : width * 0.512;
+  const areaWidth = width * 0.476;
   const centerX = areaLeft + areaWidth / 2;
-  const compactScale = side.frame.rackCompressed ? 0.92 : 1;
+  const compactScale = side.frame.rackCompressed ? 0.94 : 1;
   const loweredBy = side.frame.rackCompressed
     ? height * (0.025 + side.frame.overflowTier * 0.012)
     : 0;
-  const baseY = height * (side.frame.rackCompressed ? 0.81 : 0.775) + loweredBy;
-  const coinWidth = clamp(areaWidth * 0.062, 4.5, 11) * compactScale;
-  const coinHeight = clamp(height * 0.014, 1.8, 3.6) * compactScale;
-  const layerStep = clamp(height * 0.0068, 1.05, 2.15) * compactScale;
+  const baseY = height * (side.frame.rackCompressed ? 0.845 : 0.81) + loweredBy;
+  const coinWidth = clamp(areaWidth * 0.076, 8, 17) * compactScale;
+  const coinHeight = clamp(height * 0.022, 3.4, 6.8) * compactScale;
+  const layerStep = clamp(height * 0.0092, 1.9, 3.9) * compactScale;
 
   const auraStrength = clamp(Math.log2(side.capitalRatio + 1) / 5, 0, 1);
-  context.fillStyle = SIDE_COLORS[side.side].glow;
-  context.globalAlpha = 0.35 + auraStrength * 0.55;
+  const pileGlow = context.createRadialGradient(
+    centerX,
+    baseY - height * 0.07,
+    0,
+    centerX,
+    baseY - height * 0.07,
+    areaWidth * 0.54
+  );
+  pileGlow.addColorStop(0, side.side === 'player'
+    ? 'rgba(255, 218, 90, .38)'
+    : 'rgba(255, 185, 74, .34)');
+  pileGlow.addColorStop(0.54, SIDE_COLORS[side.side].glow);
+  pileGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  context.fillStyle = pileGlow;
+  context.globalAlpha = 0.58 + auraStrength * 0.4;
   context.beginPath();
   context.ellipse(
     centerX,
     baseY + coinHeight,
-    areaWidth * (0.34 + auraStrength * 0.13),
-    height * (0.025 + auraStrength * 0.015),
+    areaWidth * (0.43 + auraStrength * 0.11),
+    height * (0.06 + auraStrength * 0.026),
     0,
     0,
     Math.PI * 2
@@ -686,20 +807,41 @@ const drawCapitalSide = (
     coinHeight
   );
 
-  const rackWidth = areaWidth * 0.86;
-  const rackX = centerX - rackWidth / 2;
-  const rackHeight = clamp(height * 0.035, 5, 11);
+  const rackWidth = areaWidth * 0.97;
+  const rackHeight = clamp(height * 0.04, 7, 14);
   const rackGradient = context.createLinearGradient(0, baseY, 0, baseY + rackHeight);
-  rackGradient.addColorStop(0, '#7f8d96');
-  rackGradient.addColorStop(0.35, '#29333a');
-  rackGradient.addColorStop(1, '#0c1115');
-  roundedRect(context, rackX, baseY, rackWidth, rackHeight, rackHeight * 0.28);
+  rackGradient.addColorStop(0, '#d7dee2');
+  rackGradient.addColorStop(0.2, '#697984');
+  rackGradient.addColorStop(0.64, '#28353d');
+  rackGradient.addColorStop(1, '#0a1115');
+  context.beginPath();
+  context.ellipse(
+    centerX,
+    baseY + rackHeight * 0.34,
+    rackWidth / 2,
+    rackHeight * 0.82,
+    0,
+    0,
+    Math.PI * 2
+  );
   context.fillStyle = rackGradient;
   context.fill();
   context.strokeStyle = SIDE_COLORS[side.side].edge;
-  context.globalAlpha = 0.48;
-  context.lineWidth = 1;
+  context.globalAlpha = 0.68;
+  context.lineWidth = 1.25;
   context.stroke();
+  context.beginPath();
+  context.ellipse(
+    centerX,
+    baseY,
+    rackWidth * 0.49,
+    rackHeight * 0.42,
+    0,
+    0,
+    Math.PI * 2
+  );
+  context.fillStyle = 'rgba(226, 232, 240, .2)';
+  context.fill();
   context.globalAlpha = 1;
 
   const usePhoneSpread = width <= 620;
@@ -711,10 +853,15 @@ const drawCapitalSide = (
 
   for (const { slot, index } of orderedSlots) {
     const layers = side.frame.columnHeights[index] ?? 0;
+    const rowScale = CAPITAL_ROW_HEIGHT_SCALE[slot.depth] ?? 1;
+    const stackVariation = 0.94 + deterministicNoise(index * 37 + 11) * 0.1;
+    const visualLayers = layers > 0
+      ? Math.max(1, Math.round(layers * rowScale * stackVariation))
+      : 0;
     const position = usePhoneSpread ? slot.phoneX : slot.x;
     const mirroredPosition = playerSide ? position : 100 - position;
     const x = areaLeft + (mirroredPosition / 100) * areaWidth;
-    const depthScale = 0.89 + slot.depth * 0.037;
+    const depthScale = 0.91 + slot.depth * 0.042;
     const columnBaseY =
       baseY - (slot.bottom / 100) * height * 0.19 - slot.depth * 0.25;
     drawCoinColumn(
@@ -724,7 +871,7 @@ const drawCapitalSide = (
       coinWidth * depthScale,
       coinHeight * depthScale,
       layerStep * depthScale,
-      layers,
+      visualLayers,
       side.side,
       activeColumns.has(index)
     );
@@ -742,7 +889,7 @@ const drawCapitalSide = (
       const packetHeight =
         coinHeight + Math.max(0, packetLayers - 1) * layerStep;
       const landingBaseY =
-        columnBaseY - Math.max(coinHeight, layers * layerStep) - coinHeight;
+        columnBaseY - Math.max(coinHeight, visualLayers * layerStep) - coinHeight;
       const startBaseY = height * 0.1 + packetHeight;
       const packetBaseY =
         startBaseY + (landingBaseY - startBaseY) * easedProgress;
@@ -853,7 +1000,7 @@ export const paintBattleCapitalCanvas = (
   if (!context) return null;
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = 'low';
+  context.imageSmoothingQuality = 'high';
 
   drawBackdrop(context, width, height, scene, backgroundImage);
   drawOwnershipTrack(context, width, height, scene);

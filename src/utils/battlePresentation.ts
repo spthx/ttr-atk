@@ -813,25 +813,16 @@ export const MAX_BATTLE_CAPITAL_COLUMN_LAYERS = 36;
 export const MAX_BATTLE_CAPITAL_VISIBLE_UNITS =
   BATTLE_CAPITAL_COLUMN_COUNT * MAX_BATTLE_CAPITAL_COLUMN_LAYERS;
 
-const CAPITAL_COLUMN_FILL_ORDER = [
-  // Deal from the two central spines toward the outer edges. Keeping this
-  // order deterministic makes every bundle land in a readable place.
-  6, 17, 1, 2, 11, 12, 5, 7, 16, 18, 0,
-  3, 10, 13, 4, 8, 15, 19, 9, 14, 20, 21,
-] as const;
-
-// One bounded fill cycle makes a terrace rather than a level machine rack.
-// Every column is still represented by exactly one persistent DOM node. The
-// ten repeated centre/shoulder slots make the rear spine rise above the outer
-// walls, and replaying the same cycle guarantees that increasing capital can
-// never shorten an existing column.
-const CAPITAL_TERRACE_FILL_CYCLE = [
-  ...CAPITAL_COLUMN_FILL_ORDER,
-  6, 17, 11, 12, 1, 2, 5, 7, 16, 18,
+const CAPITAL_SHOWCASE_FILL_ORDER = [
+  // Spread each new layer across the whole display before raising any stack
+  // again. The result follows Romancing SaGa 3's tray of separate coin rolls
+  // instead of building one pointed mountain in the centre.
+  18, 0, 21, 6, 9, 14, 1, 2, 17, 19, 4,
+  8, 11, 12, 15, 16, 20, 5, 7, 10, 13, 3,
 ] as const;
 
 // Screen-space order for the twenty-two persistent columns. Presentation uses
-// this independently from the terrace fill order so incoming bundles travel as
+// this independently from the showcase fill order so incoming bundles travel as
 // one continuous hose-like sweep instead of jumping between distant columns.
 const CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER = [
   20, 9, 4, 15, 0, 10, 5, 16, 1, 11, 6,
@@ -872,7 +863,7 @@ export const getBattleCapitalVisibleUnits = (
   );
 };
 
-/** Same amount always produces the same monotonic twenty-two-column terrace. */
+/** Same amount always produces the same monotonic twenty-two-stack showcase. */
 export const getCapitalColumnHeights = (visibleUnits: number) => {
   const normalizedUnits = Math.max(
     0,
@@ -881,7 +872,7 @@ export const getCapitalColumnHeights = (visibleUnits: number) => {
   const heights = Array<number>(BATTLE_CAPITAL_COLUMN_COUNT).fill(0);
   for (let unit = 0; unit < normalizedUnits; unit += 1) {
     const columnIndex =
-      CAPITAL_TERRACE_FILL_CYCLE[unit % CAPITAL_TERRACE_FILL_CYCLE.length];
+      CAPITAL_SHOWCASE_FILL_ORDER[unit % CAPITAL_SHOWCASE_FILL_ORDER.length];
     heights[columnIndex] += 1;
   }
   return heights;
@@ -1050,12 +1041,12 @@ export const getMechanicalCapitalColumnFrames = (
     .filter((plan) => plan.distance > 0);
   frameCount = Math.max(frameCount, groupPlans.length);
 
-  // Growth follows an open pendulum: inner -> outer -> inner-adjacent, then the
-  // next cycle touches inner again. Every consecutive beat is adjacent while
-  // the middle groups receive enough visits to avoid a late capital lump.
+  // Growth follows a closed pendulum: inner -> outer -> outer -> inner. The
+  // repeated turn groups keep every row's visit count balanced while every
+  // moving beat remains spatially adjacent.
   const pendulumPlans = [
     ...groupPlans,
-    ...groupPlans.slice(1, -1).reverse(),
+    ...[...groupPlans].reverse(),
   ];
   const scheduledGroups = Array.from(
     { length: frameCount },

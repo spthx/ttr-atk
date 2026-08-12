@@ -334,13 +334,63 @@ assert.match(
 );
 assert.match(
   capitalCss,
-  /\.integrated-battlefield--canvas2d \.ownership-track\s*\{[\s\S]{0,100}opacity:\s*0;[\s\S]{0,100}animation:\s*none !important;[\s\S]*\.integrated-battlefield--canvas2d \.ownership-track \*,[\s\S]{0,260}\.capital-clash \*\s*\{[\s\S]{0,120}animation:\s*none !important;[\s\S]{0,100}filter:\s*none !important;/,
-  'the semantic ownership track must stay accessible without reviving its old wind or gauge animations'
+  /\.integrated-battlefield--canvas2d \.ownership-track\s*\{[\s\S]{0,100}opacity:\s*1;[\s\S]{0,100}animation:\s*none !important;[\s\S]*\.integrated-battlefield--canvas2d \.ownership-track \*,[\s\S]{0,320}\.capital-clash \*\s*\{[\s\S]{0,120}animation:\s*none !important;[\s\S]{0,120}transition:\s*none !important;[\s\S]{0,120}filter:\s*none !important;/,
+  'the semantic ownership gauge must remain visibly mounted while its old ambient loops stay disabled'
+);
+assert.doesNotMatch(
+  capitalCss,
+  /\.integrated-battlefield--canvas2d \.ownership-track\s*>\s*\*\s*\{[\s\S]{0,100}display:\s*none !important;/,
+  'the visible ownership gauge must not hide all of its player, enemy, tick and marker children'
 );
 assert.match(
   capitalCss,
   /\.integrated-battlefield--canvas2d \.capital-clash,[\s\S]{0,100}\.integrated-battlefield--canvas2d \.capital-vs\s*\{[\s\S]{0,80}visibility:\s*hidden;/,
   'the retired DOM clash marker must stay hidden behind the canvas-owned VS marker'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const frontX = width \* \(scene\.ownershipPercent \/ 100\);[\s\S]{0,900}const frontlineWidth = clamp\(width \* 0\.026, 7, 18\);[\s\S]{0,900}context\.fillRect\(frontX - frontlineWidth, 0, frontlineWidth \* 2, height\);[\s\S]{0,300}context\.lineTo\(frontX, height \* 0\.91\);/,
+  'the static canvas backdrop must turn ownership into strong territory colour and a full-height frontline'
+);
+assert.match(
+  battleCapitalCanvas,
+  /if \(scene\.pressureDirection !== 'even'\) \{[\s\S]{0,500}for \(let row = 0; row < 5; row \+= 1\)[\s\S]{0,180}for \(let step = 1; step <= 3; step \+= 1\)[\s\S]{0,420}context\.lineTo\(tipX, y\);/,
+  'the canvas battlefield must show a bounded directional chevron field when either side is pushing'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const trackHeight = clamp\(height \* 0\.036, 8, 14\);/,
+  'the canvas ownership track must remain thick enough to read on portrait and landscape phones'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const areaLeft = playerSide \? width \* 0\.012 : width \* 0\.512;[\s\S]{0,420}const areaWidth = width \* 0\.476;[\s\S]{0,420}const coinWidth = clamp\(areaWidth \* 0\.076, 8, 17\)[\s\S]{0,140}const coinHeight = clamp\(height \* 0\.022, 3\.4, 6\.8\)[\s\S]{0,140}const layerStep = clamp\(height \* 0\.0092, 1\.9, 3\.9\)/,
+  'both coin armies must keep the enlarged near-half-field geometry on portrait and landscape screens'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const CAPITAL_ROW_HEIGHT_SCALE = \[1, 0\.84, 0\.68, 0\.54\] as const;[\s\S]{0,30000}const visualLayers = layers > 0[\s\S]{0,160}layers \* rowScale \* stackVariation/,
+  'coin stacks must form broad stepped tray rows instead of a pointed centre mountain'
+);
+assert.match(
+  battleCapitalCanvas,
+  /context\.ellipse\(\s*centerX,\s*baseY \+ rackHeight \* 0\.34,[\s\S]{0,500}context\.ellipse\(\s*centerX,\s*baseY,\s*rackWidth \* 0\.49/,
+  'each side must retain a broad two-tier treasury pedestal under its separate coin rolls'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const seamCount = Math\.min\(15, Math\.max\(0, layers - 1\)\);/,
+  'coin columns must retain enough visible seams to read as stacks rather than flat bars'
+);
+assert.match(
+  battleCapitalCanvas,
+  /context\.ellipse\(\s*x,\s*topY - coinHeight \* 0\.04,\s*width \* 0\.29,[\s\S]{0,220}context\.stroke\(\);\s*context\.fillStyle = 'rgba\(255, 249, 202, \.9\)'/,
+  'coin columns must retain readable layer seams, embossed rims and specular highlights'
+);
+assert.match(
+  battleCapitalCanvas,
+  /enemy:\s*\{[\s\S]{0,180}glow:\s*'rgba\(255, 61, 101, \.28\)'[\s\S]{0,120}coinLight:\s*'#ffc2b8'[\s\S]{0,120}coinMid:\s*'#dc3d49'/,
+  'enemy coins must stay visually distinct from the player gold without losing their metallic highlights'
 );
 
 assert.match(
@@ -445,18 +495,11 @@ const actorZIndex = Number(
     /\.integrated-battlefield \.capital-visual-row \.ownership-fighter\s*\{[\s\S]*?z-index:\s*(-?\d+);/
   )?.[1]
 );
-const readoutZIndex = Number(
-  integratedCss.match(
-    /\.integrated-battlefield \.ownership-capital-readout\s*\{[\s\S]*?z-index:\s*(-?\d+);/
-  )?.[1]
-);
 assert.ok(
   Number.isFinite(canvasZIndex) &&
     Number.isFinite(actorZIndex) &&
-    Number.isFinite(readoutZIndex) &&
-    canvasZIndex < actorZIndex &&
-    canvasZIndex < readoutZIndex,
-  'the capital canvas must remain behind interactive actors and numeric readouts'
+    canvasZIndex < actorZIndex,
+  'the capital canvas must remain behind the interactive battle actors'
 );
 
 assert.equal(
@@ -479,6 +522,16 @@ assert.match(
   liveBattlefield,
   /className=\{`ownership-track[\s\S]{0,240}role="progressbar"[\s\S]{0,220}aria-valuenow=\{Number\(displayedOwnership\.toFixed\(1\)\)\}/,
   'the canvas ownership track must keep its DOM progressbar semantics'
+);
+assert.doesNotMatch(
+  liveBattlefield,
+  /className=(?:"|\{`)(?:ownership-capital-readout|player-budget-overlay|enemy-budget-overlay|capital-effective-detail|capital-source-bar|enemy-reserve-bar)/,
+  'numeric capital, budget, source and reserve overlays must not cover the live coin battlefield'
+);
+assert.doesNotMatch(
+  liveBattlefield,
+  /商流から回復中|商流回復は上限/,
+  'commercial-regeneration status copy must stay out of the live battlefield'
 );
 assert.match(
   battleModal,
@@ -540,6 +593,26 @@ const synergyAction = battleModal.slice(
 const networkAction = battleModal.slice(networkActionStart, actionStripEnd);
 assert.match(
   battleModal,
+  /const networkSupportSummary = battleSubs\.length > 0[\s\S]{0,760}`人脈 残り\$\{limitedNetworkSupportRemaining\}回\$\{alliance\.active && !allianceUsed \? '／外部協力 1回' : ''\}`/,
+  'finite high-end relationship support must be summarized as an explicit remaining-use count'
+);
+assert.match(
+  networkAction,
+  /limitedNetworkSupportRemaining !== null[\s\S]{0,160}`残\$\{limitedNetworkSupportRemaining\}回\$\{alliance\.active && !allianceUsed \? '＋協力' : ''\}`/,
+  'the compact high-end network action must show its remaining uses without opening the drawer'
+);
+assert.match(
+  battleModal,
+  /className=\{`investment-execute-button[\s\S]{0,600}aria-label=\{`投資実行。[\s\S]{0,180}現在の手元資金\$\{formatCurrency\(cash\)\}`\}/,
+  'the investment execute button must announce both the selected investment and current cash'
+);
+assert.match(
+  battleModal,
+  /<small>\{!maxAffordableConfig[\s\S]{0,180}`手元\$\{formatCurrency\(cash\)\.replace\(' ギル', ''\)\}｜資金不足`[\s\S]{0,120}: `投入\$\{formatCurrency\(selectedCost\)\.replace\(' ギル', ''\)\}｜手元\$\{formatCurrency\(cash\)\.replace\(' ギル', ''\)\}`\}<\/small>/,
+  'the visible investment execute button must carry the selected amount and uninvested cash even while recharging'
+);
+assert.match(
+  battleModal,
   /const actionsLocked =[\s\S]{0,320}limitImpactActive/,
   'the LIMIT BREAK impact cut-in must lock every executable action'
 );
@@ -560,7 +633,7 @@ assert.match(
 );
 assert.match(
   networkAction,
-  /^\{hasNetworkSupport && \([\s\S]*disabled=\{[\s\S]{0,140}actionsLocked[\s\S]{0,240}aria-label=\{`人脈。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'/,
+  /^\{hasNetworkSupport && \([\s\S]*disabled=\{[\s\S]{0,140}actionsLocked[\s\S]{0,240}aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'/,
   'network support must stay visible, disabled and labelled as presentation-locked during the cut-in'
 );
 assert.match(
@@ -575,7 +648,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /aria-label=\{`人脈。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'[\s\S]{0,160}: commandReady[\s\S]{0,180}'利用可能な支援へ即時要請可能'/,
+  /aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'[\s\S]{0,160}: commandReady[\s\S]{0,180}'利用可能な支援へ即時要請可能'/,
   'network accessibility text must announce the presentation lock before an available-state message'
 );
 assert.match(
@@ -585,7 +658,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const hasNetworkSupport = battleSubs\.length > 0 \|\| alliance\.active;[\s\S]*\{hasNetworkSupport && \([\s\S]*aria-label={`人脈。/,
+  /const hasNetworkSupport = battleSubs\.length > 0 \|\| alliance\.active;[\s\S]*\{hasNetworkSupport && \([\s\S]*aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null/,
   'the support drawer must stay absent until the player has a relationship or an alliance request'
 );
 assert.match(
@@ -595,7 +668,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /disabled=\{[\s\S]{0,120}!hasAvailableNetworkSupport[\s\S]{0,260}今回使える支援はありません/,
+  /disabled=\{[\s\S]{0,120}!hasAvailableNetworkSupport[\s\S]{0,420}今回使える支援はありません/,
   'an exhausted alliance-only drawer must remain visible as state but cannot open an empty action panel'
 );
 assert.match(
@@ -760,7 +833,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /仲間\$\{battleSubs\.length\}件\$\{alliance\.active && !allianceUsed \? '＋協力' : ''\}/,
+  /仲間\$\{battleSubs\.length\}件\$\{alliance\.active && !allianceUsed \? '＋外部協力' : ''\}/,
   'the compact support summary must stop advertising external cooperation after its one use'
 );
 assert.match(
@@ -840,7 +913,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const usePhoneSpread = width <= 620;[\s\S]{0,520}const position = usePhoneSpread \? slot\.phoneX : slot\.x;/,
+  /const usePhoneSpread = width <= 620;[\s\S]{0,2400}const position = usePhoneSpread \? slot\.phoneX : slot\.x;/,
   'portrait canvases must use the reviewed wider capital-column spread'
 );
 assert.doesNotMatch(
@@ -1284,10 +1357,10 @@ assert.match(
   /const activePlayerPileFrame =[\s\S]*capitalPreviewStage \?\? playerCapitalPilePreviewStage;[\s\S]*activePlayerPileFrame\?\.presentedCapital \?\? totalPlayerInvested;[\s\S]*enemyCapitalPilePreviewStage\?\.presentedCapital \?\?[\s\S]*enemyOpeningVisualConcealed \? 0 : enemyInvested/,
   'both fixed ledgers must advance with the same packet timeline as their visible piles'
 );
-assert.match(
-  battleModal,
-  /const displayedCompanyInvested = companyInvested;/,
-  'the company-capital readout must update as soon as the command is committed'
+assert.doesNotMatch(
+  liveBattlefield,
+  /displayedCompanyInvested|capitalPressureLabel/,
+  'retired numeric capital-composition and pressure labels must not return over the coin scene'
 );
 assert.doesNotMatch(
   battleModal,
@@ -1585,10 +1658,10 @@ assert.doesNotMatch(
   /className="market-readiness-overview"/,
   'the progress map must not repeat funds, contacts, and four readiness totals in a visible dashboard'
 );
-assert.match(
-  battleModal,
-  /追加防衛の余力[\s\S]*残りわずか[\s\S]*消耗中[\s\S]*潤沢/,
-  'battle HUD must expose actionable enemy reserve bands without the hidden reserve amount'
+assert.doesNotMatch(
+  liveBattlefield,
+  /追加防衛の余力|残りわずか|商流から回復中/,
+  'enemy reserve and commercial-regeneration labels must not compete with its visible coin pile'
 );
 assert.match(
   battleModal,
@@ -1798,7 +1871,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const \[companyInvested, setCompanyInvested\] = useState\(0\);[\s\S]*const \[reflectedCompanyInvested, setReflectedCompanyInvested\][\s\S]*const totalPlayerInvested = companyInvested \+ demandInvested;[\s\S]*const displayedCompanyInvested = companyInvested;[\s\S]*commitPlayerCapital\('company', retainedCapital\);[\s\S]*setReflectedCompanyInvested\([\s\S]*current \+ reflectedCapital[\s\S]*const companyCapitalAtRisk =[\s\S]*companyInvested \+ reflectedCompanyInvested;[\s\S]*const resultSettlementCost = isRecordOnlyBattle[\s\S]*companyCapitalAtRisk \* \(winner === 'player' \? 0\.35 : 0\.75\)[\s\S]*companyFundsInvested: isRecordOnlyBattle \? 0 : companyCapitalAtRisk/,
+  /const \[companyInvested, setCompanyInvested\] = useState\(0\);[\s\S]*const \[reflectedCompanyInvested, setReflectedCompanyInvested\][\s\S]*const totalPlayerInvested = companyInvested \+ demandInvested;[\s\S]*commitPlayerCapital\('company', retainedCapital\);[\s\S]*setReflectedCompanyInvested\([\s\S]*current \+ reflectedCapital[\s\S]*const companyCapitalAtRisk =[\s\S]*companyInvested \+ reflectedCompanyInvested;[\s\S]*const resultSettlementCost = isRecordOnlyBattle[\s\S]*companyCapitalAtRisk \* \(winner === 'player' \? 0\.35 : 0\.75\)[\s\S]*companyFundsInvested: isRecordOnlyBattle \? 0 : companyCapitalAtRisk/,
   'capital reflected to the enemy must stay out of player pressure, remain settlement risk in economic battles, and stay isolated from record-only results'
 );
 assert.doesNotMatch(
