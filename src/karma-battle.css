@@ -75,7 +75,7 @@
   display: grid;
   min-width: 0;
   grid-column: 1 / -1;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: .28rem;
 }
 
@@ -135,108 +135,6 @@
   color: #a7f3d0;
 }
 
-.karma-correction-dialog {
-  position: fixed;
-  z-index: 230;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 1rem;
-  background: rgba(2, 6, 17, .88);
-  backdrop-filter: blur(.35rem);
-}
-
-.karma-correction-dialog > div {
-  width: min(34rem, 100%);
-  padding: 1rem;
-  border: 1px solid rgba(246, 196, 83, .72);
-  border-radius: 1rem;
-  background:
-    radial-gradient(circle at 82% 12%, rgba(246, 196, 83, .15), transparent 32%),
-    linear-gradient(145deg, #170a0e, #300817 64%, #231303);
-  box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, .65);
-  color: #fff7d6;
-}
-
-.karma-correction-dialog > div > small {
-  color: #fbbf24;
-  font-size: .64rem;
-  font-weight: 950;
-  letter-spacing: .12em;
-}
-
-.karma-correction-dialog h2 {
-  margin-top: .35rem;
-  font-size: 1.22rem;
-  font-weight: 1000;
-}
-
-.karma-correction-dialog p {
-  margin-top: .45rem;
-  color: #fde68a;
-  font-size: .78rem;
-  font-weight: 700;
-  line-height: 1.55;
-}
-
-.karma-correction-dialog__pages {
-  display: grid;
-  margin-top: .85rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: .5rem;
-}
-
-.karma-correction-dialog__pages button,
-.karma-correction-dialog__skip {
-  min-height: 3.25rem;
-  border: 1px solid rgba(246, 196, 83, .46);
-  border-radius: .58rem;
-  background: rgba(69, 10, 31, .78);
-  color: #fff7d6;
-  text-align: left;
-}
-
-.karma-correction-dialog__pages button {
-  display: grid;
-  align-content: center;
-  padding: .48rem .62rem;
-}
-
-.karma-correction-dialog__pages button:focus-visible,
-.karma-correction-dialog__pages button:hover {
-  border-color: #fbbf24;
-  background: rgba(127, 29, 29, .92);
-}
-
-.karma-correction-dialog__pages small {
-  color: #fbbf24;
-  font-size: .57rem;
-  font-weight: 900;
-}
-
-.karma-correction-dialog__pages b {
-  font-size: .78rem;
-  font-weight: 1000;
-}
-
-.karma-correction-dialog__pages span {
-  color: #fecdd3;
-  font-size: .68rem;
-  font-weight: 850;
-}
-
-.karma-correction-dialog__skip {
-  width: 100%;
-  min-height: 2.75rem;
-  margin-top: .6rem;
-  padding: .55rem .7rem;
-  background: rgba(15, 23, 42, .84);
-  color: #cbd5e1;
-  font-size: .72rem;
-  font-weight: 900;
-  text-align: center;
-}
-
 @media (max-width: 430px) {
   .karma-ledger-strip {
     gap: .2rem .35rem;
@@ -262,15 +160,5 @@
 
   .karma-ledger-strip > div > span b {
     font-size: .57rem;
-  }
-
-  .karma-correction-dialog__pages {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .karma-correction-dialog {
-    backdrop-filter: none;
   }
 }

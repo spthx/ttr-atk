@@ -1386,7 +1386,7 @@ export default function App() {
       setKarmaBattleLimitBreakCharge(limitBreakCharge);
       addGameLog(
         winner === 'player'
-          ? `【業商戦踏破】${targetProperty.name}の四頁をすべて破りました。通常資金・所有権・人脈・LB・幻の連勝記録は変化しません。`
+          ? `【業商戦踏破】${targetProperty.name}のものまねを4回すべて破りました。通常資金・所有権・人脈・LB・幻の連勝記録は変化しません。`
           : `【業商戦ワイプ】${targetProperty.name}のものまねを崩し切れませんでした。通常資金・所有権・人脈・LB・幻の連勝記録は保護されています。`,
         winner === 'player' ? 'success' : 'warning'
       );

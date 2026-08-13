@@ -21,9 +21,7 @@ import {
   getKarmaCounterPlan,
   recordKarmaAction,
   resolveNextKarmaCounter,
-  selectKarmaCorrectionPage,
   shouldHoldKarmaVictory,
-  skipKarmaCorrection,
 } from '../src/utils/karmaBattle';
 
 const baseInput: BattleReadinessInput = {
@@ -139,7 +137,8 @@ const karma = calculateBattleReadiness({
 assert.equal(karma.grade, 'challenge');
 assert.equal(karma.mechanicSeverity, 'severe');
 assert.match(karma.mechanicWarning ?? '', /55／70／85／95%/);
-assert.match(karma.mechanicWarning ?? '', /別系統/);
+assert.match(karma.mechanicWarning ?? '', /1件だけ/);
+assert.match(karma.mechanicWarning ?? '', /計4回/);
 
 assert.deepEqual(
   KARMA_LEDGER_THRESHOLDS,
@@ -147,46 +146,70 @@ assert.deepEqual(
   'Karma must record four actual ownership advances after the fifty-percent opening line.'
 );
 let karmaState = createKarmaBattleState();
-for (const [serial, kind, ownershipAfter] of [
-  [1, 'direct', 60],
-  [2, 'network', 75],
-  [3, 'synergy', 90],
-  [4, 'limit_break', 99],
-] as const) {
+let copiedPlan: ReturnType<typeof getKarmaCounterPlan> | null = null;
+for (const [index, [serial, kind, ownershipAfter]] of (
+  [
+    [1, 'direct', 60],
+    [2, 'network', 75],
+    [3, 'synergy', 90],
+    [4, 'limit_break', 99],
+  ] as const
+).entries()) {
   karmaState = recordKarmaAction(karmaState, {
     serial,
     kind,
     strengthBand: 'medium',
     ownershipAfter,
   });
+  assert.equal(karmaState.phase, 'countering');
+  assert.deepEqual(
+    karmaState.entries.map((entry) => [entry.page, entry.threshold, entry.kind]),
+    [[index + 1, KARMA_LEDGER_THRESHOLDS[index], kind]],
+    'Karma must remember only the one action that crossed the current checkpoint.'
+  );
+  assert.equal(karmaState.counterQueue.length, 1);
+  assert.equal(
+    shouldHoldKarmaVictory(true, karmaState),
+    true,
+    'Karma must hold a nominal victory while the current imitation remains unresolved.'
+  );
+
+  const ignoredWhileRemembering = recordKarmaAction(karmaState, {
+    serial: serial + 100,
+    kind: 'alliance',
+    strengthBand: 'small',
+    ownershipAfter: 99,
+  });
+  assert.strictEqual(
+    ignoredWhileRemembering,
+    karmaState,
+    'Karma cannot remember a second action while one imitation is active.'
+  );
+
+  copiedPlan ??= getKarmaCounterPlan(karmaState.counterQueue[0]!);
+  karmaState = resolveNextKarmaCounter(
+    karmaState,
+    karmaState.counterQueue[0]!.serial
+  );
+  assert.deepEqual(karmaState.entries, []);
+  assert.deepEqual(karmaState.counterQueue, []);
+  assert.equal(
+    karmaState.phase,
+    index === KARMA_LEDGER_THRESHOLDS.length - 1 ? 'resolved' : 'recording',
+    'each imitation must be forgotten before the next checkpoint is armed.'
+  );
 }
-assert.equal(karmaState.phase, 'correction_select');
 assert.deepEqual(
-  karmaState.entries.map((entry) => entry.page),
+  karmaState.resolvedCounterSerials,
   [1, 2, 3, 4],
-  'each confirmed player action must fill at most one Karma ledger page.'
+  'Karma must resolve four separate one-action checks in checkpoint order.'
 );
 assert.equal(
   shouldHoldKarmaVictory(true, karmaState),
-  true,
-  'Karma must hold a nominal victory until the copied pages are resolved.'
+  false,
+  'Karma releases a nominal victory after the fourth separate imitation.'
 );
-karmaState = selectKarmaCorrectionPage(karmaState, 2);
-assert.equal(karmaState.phase, 'correction_action');
-karmaState = recordKarmaAction(karmaState, {
-  serial: 5,
-  kind: 'alliance',
-  strengthBand: 'small',
-  ownershipAfter: 99,
-});
-assert.equal(karmaState.phase, 'countering');
-assert.deepEqual(
-  karmaState.counterQueue.map((entry) => entry.page),
-  [4, 3, 2, 1],
-  'Karma must copy the finalized ledger in reverse order.'
-);
-assert.equal(karmaState.entries[1]?.kind, 'alliance');
-const copiedPlan = getKarmaCounterPlan(karmaState.counterQueue[0]!);
+assert.ok(copiedPlan);
 assert.equal(copiedPlan.instantDefeat, false);
 assert.ok(copiedPlan.ownershipPush > 0 && copiedPlan.ownershipPush < 25);
 assert.equal(
@@ -200,8 +223,22 @@ assert.equal(
   0,
   'the authored perfect answer must cancel the copied action.'
 );
+const improvisedKarmaKind = (
+  [
+    'direct',
+    'network',
+    'synergy',
+    'alliance',
+    'limit_break',
+    'ability',
+  ] as const
+).find(
+  (kind) =>
+    kind !== copiedPlan.entry.kind &&
+    !copiedPlan.perfectCounterKinds.includes(kind)
+)!;
 assert.equal(
-  getKarmaCounterEffectiveness(copiedPlan, 'direct'),
+  getKarmaCounterEffectiveness(copiedPlan, improvisedKarmaKind),
   0.5,
   'an unlisted different action family must reduce the copied action to fifty percent.'
 );
@@ -209,24 +246,6 @@ assert.equal(
   getKarmaCounterEffectiveness(copiedPlan, copiedPlan.entry.kind),
   1,
   'repeating the copied action family must take the full finite hit.'
-);
-karmaState = resolveNextKarmaCounter(
-  karmaState,
-  karmaState.counterQueue[0]!.serial
-);
-assert.equal(karmaState.counterQueue.length, 3);
-while (karmaState.counterQueue.length > 0) {
-  karmaState = resolveNextKarmaCounter(
-    karmaState,
-    karmaState.counterQueue[0]!.serial
-  );
-}
-assert.equal(karmaState.phase, 'resolved');
-assert.equal(shouldHoldKarmaVictory(true, karmaState), false);
-assert.equal(
-  skipKarmaCorrection(createKarmaBattleState()).phase,
-  'recording',
-  'Karma correction controls must be inert before all four pages are written.'
 );
 
 const weakCapital = calculateBattleReadiness({

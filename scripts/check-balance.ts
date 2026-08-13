@@ -189,10 +189,8 @@ import {
   resolveKarmaCounterOwnership,
   resolveKarmaEscrowCommitment,
   resolveNextKarmaCounter,
-  selectKarmaCorrectionPage,
   shouldHoldKarmaVictory,
   shouldPauseKarmaOrdinaryEconomy,
-  skipKarmaCorrection,
   type KarmaActionKind,
   type KarmaBattleState,
   type KarmaEntry,
@@ -1125,11 +1123,19 @@ assert.deepEqual(emptyKarmaState, {
   counterQueue: [],
   resolvedCounterSerials: [],
   seenActionSerials: [],
-  correctionPage: null,
-  correctionUsed: false,
 });
 assert.equal(shouldHoldKarmaVictory(false, emptyKarmaState), false);
 assert.equal(shouldHoldKarmaVictory(true, emptyKarmaState), true);
+const oversizedFirstKarmaAction = recordKarmaAction(
+  emptyKarmaState,
+  karmaAction(900, 100, 'limit_break', 'large')
+);
+assert.deepEqual(
+  oversizedFirstKarmaAction.entries.map((entry) => entry.page),
+  [1],
+  'even one action crossing every checkpoint gives the rival only one remembered action'
+);
+assert.equal(oversizedFirstKarmaAction.counterQueue.length, 1);
 
 const belowFirstThreshold = recordKarmaAction(
   emptyKarmaState,
@@ -1151,139 +1157,120 @@ const firstKarmaPage = recordKarmaAction(
   belowFirstThreshold,
   karmaAction(2, 55, 'direct', 'small')
 );
+assert.equal(firstKarmaPage.phase, 'countering');
 assert.deepEqual(firstKarmaPage.entries.map((entry) => entry.page), [1]);
 assert.equal(firstKarmaPage.entries[0].threshold, 55);
-const oneActionCrossingSeveralThresholds = recordKarmaAction(
+assert.deepEqual(firstKarmaPage.counterQueue, firstKarmaPage.entries);
+assert.deepEqual(
+  buildKarmaCounterQueue([
+    firstKarmaPage.entries[0],
+    {
+      serial: 99,
+      page: 2,
+      threshold: 70,
+      kind: 'network',
+      strengthBand: 'large',
+    },
+  ]),
+  [
+    {
+      serial: 99,
+      page: 2,
+      threshold: 70,
+      kind: 'network',
+      strengthBand: 'large',
+    },
+  ],
+  'the compatibility queue keeps only the newest remembered action'
+);
+const actionWhileCopyPending = recordKarmaAction(
   firstKarmaPage,
   karmaAction(3, 100, 'limit_break', 'large')
 );
-assert.deepEqual(
-  oneActionCrossingSeveralThresholds.entries.map((entry) => entry.page),
-  [1, 2],
-  'one large action fills at most one ledger page even when it crosses several thresholds'
-);
-assert.equal(oneActionCrossingSeveralThresholds.entries[1].threshold, 70);
-
-let karmaBoundaryState = createKarmaBattleState();
-const karmaBoundaryProbes = [
-  { below: 54.999, exact: 55 },
-  { below: 69.999, exact: 70 },
-  { below: 84.999, exact: 85 },
-  { below: 94.999, exact: 95 },
-] as const;
-karmaBoundaryProbes.forEach((probe, index) => {
-  const beforeCount = karmaBoundaryState.entries.length;
-  karmaBoundaryState = recordKarmaAction(
-    karmaBoundaryState,
-    karmaAction(100 + index * 2, probe.below)
-  );
-  assert.equal(
-    karmaBoundaryState.entries.length,
-    beforeCount,
-    `Karma ledger page ${index + 1} stays empty immediately below its threshold`
-  );
-  karmaBoundaryState = recordKarmaAction(
-    karmaBoundaryState,
-    karmaAction(101 + index * 2, probe.exact)
-  );
-  assert.equal(
-    karmaBoundaryState.entries.length,
-    beforeCount + 1,
-    `Karma ledger page ${index + 1} records exactly at its threshold`
-  );
-});
-assert.equal(karmaBoundaryState.phase, 'correction_select');
-
-const thirdKarmaPage = recordKarmaAction(
-  oneActionCrossingSeveralThresholds,
-  karmaAction(4, 95, 'network', 'medium')
-);
-const sealedKarmaLedger = recordKarmaAction(
-  thirdKarmaPage,
-  karmaAction(5, 95, 'synergy', 'large')
-);
-assert.equal(sealedKarmaLedger.phase, 'correction_select');
-assert.deepEqual(
-  sealedKarmaLedger.entries.map((entry) => [entry.page, entry.threshold]),
-  [[1, 55], [2, 70], [3, 85], [4, 95]]
-);
-assert.deepEqual(sealedKarmaLedger.counterQueue, []);
 assert.strictEqual(
-  recordKarmaAction(
-    sealedKarmaLedger,
-    karmaAction(6, 100, 'alliance', 'large')
-  ),
-  sealedKarmaLedger,
-  'the ledger cannot accept an unselected correction action'
+  actionWhileCopyPending,
+  firstKarmaPage,
+  'the rival cannot remember a second action while one copy is pending'
+);
+assert.strictEqual(
+  resolveNextKarmaCounter(firstKarmaPage, 999),
+  firstKarmaPage,
+  'a copied action cannot be resolved with another serial'
+);
+let karmaBoundaryState = resolveNextKarmaCounter(firstKarmaPage, 2);
+assert.equal(karmaBoundaryState.phase, 'recording');
+assert.deepEqual(karmaBoundaryState.entries, []);
+assert.deepEqual(karmaBoundaryState.counterQueue, []);
+assert.deepEqual(karmaBoundaryState.resolvedCounterSerials, [2]);
+assert.equal(
+  shouldHoldKarmaVictory(true, karmaBoundaryState),
+  true,
+  'victory remains held until all four independent copies resolve'
 );
 
-const invalidCorrectionSelection = selectKarmaCorrectionPage(
-  emptyKarmaState,
-  1
-);
-assert.strictEqual(invalidCorrectionSelection, emptyKarmaState);
-const selectedKarmaCorrection = selectKarmaCorrectionPage(
-  sealedKarmaLedger,
-  2
-);
-assert.equal(selectedKarmaCorrection.phase, 'correction_action');
-assert.equal(selectedKarmaCorrection.correctionPage, 2);
-const correctedKarmaLedger = recordKarmaAction(
-  selectedKarmaCorrection,
-  {
-    ...karmaAction(6, 88, 'ability', 'small'),
-    abilityClass: 'defense',
-  }
-);
-assert.equal(correctedKarmaLedger.phase, 'countering');
-assert.equal(correctedKarmaLedger.correctionUsed, true);
-assert.deepEqual(
-  correctedKarmaLedger.entries.find((entry) => entry.page === 2),
-  {
-    serial: 6,
-    page: 2,
-    threshold: 70,
-    kind: 'ability',
-    strengthBand: 'small',
-    abilityClass: 'defense',
-  }
-);
-assert.deepEqual(
-  correctedKarmaLedger.counterQueue.map((entry) => entry.page),
-  [4, 3, 2, 1],
-  'the corrected ledger is counter-booked from the fourth page back to the first'
-);
-assert.deepEqual(
-  sealedKarmaLedger.entries.map((entry) => entry.serial),
-  [2, 3, 4, 5],
-  'correction never mutates the previously sealed ledger'
-);
-
-const skippedKarmaCorrection = skipKarmaCorrection(sealedKarmaLedger);
-assert.equal(skippedKarmaCorrection.phase, 'countering');
-assert.equal(skippedKarmaCorrection.correctionUsed, false);
-assert.deepEqual(
-  skippedKarmaCorrection.counterQueue,
-  buildKarmaCounterQueue(sealedKarmaLedger.entries)
-);
-assert.deepEqual(
-  skippedKarmaCorrection.counterQueue.map((entry) => entry.page),
-  [4, 3, 2, 1]
-);
+const remainingKarmaRounds = [
+  { threshold: 70, kind: 'network' },
+  { threshold: 85, kind: 'synergy' },
+  { threshold: 95, kind: 'limit_break' },
+] as const;
+remainingKarmaRounds.forEach(({ threshold, kind }, index) => {
+  const page = index + 2;
+  const belowSerial = 10 + index * 2;
+  const exactSerial = belowSerial + 1;
+  const below = recordKarmaAction(
+    karmaBoundaryState,
+    karmaAction(belowSerial, threshold - 0.001, kind)
+  );
+  assert.equal(below.phase, 'recording');
+  assert.equal(
+    below.entries.length,
+    0,
+    `Karma round ${page} stays empty immediately below ${threshold}%`
+  );
+  const remembered = recordKarmaAction(
+    below,
+    karmaAction(exactSerial, threshold, kind)
+  );
+  assert.equal(remembered.phase, 'countering');
+  assert.equal(remembered.entries.length, 1);
+  assert.equal(remembered.counterQueue.length, 1);
+  assert.deepEqual(
+    [remembered.entries[0].page, remembered.entries[0].threshold],
+    [page, threshold]
+  );
+  assert.equal(
+    shouldPauseKarmaOrdinaryEconomy(true, remembered),
+    true,
+    `round ${page} pauses ordinary pressure only while its one copy is active`
+  );
+  karmaBoundaryState = resolveNextKarmaCounter(remembered, exactSerial);
+  assert.deepEqual(
+    karmaBoundaryState.entries,
+    [],
+    `round ${page} forgets its action immediately after resolution`
+  );
+  assert.deepEqual(karmaBoundaryState.counterQueue, []);
+});
+assert.equal(karmaBoundaryState.phase, 'resolved');
+assert.equal(karmaBoundaryState.resolvedCounterSerials.length, 4);
+assert.equal(shouldHoldKarmaVictory(true, karmaBoundaryState), false);
 assert.equal(KARMA_ESCROW_BUDGET_RATIO, 0.24);
 assert.equal(KARMA_ESCROW_PAGE_BUDGET_RATIO, 0.06);
 assert.equal(
-  shouldPauseKarmaOrdinaryEconomy(true, skippedKarmaCorrection),
+  shouldPauseKarmaOrdinaryEconomy(true, firstKarmaPage),
   true,
-  'ordinary enemy pressure and recovery pause while the finite Karma ledger owns the encounter'
+  'ordinary enemy pressure pauses while the single remembered copy owns the encounter'
 );
 assert.equal(
-  shouldPauseKarmaOrdinaryEconomy(true, sealedKarmaLedger),
+  shouldPauseKarmaOrdinaryEconomy(
+    true,
+    resolveNextKarmaCounter(firstKarmaPage, 2)
+  ),
   false,
-  'the opening recording and correction decision retain the Cruel-level duel pressure'
+  'ordinary pressure resumes after the current action is forgotten'
 );
 assert.equal(
-  shouldPauseKarmaOrdinaryEconomy(false, skippedKarmaCorrection),
+  shouldPauseKarmaOrdinaryEconomy(false, firstKarmaPage),
   false,
   'the Karma economy gate cannot change other battle modes'
 );
@@ -1299,7 +1286,7 @@ for (let tick = 0; tick < 48; tick += 1) {
 assert.deepEqual(
   karmaCounterClock,
   { remainingMs: 6_000, resolutionDue: false },
-  'Karma preserves the full first warning while correction-action or skip presentations lock every response'
+  'Karma preserves the full warning while its response controls are presentation-locked'
 );
 for (let tick = 0; tick < 59; tick += 1) {
   karmaCounterClock = advanceKarmaCounterClock({
@@ -1459,37 +1446,18 @@ assert.equal(
   'the safety floor never resurrects a battle that was already lost'
 );
 
-assert.strictEqual(
-  resolveNextKarmaCounter(
-    correctedKarmaLedger,
-    correctedKarmaLedger.counterQueue[1].serial
-  ),
-  correctedKarmaLedger,
-  'Karma counters cannot resolve out of reverse-ledger order'
-);
-let resolvingKarmaState: KarmaBattleState = correctedKarmaLedger;
-const expectedKarmaResolutionOrder = correctedKarmaLedger.counterQueue.map(
-  (entry) => entry.serial
-);
-for (const serial of expectedKarmaResolutionOrder) {
-  resolvingKarmaState = resolveNextKarmaCounter(
-    resolvingKarmaState,
-    serial
-  );
-}
-assert.equal(resolvingKarmaState.phase, 'resolved');
-assert.deepEqual(
-  resolvingKarmaState.resolvedCounterSerials,
-  expectedKarmaResolutionOrder
-);
+const resolvingKarmaState: KarmaBattleState = karmaBoundaryState;
 assert.equal(shouldHoldKarmaVictory(true, resolvingKarmaState), false);
 assert.equal(
   getKarmaDefeatStage(resolvingKarmaState),
   'resolved',
-  'a loss after all four reverse pages is analyzed as post-ledger recovery, never as a nonexistent fifth page'
+  'a loss after all four independent copies is analyzed as post-copy recovery'
 );
-assert.equal(getKarmaDefeatStage(sealedKarmaLedger), 'correction');
-assert.equal(getKarmaDefeatStage(firstKarmaPage), 'recording');
+assert.equal(getKarmaDefeatStage(firstKarmaPage), 'countering');
+assert.equal(
+  getKarmaDefeatStage(resolveNextKarmaCounter(firstKarmaPage, 2)),
+  'recording'
+);
 assert.deepEqual(
   reduceKarmaBattle(resolvingKarmaState, { type: 'RESET' }),
   createKarmaBattleState(),

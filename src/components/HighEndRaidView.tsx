@@ -554,13 +554,11 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
           <div className="karma-raid-card__art" aria-hidden="true">
             <span />
             <div className="karma-raid-card__ledger">
-              {['初手', '二の手', '勝負手', '決め手'].map((label, index) => (
-                <i key={label}>
-                  <small>PAGE {index + 1}</small>
-                  <b>{label}</b>
-                  <em>COPY</em>
-                </i>
-              ))}
+              <i>
+                <small>NOW COPYING</small>
+                <b>現在の一手</b>
+                <em>1 / 4</em>
+              </i>
             </div>
           </div>
           <div className="karma-raid-card__copy">
@@ -575,7 +573,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
               {KARMA_RAID_DEFINITION.subtitle}
             </p>
             <p>
-              積んだ一手が、業となって返る。黄金頭巾のものまね士は、所有率の節目を越えた四つの手を記帳し、後半に逆順で再演します。
+              積んだ一手が、すぐ業となって返る。黄金頭巾のものまね士は、所有率の節目ごとに直前の一手を一つだけ覚え、その場でものまねします。
             </p>
             <span>
               <Copy />
@@ -592,13 +590,13 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
             <details className="karma-raid-card__warning high-end-raid-hint">
               <summary>攻略のヒント</summary>
               <div className="high-end-raid-hint__body" role="note">
-                <b>見せた手が、逆順で返る</b>
+                <b>覚えるのは、いま表示された一手だけ</b>
                 <p>
-                  開幕50%から所有率55／70／85／95%へ進めた一手を「初手・二の手・勝負手・決め手」へ記帳。後半は決め手から逆順に模倣するため、同じ系統ではない一手を残してください。
+                  所有率55／70／85／95%へ進めた直前の一手を、その都度一件だけ予告してものまねします。前の記録は対抗後に消えるため、四手を暗記する必要はありません。
                 </p>
-                <b>修正仕訳は一度だけ</b>
+                <b>同じギミックを四回破る</b>
                 <p>
-                  最も返されたくない一頁を、別系統の次の一手で書き直せます。四頁がそろう前に、最後まで残す資金源を決めておくのが要です。
+                  表示された二系統なら完全取消、ほかの別系統なら50%軽減。同系統か無行動では100%着弾します。いまの一件を崩してから、次の節目へ進んでください。
                 </p>
               </div>
             </details>

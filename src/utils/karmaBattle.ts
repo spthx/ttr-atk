@@ -10,13 +10,13 @@ export const KARMA_RAID_DEFINITION = {
   communities: ['ソリューション・ナイン'] as CommunityType[],
   /**
    * Cruel already reaches this scale. Karma becomes harder through authored
-   * imitation and correction decisions instead of another raw-stat increase.
+   * single-action imitation checks instead of another raw-stat increase.
    */
   marketPrice: 7_500_000_000,
   industry: '娯楽・商業' as IndustryType,
   community: 'ソリューション・ナイン' as CommunityType,
   description:
-    '酷商戦踏破後に現れる、本作独自の最高難度記録戦。ものまね師が所有率の節目でこちらの一手を記帳し、一度だけ許された修正仕訳の後、反対仕訳として逆順に再現します。通常資金・所有権・人脈・LB・幻の連勝記録は変化しません。',
+    '酷商戦踏破後に現れる、本作独自の最高難度記録戦。ものまね師が所有率の節目ごとにこちらの一手を一つだけ覚え、予告して再現し、解決後に消去します。通常資金・所有権・人脈・LB・幻の連勝記録は変化しません。',
 } as const;
 
 export const buildKarmaProperty = (
@@ -39,8 +39,9 @@ export const buildKarmaProperty = (
   description: KARMA_RAID_DEFINITION.description,
 });
 
-// A normal duel opens at 50% ownership. These checkpoints therefore begin
-// above the opening line and record four actual advances, not two free pages.
+// A normal duel opens at 50% ownership. At each checkpoint the rival remembers
+// only the single action that crossed it, telegraphs that copy, resolves it,
+// and forgets it before watching for the next checkpoint.
 export const KARMA_LEDGER_THRESHOLDS = [55, 70, 85, 95] as const;
 export const KARMA_ESCROW_BUDGET_RATIO = 0.24;
 export const KARMA_ESCROW_PAGE_BUDGET_RATIO =
@@ -62,8 +63,6 @@ export type KarmaAbilityClass =
 export type KarmaStrengthBand = 'small' | 'medium' | 'large';
 export type KarmaPhase =
   | 'recording'
-  | 'correction_select'
-  | 'correction_action'
   | 'countering'
   | 'resolved';
 
@@ -96,18 +95,16 @@ export interface KarmaActionClassificationInput {
 
 export interface KarmaBattleState {
   phase: KarmaPhase;
+  /** At most the one action currently remembered by the rival. */
   entries: readonly KarmaEntry[];
+  /** At most the same one action while its telegraph is active. */
   counterQueue: readonly KarmaEntry[];
   resolvedCounterSerials: readonly number[];
   seenActionSerials: readonly number[];
-  correctionPage: KarmaLedgerPage | null;
-  correctionUsed: boolean;
 }
 
 export type KarmaBattleEvent =
   | { type: 'PLAYER_ACTION_COMMITTED'; action: KarmaCommittedAction }
-  | { type: 'SELECT_CORRECTION'; page: KarmaLedgerPage }
-  | { type: 'SKIP_CORRECTION' }
   | { type: 'COUNTER_RESOLVED'; serial: number }
   | { type: 'RESET' };
 
@@ -146,7 +143,6 @@ export type KarmaCounterEffectiveness = 0 | 0.5 | 1;
 
 export type KarmaDefeatStage =
   | 'recording'
-  | 'correction'
   | 'countering'
   | 'resolved';
 
@@ -199,21 +195,15 @@ export const getKarmaDefeatStage = (
   state: KarmaBattleState
 ): KarmaDefeatStage => {
   if (state.counterQueue.length > 0) return 'countering';
-  if (
-    state.phase === 'correction_select' ||
-    state.phase === 'correction_action'
-  ) {
-    return 'correction';
-  }
-  return state.entries.length < KARMA_LEDGER_THRESHOLDS.length
+  return state.resolvedCounterSerials.length < KARMA_LEDGER_THRESHOLDS.length
     ? 'recording'
     : 'resolved';
 };
 
 /**
- * Once the sealed ledger starts replaying, its four finite copies own the
- * enemy side of the encounter. Ordinary AI investment, passive recovery and
- * continuous capital pressure resume only after every page is resolved.
+ * While the current remembered action is being telegraphed, its finite copy
+ * owns the enemy side of the encounter. Ordinary pressure resumes as soon as
+ * that one copy is resolved and forgotten.
  */
 export const shouldPauseKarmaOrdinaryEconomy = (
   isKarma: boolean,
@@ -261,8 +251,6 @@ export const createKarmaBattleState = (): KarmaBattleState => ({
   counterQueue: [],
   resolvedCounterSerials: [],
   seenActionSerials: [],
-  correctionPage: null,
-  correctionUsed: false,
 });
 
 const toLedgerPage = (entryIndex: number): KarmaLedgerPage =>
@@ -276,53 +264,19 @@ const appendSeenSerial = (state: KarmaBattleState, serial: number) => ({
 export const buildKarmaCounterQueue = (
   entries: readonly KarmaEntry[]
 ): readonly KarmaEntry[] =>
-  [...entries].sort((left, right) => right.page - left.page);
+  entries.length > 0 ? [entries[entries.length - 1]] : [];
 
 export const recordKarmaAction = (
   state: KarmaBattleState,
   committedAction: KarmaCommittedAction
 ): KarmaBattleState => {
-  if (
-    state.phase !== 'recording' &&
-    state.phase !== 'correction_action'
-  ) {
-    return state;
-  }
+  if (state.phase !== 'recording') return state;
 
   const action = classifyKarmaAction(committedAction);
   if (state.seenActionSerials.includes(action.serial)) return state;
 
   const seenState = appendSeenSerial(state, action.serial);
-  if (state.phase === 'correction_action') {
-    if (state.correctionPage === null) return seenState;
-    const replacementIndex = state.entries.findIndex(
-      (entry) => entry.page === state.correctionPage
-    );
-    if (replacementIndex < 0) return seenState;
-    const replacedEntry = state.entries[replacementIndex];
-    const replacement: KarmaEntry = {
-      serial: action.serial,
-      page: replacedEntry.page,
-      threshold: replacedEntry.threshold,
-      kind: action.kind,
-      strengthBand: action.strengthBand,
-      ...(action.kind === 'ability'
-        ? { abilityClass: action.abilityClass ?? 'offense' }
-        : {}),
-    };
-    const entries = state.entries.map((entry, index) =>
-      index === replacementIndex ? replacement : entry
-    );
-    return {
-      ...seenState,
-      phase: 'countering',
-      entries,
-      counterQueue: buildKarmaCounterQueue(entries),
-      correctionUsed: true,
-    };
-  }
-
-  const entryIndex = state.entries.length;
+  const entryIndex = state.resolvedCounterSerials.length;
   const threshold = KARMA_LEDGER_THRESHOLDS[entryIndex];
   if (
     threshold === undefined ||
@@ -341,43 +295,11 @@ export const recordKarmaAction = (
       ? { abilityClass: action.abilityClass ?? 'offense' }
       : {}),
   };
-  const entries = [...state.entries, entry];
   return {
     ...seenState,
-    entries,
-    phase:
-      entries.length === KARMA_LEDGER_THRESHOLDS.length
-        ? 'correction_select'
-        : 'recording',
-  };
-};
-
-export const selectKarmaCorrectionPage = (
-  state: KarmaBattleState,
-  page: KarmaLedgerPage
-): KarmaBattleState => {
-  if (
-    state.phase !== 'correction_select' ||
-    !state.entries.some((entry) => entry.page === page)
-  ) {
-    return state;
-  }
-  return {
-    ...state,
-    phase: 'correction_action',
-    correctionPage: page,
-  };
-};
-
-export const skipKarmaCorrection = (
-  state: KarmaBattleState
-): KarmaBattleState => {
-  if (state.phase !== 'correction_select') return state;
-  return {
-    ...state,
     phase: 'countering',
-    counterQueue: buildKarmaCounterQueue(state.entries),
-    correctionPage: null,
+    entries: [entry],
+    counterQueue: [entry],
   };
 };
 
@@ -392,15 +314,20 @@ export const resolveNextKarmaCounter = (
   ) {
     return state;
   }
-  const [resolved, ...counterQueue] = state.counterQueue;
+  const [resolved] = state.counterQueue;
+  const resolvedCounterSerials = [
+    ...state.resolvedCounterSerials,
+    resolved.serial,
+  ];
   return {
     ...state,
-    phase: counterQueue.length === 0 ? 'resolved' : 'countering',
-    counterQueue,
-    resolvedCounterSerials: [
-      ...state.resolvedCounterSerials,
-      resolved.serial,
-    ],
+    phase:
+      resolvedCounterSerials.length >= KARMA_LEDGER_THRESHOLDS.length
+        ? 'resolved'
+        : 'recording',
+    entries: [],
+    counterQueue: [],
+    resolvedCounterSerials,
   };
 };
 
@@ -569,10 +496,10 @@ export const getKarmaCounterEffectiveness = (
 };
 
 /**
- * Every copied page consumes its fixed six-percent reservation, but a copy
+ * Every copied occurrence consumes its fixed six-percent reservation, but a copy
  * may only materialize the smaller capital pile authored for that action and
  * strength band. This keeps the 24% account inside the original enemy budget
- * without turning a qualitative copy into four hidden full-strength raises.
+ * without turning a qualitative copy into a hidden full-strength raise.
  */
 export const resolveKarmaEscrowCommitment = ({
   remainingEscrow,
@@ -644,10 +571,6 @@ export const reduceKarmaBattle = (
   switch (event.type) {
     case 'PLAYER_ACTION_COMMITTED':
       return recordKarmaAction(state, event.action);
-    case 'SELECT_CORRECTION':
-      return selectKarmaCorrectionPage(state, event.page);
-    case 'SKIP_CORRECTION':
-      return skipKarmaCorrection(state);
     case 'COUNTER_RESOLVED':
       return resolveNextKarmaCounter(state, event.serial);
     case 'RESET':

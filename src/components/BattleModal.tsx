@@ -124,14 +124,11 @@ import {
   resolveKarmaCounterOwnership,
   resolveKarmaEscrowCommitment,
   resolveNextKarmaCounter,
-  selectKarmaCorrectionPage,
   shouldHoldKarmaVictory,
   shouldPauseKarmaOrdinaryEconomy,
-  skipKarmaCorrection,
   type KarmaAbilityClass,
   type KarmaActionKind,
   type KarmaBattleState,
-  type KarmaLedgerPage,
   type KarmaStrengthBand,
 } from '../utils/karmaBattle';
 import {
@@ -312,7 +309,7 @@ type ImpactStopSide = 'player' | 'opponent';
 type CapitalPileSide = 'player' | 'enemy';
 type CapitalPileCommandRecharge = 'continue' | 'pause';
 type CapitalLedger = 'company' | 'support';
-const KARMA_PAGE_LABELS = ['初手', '二の手', '勝負手', '決め手'] as const;
+const KARMA_PAGE_LABELS = ['一回目', '二回目', '三回目', '最終回'] as const;
 const KARMA_ACTION_LABELS: Record<KarmaActionKind, string> = {
   direct: '自社資金',
   network: '人脈',
@@ -321,21 +318,6 @@ const KARMA_ACTION_LABELS: Record<KarmaActionKind, string> = {
   limit_break: 'LIMIT BREAK',
   ability: 'アビリティ',
 };
-const getKarmaCorrectionBlockedKind = (
-  state: KarmaBattleState
-): KarmaActionKind | null => {
-  if (state.phase !== 'correction_action' || state.correctionPage === null) {
-    return null;
-  }
-  return (
-    state.entries.find((entry) => entry.page === state.correctionPage)?.kind ??
-    null
-  );
-};
-const isKarmaCorrectionActionBlocked = (
-  state: KarmaBattleState,
-  kind: KarmaActionKind
-) => getKarmaCorrectionBlockedKind(state) === kind;
 const resolveKarmaPostImpactContinuousVelocity = (
   velocity: number,
   responsePending: boolean
@@ -2095,16 +2077,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ? capitalPresentationStage === 'impact'
     : motion !== 'idle';
   const commandReady = commandProgress >= 100;
-  const karmaCorrectionBlockedKind = isKarma
-    ? getKarmaCorrectionBlockedKind(karmaBattleState)
-    : null;
-  const karmaDirectCorrectionBlocked = karmaCorrectionBlockedKind === 'direct';
-  const karmaNetworkCorrectionBlocked = karmaCorrectionBlockedKind === 'network';
-  const karmaSynergyCorrectionBlocked = karmaCorrectionBlockedKind === 'synergy';
-  const karmaAllianceCorrectionBlocked = karmaCorrectionBlockedKind === 'alliance';
-  const karmaLimitBreakCorrectionBlocked =
-    karmaCorrectionBlockedKind === 'limit_break';
-  const karmaAbilityCorrectionBlocked = karmaCorrectionBlockedKind === 'ability';
   const sortedBattleSubs = useMemo(
     () => sortSubsidiariesBySupport(battleSubs),
     [battleSubs]
@@ -2382,7 +2354,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     !primarySkill ||
     primarySkillUnavailable ||
     primarySkillDefenseConflict ||
-    karmaAbilityCorrectionBlocked ||
     !commandReady ||
     primarySkillCooldown > 0 ||
     primarySkillUsed;
@@ -2392,8 +2363,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       ? '対象なし'
       : primarySkillDefenseConflict
         ? '防御中'
-      : karmaAbilityCorrectionBlocked
-        ? '修正不可'
       : primarySkillUsed
             ? '使用済み'
             : primarySkillCooldown > 0
@@ -2577,19 +2546,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       ? '零式'
       : '絶';
   const canUseNetworkSupport =
-    !karmaNetworkCorrectionBlocked &&
     !limitedNetworkSupportExhausted &&
     battleSubs.length > 0;
   const canUseAllianceSupport =
-    !karmaAllianceCorrectionBlocked && alliance.active && !allianceUsed;
+    alliance.active && !allianceUsed;
   const hasAvailableNetworkSupport =
     canUseNetworkSupport || canUseAllianceSupport;
-  const karmaSupportCorrectionBlocked =
-    !hasAvailableNetworkSupport &&
-    ((karmaNetworkCorrectionBlocked &&
-      !limitedNetworkSupportExhausted &&
-      battleSubs.length > 0) ||
-      (karmaAllianceCorrectionBlocked && alliance.active && !allianceUsed));
   const highEndNetworkChoiceRequired =
     isHighEndRaid &&
     !!quickNetworkSupportProperty &&
@@ -2751,8 +2713,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     liveRawGaugeVelocity < 0;
   const onboardingFinisherLocked =
     onboardingLiquidityCloseoutLocked || campaignNetworkFinisherActive;
-  const karmaCorrectionSelectActive =
-    isKarma && karmaBattleState.phase === 'correction_select';
   const actionsLocked =
     !!winner ||
     battlePhase !== 'active' ||
@@ -2761,7 +2721,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     decisiveLocked ||
     impactPresentationActive ||
     onboardingFinisherLocked ||
-    karmaCorrectionSelectActive ||
     showHelp ||
     showLog;
   const primarySkillActionLocked = actionsLocked;
@@ -2828,19 +2787,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     karmaCounterResponseWindowOpenRef.current =
       karmaCounterResponseWindowOpen;
   }, [karmaCounterResponseWindowOpen]);
-  const battleCommandState = karmaCorrectionSelectActive
-    ? {
-        tone: 'locked',
-        title: '修正仕訳を選択中',
-        detail: '一頁を書き換えるか、そのまま逆仕訳へ進みます',
-      }
-    : karmaCorrectionBlockedKind
-      ? {
-          tone: 'ready',
-          title: `修正仕訳：${KARMA_ACTION_LABELS[karmaCorrectionBlockedKind]}以外を選択`,
-          detail: '同系統は資源を消費せず受け付けません',
-        }
-    : karmaPostImpactResponsePending
+  const battleCommandState = karmaPostImpactResponsePending
       ? {
           tone: 'ready',
           title: 'ものまね着弾――応答手を受付中',
@@ -2993,7 +2940,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     presentationLocked ||
     impactPresentationActive ||
     decisiveLocked ||
-    karmaCorrectionSelectActive ||
     karmaPostImpactResponsePending ||
     showHelp ||
     showLog ||
@@ -3038,7 +2984,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ultimateCriticalGatePending ||
     enemyOpeningCoverPending ||
     decisiveLocked ||
-    karmaCorrectionSelectActive ||
     karmaPostImpactResponsePending ||
     impactPresentationActive ||
     showHelp ||
@@ -3811,20 +3756,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       updateKarmaPostImpactResponsePending(false);
     }
     setCommandProgress(0);
-    return true;
-  };
-
-  const rejectKarmaCorrectionAction = (kind: KarmaActionKind) => {
-    if (
-      !isKarma ||
-      !isKarmaCorrectionActionBlocked(karmaBattleStateRef.current, kind)
-    ) {
-      return false;
-    }
-    setStatusText(
-      `修正仕訳は別系統が必要――${KARMA_ACTION_LABELS[kind]}以外を選んでください（資源は消費していません）`
-    );
-    soundFx.playWarning();
     return true;
   };
 
@@ -4745,7 +4676,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const state = karmaBattleStateRef.current;
     const pending = karmaPendingActionRef.current;
     if (state.phase !== 'recording' || !pending) return;
-    const threshold = KARMA_LEDGER_THRESHOLDS[state.entries.length];
+    const threshold =
+      KARMA_LEDGER_THRESHOLDS[state.resolvedCounterSerials.length];
     const ownershipAfter = calculateOwnershipFromGauge(nextGauge);
     if (threshold === undefined || ownershipAfter < threshold) return;
     const next = recordKarmaAction(
@@ -4765,22 +4697,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const entry = next.entries.at(-1);
     if (entry) {
       setStatusText(
-        `写取：${KARMA_PAGE_LABELS[entry.page - 1]} ← ${KARMA_ACTION_LABELS[entry.kind]}`
+        `写取 ${entry.page}/4回：${KARMA_ACTION_LABELS[entry.kind]}を一件だけ記憶`
       );
       addLog(
-        `業の帳簿・第${entry.page}頁「${KARMA_PAGE_LABELS[entry.page - 1]}」へ${pending.label}を記帳。`,
+        `ものまね師が${entry.page}/4回目の${pending.label}を一件だけ記憶。6秒の予告を開始。`,
         'enemy'
       );
       soundFx.playGaugeTick(1.08 + entry.page * 0.05);
-    }
-    if (next.phase === 'correction_select') {
-      setGaugeSpeed(0);
-      setStatusText('四頁記帳完了――一頁だけ修正仕訳を選べます');
-      addLog(
-        '四頁の記帳が完成。ものまね師は決め手から逆順に返す。修正仕訳を一頁選ぶか、そのまま確定してください。',
-        'enemy'
-      );
-      soundFx.playWarning();
     }
   };
 
@@ -4981,12 +4904,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const phase = karmaBattleStateRef.current.phase;
       setStatusText(
         phase === 'recording'
-          ? '業の帳簿が四頁そろうまで、決着は99%で保留されている'
-          : phase === 'correction_select'
-            ? '修正仕訳を選ぶまで、決着は保留されている'
-            : phase === 'correction_action'
-              ? '修正する別系統の一手を実行してください'
-              : '逆仕訳ものまねをすべて破るまで、決着は保留されている'
+          ? `次のものまね（${karmaBattleStateRef.current.resolvedCounterSerials.length + 1}/4回）を発生させるまで、決着は99%で保留されている`
+          : '現在のものまねを破るまで、決着は保留されている'
       );
       return false;
     }
@@ -5066,13 +4985,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     abilityClass?: KarmaAbilityClass;
   }) => {
     if (!isKarma || endedRef.current || terminalRef.current) return;
-    if (rejectKarmaCorrectionAction(kind)) return;
     if (karmaPostImpactRecoveryActionRef.current) {
       karmaPostImpactRecoveryActionRef.current = false;
       setStatusText(
-        `${label}で立て直し――次のものまね予告は、この演出後から6秒を確保`
+        `${label}で立て直し――次の節目を越えた場合は、この一手だけを新しく記憶`
       );
-      return;
     }
     const serial = ++karmaActionSerialRef.current;
     const classified = classifyKarmaAction({
@@ -5093,25 +5010,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     };
 
     const state = karmaBattleStateRef.current;
-    if (state.phase === 'correction_action') {
-      const next = recordKarmaAction(state, classified);
-      updateKarmaBattleState(next);
-      if (next.phase === 'countering') {
-        const rewritten = next.entries.find(
-          (entry) => entry.page === state.correctionPage
-        );
-        setStatusText(
-          `修正完了：${KARMA_PAGE_LABELS[(rewritten?.page ?? 1) - 1]} ← ${KARMA_ACTION_LABELS[rewritten?.kind ?? kind]}`
-        );
-        addLog(
-          `修正仕訳を確定。第${rewritten?.page ?? state.correctionPage}頁を${label}へ書き換え、決め手から逆仕訳を開始。`,
-          'player'
-        );
-        soundFx.playCoin();
-      }
-      return;
-    }
-
     if (state.phase !== 'countering' || state.counterQueue.length === 0) {
       return;
     }
@@ -5137,38 +5035,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           : `同系統は見切られる――${label}では、ものまね効果100%`
     );
     soundFx.playGaugeTick(effectiveness === 0 ? 1.18 : 0.92);
-  };
-
-  const chooseKarmaCorrectionPage = (page: KarmaLedgerPage) => {
-    const current = karmaBattleStateRef.current;
-    const next = selectKarmaCorrectionPage(current, page);
-    if (next === current) return;
-    updateKarmaBattleState(next);
-    const entry = next.entries.find((item) => item.page === page);
-    setStatusText(
-      `修正仕訳：${KARMA_PAGE_LABELS[page - 1]}「${KARMA_ACTION_LABELS[entry?.kind ?? 'direct']}」を、次の別系統の一手で書き換えます`
-    );
-    addLog(
-      `修正仕訳を第${page}頁へ予約。次に確定した別系統の一手が、その頁へ記帳される。`,
-      'player'
-    );
-    soundFx.playGaugeTick(1.18);
-  };
-
-  const skipKarmaCorrectionPage = () => {
-    const current = karmaBattleStateRef.current;
-    const next = skipKarmaCorrection(current);
-    if (next === current) return;
-    updateKarmaBattleState(next);
-    const first = next.counterQueue[0];
-    setStatusText(
-      `修正せず確定――${KARMA_PAGE_LABELS[first.page - 1]}「${KARMA_ACTION_LABELS[first.kind]}」から逆仕訳を開始`
-    );
-    addLog(
-      '修正仕訳を使わず四頁を確定。ものまね師が決め手から逆順に返す。',
-      'enemy'
-    );
-    soundFx.playWarning();
   };
 
   const resolveActiveKarmaCounter = useCallback((expectedSerial: number) => {
@@ -5255,11 +5121,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             : '対抗なしで100%着弾';
     const nextCounterText =
       next.phase === 'resolved'
-        ? '四頁すべての写しを解決した。'
-        : `次は第${next.counterQueue[0].page}頁。`;
-    setStatusText(`逆仕訳・第${copiedEntry.page}頁：${outcome}`);
+        ? '四回すべての写しを解決した。'
+        : `ものまねは忘却。次は所有率${KARMA_LEDGER_THRESHOLDS[next.resolvedCounterSerials.length]}%で新しい一手を覚える。`;
+    setStatusText(`ものまね・${copiedEntry.page}/4回：${outcome}`);
     addLog(
-      `逆仕訳・第${copiedEntry.page}頁「${copiedLabel}」を解決。${outcome}。無銘口座の予約${formatCurrency(fullEscrowCommit)}から${formatCurrency(escrowCommit)}が着弾。${nextCounterText}`,
+      `ものまね・${copiedEntry.page}/4回「${copiedLabel}」を解決。${outcome}。無銘口座の予約${formatCurrency(fullEscrowCommit)}から${formatCurrency(escrowCommit)}が着弾。${nextCounterText}`,
       effectiveness === 0 ? 'player' : 'enemy'
     );
   }, [
@@ -7013,7 +6879,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const investCompanyFunds = () => {
-    if (rejectKarmaCorrectionAction('direct')) return;
     if (
       enemySupportCinematic?.skillId === 'capital_reversal' &&
       capitalReversalRemainingRef.current <= 0
@@ -7161,7 +7026,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     commandReady &&
     !!maxAffordableConfig &&
     cash >= selectedCost &&
-    !karmaDirectCorrectionBlocked &&
     !actionsLocked;
   const campaignNetworkSupportMultiplier =
     !isTraining &&
@@ -7215,7 +7079,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const demandFromProperty = (property: Property) => {
-    if (rejectKarmaCorrectionAction('network')) return;
     if (
       networkSupportLimit !== null &&
       !canRequestLimitedNetworkSupport(networkRequestCount, networkSupportLimit)
@@ -7285,7 +7148,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const demandFromAllies = () => {
-    if (rejectKarmaCorrectionAction('limit_break')) return;
     if (
       limitedLimitBreakSpent ||
       limitBreakTier === 0 ||
@@ -7526,7 +7388,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     members: Property[],
     groupMultiplier: number
   ) => {
-    if (rejectKarmaCorrectionAction('synergy')) return;
     if (
       usedBattleSynergyIds.has(synergyId) ||
       usedBattleSynergyIdsRef.current.has(synergyId) ||
@@ -7666,7 +7527,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const activateProgressionBattleSynergy = (synergy: GroupSynergy) => {
-    if (rejectKarmaCorrectionAction('synergy')) return;
     const effect = synergy.battleEffect;
     if (
       !effect ||
@@ -7785,7 +7645,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   };
 
   const requestAlliance = () => {
-    if (rejectKarmaCorrectionAction('alliance')) return;
     if (!alliance.active || allianceUsed || !consumeCommand()) return;
     setPanel('capital');
     setLastPlayerAction('ALLIANCE');
@@ -7989,7 +7848,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       onComplete,
     }: SkillActivationOptions = {}
   ) => {
-    if (rejectKarmaCorrectionAction('ability')) return false;
     const canReplaceActiveDefense =
       source === 'critical-auto' &&
       (skill.effectType === 'COVER' || skill.effectType === 'BARRIER');
@@ -8673,14 +8531,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const unresolvedKarmaEntry = karmaBattleState.counterQueue[0] ?? null;
   const karmaDefeatStage = getKarmaDefeatStage(karmaBattleState);
   const karmaResultAnalysis = winner === 'player'
-    ? `初手から決め手まで四頁を意図して書き、逆順のものまねを別系統の一手で全部崩したでっす！ 同じ資金源を連打せず、最後まで勝ち筋を残したのが勝因でっす。`
+    ? `四回のものまねを一件ずつ見切り、予告された別系統の一手で崩したでっす！ 一度に覚えるのは一件だけなので、表示中の手へ集中したのが勝因でっす。`
     : unresolvedKarmaEntry
-      ? `第${unresolvedKarmaEntry.page}頁「${KARMA_PAGE_LABELS[unresolvedKarmaEntry.page - 1]}」の${KARMA_ACTION_LABELS[unresolvedKarmaEntry.kind]}が未解決だったでっす。次は${getKarmaCounterPlan(unresolvedKarmaEntry).counterHints.join('、または')}で写しを崩すでっす。`
-      : karmaDefeatStage === 'correction'
-        ? '四頁はそろったものの、修正仕訳を決着へつなげられなかったでっす。最も返されたくない決め手を、後半まで残せる別系統へ書き換えるでっす。'
-        : karmaDefeatStage === 'recording'
-          ? `第${karmaBattleState.entries.length + 1}頁まで戦術を記帳できなかったでっす。自社資金・人脈・SYNERGY・アビリティ・LBから、少なくとも三系統を準備して再挑戦するでっす。`
-          : '四頁の逆仕訳はすべて解決済みだったでっす。最後の応答後も所有率を守れるよう、自社資金・人脈・SYNERGY・アビリティ・LBの残りを立て直しへ回すでっす。';
+      ? `${unresolvedKarmaEntry.page}/4回目「${KARMA_ACTION_LABELS[unresolvedKarmaEntry.kind]}」のものまねが未解決だったでっす。次は${getKarmaCounterPlan(unresolvedKarmaEntry).counterHints.join('、または')}で写しを崩すでっす。`
+      : karmaDefeatStage === 'recording'
+          ? `${karmaBattleState.resolvedCounterSerials.length + 1}/4回目の記憶地点まで進めなかったでっす。まず次の所有率の節目へ届く一手を確保するでっす。`
+          : '四回のものまねはすべて解決済みだったでっす。最後の応答後も所有率を守れるよう、自社資金・人脈・SYNERGY・アビリティ・LBの残りを立て直しへ回すでっす。';
   const resultAnalysis = isKarma
     ? karmaResultAnalysis
     : isTraining
@@ -8882,43 +8738,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </div>
       </header>
 
-      {karmaCorrectionSelectActive && (
-        <section
-          className="karma-correction-dialog"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="karma-correction-title"
-        >
-          <div>
-            <small>ONE CORRECTION / 時間停止中</small>
-            <h2 id="karma-correction-title">修正仕訳を一頁だけ選ぶ</h2>
-            <p>
-              ものまねは決め手から逆順です。選んだ頁は、次に確定した別系統の一手へ書き換わります。
-            </p>
-            <div className="karma-correction-dialog__pages">
-              {karmaBattleState.entries.map((entry) => (
-                <button
-                  key={entry.page}
-                  type="button"
-                  onClick={() => chooseKarmaCorrectionPage(entry.page)}
-                >
-                  <small>第{entry.page}頁</small>
-                  <b>{KARMA_PAGE_LABELS[entry.page - 1]}</b>
-                  <span>{KARMA_ACTION_LABELS[entry.kind]}</span>
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              className="karma-correction-dialog__skip"
-              onClick={skipKarmaCorrectionPage}
-            >
-              修正せず、四頁を確定する
-            </button>
-          </div>
-        </section>
-      )}
-
       <main className="buyout-main">
         <section
           className={`battle-stage integrated-battlefield integrated-battlefield--canvas2d integrated-battlefield--push-${battleDirection} integrated-battlefield--motion-${motion} ${conditionAnnouncement ? 'integrated-battlefield--condition-active' : ''} ${impactStop ? `integrated-battlefield--impact-${impactStop.phase} integrated-battlefield--impact-${impactStop.side} ${impactStop.heavy ? 'integrated-battlefield--impact-heavy' : ''}` : ''} ${capitalPresentationStage && activeCapitalTiming ? `integrated-battlefield--capital-commit integrated-battlefield--capital-${capitalPresentationStage} integrated-battlefield--capital-${activeCapitalTiming.tier}` : ''} ${skillCinematic ? `integrated-battlefield--skill-cinematic integrated-battlefield--skill-stage-${skillCinematic.stage} integrated-battlefield--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${windVisible && eraWindActive ? 'integrated-battlefield--era-wind integrated-battlefield--era-wind-3' : ''} ${windVisible && windTelegraphVisible ? 'integrated-battlefield--wind-telegraph' : ''} ${decisiveBlow?.winner === 'player' && terminalUsesDirectFinisher ? 'integrated-battlefield--finisher-player integrated-battlefield--finisher-direct' : decisiveBlow?.winner === 'player' ? 'integrated-battlefield--finisher-collapse' : decisiveBlow?.winner === 'opponent' ? 'integrated-battlefield--finisher-enemy' : ''} ${decisiveBlow?.impacted ? 'integrated-battlefield--finisher-impact' : ''} ${terminalCinematicStage ? `integrated-battlefield--terminal-${terminalCinematicStage} integrated-battlefield--terminal-winner-${terminalRef.current?.winner ?? 'player'} ${terminalUsesSelfCollapse ? 'integrated-battlefield--terminal-self-collapse' : 'integrated-battlefield--terminal-direct'}` : ''} ${winner ? `integrated-battlefield--settled integrated-battlefield--settled-${winner} ${terminalUsesDirectFinisher ? 'integrated-battlefield--settled-direct' : 'integrated-battlefield--settled-collapse'}` : ''} ownership-board--wind-${windSide} ${usesSavageMechanics ? 'integrated-battlefield--savage' : ''} ${isPhantom ? 'integrated-battlefield--phantom' : ''} ${isUltimate ? 'integrated-battlefield--ultimate' : ''} ${isCruel ? 'integrated-battlefield--cruel' : ''} ${isKarma ? 'integrated-battlefield--karma' : ''} ${enemySupportUsed.has('omnicapitalization') ? 'integrated-battlefield--omnicapitalization' : ''}`}
@@ -9078,7 +8897,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             {isCruel ? (
               <><b>酷商戦</b><span>酷-もう1人のわたし</span></>
             ) : isKarma ? (
-              <><b>業商戦</b><span>値札のない一株・四頁逆仕訳</span></>
+              <><b>業商戦</b><span>値札のない一株・一手ものまね</span></>
             ) : isPhantom ? (
               <><b>幻・商戦</b><span>零式 {savageSeries}編 {savageLayer}/4層・絶相当基礎力</span></>
             ) : isUltimate ? (
@@ -9584,45 +9403,40 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         </section>
 
         {isKarma && (
-          <section className="karma-ledger-strip" aria-label="業の四頁帳簿">
+          <section className="karma-ledger-strip" aria-label="業のものまね記録">
             <header>
               <ScrollText />
-              <b>業の帳簿</b>
+              <b>ものまね記憶</b>
               <span>
                 {karmaBattleState.phase === 'recording'
-                  ? `${karmaBattleState.entries.length}/4頁 記帳済み`
-                  : karmaBattleState.phase === 'correction_select'
-                    ? '修正仕訳を選択'
-                    : karmaBattleState.phase === 'correction_action'
-                      ? '次の別系統で修正'
-                      : karmaBattleState.phase === 'resolved'
-                        ? 'ものまね破り完了'
-                        : `逆仕訳 ${karmaBattleState.resolvedCounterSerials.length}/4`}
+                  ? `${karmaBattleState.resolvedCounterSerials.length}/4回 解決済み・次の一手を待機`
+                  : karmaBattleState.phase === 'resolved'
+                    ? 'ものまね破り完了'
+                    : `${karmaBattleState.resolvedCounterSerials.length + 1}/4回目を記憶中`}
               </span>
             </header>
             <div>
-              {KARMA_LEDGER_THRESHOLDS.map((threshold, index) => {
-                const page = (index + 1) as KarmaLedgerPage;
-                const entry = karmaBattleState.entries.find(
-                  (item) => item.page === page
-                );
-                const active = activeKarmaCounter?.page === page;
-                const resolved = entry
-                  ? karmaBattleState.resolvedCounterSerials.includes(entry.serial)
-                  : false;
-                return (
-                  <span
-                    key={threshold}
-                    className={`${entry ? 'is-filled' : ''} ${active ? 'is-active' : ''} ${resolved ? 'is-resolved' : ''}`}
-                  >
-                    <small>{threshold}%・{KARMA_PAGE_LABELS[index]}</small>
-                    <b>{entry ? KARMA_ACTION_LABELS[entry.kind] : '未記帳'}</b>
-                  </span>
-                );
-              })}
+              <span
+                className={`${activeKarmaCounter ? 'is-filled is-active' : ''} ${karmaBattleState.phase === 'resolved' ? 'is-resolved' : ''}`}
+              >
+                <small>
+                  {karmaBattleState.phase === 'resolved'
+                    ? '解決 4/4回'
+                    : activeKarmaCounter
+                      ? `記憶 ${activeKarmaCounter.page}/4回・所有${activeKarmaCounter.threshold}%`
+                      : `解決 ${karmaBattleState.resolvedCounterSerials.length}/4回`}
+                </small>
+                <b>
+                  {activeKarmaCounter
+                    ? `現在の一件：${KARMA_ACTION_LABELS[activeKarmaCounter.kind]}`
+                    : karmaBattleState.phase === 'resolved'
+                      ? '全記憶を忘却済み'
+                      : `所有${KARMA_LEDGER_THRESHOLDS[karmaBattleState.resolvedCounterSerials.length]}%で次の一手を記憶`}
+                </b>
+              </span>
             </div>
             <small className="karma-ledger-strip__escrow">
-              無銘口座 残{karmaEscrowPagesRemaining}/4頁（競合予算{karmaEscrowPagesRemaining * 6}%）
+              無銘口座 残{karmaEscrowPagesRemaining}/4回（競合予算{karmaEscrowPagesRemaining * 6}%）
             </small>
           </section>
         )}
@@ -9635,19 +9449,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           {limitBreakCapacityTier > 0 && (
             <button
               type="button"
-              className={`battle-action-strip__action battle-action-strip__action--lb ${limitBreakGaugeFull && !limitedLimitBreakSpent ? 'is-overflowing' : ''} ${limitBreakTier > 0 && commandReady && !actionsLocked && !limitedLimitBreakSpent && !karmaLimitBreakCorrectionBlocked ? 'is-ready' : 'is-waiting'}`}
+              className={`battle-action-strip__action battle-action-strip__action--lb ${limitBreakGaugeFull && !limitedLimitBreakSpent ? 'is-overflowing' : ''} ${limitBreakTier > 0 && commandReady && !actionsLocked && !limitedLimitBreakSpent ? 'is-ready' : 'is-waiting'}`}
               onClick={demandFromAllies}
-              disabled={!commandReady || limitBreakTier === 0 || actionsLocked || limitedLimitBreakSpent || karmaLimitBreakCorrectionBlocked}
-              aria-label={karmaLimitBreakCorrectionBlocked
-                ? 'LIMIT BREAK。修正仕訳では元と同じ系統のため発動できません。資源は消費しません'
-                : actionsLocked
+              disabled={!commandReady || limitBreakTier === 0 || actionsLocked || limitedLimitBreakSpent}
+              aria-label={actionsLocked
                 ? `LIMIT BREAK。演出中のため発動できません。ゲージ${Math.floor(visibleLimitBreakCharge)}／${limitBreakChargeCapacity}`
                 : limitedLimitBreakSpent
                   ? `LIMIT BREAKはこの${limitedLimitBreakModeLabel}で使用済み`
                   : `LIMIT BREAK ${limitBreakTier > 0 ? `${limitBreakTier}発動可能` : '蓄積中'}。ゲージ${Math.floor(visibleLimitBreakCharge)}／${limitBreakChargeCapacity}。発動時は全消費`}
-              title={karmaLimitBreakCorrectionBlocked
-                ? '修正仕訳：LIMIT BREAK以外の系統を選んでください'
-                : limitedLimitBreakSpent
+              title={limitedLimitBreakSpent
                 ? `この${limitedLimitBreakModeLabel}では使用済みです。次の${limitedLimitBreakModeLabel}で再使用できます`
                 : `発動すると蓄積したLBゲージをすべて消費します（押し込みは最大約${formatCurrency(limitBreakCapEquivalent)}相当）`}
             >
@@ -9662,9 +9472,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               />
               <span>
                 <b>{actionsLocked ? 'LB 演出中' : limitedLimitBreakSpent ? 'LB 使用済み' : limitBreakTier > 0 ? `LB ${limitBreakTier}` : 'LB'}</b>
-                <small>{karmaLimitBreakCorrectionBlocked
-                  ? '修正仕訳：別系統を選択'
-                  : actionsLocked
+                <small>{actionsLocked
                   ? '演出待ち'
                   : limitedLimitBreakSpent
                     ? `次の${limitedLimitBreakModeLabel}で再使用`
@@ -9689,9 +9497,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   return <i key={index}><u style={{ width: `${segmentCharge}%` }} /></i>;
                 })}
               </span>
-              <em>{karmaLimitBreakCorrectionBlocked
-                  ? '修正不可'
-                  : actionsLocked
+              <em>{actionsLocked
                   ? '演出待ち'
                   : limitedLimitBreakSpent
                     ? '使用済み'
@@ -9706,7 +9512,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           {selectedBattleSynergy && (
             <button
               type="button"
-              className={`battle-action-strip__action battle-action-strip__action--synergy ${battleSynergyReady && commandReady && !actionsLocked && !battleSynergyUsed && !karmaSynergyCorrectionBlocked ? 'is-ready' : 'is-waiting'}`}
+              className={`battle-action-strip__action battle-action-strip__action--synergy ${battleSynergyReady && commandReady && !actionsLocked && !battleSynergyUsed ? 'is-ready' : 'is-waiting'}`}
               onClick={() =>
                 selectedBattleSynergy.battleOnly
                   ? activateProgressionBattleSynergy(selectedBattleSynergy)
@@ -9722,13 +9528,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 !commandReady ||
                 !battleSynergyReady ||
                 actionsLocked ||
-                battleSynergyUsed ||
-                karmaSynergyCorrectionBlocked
+                battleSynergyUsed
               }
-              aria-label={`${selectedBattleSynergy.name}（SYNERGY）。効果 ${selectedBattleSynergyEffectLabel}。${karmaSynergyCorrectionBlocked ? '修正仕訳では元と同じ系統のため発動できません。資源は消費しません' : actionsLocked ? '演出中のため発動できません' : battleSynergyReady ? '選択中の事業連携を発動' : '必要な事業・契約が不足'}`}
-              title={karmaSynergyCorrectionBlocked
-                ? '修正仕訳：SYNERGY以外の系統を選んでください'
-                : `${selectedBattleSynergy.name}：${selectedBattleSynergyEffectLabel}`}
+              aria-label={`${selectedBattleSynergy.name}（SYNERGY）。効果 ${selectedBattleSynergyEffectLabel}。${actionsLocked ? '演出中のため発動できません' : battleSynergyReady ? '選択中の事業連携を発動' : '必要な事業・契約が不足'}`}
+              title={`${selectedBattleSynergy.name}：${selectedBattleSynergyEffectLabel}`}
             >
               <img
                 className="battle-action-strip__fankit-icon"
@@ -9740,9 +9543,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <b><MarqueeText text={selectedBattleSynergy.name} /></b>
                 <small>{selectedBattleSynergyEffectLabel}</small>
               </span>
-              <em>{karmaSynergyCorrectionBlocked
-                ? '修正不可'
-                : actionsLocked
+              <em>{actionsLocked
                 ? '演出待ち'
                 : battleSynergyUsed
                   ? '使用済み'
@@ -9800,10 +9601,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               className={`battle-action-strip__action battle-action-strip__action--skill-execute ${primarySkill.effectType === 'LIVING_DEAD' ? 'is-living-dead' : ''} ${primarySkillExecutionBlocked || primarySkillActionLocked ? 'is-unavailable' : 'is-ready'}`}
               onClick={() => useSkill(primarySkill)}
               disabled={primarySkillExecutionBlocked || primarySkillActionLocked}
-              aria-label={`選択中のアビリティを発動するボタン。${primarySkill.name}。${karmaAbilityCorrectionBlocked ? '修正仕訳では元と同じ系統のため発動できません。資源とクールダウンは消費しません' : displayedPrimarySkillStateText}${usingSkillFallback ? '。今回だけ臨時使用' : ''}`}
-              title={karmaAbilityCorrectionBlocked
-                ? '修正仕訳：アビリティ以外の系統を選んでください'
-                : `選択中の${primarySkill.name}を発動／${getQuickSkillSummary(primarySkill, isTraining)}`}
+              aria-label={`選択中のアビリティを発動するボタン。${primarySkill.name}。${displayedPrimarySkillStateText}${usingSkillFallback ? '。今回だけ臨時使用' : ''}`}
+              title={`選択中の${primarySkill.name}を発動／${getQuickSkillSummary(primarySkill, isTraining)}`}
             >
               {primarySkill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
               <span>
@@ -9838,8 +9637,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               aria-label={`人脈${limitedNetworkSupportRemaining !== null ? `、残り${limitedNetworkSupportRemaining}回` : ''}。${
                 actionsLocked
                   ? '演出中のため要請できません'
-                  : karmaSupportCorrectionBlocked
-                    ? '修正仕訳では元と同じ系統の支援を要請できません。資源は消費しません'
                   : !hasAvailableNetworkSupport
                   ? '今回使える支援はありません'
                   : commandReady
@@ -9856,15 +9653,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <b>人脈</b>
                 <small>{actionsLocked
                   ? '演出待ち'
-                  : karmaSupportCorrectionBlocked
-                    ? '修正仕訳：別系統を選択'
-                    : commandReady
+                  : commandReady
                       ? networkSupportSummary
                       : '準備中'}</small>
               </span>
-              <em>{karmaSupportCorrectionBlocked
-                ? '修正不可'
-                : actionsLocked
+              <em>{actionsLocked
                 ? '演出待ち'
                 : !hasAvailableNetworkSupport
                   ? '要請済み'
@@ -9917,12 +9710,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 className={`investment-execute-button ${canConfirmInvestment ? 'is-ready' : 'is-recharging'}`}
                 onClick={investCompanyFunds}
                 disabled={!canConfirmInvestment}
-                aria-label={karmaDirectCorrectionBlocked
-                  ? '投資実行。修正仕訳では元と同じ自社資金を使えません。資金は消費しません'
-                  : `投資実行。${selectedInvestmentConfig.label} ${formatCurrency(selectedCost)}を1回投入。現在の手元資金${formatCurrency(cash)}`}
-                title={karmaDirectCorrectionBlocked
-                  ? '修正仕訳：自社資金以外の系統を選んでください'
-                  : undefined}
+                aria-label={`投資実行。${selectedInvestmentConfig.label} ${formatCurrency(selectedCost)}を1回投入。現在の手元資金${formatCurrency(cash)}`}
                 data-investment-level={selectedLevel}
                 data-investment-cost={selectedCost}
                 data-command-ready={commandReady}
@@ -9935,18 +9723,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <HandCoins />
                 <span>
                   <b>投資実行</b>
-                  <small>{karmaDirectCorrectionBlocked
-                    ? '修正仕訳：別系統を選択'
-                    : !maxAffordableConfig
+                  <small>{!maxAffordableConfig
                     ? `手元${formatCurrency(cash).replace(' ギル', '')}｜資金不足`
                     : `投入${formatCurrency(selectedCost).replace(' ギル', '')}｜手元${formatCurrency(cash).replace(' ギル', '')}`}</small>
                 </span>
               </button>
             </div>
             <p id="investment-control-help" className={maxAffordableConfig && maxAffordableConfig.level < 5 ? 'investment-auto-note' : ''}>
-              {karmaDirectCorrectionBlocked
-                ? 'この頁は自社資金以外の一手で書き換えます（資金消費なし）'
-                : maxAffordableConfig && maxAffordableConfig.level < 5
+              {maxAffordableConfig && maxAffordableConfig.level < 5
                 ? `残高に合わせ「${maxAffordableConfig.label}」まで選択できます`
                 : '左で5段階を切替／右で1回投入'}
             </p>
@@ -9983,21 +9767,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     <button
                       type="button"
                       onClick={() => demandFromProperty(quickNetworkSupportProperty)}
-                      disabled={!commandReady || actionsLocked || limitedNetworkSupportExhausted || karmaNetworkCorrectionBlocked}
-                      title={karmaNetworkCorrectionBlocked
-                        ? '修正仕訳：人脈以外の系統を選んでください'
-                        : undefined}
+                      disabled={!commandReady || actionsLocked || limitedNetworkSupportExhausted}
                     >
                       <span>
                         <b>人脈から要請</b>
-                        <small>{karmaNetworkCorrectionBlocked
-                          ? '元と同じ系統・資源消費なし'
-                          : '有力な支援先を自動選択'}</small>
+                        <small>有力な支援先を自動選択</small>
                       </span>
                       <em>回数制</em>
-                      <strong>{karmaNetworkCorrectionBlocked
-                        ? '修正不可'
-                        : limitedNetworkSupportRemaining !== null
+                      <strong>{limitedNetworkSupportRemaining !== null
                           ? `残り${limitedNetworkSupportRemaining}回`
                           : '要請可'}</strong>
                     </button>
@@ -10007,16 +9784,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                       type="button"
                       className="alliance-fund"
                       onClick={requestAlliance}
-                      disabled={!commandReady || allianceUsed || actionsLocked || karmaAllianceCorrectionBlocked}
-                      title={karmaAllianceCorrectionBlocked
-                        ? '修正仕訳：外部協力以外の系統を選んでください'
-                        : undefined}
+                      disabled={!commandReady || allianceUsed || actionsLocked}
                     >
                       <Users />
                       <span>{alliancePublicPatronage ? '公的後援' : '外部協力'}：{alliance.allyName}</span>
-                      <b>{karmaAllianceCorrectionBlocked
-                        ? '修正不可'
-                        : allianceUsed
+                      <b>{allianceUsed
                           ? '要請済み'
                           : '残り1回'}</b>
                     </button>
@@ -10025,22 +9797,22 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               ) : (
                 <>
                   {alliance.active && (
-                    <button type="button" className="alliance-fund" onClick={requestAlliance} disabled={!commandReady || allianceUsed || actionsLocked || karmaAllianceCorrectionBlocked} title={karmaAllianceCorrectionBlocked ? '修正仕訳：外部協力以外の系統を選んでください' : undefined}>
-                      <Users /><span>{alliancePublicPatronage ? '公的後援' : '協力協定'}：{alliance.allyName}</span><b>{karmaAllianceCorrectionBlocked ? '修正不可' : allianceUsed ? '要請済み' : `+${formatCurrency(allianceSupport)}相当`}</b>
+                    <button type="button" className="alliance-fund" onClick={requestAlliance} disabled={!commandReady || allianceUsed || actionsLocked}>
+                      <Users /><span>{alliancePublicPatronage ? '公的後援' : '協力協定'}：{alliance.allyName}</span><b>{allianceUsed ? '要請済み' : `+${formatCurrency(allianceSupport)}相当`}</b>
                     </button>
                   )}
                   <div className="property-funds">
                     {sortedBattleSubs.map((property) => {
                       const risk = riskPresentation(property.loyaltyRisk);
                       return (
-                        <button type="button" key={property.id} onClick={() => demandFromProperty(property)} disabled={!commandReady || actionsLocked || limitedNetworkSupportExhausted || karmaNetworkCorrectionBlocked} title={karmaNetworkCorrectionBlocked ? '修正仕訳：人脈以外の系統を選んでください' : undefined}>
-                          <span><b>{property.name}</b><small>{karmaNetworkCorrectionBlocked ? '元と同じ系統・資源消費なし' : `個別要求 ${subRequestCounts[property.id] || 0}回・人脈全体 ${networkRequestCount}回`}</small></span>
+                        <button type="button" key={property.id} onClick={() => demandFromProperty(property)} disabled={!commandReady || actionsLocked || limitedNetworkSupportExhausted}>
+                          <span><b>{property.name}</b><small>{`個別要求 ${subRequestCounts[property.id] || 0}回・人脈全体 ${networkRequestCount}回`}</small></span>
                           <em className={risk.className}>
                             {getReacquisitionLevel(property) > 0 &&
                               `復帰強化${getReacquisitionLevel(property)}・`}
                             {risk.label} {property.loyaltyRisk}%
                           </em>
-                          <strong>{karmaNetworkCorrectionBlocked ? '修正不可' : `+${formatCurrency(getBattleSupportAmount(property))}`}</strong>
+                          <strong>+{formatCurrency(getBattleSupportAmount(property))}</strong>
                         </button>
                       );
                     })}
@@ -10200,7 +9972,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 {isProtectedBattle && (
                   <section className="briefing-section briefing-savage">
                 <h3><Swords />{isTraining ? '商戦木人ルール' : isCruel ? '酷商戦ルール' : isKarma ? '業商戦ルール' : isPhantom ? '幻・商戦ルール' : isUltimate ? '絶商戦ルール' : '零式ルール'}</h3>
-                <p>{isTraining ? '参加費・報酬・精算・清算はすべて0。通常事業・契約の保有状態、独立危険度、零式・絶の進行は変化せず、同じLEVELへ何度でも再挑戦できます。' : isKarma ? '開幕50%から所有率55／70／85／95%へ進めた一手を四頁へ記帳し、一度だけ修正仕訳した後、決め手から逆順でものまねします。各頁は6秒予告され、指定の二系統なら完全取消、別系統なら50%軽減、同系統・無行動なら100%着弾します。参加費・報酬・精算・離反はなく、勝利時の踏破記録だけを保存します。' : isPhantom ? `零式${savageSeries}編・第${savageLayer}層のギミックをそのまま使い、競合の基礎資金力と判断速度だけを絶相当へ引き上げた連勝戦です。参加費・報酬・精算・離反はなく、現在の連勝数だけを記録します。敗北・撤退で連勝は0へ戻ります。` : isCruel ? '絶踏破後の単独記録戦です。敗北・撤退・報酬0の再戦では通常事業・人脈・独立危険度を保護します。初回勝利時だけ攻略報酬を配分し、離反と危険度を通常進行へ反映します。' : '通常編の地域・業界・交易網補正は無効。敗北・撤退・報酬0の再戦では通常事業・契約と独立危険度を保護します。初回勝利時だけ攻略報酬を配分し、離反と危険度を通常進行へ反映します。'}</p>
+                <p>{isTraining ? '参加費・報酬・精算・清算はすべて0。通常事業・契約の保有状態、独立危険度、零式・絶の進行は変化せず、同じLEVELへ何度でも再挑戦できます。' : isKarma ? '所有率55／70／85／95%の節目ごとに、その時の一手を1件だけ記憶してものまねします。各回は6秒予告され、指定の二系統なら完全取消、別系統なら50%軽減、同系統・無行動なら100%着弾します。対処後は記憶を消すため、見るのは常に現在の1件だけです。参加費・報酬・精算・離反はなく、勝利時の踏破記録だけを保存します。' : isPhantom ? `零式${savageSeries}編・第${savageLayer}層のギミックをそのまま使い、競合の基礎資金力と判断速度だけを絶相当へ引き上げた連勝戦です。参加費・報酬・精算・離反はなく、現在の連勝数だけを記録します。敗北・撤退で連勝は0へ戻ります。` : isCruel ? '絶踏破後の単独記録戦です。敗北・撤退・報酬0の再戦では通常事業・人脈・独立危険度を保護します。初回勝利時だけ攻略報酬を配分し、離反と危険度を通常進行へ反映します。' : '通常編の地域・業界・交易網補正は無効。敗北・撤退・報酬0の再戦では通常事業・契約と独立危険度を保護します。初回勝利時だけ攻略報酬を配分し、離反と危険度を通常進行へ反映します。'}</p>
                 {!isTraining && <p>人脈・通常グループSYNERGYの支援額は高難度補正で×{HIGH_DIFFICULTY_SUPPORT_MULTIPLIER.toFixed(2)}。外部アライアンスとLIMIT BREAKの威力は変わりません。</p>}
                 {isUltimate && <p>絶のLIMIT BREAKは1戦1回。防御を崩すか、強制清算後の反撃へ残すかを選びます。</p>}
                 {isUltimate && <p>絶は108秒の終極査定。敵予告・着弾演出中は商戦と査定が停止し、準備済みのコマンドで対策を選べます。期限までに所有率100%へ届かなければ攻略失敗です。人脈はボタン1回で使用回数の少ない有力先へ自動配分されます。8回を重要予告へ割り当て、回復待ちになる前に決着させます。</p>}
@@ -10274,7 +10046,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 : '訓練を終了した'
               : winner === 'player'
                 ? isKarma
-                  ? `${TERMINAL_CAUSE_LABELS[terminalRef.current?.cause ?? 'pressure']}で四頁のものまねをすべて破った！`
+                  ? `${TERMINAL_CAUSE_LABELS[terminalRef.current?.cause ?? 'pressure']}でものまね4回をすべて破った！`
                 : isPhantom
                   ? `${TERMINAL_CAUSE_LABELS[terminalRef.current?.cause ?? 'pressure']}で幻影を撃破！`
                   : terminalUsesSelfCollapse
@@ -10300,7 +10072,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <li><b>ギルを積む</b><span>左の投資レベルボタンで金額を5段階から選び、右の投資実行ボタンで1回投入します。人脈・SYNERGYの支援は上のアイコンから使います。</span></li>
               {isTraining && <li><b>木人訓練</b><span>参加費・報酬・精算・清算は0。木人は初期耐久資本を全配置し、追加防衛や敵AI行動を行いません。押されても自社1%で訓練を継続でき、その間も通常の毎秒収益とオフライン収益は自社資金へ加算されます。</span></li>}
               {isPhantom && <li><b>幻・商戦</b><span>抽選された零式層の仕組みはそのまま、敵の基礎資金力と判断速度だけが絶相当です。勝敗後は次の層を再抽選し、現在連勝数以外の資金・所有・人脈・LB・進行は変化しません。</span></li>}
-              {isKarma && <li><b>四頁と逆仕訳</b><span>開幕50%から55／70／85／95%へ進めた決定打が初手・二の手・勝負手・決め手へ一頁ずつ写ります。一頁だけ別系統へ修正した後、各頁を6秒予告して決め手から逆順に返します。表示された二系統なら完全取消、ほかの別系統は50%、同系統・無行動は100%着弾します。模倣だけで即死はしません。</span></li>}
+              {isKarma && <li><b>現在の一手だけを見る</b><span>55／70／85／95%の節目で、その時の一手を1件だけ記憶して6秒予告でものまねします。表示された二系統なら完全取消、ほかの別系統は50%、同系統・無行動は100%着弾します。解決後は記憶を消すため、過去の手を覚える必要はありません。模倣だけで即死はしません。</span></li>}
               <li>
                 <b>戦術選択</b>
                 <span>

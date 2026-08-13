@@ -86,9 +86,13 @@ import {
   shouldTriggerCruelSecondPhase,
 } from '../src/utils/cruelBattle';
 import {
+  KARMA_ESCROW_BUDGET_RATIO,
+  KARMA_ESCROW_PAGE_BUDGET_RATIO,
+  KARMA_LEDGER_THRESHOLDS,
   buildKarmaCounterQueue,
   buildKarmaProperty,
   createKarmaBattleState,
+  getKarmaCounterEffectiveness,
   getKarmaCounterPlan,
   recordKarmaAction,
   resolveKarmaCounterOwnership,
@@ -96,7 +100,6 @@ import {
   resolveNextKarmaCounter,
   shouldHoldKarmaVictory,
   shouldPauseKarmaOrdinaryEconomy,
-  skipKarmaCorrection,
 } from '../src/utils/karmaBattle';
 import type { PlayerBattleAction } from '../src/utils/enemyAi';
 import type { Property } from '../src/types';
@@ -4323,15 +4326,20 @@ const karmaEnemyBudget = calculateEnemyBudget({
 const karmaOpeningCommitment = Math.round(
   karmaEnemyBudget * ENEMY_INITIAL_COMMITMENT_RATIO
 );
-const karmaEscrow = Math.round(karmaEnemyBudget * 0.24);
+const karmaEscrow = Math.round(
+  karmaEnemyBudget * KARMA_ESCROW_BUDGET_RATIO
+);
+const karmaOccurrenceEscrow = Math.round(
+  karmaEnemyBudget * KARMA_ESCROW_PAGE_BUDGET_RATIO
+);
 const karmaOpeningReserve = Math.max(
   0,
   karmaEnemyBudget - karmaOpeningCommitment - karmaEscrow
 );
 assert.equal(
   karmaEscrow,
-  Math.round(karmaEnemyBudget * 0.24),
-  'Karma removes exactly 24% of the enemy budget into the four-copy escrow'
+  Math.round(karmaEnemyBudget * KARMA_ESCROW_BUDGET_RATIO),
+  'Karma removes exactly 24% of the enemy budget into four separate six-percent escrows'
 );
 assert.equal(
   karmaOpeningCommitment,
@@ -4354,39 +4362,140 @@ const karmaAction = (
   ownershipAfter: 100,
 });
 
-const onePageOnlyKarma = recordKarmaAction(
+const oneRememberedKarma = recordKarmaAction(
   createKarmaBattleState(),
   karmaAction(1, 'direct')
 );
+assert.equal(oneRememberedKarma.phase, 'countering');
 assert.deepEqual(
-  onePageOnlyKarma.entries.map((entry) => [entry.page, entry.threshold]),
+  oneRememberedKarma.entries.map((entry) => [entry.page, entry.threshold]),
   [[1, 55]],
-  'one action crossing every threshold writes only the first ledger page'
+  'one action crossing every threshold remembers only the first checkpoint action'
+);
+const ignoredSecondMemory = recordKarmaAction(
+  oneRememberedKarma,
+  karmaAction(2, 'network')
+);
+assert.strictEqual(
+  ignoredSecondMemory,
+  oneRememberedKarma,
+  'a second action cannot enter memory before the current imitation is resolved'
+);
+assert.deepEqual(
+  buildKarmaCounterQueue(oneRememberedKarma.entries).map((entry) => entry.page),
+  [1],
+  'a current one-action memory produces exactly one counter'
 );
 
-let fourPageKarma = onePageOnlyKarma;
-for (const [serial, kind] of [
-  [2, 'network'],
-  [3, 'synergy'],
-  [4, 'alliance'],
-] as const) {
-  fourPageKarma = recordKarmaAction(fourPageKarma, karmaAction(serial, kind));
-}
-assert.equal(fourPageKarma.phase, 'correction_select');
+const karmaCheckpointActions = [
+  ['direct', 60],
+  ['network', 75],
+  ['synergy', 90],
+  ['alliance', 99],
+] as const;
+
+const runKarmaRoute = (prepared: boolean) => {
+  let state = createKarmaBattleState();
+  let ownership = 99;
+  let enemyInvested = karmaOpeningCommitment;
+  let escrowRemaining = karmaEscrow;
+  const entries: Array<(typeof oneRememberedKarma.entries)[number]> = [];
+  const reservedCapital: number[] = [];
+  const answerKinds: string[] = [];
+  let firstCounterState: typeof state | null = null;
+  let afterFirstResolution: typeof state | null = null;
+
+  for (const [index, [kind, ownershipAfter]] of karmaCheckpointActions.entries()) {
+    const serial = index + 1;
+    state = recordKarmaAction(state, {
+      ...karmaAction(serial, kind),
+      ownershipAfter,
+    });
+    assert.equal(state.phase, 'countering');
+    assert.equal(state.entries.length, 1);
+    assert.equal(state.counterQueue.length, 1);
+    const copied = state.counterQueue[0]!;
+    assert.deepEqual(
+      [copied.page, copied.threshold, copied.kind],
+      [index + 1, KARMA_LEDGER_THRESHOLDS[index], kind],
+      'each checkpoint must imitate only the action that crossed it'
+    );
+    entries.push(copied);
+    firstCounterState ??= state;
+
+    const plan = getKarmaCounterPlan(copied);
+    const answerKind = prepared
+      ? plan.perfectCounterKinds[0]
+      : plan.entry.kind;
+    const effectiveness = getKarmaCounterEffectiveness(plan, answerKind);
+    assert.equal(
+      effectiveness,
+      prepared ? 0 : 1,
+      'prepared answers cancel each occurrence while an unprepared repeated action takes it in full'
+    );
+    answerKinds.push(answerKind);
+
+    const escrow = resolveKarmaEscrowCommitment({
+      remainingEscrow: escrowRemaining,
+      enemyBudget: karmaEnemyBudget,
+      marketPrice: karmaSimulationTarget.marketPrice,
+      plan,
+      effectiveness,
+    });
+    assert.equal(
+      escrow.reservedCapital,
+      karmaOccurrenceEscrow,
+      'each of the four separate imitation checks must consume exactly six percent'
+    );
+    reservedCapital.push(escrow.reservedCapital);
+    escrowRemaining = escrow.remainingEscrow;
+    enemyInvested += escrow.committedCapital;
+    ownership = resolveKarmaCounterOwnership(
+      ownership,
+      plan,
+      effectiveness
+    );
+
+    state = resolveNextKarmaCounter(state, copied.serial);
+    assert.deepEqual(state.entries, []);
+    assert.deepEqual(state.counterQueue, []);
+    assert.equal(
+      state.phase,
+      index === karmaCheckpointActions.length - 1 ? 'resolved' : 'recording',
+      'the current imitation must be forgotten before the next checkpoint begins'
+    );
+    if (index === 0) afterFirstResolution = state;
+  }
+
+  return {
+    state,
+    ownership,
+    enemyInvested,
+    escrowRemaining,
+    entries,
+    reservedCapital,
+    answerKinds,
+    firstCounterState: firstCounterState!,
+    afterFirstResolution: afterFirstResolution!,
+  };
+};
+
+const preparedKarmaRoute = runKarmaRoute(true);
+const unpreparedKarmaRoute = runKarmaRoute(false);
+
 assert.deepEqual(
-  fourPageKarma.entries.map((entry) => entry.threshold),
+  preparedKarmaRoute.entries.map((entry) => entry.threshold),
   [55, 70, 85, 95],
-  'Karma records four real advances above the ordinary 50% opening line'
+  'Karma runs four separate checks above the ordinary fifty-percent opening line'
 );
 assert.deepEqual(
-  buildKarmaCounterQueue(fourPageKarma.entries).map((entry) => entry.page),
-  [4, 3, 2, 1],
-  'the copied actions return in reverse ledger order'
+  buildKarmaCounterQueue(preparedKarmaRoute.entries).map((entry) => entry.page),
+  [4],
+  'even when given audit history, the queue remembers only the latest occurrence instead of reversing four pages'
 );
 
-const activeKarmaCounters = skipKarmaCorrection(fourPageKarma);
 const copiedLargeLimitBreak = getKarmaCounterPlan({
-  ...activeKarmaCounters.counterQueue[0],
+  ...preparedKarmaRoute.entries[3],
   kind: 'limit_break',
   strengthBand: 'large',
 });
@@ -4398,99 +4507,48 @@ assert.equal(
   'even the strongest same-kind copy leaves a real response window instead of instant defeat'
 );
 
-const answerKarmaCounter = (
-  state: typeof activeKarmaCounters,
-  answerKind: (typeof activeKarmaCounters.entries)[number]['kind']
-) => {
-  const copied = state.counterQueue[0];
-  if (!copied || copied.kind === answerKind) return state;
-  return resolveNextKarmaCounter(state, copied.serial);
-};
-
-let variedKarmaCounters = activeKarmaCounters;
-let preparedKarmaOwnership = 99;
-let preparedKarmaEnemyInvested = karmaOpeningCommitment;
-let preparedKarmaEscrowRemaining = karmaEscrow;
-while (variedKarmaCounters.counterQueue.length > 0) {
-  const copied = variedKarmaCounters.counterQueue[0];
-  const plan = getKarmaCounterPlan(copied);
-  const answerKind = plan.perfectCounterKinds[0];
-  const escrow = resolveKarmaEscrowCommitment({
-    remainingEscrow: preparedKarmaEscrowRemaining,
-    enemyBudget: karmaEnemyBudget,
-    marketPrice: karmaSimulationTarget.marketPrice,
-    plan,
-    effectiveness: 0,
-  });
-  preparedKarmaEscrowRemaining = escrow.remainingEscrow;
-  preparedKarmaEnemyInvested += escrow.committedCapital;
-  preparedKarmaOwnership = resolveKarmaCounterOwnership(
-    preparedKarmaOwnership,
-    plan,
-    0
-  );
-  variedKarmaCounters = answerKarmaCounter(variedKarmaCounters, answerKind);
-}
-assert.equal(variedKarmaCounters.phase, 'resolved');
-assert.equal(preparedKarmaOwnership, 99);
-assert.equal(preparedKarmaEnemyInvested, karmaOpeningCommitment);
-assert.equal(preparedKarmaEscrowRemaining, 0);
+assert.equal(preparedKarmaRoute.state.phase, 'resolved');
+assert.equal(preparedKarmaRoute.ownership, 99);
+assert.equal(preparedKarmaRoute.enemyInvested, karmaOpeningCommitment);
+assert.equal(preparedKarmaRoute.escrowRemaining, 0);
 assert.equal(
-  shouldHoldKarmaVictory(true, variedKarmaCounters),
+  preparedKarmaRoute.reservedCapital.reduce((total, amount) => total + amount, 0),
+  karmaEscrow,
+  'four six-percent reservations must consume the disclosed twenty-four-percent escrow exactly'
+);
+assert.equal(
+  shouldHoldKarmaVictory(true, preparedKarmaRoute.state),
   false,
-  'four deliberately different answers can resolve every copied page and win'
+  'four prepared answers can resolve the four separate imitation checks and win'
 );
 assert.equal(
-  shouldPauseKarmaOrdinaryEconomy(true, activeKarmaCounters),
+  shouldPauseKarmaOrdinaryEconomy(true, preparedKarmaRoute.firstCounterState),
   true,
-  'the prepared four-counter route cannot be erased by background AI, recovery, or continuous pressure'
+  'ordinary pressure pauses while the current one-action imitation is telegraphed'
 );
-
-let unpreparedKarmaOwnership = 99;
-let unpreparedKarmaEnemyInvested = karmaOpeningCommitment;
-let unpreparedKarmaEscrowRemaining = karmaEscrow;
-for (const copied of activeKarmaCounters.counterQueue) {
-  const plan = getKarmaCounterPlan(copied);
-  const escrow = resolveKarmaEscrowCommitment({
-    remainingEscrow: unpreparedKarmaEscrowRemaining,
-    enemyBudget: karmaEnemyBudget,
-    marketPrice: karmaSimulationTarget.marketPrice,
-    plan,
-    effectiveness: 1,
-  });
-  unpreparedKarmaEscrowRemaining = escrow.remainingEscrow;
-  unpreparedKarmaEnemyInvested += escrow.committedCapital;
-  unpreparedKarmaOwnership = resolveKarmaCounterOwnership(
-    unpreparedKarmaOwnership,
-    plan,
-    1
-  );
-}
-assert.ok(
-  unpreparedKarmaOwnership <= 70,
-  'taking every copied page without a counter still destroys the held 99% position'
+assert.equal(
+  shouldPauseKarmaOrdinaryEconomy(
+    true,
+    preparedKarmaRoute.afterFirstResolution
+  ),
+  false,
+  'ordinary pressure resumes after that one action is resolved and forgotten'
 );
 assert.ok(
-  unpreparedKarmaEnemyInvested <= karmaEnemyBudget,
+  unpreparedKarmaRoute.ownership <= 70,
+  'taking all four separate imitations without a counter still destroys the held 99% position'
+);
+assert.ok(
+  unpreparedKarmaRoute.enemyInvested <= karmaEnemyBudget,
   'even an unprepared route cannot materialize enemy capital beyond the disclosed budget'
 );
-
-let singleRouteKarma = createKarmaBattleState();
-for (let serial = 1; serial <= 4; serial += 1) {
-  singleRouteKarma = recordKarmaAction(
-    singleRouteKarma,
-    karmaAction(serial, 'direct')
-  );
-}
-singleRouteKarma = skipKarmaCorrection(singleRouteKarma);
-const repeatedDirectKarma = answerKarmaCounter(singleRouteKarma, 'direct');
 assert.equal(
-  repeatedDirectKarma.counterQueue.length,
-  4,
-  'a single repeated route leaves its first copied page active'
+  ignoredSecondMemory.counterQueue.length,
+  1,
+  'a repeated route leaves only its current copied action active'
 );
 assert.equal(
-  shouldHoldKarmaVictory(true, repeatedDirectKarma),
+  shouldHoldKarmaVictory(true, ignoredSecondMemory),
   true,
   'a single repeated route cannot claim victory while the mimic remains active'
 );
@@ -4523,15 +4581,17 @@ console.log(
           openingCommitment: karmaOpeningCommitment,
           escrow: karmaEscrow,
           openingReserve: karmaOpeningReserve,
-          entries: fourPageKarma.entries,
-          resolvedCounterSerials: variedKarmaCounters.resolvedCounterSerials,
+          entries: preparedKarmaRoute.entries,
+          reservedPerOccurrence: preparedKarmaRoute.reservedCapital,
+          resolvedCounterSerials:
+            preparedKarmaRoute.state.resolvedCounterSerials,
           preparedRoute: {
-            ownership: preparedKarmaOwnership,
-            enemyInvested: preparedKarmaEnemyInvested,
+            ownership: preparedKarmaRoute.ownership,
+            enemyInvested: preparedKarmaRoute.enemyInvested,
           },
           unpreparedRoute: {
-            ownership: unpreparedKarmaOwnership,
-            enemyInvested: unpreparedKarmaEnemyInvested,
+            ownership: unpreparedKarmaRoute.ownership,
+            enemyInvested: unpreparedKarmaRoute.enemyInvested,
           },
         },
       },

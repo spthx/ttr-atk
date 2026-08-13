@@ -950,12 +950,12 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /className=\{`investment-execute-button[\s\S]{0,600}aria-label=\{karmaDirectCorrectionBlocked[\s\S]{0,260}: `投資実行。[\s\S]{0,180}現在の手元資金\$\{formatCurrency\(cash\)\}`\}/,
+  /className=\{`investment-execute-button[\s\S]{0,600}aria-label=\{`投資実行。[\s\S]{0,180}現在の手元資金\$\{formatCurrency\(cash\)\}`\}/,
   'the investment execute button must announce both the selected investment and current cash'
 );
 assert.match(
   battleModal,
-  /<small>\{karmaDirectCorrectionBlocked[\s\S]{0,180}: !maxAffordableConfig[\s\S]{0,180}`手元\$\{formatCurrency\(cash\)\.replace\(' ギル', ''\)\}｜資金不足`[\s\S]{0,120}: `投入\$\{formatCurrency\(selectedCost\)\.replace\(' ギル', ''\)\}｜手元\$\{formatCurrency\(cash\)\.replace\(' ギル', ''\)\}`\}<\/small>/,
+  /<small>\{!maxAffordableConfig[\s\S]{0,180}`手元\$\{formatCurrency\(cash\)\.replace\(' ギル', ''\)\}｜資金不足`[\s\S]{0,120}: `投入\$\{formatCurrency\(selectedCost\)\.replace\(' ギル', ''\)\}｜手元\$\{formatCurrency\(cash\)\.replace\(' ギル', ''\)\}`\}<\/small>/,
   'the visible investment execute button must carry the selected amount and uninvested cash even while recharging'
 );
 assert.match(
@@ -965,37 +965,37 @@ assert.match(
 );
 assert.match(
   limitBreakAction,
-  /^\{limitBreakCapacityTier > 0 && \([\s\S]*aria-label=\{karmaLimitBreakCorrectionBlocked[\s\S]{0,260}: actionsLocked[\s\S]{0,180}演出中のため発動できません[\s\S]{0,180}: limitedLimitBreakSpent[\s\S]{0,180}使用済み[\s\S]{0,240}発動可能/,
+  /^\{limitBreakCapacityTier > 0 && \([\s\S]*aria-label=\{actionsLocked[\s\S]{0,180}演出中のため発動できません[\s\S]{0,180}: limitedLimitBreakSpent[\s\S]{0,180}使用済み[\s\S]{0,240}発動可能/,
   'LIMIT BREAK must stay visible and announce the cut-in lock before spent or available state'
 );
 assert.match(
   limitBreakAction,
-  /<b>\{actionsLocked \? 'LB 演出中' : limitedLimitBreakSpent[\s\S]{0,140}<small>\{karmaLimitBreakCorrectionBlocked[\s\S]{0,180}: actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent[\s\S]*<em>\{karmaLimitBreakCorrectionBlocked[\s\S]{0,160}: actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent/,
+  /<b>\{actionsLocked \? 'LB 演出中' : limitedLimitBreakSpent[\s\S]{0,140}<small>\{actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent[\s\S]*<em>\{actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent/,
   'the visible LIMIT BREAK title, detail and badge must all prioritize the cut-in lock'
 );
 assert.match(
   synergyAction,
-  /^\{selectedBattleSynergy && \([\s\S]*disabled=\{[\s\S]{0,220}actionsLocked[\s\S]{0,220}aria-label=\{`\$\{selectedBattleSynergy\.name\}（SYNERGY）[\s\S]{0,360}\$\{karmaSynergyCorrectionBlocked[\s\S]{0,260}: actionsLocked \? '演出中のため発動できません'/,
+  /^\{selectedBattleSynergy && \([\s\S]*disabled=\{[\s\S]{0,220}actionsLocked[\s\S]{0,220}aria-label=\{`\$\{selectedBattleSynergy\.name\}（SYNERGY）[\s\S]{0,360}\$\{actionsLocked \? '演出中のため発動できません'/,
   'SYNERGY must stay visible, disabled and labelled as presentation-locked during the cut-in'
 );
 assert.match(
   networkAction,
-  /^\{hasNetworkSupport && \([\s\S]*disabled=\{[\s\S]{0,140}actionsLocked[\s\S]{0,240}aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'[\s\S]{0,220}: karmaSupportCorrectionBlocked/,
+  /^\{hasNetworkSupport && \([\s\S]*disabled=\{[\s\S]{0,140}actionsLocked[\s\S]{0,240}aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'/,
   'network support must stay visible, disabled and labelled as presentation-locked during the cut-in'
 );
 assert.match(
   battleModal,
-  /aria-label=\{karmaLimitBreakCorrectionBlocked[\s\S]{0,260}: actionsLocked[\s\S]{0,160}演出中のため発動できません[\s\S]{0,180}: limitedLimitBreakSpent[\s\S]{0,180}: `LIMIT BREAK \$\{limitBreakTier > 0 \? `\$\{limitBreakTier\}発動可能`/,
+  /aria-label=\{actionsLocked[\s\S]{0,160}演出中のため発動できません[\s\S]{0,180}: limitedLimitBreakSpent[\s\S]{0,180}: `LIMIT BREAK \$\{limitBreakTier > 0 \? `\$\{limitBreakTier\}発動可能`/,
   'LIMIT BREAK accessibility text must announce the presentation lock before spent or available-state messages'
 );
 assert.match(
   battleModal,
-  /aria-label=\{`\$\{selectedBattleSynergy\.name\}（SYNERGY）[\s\S]{0,360}\$\{karmaSynergyCorrectionBlocked[\s\S]{0,260}: actionsLocked \? '演出中のため発動できません' : battleSynergyReady \? '選択中の事業連携を発動'/,
+  /aria-label=\{`\$\{selectedBattleSynergy\.name\}（SYNERGY）[\s\S]{0,360}\$\{actionsLocked \? '演出中のため発動できません' : battleSynergyReady \? '選択中の事業連携を発動'/,
   'SYNERGY accessibility text must announce the presentation lock before an available-state message'
 );
 assert.match(
   battleModal,
-  /aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'[\s\S]{0,280}: karmaSupportCorrectionBlocked[\s\S]{0,280}: commandReady[\s\S]{0,220}'利用可能な支援へ即時要請可能'/,
+  /aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'[\s\S]{0,280}: commandReady[\s\S]{0,220}'利用可能な支援へ即時要請可能'/,
   'network accessibility text must announce the presentation lock before an available-state message'
 );
 assert.match(
@@ -1025,7 +1025,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /disabled=\{!commandReady \|\| actionsLocked \|\| limitedNetworkSupportExhausted \|\| karmaNetworkCorrectionBlocked\}/,
+  /disabled=\{!commandReady \|\| actionsLocked \|\| limitedNetworkSupportExhausted\}/,
   'limited high-difficulty relationship companies must stop accepting requests after the visible budget is spent'
 );
 assert.match(
@@ -1040,7 +1040,7 @@ assert.doesNotMatch(
 );
 assert.match(
   battleModal,
-  /<em>\{karmaLimitBreakCorrectionBlocked[\s\S]{0,160}: actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent[\s\S]{0,120}\? '使用済み'[\s\S]{0,220}\? '発動可'/,
+  /<em>\{actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent[\s\S]{0,120}\? '使用済み'[\s\S]{0,220}\? '発動可'/,
   'the Limit Break badge must prioritize the active presentation lock, then report a spent high-difficulty use'
 );
 assert.match(
@@ -1050,7 +1050,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /disabled=\{!commandReady \|\| limitBreakTier === 0 \|\| actionsLocked \|\| limitedLimitBreakSpent \|\| karmaLimitBreakCorrectionBlocked\}/,
+  /disabled=\{!commandReady \|\| limitBreakTier === 0 \|\| actionsLocked \|\| limitedLimitBreakSpent\}/,
   'a spent high-difficulty Limit Break must not become actionable again after recharging'
 );
 assert.match(
@@ -1790,7 +1790,7 @@ assert.match(
 );
 assert.match(
   synergyAction,
-  /disabled=\{[\s\S]*!battleSynergyReady[\s\S]*battleSynergyUsed[\s\S]*<em>\{karmaSynergyCorrectionBlocked[\s\S]{0,140}: actionsLocked[\s\S]{0,120}: battleSynergyUsed[\s\S]{0,80}\? '使用済み'/,
+  /disabled=\{[\s\S]*!battleSynergyReady[\s\S]*battleSynergyUsed[\s\S]*<em>\{actionsLocked[\s\S]{0,120}: battleSynergyUsed[\s\S]{0,80}\? '使用済み'/,
   'the SYNERGY action must disable every used synergy and report it whenever a cut-in is not the higher-priority state'
 );
 assert.match(
@@ -2895,23 +2895,28 @@ assert.match(
 );
 assert.match(
   karmaBattle,
-  /buildKarmaCounterQueue[\s\S]{0,220}right\.page - left\.page/,
-  'Karma must replay recorded actions from page four back to page one.'
+  /buildKarmaCounterQueue[\s\S]{0,220}entries\.length > 0 \? \[entries\[entries\.length - 1\]\] : \[\]/,
+  'Karma may expose only the one action currently remembered by the rival.'
 );
 assert.match(
   karmaBattle,
-  /selectKarmaCorrectionPage[\s\S]{0,360}state\.phase !== 'correction_select'[\s\S]{0,360}phase: 'correction_action'/,
-  'all four Karma pages must create one explicit correction choice before mimicry begins.'
+  /const entryIndex = state\.resolvedCounterSerials\.length;[\s\S]{0,900}phase: 'countering',[\s\S]{0,100}entries: \[entry\],[\s\S]{0,100}counterQueue: \[entry\]/,
+  'each ownership checkpoint must immediately turn its single remembered action into the active copy.'
+);
+assert.match(
+  karmaBattle,
+  /resolvedCounterSerials\.length >= KARMA_LEDGER_THRESHOLDS\.length[\s\S]{0,180}\? 'resolved'[\s\S]{0,180}: 'recording',[\s\S]{0,100}entries: \[\]/,
+  'resolving a copy must forget it, return to recording for rounds one through three, and resolve after round four.'
 );
 assert.match(
   battleModal,
-  /const karmaCorrectionSelectActive =[\s\S]{0,160}phase === 'correction_select'[\s\S]{0,420}const actionsLocked =[\s\S]{0,640}karmaCorrectionSelectActive/,
-  'Karma correction selection must lock battle inputs.'
+  /KARMA_LEDGER_THRESHOLDS\[state\.resolvedCounterSerials\.length\][\s\S]{0,320}recordKarmaAction/,
+  'the live battle must advance the next memory checkpoint from resolved rounds, not from the forgotten entry array.'
 );
-assert.match(
-  battleModal,
-  /const presentationPauseActive =[\s\S]{0,900}karmaCorrectionSelectActive[\s\S]{0,260}simulationPausedRef\.current = presentationPauseActive/,
-  'Karma correction selection must pause battle simulation.'
+assert.doesNotMatch(
+  `${karmaBattle}\n${battleModal}`,
+  /correction_select|correction_action|selectKarmaCorrection|skipKarmaCorrection|修正仕訳/,
+  'the retired four-entry correction phase must not return.'
 );
 assert.match(
   battleModal,
@@ -2990,8 +2995,8 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const registerKarmaPlayerAction =[\s\S]{0,520}karmaPostImpactRecoveryActionRef\.current[\s\S]{0,120}karmaPostImpactRecoveryActionRef\.current = false;[\s\S]{0,220}return;[\s\S]{0,100}const serial = \+\+karmaActionSerialRef\.current/,
-  'the post-impact recovery command must be consumed before the next copied page can reserve an answer.'
+  /const registerKarmaPlayerAction =[\s\S]{0,520}karmaPostImpactRecoveryActionRef\.current[\s\S]{0,120}karmaPostImpactRecoveryActionRef\.current = false;[\s\S]{0,260}const serial = \+\+karmaActionSerialRef\.current/,
+  'the post-impact recovery command must remain eligible to become the next single memory when it crosses the next checkpoint.'
 );
 assert.match(
   battleModal,
@@ -3000,7 +3005,7 @@ assert.match(
 );
 const karmaConsumeCommandBlock = battleModal.slice(
   battleModal.indexOf('const consumeCommand = () => {'),
-  battleModal.indexOf('const rejectKarmaCorrectionAction =')
+  battleModal.indexOf('const releaseCoverKnight =')
 );
 assert.ok(
   karmaConsumeCommandBlock.indexOf(
@@ -3028,89 +3033,23 @@ assert.ok(
 );
 assert.match(
   battleModal,
-  /const getKarmaEscrowRemainingPages =[\s\S]{0,140}4 - state\.resolvedCounterSerials\.length[\s\S]*無銘口座 残\{karmaEscrowPagesRemaining\}\/4頁（競合予算\{karmaEscrowPagesRemaining \* 6\}%）/,
-  'the anonymous account must expose remaining copied pages and their exact six-percent-per-page rival budget.'
+  /const getKarmaEscrowRemainingPages =[\s\S]{0,140}4 - state\.resolvedCounterSerials\.length[\s\S]*無銘口座 残\{karmaEscrowPagesRemaining\}\/4回（競合予算\{karmaEscrowPagesRemaining \* 6\}%）/,
+  'the anonymous account must expose remaining memory rounds and their exact six-percent-per-round rival budget.'
 );
-
-const assertKarmaCorrectionPreflight = (
-  startMarker: string,
-  endMarker: string,
-  kind: string,
-  firstMutation: string
-) => {
-  const start = battleModal.indexOf(startMarker);
-  const end = battleModal.indexOf(endMarker, start + startMarker.length);
-  assert.ok(start >= 0 && end > start, `${startMarker} must remain discoverable`);
-  const block = battleModal.slice(start, end);
-  const guard = block.indexOf(`rejectKarmaCorrectionAction('${kind}')`);
-  const mutation = block.indexOf(firstMutation);
-  assert.ok(
-    guard >= 0 && mutation > guard,
-    `${startMarker} must reject a same-kind correction before ${firstMutation}`
-  );
-};
-
-assertKarmaCorrectionPreflight(
-  'const investCompanyFunds = () => {',
-  'const canConfirmInvestment =',
-  'direct',
-  'consumeCommand()'
-);
-assertKarmaCorrectionPreflight(
-  'const demandFromProperty = (property: Property) => {',
-  'const demandFromAllies = () => {',
-  'network',
-  'consumeCommand()'
-);
-assertKarmaCorrectionPreflight(
-  'const demandFromAllies = () => {',
-  'const demandFromGroup = (',
-  'limit_break',
-  'consumeCommand()'
-);
-assertKarmaCorrectionPreflight(
-  'const demandFromGroup = (',
-  'const activateProgressionBattleSynergy =',
-  'synergy',
-  'consumeCommand()'
-);
-assertKarmaCorrectionPreflight(
-  'const activateProgressionBattleSynergy =',
-  'const requestAlliance = () => {',
-  'synergy',
-  'consumeCommand()'
-);
-assertKarmaCorrectionPreflight(
-  'const requestAlliance = () => {',
-  'const selectSkill =',
-  'alliance',
-  'consumeCommand()'
-);
-assertKarmaCorrectionPreflight(
-  'const useSkill = (',
-  '  useEffect(() => {',
-  'ability',
-  'consumeCommand()'
-);
-assert.match(
+assert.doesNotMatch(
   battleModal,
-  /const registerKarmaPlayerAction =[\s\S]{0,500}rejectKarmaCorrectionAction\(kind\)[\s\S]{0,500}const serial = \+\+karmaActionSerialRef\.current/,
-  'the shared Karma action hook must retain a final pre-serial correction guard for any future caller.'
-);
-assert.match(
-  battleModal,
-  /const primarySkillExecutionBlocked =[\s\S]{0,260}karmaAbilityCorrectionBlocked[\s\S]*const canConfirmInvestment =[\s\S]{0,220}karmaDirectCorrectionBlocked[\s\S]*disabled=\{!commandReady \|\| limitBreakTier === 0 \|\| actionsLocked \|\| limitedLimitBreakSpent \|\| karmaLimitBreakCorrectionBlocked\}[\s\S]*battleSynergyUsed \|\|[\s\S]{0,80}karmaSynergyCorrectionBlocked/,
-  'all immediately visible command buttons must disable their same-kind correction before a click can spend resources.'
+  /karma[A-Za-z]+CorrectionBlocked|rejectKarmaCorrectionAction|karma-correction-dialog/,
+  'all ordinary player actions must remain available outside the current six-second response reservation.'
 );
 assert.match(
   battleModal,
   /shouldHoldKarmaVictory\(isKarma, karmaBattleStateRef\.current\)[\s\S]{0,140}updateGauge\(-98, commitVisual\)/,
-  'Karma must hold a player victory at 99% until every copied page is broken.'
+  'Karma must hold a player victory at 99% until all four one-entry copies are broken.'
 );
 assert.match(
   battleModal,
-  /const karmaDefeatStage = getKarmaDefeatStage\(karmaBattleState\)[\s\S]{0,900}karmaDefeatStage === 'recording'[\s\S]{0,180}karmaBattleState\.entries\.length \+ 1[\s\S]{0,500}四頁の逆仕訳はすべて解決済みだった/,
-  'Karma loss advice must mention a next ledger page only while recording and use post-ledger recovery advice after all four pages resolve.'
+  /const karmaDefeatStage = getKarmaDefeatStage\(karmaBattleState\)[\s\S]{0,900}karmaDefeatStage === 'recording'[\s\S]{0,220}karmaBattleState\.resolvedCounterSerials\.length \+ 1[\s\S]{0,500}四回のものまねはすべて解決済みだった/,
+  'Karma loss advice must mention only the next memory round while recording and use post-copy recovery advice after all four rounds resolve.'
 );
 assert.match(
   battleModal,
@@ -3158,8 +3097,13 @@ assert.match(
 );
 assert.match(
   karmaBattleCss,
-  /@media \(max-width: 430px\)[\s\S]{0,1200}\.karma-correction-dialog__pages[\s\S]{0,220}grid-template-columns:\s*1fr/,
-  'Karma correction choices must collapse to one readable column on a 402px phone.'
+  /\.karma-ledger-strip > div[\s\S]{0,180}grid-template-columns:\s*minmax\(0, 1fr\)/,
+  'Karma must render one readable current-memory card instead of four simultaneous history cards.'
+);
+assert.doesNotMatch(
+  karmaBattleCss,
+  /karma-correction-dialog/,
+  'the retired correction modal must not leave dead responsive CSS behind.'
 );
 
 console.log('Visual regression checks passed.');
