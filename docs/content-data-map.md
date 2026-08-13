@@ -23,7 +23,7 @@
 |中断復帰|`src/utils/battleSession.ts`|決着前のセッション。幻・商戦のブリーフィング取消では抽選相手と連勝数を維持|
 |音声再生|`src/utils/audio.ts`|単一AudioContext、遅延デコード|
 |商戦UIと演出順|`src/components/BattleModal.tsx`|データではなく実行器へ縮小していく|
-|商戦フィールド描画|`src/components/BattleCapitalCanvas.tsx`、`src/components/BattleCapitalCanvas.css`、`src/utils/battleCanvasQuality.ts`、`src/battle-capital-layer.css`|両陣営共通1枚のCanvas2D。背景・所有率前線・圧力・22列×2・overflow・packet・風・VSを同一sceneへ投影。30fpsはDPR 1.5、60fpsはDPR 2を内部解像度の上限とする|
+|商戦フィールド描画|`src/components/BattleCapitalCanvas.tsx`、`src/components/BattleCapitalCanvas.css`、`src/utils/battleCanvasQuality.ts`、`src/battle-capital-layer.css`|両陣営共通1枚のCanvas2D。背景・所有率前線・圧力・24列×2のactive/banked page・金額連続incoming wave・風・VSを同一sceneへ投影。30fpsはDPR 1.5、60fpsはDPR 2を内部解像度の上限とする|
 
 関連する設計基準:
 
@@ -82,7 +82,7 @@ ui.battle.commit
 
 ### 3.2 コイン画像
 
-コインは`BattleCapitalCanvas`のCanvas2Dへ決定論的に描き、左右22列を固定sceneとして扱う。投入額に比例してDOM nodeや描画資源を無制限に生成しない。将来texture atlasへ差し替える際は、同じ論理キーで次を用意する。
+コインは`BattleCapitalCanvas`のCanvas2Dへ決定論的に描き、左右それぞれ24列の再利用可能なactive page、完了分を画面下に保持するbanked page、18～22列の短いincoming waveに分ける。投入額はpage workとwave数へ連続的に変換するが、DOM nodeやCanvasの同時描画資源は金額に比例して増やさない。将来texture atlasへ差し替える際は、同じ論理キーで次を用意する。
 
 ```text
 coin_player_unit
@@ -93,7 +93,7 @@ coin_player_overflow
 coin_enemy_overflow
 ```
 
-画像側に大量のコインを描き込んだ段階スプライトを採用する場合も、ゲーム内の列数・一時コイン上限は変更しない。
+画像側に大量のコインを描き込んだ段階スプライトを採用する場合も、24列active/banked pageと最大22列incoming waveの固定Canvas上限は変更しない。
 
 ## 4. 音声
 
@@ -167,7 +167,7 @@ npm run build
 - 開幕・窮地オートと通常枠が重複していない。
 - 敵アクションの割込区分が定義されている。
 - 無敵後の有限防御とナイト退場が検証されている。
-- コイン列と一時packet表示数の上限が固定されている。
+- active/banked各24列とincoming wave最大22列の同時描画上限が固定されている。
 - 1戦2分、30出資の上限をシミュレーションで確認した。
 - リザルトの黒字・赤字、タタル分析、ご祝儀、戦闘記録の順が保たれている。
 - セーブと中断復帰が二重精算を起こさない。

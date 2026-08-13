@@ -7,8 +7,8 @@ import {
 import {
   BATTLE_CAPITAL_COLUMN_COUNT,
   MAX_BATTLE_CAPITAL_COLUMN_LAYERS,
+  getBattleCapitalPageState,
   getBattleCapitalOverflowTier,
-  getBattleCapitalVisibleUnits,
   getCapitalColumnHeights,
   type MechanicalCapitalColumnFrame,
 } from '../utils/battlePresentation';
@@ -18,6 +18,8 @@ import {
   resolveBattleCapitalBankGeometry,
   resolveBattleCapitalCanvasLayout,
   resolveBattleCapitalHoardVerticalGeometry,
+  resolveBattleCapitalPacketStartBaseY,
+  resolveBattleCapitalReservoirSink,
   resolveBattleCapitalStackGeometry,
   resolveBattleCapitalVisualLayers,
 } from '../utils/battleCapitalCanvasLayout';
@@ -80,6 +82,7 @@ interface NormalizedCapitalFrame {
   bankedColumnHeights: number[];
   bankedPileCount: number;
   bankTransfer: boolean;
+  bankTransferPages: number;
   activeColumnIndices: number[];
   incomingBundleCopies: number;
   incomingBundleLayers?: number;
@@ -201,10 +204,8 @@ const normalizeSide = (
 ): NormalizedCapitalSide => {
   const amount = finiteNonNegative(state.amount);
   const marketPrice = Math.max(1, finiteNonNegative(state.marketPrice, 1));
-  const fallbackVisibleUnits = getBattleCapitalVisibleUnits(
-    amount,
-    marketPrice
-  );
+  const pageState = getBattleCapitalPageState(amount, marketPrice);
+  const fallbackVisibleUnits = pageState.activeVisibleUnits;
   const preview = state.previewFrame;
   const visibleUnits = Math.max(
     0,
@@ -229,8 +230,7 @@ const normalizeSide = (
       finiteNonNegative(
         preview?.bankedPileCount ??
           preview?.stackDepth ??
-          state.rackFloorDepth ??
-          0
+          pageState.bankedPileCount
       )
     )
   );
@@ -264,11 +264,8 @@ const normalizeSide = (
   );
   const overflowTier = Math.round(
     clamp(
-      Math.max(
-        preview?.overflowTier ??
-          getBattleCapitalOverflowTier(amount, marketPrice),
-        Math.min(3, state.rackFloorDepth ?? 0)
-      ),
+      preview?.overflowTier ??
+        getBattleCapitalOverflowTier(amount, marketPrice),
       0,
       3
     )
@@ -286,6 +283,10 @@ const normalizeSide = (
       bankedColumnHeights,
       bankedPileCount,
       bankTransfer: preview?.bankTransfer === true,
+      bankTransferPages: Math.max(
+        0,
+        Math.floor(preview?.bankTransferPages ?? 0)
+      ),
       activeColumnIndices,
       incomingBundleCopies: Math.round(
         clamp(preview?.incomingBundleCopies ?? 1, 1, 3)
@@ -635,7 +636,11 @@ const drawCoinColumn = (
   context.fill();
   context.shadowBlur = 0;
 
-  const seamCount = Math.min(15, Math.max(0, layers - 1));
+  // Preserve the countable coin texture of a completed page. The previous
+  // fifteen-seam cap stretched tall treasuries into a few oversized metal
+  // bands; thirty-six visible layers now retain all thirty-five separations,
+  // while deep off-screen banks remain bounded.
+  const seamCount = Math.min(48, Math.max(0, layers - 1));
   if (seamCount > 0) {
     context.lineWidth = Math.max(0.65, coinHeight * 0.1);
     for (let seam = 1; seam <= seamCount; seam += 1) {
@@ -770,12 +775,16 @@ const drawCapitalSide = (
   );
   const { safeTopY } = stackGeometry;
   const bankedPileCount = Math.max(0, side.frame.bankedPileCount);
+  const bankTransferPages = side.frame.bankTransfer
+    ? Math.max(1, side.frame.bankTransferPages)
+    : 0;
   const previousBankedPileCount = side.frame.bankTransfer
-    ? Math.max(0, bankedPileCount - 1)
+    ? Math.max(0, bankedPileCount - bankTransferPages)
     : bankedPileCount;
   const transferProgress = side.frame.bankTransfer
     ? clamp(
-        side.frame.rackDepth - previousBankedPileCount,
+        (side.frame.rackDepth - previousBankedPileCount) /
+          Math.max(1, bankTransferPages),
         0,
         1
       )
@@ -793,7 +802,19 @@ const drawCapitalSide = (
     bankedPileCount: previousBankedPileCount,
     transferProgress,
   });
-  const upperFloorY = bankGeometry.activeBaseY;
+  const previousReservoirSinkPx = resolveBattleCapitalReservoirSink({
+    height,
+    bankedPileCount: previousBankedPileCount,
+  });
+  const targetReservoirSinkPx = resolveBattleCapitalReservoirSink({
+    height,
+    bankedPileCount,
+  });
+  const reservoirSinkPx = side.frame.bankTransfer
+    ? previousReservoirSinkPx +
+      (targetReservoirSinkPx - previousReservoirSinkPx) * transferProgress
+    : targetReservoirSinkPx;
+  const upperFloorY = bankGeometry.activeBaseY + reservoirSinkPx;
   // The completed upper page is the unit of motion. Translating the whole
   // treasury by its real painted height makes the former page finish below the
   // fixed field divider, instead of stretching one ever-taller column.
@@ -808,7 +829,7 @@ const drawCapitalSide = (
       ? upperFloorY +
         drawnBankedPileCount * bankGeometry.pageTravelPx +
         transferOffset
-      : bankGeometry.trayBaseY;
+      : bankGeometry.trayBaseY + reservoirSinkPx;
 
   const auraStrength = clamp(Math.log2(side.capitalRatio + 1) / 5, 0, 1);
   const hoardGeometry = resolveBattleCapitalHoardVerticalGeometry({
@@ -997,9 +1018,16 @@ const drawCapitalSide = (
           renderedCoinHeight +
           Math.max(0, packetLayers - 1) * renderedLayerStep;
         const landingBaseY = columnBaseY - bodyHeight;
-        // Start below the semantic gauge/readout band instead of dropping coins
-        // behind it. The pile still has the full remaining field to gather speed.
-        const startBaseY = safeTopY + packetHeight;
+        // A nearly full reservoir leaves less than one bundle of clear field.
+        // Start that bundle above the semantic safe line and clip it until it
+        // enters, rather than reversing its path upward toward the landing.
+        const startBaseY = resolveBattleCapitalPacketStartBaseY({
+          safeTopY,
+          packetHeight,
+          landingBaseY,
+          renderedCoinHeight,
+          fieldHeight: height,
+        });
         const packetBaseY =
           startBaseY + (landingBaseY - startBaseY) * easedProgress;
         const unmergedWave = 1 - Math.pow(staggeredProgress, 4);
@@ -1012,6 +1040,15 @@ const drawCapitalSide = (
           copyIndex *
           (packetHeight + renderedCoinHeight * 0.5) *
           unmergedWave;
+        context.save();
+        context.beginPath();
+        context.rect(
+          Math.max(0, areaLeft - renderedCoinWidth),
+          safeTopY,
+          Math.min(width, areaWidth + renderedCoinWidth * 2),
+          Math.max(0, height - safeTopY)
+        );
+        context.clip();
         drawCoinColumn(
           context,
           x + copyOffset,
@@ -1023,6 +1060,7 @@ const drawCapitalSide = (
           side.side,
           true
         );
+        context.restore();
       }
     }
   }
@@ -1045,35 +1083,9 @@ const drawCapitalSide = (
   context.stroke();
   context.restore();
 
-  // A narrow opaque field rail is the visual boundary between money already
-  // banked below and the reusable upper stacking page. It deliberately is not
-  // another tray: the only physical plate remains at the bottom of the bank.
-  if (bankedPileCount > 0 || side.frame.bankTransfer) {
-    const dividerHeight = clamp(height * 0.025, 5, 9);
-    const dividerX = areaLeft;
-    const dividerWidth = areaWidth;
-    const dividerY = bankGeometry.bankClipTopY - dividerHeight * 0.5;
-    const dividerGradient = context.createLinearGradient(
-      0,
-      dividerY,
-      0,
-      dividerY + dividerHeight
-    );
-    dividerGradient.addColorStop(0, 'rgba(6, 15, 17, .82)');
-    dividerGradient.addColorStop(0.48, 'rgba(19, 29, 31, .96)');
-    dividerGradient.addColorStop(1, 'rgba(3, 9, 11, .9)');
-    context.fillStyle = dividerGradient;
-    context.fillRect(dividerX, dividerY, dividerWidth, dividerHeight);
-    context.strokeStyle = 'rgba(213, 190, 123, .28)';
-    context.lineWidth = 0.65;
-    context.beginPath();
-    context.moveTo(dividerX, dividerY + 0.8);
-    context.lineTo(
-      dividerX + dividerWidth,
-      dividerY + 0.8
-    );
-    context.stroke();
-  }
+  // The lower treasury continues behind the real battle timing lane. Do not
+  // invent a second shelf or divider here: the reference reads as one
+  // continuous reservoir whose original tray has already moved off-screen.
 
   if (side.impact) {
     context.strokeStyle = SIDE_COLORS[side.side].edge;

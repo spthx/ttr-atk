@@ -417,15 +417,17 @@ class SoundEffects {
     // roughly 60–75ms. Build one reusable mono loop from the approved local
     // tick so long investments keep a single AudioBufferSource voice on iOS.
     // Fresh frame/audio measurements retain the fine coin chatter at about
-    // 65ms, but the recognisable metallic landings recur every three
-    // microticks (median reference onset: 203ms). Bake both rhythms into one
+    // 65ms, while the recognisable major cascades recur around 400ms. Bake a
+    // strong landing every six microticks and retain the five lighter ticks
+    // between them, so the stream stays rapid without turning every sub-wave
+    // into an equally loud strike.
     // reusable loop made only from the approved recorded tick.
     const loopDurationMs = 1_188;
     const tickOffsetsMs = [
       0, 65, 131, 198, 264, 330, 396, 462, 528,
       594, 660, 726, 792, 858, 924, 990, 1_056, 1_122,
     ] as const;
-    const accentEveryTicks = 3;
+    const accentEveryTicks = 6;
     const playbackRates = [
       0.985, 1.035, 1.015, 0.995, 1.025, 1.045,
       0.98, 1.03, 1.01,

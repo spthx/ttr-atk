@@ -459,6 +459,7 @@ const simulateBattle = (
   let lastPlayerCapitalAction: PlayerBattleAction | null = null;
   let presentationLockSeconds = 0;
   let presentationAllowsCommandRecharge = false;
+  let presentationCommandRechargeScale = 1;
   let reactionDelaySeconds = getScenarioReactionDelay(scenario, seed, 0);
   let directActions = 0;
   let supportActions = 0;
@@ -922,7 +923,10 @@ const simulateBattle = (
         scenario.modelFullNormalPresentation &&
         presentationAllowsCommandRecharge
       ) {
-        commandProgress = Math.min(100, commandProgress + 2.8);
+        commandProgress = Math.min(
+          100,
+          commandProgress + 2.8 * presentationCommandRechargeScale
+        );
       }
       continue;
     }
@@ -1443,7 +1447,7 @@ const simulateBattle = (
         commandProgress = 0;
         lastPlayerAction = 'FUNDS';
         lastPlayerCapitalAction = 'FUNDS';
-        presentationLockSeconds = scenario.modelFullNormalPresentation
+        const supportTimeline = scenario.modelFullNormalPresentation
           ? buildCapitalStackTimeline({
               id: `audit-support-${supportActions}`,
               side: 'player',
@@ -1457,11 +1461,18 @@ const simulateBattle = (
                   ? 'heavy'
                   : 'standard',
               seed: supportActions,
-            }).frames.reduce(
-              (total, frame) => total + frame.durationMs,
-              0
-            ) / 1_000
+            })
+          : null;
+        presentationLockSeconds = supportTimeline
+          ? supportTimeline.totalMs / 1_000
           : 0.23;
+        presentationCommandRechargeScale = supportTimeline
+          ? supportTimeline.frames.reduce(
+              (total, frame) =>
+                total + frame.durationMs * frame.commandRechargeScale,
+              0
+            ) / Math.max(1, supportTimeline.totalMs)
+          : 1;
         presentationAllowsCommandRecharge =
           scenario.modelFullNormalPresentation;
       } else {
@@ -1515,6 +1526,7 @@ const simulateBattle = (
               investment.level,
               !scenario.modelFullNormalPresentation
             ).totalMs / 1_000;
+          presentationCommandRechargeScale = 1;
           presentationAllowsCommandRecharge =
             scenario.modelFullNormalPresentation;
         }

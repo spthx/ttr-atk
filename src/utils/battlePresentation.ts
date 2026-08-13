@@ -20,17 +20,16 @@ export const BATTLE_STATE_UPDATE_INTERVAL_MS = 100;
 export const ENEMY_SUPPORT_POST_PILE_GRACE_MS = 800;
 
 /**
- * Compact capital presentation is reserved for accessibility and high-end
- * encounters with repeated commitments. Normal campaign battles always keep
- * the full authored coin-stacking cadence, including the opening encounters.
+ * Compact capital presentation is reserved for reduced-motion accessibility.
+ * Difficulty and campaign order never shorten the authored coin cadence.
  */
 export const shouldUseCompactCapitalPresentation = ({
   reducedMotion,
-  isHighEndRaid,
+  isHighEndRaid: _isHighEndRaid,
 }: {
   reducedMotion: boolean;
   isHighEndRaid: boolean;
-}) => reducedMotion || isHighEndRaid;
+}) => reducedMotion;
 
 export const shouldUseCompactTerminalPresentation = ({
   reducedMotion,
@@ -807,7 +806,7 @@ export const BATTLE_CAPITAL_VISUAL_STAGE_COUNT = 60;
 export const MAX_BATTLE_CAPITAL_VISUAL_STAGE =
   BATTLE_CAPITAL_VISUAL_STAGE_COUNT - 1;
 
-export const BATTLE_CAPITAL_COLUMN_COUNT = 22;
+export const BATTLE_CAPITAL_COLUMN_COUNT = 24;
 export const MAX_BATTLE_CAPITAL_COLUMN_LAYERS = 36;
 export const MAX_BATTLE_CAPITAL_VISIBLE_UNITS =
   BATTLE_CAPITAL_COLUMN_COUNT * MAX_BATTLE_CAPITAL_COLUMN_LAYERS;
@@ -816,39 +815,121 @@ const CAPITAL_SHOWCASE_FILL_ORDER = [
   // Spread each new layer across the whole display before raising any stack
   // again. The result follows Romancing SaGa 3's tray of separate coin rolls
   // instead of building one pointed mountain in the centre.
-  18, 0, 21, 6, 9, 14, 1, 2, 17, 19, 4,
-  8, 11, 12, 15, 16, 20, 5, 7, 10, 13, 3,
+  18, 0, 21, 6, 9, 14, 22, 1, 2, 17, 19, 4,
+  8, 11, 12, 15, 23, 16, 20, 5, 7, 10, 13, 3,
 ] as const;
 
-// Screen-space order for the twenty-two persistent columns. Presentation uses
+// Screen-space order for the twenty-four persistent columns. Presentation uses
 // this independently from the showcase fill order so incoming bundles travel as
 // one continuous hose-like sweep instead of jumping between distant columns.
 const CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER = [
-  20, 9, 4, 15, 0, 10, 5, 16, 1, 11, 6,
-  17, 2, 12, 7, 18, 3, 13, 8, 19, 14, 21,
+  20, 9, 4, 15, 22, 0, 10, 5, 16, 1, 11, 6,
+  17, 23, 2, 12, 7, 18, 3, 13, 8, 19, 14, 21,
 ] as const;
 
 /**
- * Converts capital into the fixed twenty-two-column display used by the live field.
+ * Converts capital into the fixed twenty-four-column display used by the live field.
  * The asking price chooses the campaign-scale height once for both sides, while
  * the square-root curve keeps small offers readable and prevents late-game
  * capital from requiring amount-proportional DOM nodes.
  */
-const getBattleCapitalLayerDemand = (amount: number, marketPrice: number) => {
-  const normalizedAmount = Math.max(0, amount);
-  if (normalizedAmount <= 0) return 0;
-
+const getBattleCapitalLayersAtTarget = (marketPrice: number) => {
   const normalizedPrice = Math.max(1_000, marketPrice);
   const priceMagnitude = Math.log10(normalizedPrice);
-  const layersAtTarget = Math.max(
+  return Math.max(
     6,
     Math.min(
       MAX_BATTLE_CAPITAL_COLUMN_LAYERS,
       Math.round(6 + (priceMagnitude - 3) * 4)
     )
   );
+};
+
+const getBattleCapitalLayerDemand = (amount: number, marketPrice: number) => {
+  const normalizedAmount = Math.max(0, amount);
+  if (normalizedAmount <= 0) return 0;
+
+  const normalizedPrice = Math.max(1_000, marketPrice);
+  const layersAtTarget = getBattleCapitalLayersAtTarget(normalizedPrice);
   const ratio = normalizedAmount / normalizedPrice;
   return layersAtTarget * Math.sqrt(ratio);
+};
+
+export interface BattleCapitalPageState {
+  /** Total visual treasury pages represented by the committed capital. */
+  pageEquivalent: number;
+  /** Completed pages already stored below the reusable upper field. */
+  bankedPileCount: number;
+  /** Fraction of the currently visible upper page, on the 0..1 scale. */
+  activePageFraction: number;
+  /** Fixed-column units belonging only to the reusable upper page. */
+  activeVisibleUnits: number;
+  /** Capital represented by one full upper page at this asking price. */
+  fullPageCapital: number;
+}
+
+/**
+ * Splits capital into completed off-screen pages and one reusable upper page.
+ *
+ * Every page is linear: twice the committed capital means twice the visible
+ * page work. Small offers remain readable through fixed coin artwork and glow,
+ * not by inflating their represented mass with a square-root curve.
+ */
+export const getBattleCapitalPageState = (
+  amount: number,
+  marketPrice: number
+): BattleCapitalPageState => {
+  const normalizedAmount = Math.max(0, amount);
+  const normalizedPrice = Math.max(1_000, marketPrice);
+  // The reviewed 48.42M market reaches one dense page at roughly 300M. Using
+  // the same 6.2x market multiple keeps that physical capacity stable across
+  // eras instead of allowing the old logarithmic artwork scale to redefine a
+  // page after every commitment.
+  const fullPageCapital = normalizedPrice * 6.2;
+  if (normalizedAmount <= 0) {
+    return {
+      pageEquivalent: 0,
+      bankedPileCount: 0,
+      activePageFraction: 0,
+      activeVisibleUnits: 0,
+      fullPageCapital,
+    };
+  }
+  const rawPageEquivalent = normalizedAmount / fullPageCapital;
+  const nearestWholePage = Math.round(rawPageEquivalent);
+  // Only snap around a completed page. Snapping toward zero erased ordinary
+  // 2% and 5% bids because both legitimately occupy less than one hundredth
+  // of a page; every positive commitment must leave visible settled mass.
+  const pageEquivalent = nearestWholePage >= 1 &&
+    Math.abs(rawPageEquivalent - nearestWholePage) <= 0.0015
+      ? nearestWholePage
+      : rawPageEquivalent;
+  // The first physical page is always the reusable active tray. We retain the
+  // same page capacity for the whole battle; later money is represented by
+  // banking completed pages rather than recalibrating against lifetime total.
+  const completedPages = Math.max(0, Math.floor(pageEquivalent + 1e-9));
+  const fractionalPage = Math.max(0, pageEquivalent - completedPages);
+  // Once a completed page has a non-empty successor, move that completed page
+  // into the lower bank. Exact whole-page amounts keep the newest full page in
+  // the reusable upper field (1.0 => bank 0 + active 1, 1.5 => bank 1 +
+  // active .5, 2.0 => bank 1 + active 1). This prevents a positive commitment
+  // just above one page from visually shrinking the treasury.
+  const bankedPileCount = Math.max(
+    0,
+    completedPages - (fractionalPage > 1e-9 ? 0 : 1)
+  );
+  const activePageFraction = pageEquivalent >= 1
+    ? (fractionalPage > 1e-9 ? fractionalPage : 1)
+    : pageEquivalent;
+  return {
+    pageEquivalent,
+    bankedPileCount,
+    activePageFraction,
+    activeVisibleUnits: Math.round(
+      MAX_BATTLE_CAPITAL_VISIBLE_UNITS * activePageFraction
+    ),
+    fullPageCapital,
+  };
 };
 
 export const getBattleCapitalVisibleUnits = (
@@ -887,7 +968,7 @@ export const getCapitalIncomingBundleCopies = (
   );
 };
 
-/** Same amount always produces the same monotonic twenty-two-stack showcase. */
+/** Same amount always produces the same monotonic twenty-four-stack showcase. */
 export const getCapitalColumnHeights = (visibleUnits: number) => {
   const normalizedUnits = Math.max(
     0,
@@ -914,6 +995,8 @@ export interface MechanicalCapitalColumnFrame {
   bankedColumnHeights?: number[];
   /** Number of completed upper pages stored below the divider. */
   bankedPileCount?: number;
+  /** Number of complete pages moved by the single bank-transfer frame. */
+  bankTransferPages?: number;
   activeColumnIndices: number[];
   /** Number of short incoming bundles drawn per active column (one to three). */
   incomingBundleCopies?: number;
@@ -960,6 +1043,17 @@ export const CAPITAL_OVERFLOW_RESTACK_BEATS = {
 // but the already-full treasury receives them at the measured metallic tick
 // cadence instead of repeating a slow normal-investment beat per tier.
 export const CAPITAL_OVERFLOW_RAPID_BEAT_MS = 66;
+/** Fresh frame analysis: one broad bundle group lands about every 0.20s. */
+export const CAPITAL_COIN_WAVE_MS = 198;
+export const CAPITAL_COIN_WAVES_PER_PAGE = 9;
+export const CAPITAL_COIN_WAVE_MIN_COLUMNS = 18;
+export const CAPITAL_COIN_WAVE_MAX_COLUMNS = 22;
+export const CAPITAL_COIN_WAVE_MAX_COUNT = 64;
+/** Reference bundles read as short, weighty rolls of roughly six to eight coins. */
+export const CAPITAL_COIN_WAVE_BUNDLE_LAYERS = 7;
+/** Sub-pixel page remainder that does not need a dedicated prefill wave. */
+const CAPITAL_PAGE_PREFILL_EPSILON = 0.005;
+/** Legacy logical-clock constants retained for command recharge equivalence. */
 export const CAPITAL_MASS_CURTAIN_BEATS = 6;
 export const CAPITAL_MASS_CURTAIN_BUNDLE_LAYERS = 9;
 export const MAX_BATTLE_CAPITAL_VISUAL_LAYERS_PER_COLUMN = 512;
@@ -1260,7 +1354,7 @@ export interface CapitalStackTimeline {
  * number of beats, never the number of rendered columns. Frame-rate changes
  * only how often a renderer samples this absolute timeline.
  */
-export const buildCapitalStackTimeline = (
+const buildLegacyCapitalStackTimeline = (
   event: CapitalStackEvent
 ): CapitalStackTimeline => {
   const compact = event.intensity === 'compact';
@@ -1559,7 +1653,279 @@ export const buildCapitalStackTimeline = (
 };
 
 /**
- * Structural depth beyond the drawable 22x36 rack. The first twenty-four
+ * Builds the broad, page-based treasury presentation measured from the trade
+ * reference. A completed upper page is moved in one decisive transfer; coin
+ * volume is then expressed as repeated full-tray waves, never by stretching a
+ * handful of columns. All values are presentation-only.
+ */
+export const buildCapitalStackTimeline = (
+  event: CapitalStackEvent
+): CapitalStackTimeline => {
+  const compact = event.intensity === 'compact';
+  const heavy = event.intensity === 'heavy';
+  const beatMs = CAPITAL_STACK_BEAT_MS[event.intensity];
+  const settleMs = compact ? 72 : heavy ? 280 : 190;
+  const previousPage = getBattleCapitalPageState(
+    event.previousCapital,
+    event.marketPrice
+  );
+  const targetPage = getBattleCapitalPageState(
+    event.nextCapital,
+    event.marketPrice
+  );
+  const previousBankedPileCount = previousPage.bankedPileCount;
+  const targetBankedPileCount = Math.max(
+    previousBankedPileCount,
+    targetPage.bankedPileCount
+  );
+  const bankTransferPages = Math.max(
+    0,
+    targetBankedPileCount - previousBankedPileCount
+  );
+  const previousStage = previousPage.activeVisibleUnits;
+  const targetStage = targetPage.activeVisibleUnits;
+  const emptyColumnHeights = getCapitalColumnHeights(0);
+  const fullColumnHeights = getCapitalColumnHeights(
+    MAX_BATTLE_CAPITAL_VISIBLE_UNITS
+  );
+  const seed = Number.isFinite(event.seed) ? Math.trunc(event.seed) : 0;
+  const capitalDistance = Math.max(
+    0,
+    event.nextCapital - event.previousCapital
+  );
+  const pageWork = Math.max(
+    0,
+    targetPage.pageEquivalent - previousPage.pageEquivalent
+  );
+  const baseWaveCount = capitalDistance > 0
+    ? compact
+      ? 1
+      : bankTransferPages >= 4 || pageWork >= 4
+        ? CAPITAL_COIN_WAVE_MAX_COUNT
+        : Math.min(
+            CAPITAL_COIN_WAVE_MAX_COUNT,
+            Math.max(1, Math.ceil(pageWork * CAPITAL_COIN_WAVES_PER_PAGE))
+          )
+    : 0;
+
+  const legacyTimeline = buildLegacyCapitalStackTimeline(event);
+  const legacyPourDurationMs = legacyTimeline.frames
+    .filter((frame) => frame.phase === 'pour')
+    .reduce(
+      (total, frame) =>
+        total + frame.durationMs * frame.commandRechargeScale,
+      0
+    );
+  const preloadMs = compact ? 24 : heavy || bankTransferPages > 0 ? 300 : 90;
+
+  type AuthoredBeat = {
+    kind: 'wave' | 'transfer';
+    settledBefore: number;
+    settledAfter: number;
+    bankedPileCount: number;
+    waveOrdinal: number;
+  };
+  const beats: AuthoredBeat[] = [];
+  let settledUnits = previousStage;
+  let waveOrdinal = 0;
+
+  // Finish a partial upper page before moving every newly completed page in
+  // the one precomputed drop requested by the user. Exact full pages transfer
+  // immediately; an initial empty bid necessarily lays its first page first.
+  const requestedPrefillWaves = !compact && bankTransferPages > 0 &&
+    previousPage.activePageFraction < 1 - CAPITAL_PAGE_PREFILL_EPSILON
+      ? Math.ceil(
+          (1 - previousPage.activePageFraction) *
+            CAPITAL_COIN_WAVES_PER_PAGE
+        )
+      : 0;
+  const requestedRefillWaves = compact
+    ? (capitalDistance > 0 ? 1 : 0)
+    : Math.max(
+        0,
+        Math.ceil(
+          targetPage.activePageFraction * CAPITAL_COIN_WAVES_PER_PAGE
+        )
+      );
+  // Crossing a page boundary needs enough authored work to finish the old
+  // upper page and to begin the replacement page. Do not subtract one from a
+  // tiny one-wave event: that used to bank an unfinished 98% page and create a
+  // nearly empty successor in a single pop.
+  const waveCount = compact
+    ? baseWaveCount
+    : bankTransferPages > 0
+    ? Math.min(
+        CAPITAL_COIN_WAVE_MAX_COUNT,
+        Math.max(
+          baseWaveCount,
+          requestedPrefillWaves + requestedRefillWaves
+        )
+      )
+    : baseWaveCount;
+  const prefillWaveCount = Math.min(waveCount, requestedPrefillWaves);
+  for (let index = 0; index < prefillWaveCount; index += 1) {
+    const settledAfter = Math.round(
+      previousStage +
+        (MAX_BATTLE_CAPITAL_VISIBLE_UNITS - previousStage) *
+          ((index + 1) / Math.max(1, prefillWaveCount))
+    );
+    beats.push({
+      kind: 'wave',
+      settledBefore: settledUnits,
+      settledAfter,
+      bankedPileCount: previousBankedPileCount,
+      waveOrdinal,
+    });
+    waveOrdinal += 1;
+    settledUnits = settledAfter;
+  }
+  if (bankTransferPages > 0) {
+    beats.push({
+      kind: 'transfer',
+      settledBefore: settledUnits,
+      settledAfter: 0,
+      bankedPileCount: targetBankedPileCount,
+      waveOrdinal: -1,
+    });
+    settledUnits = 0;
+  }
+
+  const refillWaveCount = Math.max(0, waveCount - prefillWaveCount);
+  if (refillWaveCount > 0) {
+    const refillStartUnits = settledUnits;
+    const visibleFillWaves = Math.min(
+      refillWaveCount,
+      Math.max(
+        1,
+        requestedRefillWaves
+      )
+    );
+    for (let index = 0; index < refillWaveCount; index += 1) {
+      const settledAfter = index < visibleFillWaves
+        ? Math.round(
+            refillStartUnits +
+              (targetStage - refillStartUnits) *
+                ((index + 1) / visibleFillWaves)
+          )
+        : targetStage;
+      beats.push({
+        kind: 'wave',
+        settledBefore: settledUnits,
+        settledAfter,
+        bankedPileCount: targetBankedPileCount,
+        waveOrdinal,
+      });
+      waveOrdinal += 1;
+      settledUnits = settledAfter;
+    }
+  }
+
+  const acceleratedPourDurationMs = beats.reduce(
+    (total, beat) => total + (beat.kind === 'transfer'
+      ? compact ? 24 : BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS
+      : compact ? CAPITAL_STACK_BEAT_MS.compact : CAPITAL_COIN_WAVE_MS),
+    0
+  );
+  const commandRechargeScale = acceleratedPourDurationMs > 0
+    ? Math.max(1, legacyPourDurationMs) / acceleratedPourDurationMs
+    : 1;
+  const preloadFrame: CapitalStackTimelineFrame = {
+    phase: 'preload',
+    atMs: 0,
+    durationMs: preloadMs,
+    commandRechargeScale: 1,
+    visibleUnits: previousStage,
+    columnHeights: getCapitalColumnHeights(previousStage),
+    bankedColumnHeights: previousBankedPileCount > 0
+      ? fullColumnHeights
+      : emptyColumnHeights,
+    bankedPileCount: previousBankedPileCount,
+    activeColumnIndices: [],
+    incomingBundleCopies: 1,
+    rackCompressed: heavy || bankTransferPages > 0,
+    rackDepth: previousBankedPileCount,
+    stackDepth: previousBankedPileCount,
+    presentedCapital: event.previousCapital,
+    packetSeed: seed,
+  };
+
+  let atMs = preloadMs;
+  let completedWaveCount = 0;
+  const activeWaveCount = beats.filter((beat) => beat.kind === 'wave').length;
+  const pourFrames = beats.map((beat, index): CapitalStackTimelineFrame => {
+    const isTransfer = beat.kind === 'transfer';
+    const durationMs = isTransfer
+      ? compact ? 24 : BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS
+      : compact ? CAPITAL_STACK_BEAT_MS.compact : CAPITAL_COIN_WAVE_MS;
+    const progress = completedWaveCount / Math.max(1, activeWaveCount);
+    const frame: CapitalStackTimelineFrame = {
+      phase: 'pour',
+      atMs,
+      durationMs,
+      commandRechargeScale,
+      visibleUnits: beat.settledBefore,
+      columnHeights: getCapitalColumnHeights(beat.settledBefore),
+      bankedColumnHeights: beat.bankedPileCount > 0
+        ? fullColumnHeights
+        : emptyColumnHeights,
+      bankedPileCount: beat.bankedPileCount,
+      bankTransferPages: isTransfer ? bankTransferPages : undefined,
+      activeColumnIndices: isTransfer
+        ? []
+        : getCapitalWaveColumnIndices(seed, beat.waveOrdinal),
+      incomingBundleCopies: 1,
+      incomingBundleLayers: CAPITAL_COIN_WAVE_BUNDLE_LAYERS,
+      rackCompressed: heavy || bankTransferPages > 0,
+      overflowPass: bankTransferPages > 0 ? 1 : undefined,
+      stackBeat: index + 1,
+      rackDepth: beat.bankedPileCount,
+      stackDepth: isTransfer
+        ? previousBankedPileCount
+        : beat.bankedPileCount,
+      rackShift: isTransfer,
+      bankTransfer: isTransfer,
+      presentedCapital: Math.round(
+        event.previousCapital + capitalDistance * progress
+      ),
+      packetSeed: seed + (index + 1) * 7_919,
+    };
+    if (!isTransfer) completedWaveCount += 1;
+    atMs += durationMs;
+    return frame;
+  });
+  const pourDurationMs = atMs - preloadMs;
+  const settleFrame: CapitalStackTimelineFrame = {
+    phase: 'settle',
+    atMs,
+    durationMs: settleMs,
+    commandRechargeScale: 1,
+    visibleUnits: targetStage,
+    columnHeights: getCapitalColumnHeights(targetStage),
+    bankedColumnHeights: targetBankedPileCount > 0
+      ? fullColumnHeights
+      : emptyColumnHeights,
+    bankedPileCount: targetBankedPileCount,
+    activeColumnIndices: [],
+    incomingBundleCopies: 1,
+    rackCompressed: heavy,
+    rackDepth: targetBankedPileCount,
+    stackDepth: targetBankedPileCount,
+    presentedCapital: event.nextCapital,
+    packetSeed: seed + (pourFrames.length + 1) * 7_919,
+  };
+  return {
+    event,
+    beatMs,
+    preloadMs,
+    pourDurationMs,
+    settleMs,
+    totalMs: preloadMs + pourDurationMs + settleMs,
+    frames: [preloadFrame, ...pourFrames, settleFrame],
+  };
+};
+
+/**
+ * Structural depth beyond the drawable 24x36 rack. The first twenty-four
  * hidden layers preserve the three familiar visual grades. Beyond that point
  * the depth remains continuous and logarithmic, so another material funding
  * wave can lower the completed treasury again without creating an unbounded
@@ -1585,6 +1951,20 @@ export const getBattleCapitalOverflowDepth = (
     );
   }
   return 3 + Math.log2(overflowLayers / legacyCapacity);
+};
+
+const getCapitalWaveColumnIndices = (seed: number, waveIndex: number) => {
+  const span =
+    CAPITAL_COIN_WAVE_MAX_COLUMNS - CAPITAL_COIN_WAVE_MIN_COLUMNS + 1;
+  const count = CAPITAL_COIN_WAVE_MIN_COLUMNS +
+    Math.abs(Math.trunc(seed + waveIndex * 17)) % span;
+  const rotation = Math.abs(Math.trunc(seed * 7 + waveIndex * 5)) %
+    CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER.length;
+  const rotated = [
+    ...CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER.slice(rotation),
+    ...CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER.slice(0, rotation),
+  ];
+  return rotated.slice(0, count);
 };
 
 /** Three bounded decoration grades; physical rack depth is continuous. */

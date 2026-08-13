@@ -1,4 +1,4 @@
-export const BATTLE_CAPITAL_CANVAS_ROW_COUNTS = [4, 5, 6, 7] as const;
+export const BATTLE_CAPITAL_CANVAS_ROW_COUNTS = [5, 6, 6, 7] as const;
 // Fresh frame analysis measured the completed-page bank drop at roughly
 // 167ms. Keep one decisive 170ms movement, then start the rapid refill.
 export const BATTLE_CAPITAL_RACK_TWEEN_MS = 140;
@@ -92,11 +92,11 @@ export const resolveBattleCapitalHoardVerticalGeometry = ({
 
 // Keep every depth row on nearly the same coin pitch. The original trade
 // screen reads as one dense treasury block, not four unrelated fan shapes.
-const ROW_SPANS = [0.4, 0.53, 0.66, 0.8] as const;
+const ROW_SPANS = [0.48, 0.61, 0.66, 0.8] as const;
 const ROW_BASE_HEIGHT_SCALES = [1, 0.98, 0.96, 0.94] as const;
 const ROW_BOTTOMS = [
-  [24, 26, 26, 24],
-  [16, 18, 19, 18, 16],
+  [24, 26, 27, 26, 24],
+  [16, 18, 19, 19, 18, 16],
   [8, 10, 11, 11, 10, 8],
   [0, 1, 2, 2, 2, 1, 0],
 ] as const;
@@ -124,6 +124,7 @@ export interface BattleCapitalCanvasLayout {
   areaWidth: number;
   columns: BattleCapitalCanvasColumnLayout[];
   landscape: boolean;
+  pageTargetHeight: number;
   sideInset: number;
 }
 
@@ -149,12 +150,54 @@ export interface BattleCapitalBankGeometry {
 }
 
 /**
+ * Retains the one-way reservoir drop after the first page is banked. The
+ * maximum matches the roughly 85px / 360px standing-surface movement measured
+ * in the reference. Consumers interpolate the previous and target values
+ * during the single decisive transfer, so an empty refill can never jump up.
+ */
+export const resolveBattleCapitalReservoirSink = ({
+  height,
+  bankedPileCount,
+}: {
+  height: number;
+  bankedPileCount: number;
+}) => {
+  if (bankedPileCount <= 0) return 0;
+  const safeHeight = Math.max(1, Number.isFinite(height) ? height : 1);
+  return safeHeight * 0.235 * smoothstep(0, 1, bankedPileCount);
+};
+
+/** Keeps every incoming roll on a strictly downward screen-space path. */
+export const resolveBattleCapitalPacketStartBaseY = ({
+  safeTopY,
+  packetHeight,
+  landingBaseY,
+  renderedCoinHeight,
+  fieldHeight,
+}: {
+  safeTopY: number;
+  packetHeight: number;
+  landingBaseY: number;
+  renderedCoinHeight: number;
+  fieldHeight: number;
+}) => {
+  const minimumFallDistance = Math.max(
+    Math.max(0, renderedCoinHeight) * 1.5,
+    Math.max(1, fieldHeight) * 0.08
+  );
+  return Math.min(
+    safeTopY + Math.max(0, packetHeight),
+    landingBaseY - minimumFallDistance
+  );
+};
+
+/**
  * Separates the reusable upper pile from completed pages below it.
  *
  * A transfer always moves by one *actual rendered page height*. It is not a
  * shallow percentage step and it is not split by overflow tiers. The most
  * recently promoted page therefore clears the upper field completely, while
- * the one bounded 22-column bank can continue below the Canvas and its tray is
+ * the one bounded 24-column bank can continue below the Canvas and its tray is
  * explicitly allowed to leave the viewport.
  */
 export const resolveBattleCapitalBankGeometry = ({
@@ -223,9 +266,7 @@ export const resolveBattleCapitalCanvasLayout = (
       72
     );
     const coinHeight = clamp(coinWidth * 0.2, 4.5, 12);
-    const layerStep = landscape
-      ? clamp(safeHeight * 0.011, 1.8, 2.6)
-      : clamp(safeHeight * 0.013, 4.4, 6.2);
+    const layerStep = 1;
 
     for (let column = 0; column < count; column += 1) {
       const centered = column - (count - 1) / 2;
@@ -242,7 +283,37 @@ export const resolveBattleCapitalCanvasLayout = (
     }
   });
 
-  return { areaWidth, columns, landscape, sideInset };
+  const safeTopRatio = landscape ? 0.06 : 0.22;
+  const floorRatio = landscape ? 0.76 : 0.78;
+  const usableHeight = safeHeight * (floorRatio - safeTopRatio);
+  // A completed treasury page fills the usable field like the reference. The
+  // coin artwork keeps its width and thickness; only vertical row pitch adapts
+  // so wide monitors and tall phones no longer display a timid half-height wall.
+  const pageTargetHeight = usableHeight * 0.9;
+  const requiredSteps = columns.map((column) => {
+    const depthScale = 0.97 + column.depth * 0.01;
+    const baselineLift =
+      (column.bottom / 100) * safeHeight * 0.19 + column.depth * 0.25;
+    return (
+      pageTargetHeight - column.coinHeight * depthScale - baselineLift
+    ) / (35 * depthScale);
+  });
+  // Tall phones have materially more vertical battlefield than the old
+  // 7.4px ceiling could use. Keep coin width/thickness unchanged, but allow
+  // the vertical stack pitch to fill the authored page target.
+  const globalLayerStep = clamp(Math.max(...requiredSteps), 1.6, 14.5);
+  const normalizedColumns = columns.map((column) => ({
+    ...column,
+    layerStep: globalLayerStep,
+  }));
+
+  return {
+    areaWidth,
+    columns: normalizedColumns,
+    landscape,
+    pageTargetHeight,
+    sideInset,
+  };
 };
 
 export const resolveBattleCapitalVisualLayers = ({

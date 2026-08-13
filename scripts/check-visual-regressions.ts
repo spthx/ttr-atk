@@ -4,14 +4,17 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   BATTLE_CAPITAL_COLUMN_COUNT,
-  CAPITAL_OVERFLOW_RAPID_BEAT_MS,
-  CAPITAL_MASS_CURTAIN_BEATS,
-  CAPITAL_MASS_CURTAIN_BUNDLE_LAYERS,
+  CAPITAL_COIN_WAVE_BUNDLE_LAYERS,
+  CAPITAL_COIN_WAVE_MAX_COUNT,
+  CAPITAL_COIN_WAVE_MAX_COLUMNS,
+  CAPITAL_COIN_WAVE_MIN_COLUMNS,
+  CAPITAL_COIN_WAVE_MS,
+  CAPITAL_COIN_WAVES_PER_PAGE,
   CAPITAL_OVERFLOW_RESTACK_BEATS,
   CAPITAL_STACK_BEAT_MS,
   buildCapitalStackTimeline,
   getBattleCapitalOverflowDepth,
-  getCapitalIncomingBundleCopies,
+  getBattleCapitalPageState,
   getCapitalOverflowPassCount,
   getCapitalPresentationRecoveryAction,
   getMechanicalCapitalColumnFrames,
@@ -37,6 +40,8 @@ import {
   resolveBattleCapitalEffectiveDepth,
   resolveBattleCapitalCanvasLayout,
   resolveBattleCapitalHoardVerticalGeometry,
+  resolveBattleCapitalPacketStartBaseY,
+  resolveBattleCapitalReservoirSink,
   resolveBattleCapitalStackGeometry,
   resolveBattleCapitalVisualLayers,
 } from '../src/utils/battleCapitalCanvasLayout';
@@ -210,6 +215,27 @@ assert.equal(
   false
 );
 assert.equal(
+  shouldUseCompactCapitalPresentation({
+    reducedMotion: false,
+    isHighEndRaid: true,
+  }),
+  false,
+  'high-end battles must retain the full coin torrent at normal motion settings'
+);
+assert.equal(
+  shouldUseCompactCapitalPresentation({
+    reducedMotion: true,
+    isHighEndRaid: false,
+  }),
+  true,
+  'compact capital presentation must be reserved for reduced-motion accessibility'
+);
+assert.match(
+  battlePresentation,
+  /shouldUseCompactCapitalPresentation = \(\{[\s\S]{0,120}reducedMotion,[\s\S]{0,120}isHighEndRaid: _isHighEndRaid,[\s\S]{0,160}\}\) => reducedMotion;/,
+  'high-end status must not shorten capital presentation independently of reduced motion'
+);
+assert.equal(
   shouldUseCompactTerminalPresentation({
     reducedMotion: false,
   }),
@@ -294,8 +320,8 @@ assert.doesNotMatch(
 });
 assert.equal(
   BATTLE_CAPITAL_CANVAS_ROW_COUNTS.reduce((sum, count) => sum + count, 0),
-  22,
-  'the Canvas2D coin formation must retain exactly twenty-two columns per side'
+  24,
+  'the Canvas2D coin formation must retain exactly twenty-four columns per side'
 );
 assert.match(
   battleCapitalCanvas,
@@ -309,8 +335,13 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const bankedPileCount = Math\.max\([\s\S]{0,260}preview\?\.bankedPileCount[\s\S]{0,160}state\.rackFloorDepth[\s\S]{0,500}const bankedColumnHeights = Array\.from/,
-  'the Canvas2D renderer must retain bounded banked-page state after a preview ends'
+  /const pageState = getBattleCapitalPageState\(amount, marketPrice\);[\s\S]{0,700}const bankedPileCount = Math\.max\([\s\S]{0,220}preview\?\.bankedPileCount \?\?[\s\S]{0,100}preview\?\.stackDepth \?\?[\s\S]{0,100}pageState\.bankedPileCount[\s\S]{0,500}const bankedColumnHeights = Array\.from/,
+  'the Canvas2D renderer must derive post-preview active and banked pages from the committed amount'
+);
+assert.doesNotMatch(
+  battleCapitalCanvas,
+  /preview\?\.stackDepth \?\?[\s\S]{0,120}state\.rackFloorDepth/,
+  'stale rack-floor presentation state must not override the amount-derived page bank'
 );
 assert.doesNotMatch(
   battleCapitalCanvas,
@@ -320,7 +351,7 @@ assert.doesNotMatch(
 assert.match(
   battleCapitalCanvas,
   /const layout = resolveBattleCapitalCanvasLayout\(width, height\);[\s\S]*const resolveRenderedColumns = \(heights: number\[\]\)[\s\S]*const activeRenderedColumns = resolveRenderedColumns\([\s\S]*for \(const \{[\s\S]*\} of activeRenderedColumns[\s\S]*drawCoinColumn\([\s\S]*activeColumns\.has\(index\)/,
-  'the Canvas2D renderer must paint the responsive twenty-two-column tray from the staged frame'
+  'the Canvas2D renderer must paint the responsive twenty-four-column tray from the staged frame'
 );
 assert.equal(
   (battleCapitalCanvas.match(/<canvas\b/g) ?? []).length,
@@ -345,7 +376,7 @@ assert.match(
 assert.match(
   battleCapitalCanvasCss,
   /inset:\s*0 0 auto;[\s\S]{0,180}block-size:\s*calc\(100% - var\(--battlefield-timing-height, 2\.65rem\)\);/,
-  'the capital canvas must end above the opaque command lane so a descended pedestal remains visible'
+  'the capital canvas must end above the opaque command lane while completed page banks may continue beyond its lower edge'
 );
 assert.match(
   integratedCss,
@@ -379,8 +410,8 @@ assert.match(
 );
 assert.match(
   liveCapitalCanvas,
-  /player=\{\{[\s\S]*amount:\s*displayedPlayerInvested,[\s\S]*previewFrame:\s*capitalPreviewStage \?\? playerCapitalPilePreviewStage,[\s\S]*rackFloorDepth:\s*playerCapitalRackFloorDepth,[\s\S]*enemy=\{\{[\s\S]*amount:\s*displayedEnemyInvested,[\s\S]*previewFrame:\s*enemyCapitalPilePreviewStage,[\s\S]*rackFloorDepth:\s*enemyCapitalRackFloorDepth,/,
-  'both live capital ledgers and their continuous overflow depth must feed the shared canvas'
+  /player=\{\{[\s\S]*amount:\s*displayedPlayerInvested,[\s\S]*previewFrame:\s*capitalPreviewStage \?\? playerCapitalPilePreviewStage,[\s\S]*enemy=\{\{[\s\S]*amount:\s*displayedEnemyInvested,[\s\S]*previewFrame:\s*enemyCapitalPilePreviewStage/,
+  'both committed ledgers and their transient presentation frames must feed the shared canvas'
 );
 assert.match(
   liveCapitalCanvas,
@@ -460,9 +491,36 @@ assert.doesNotMatch(
 const portraitCapitalLayout = resolveBattleCapitalCanvasLayout(402, 414);
 const tallPortraitCapitalLayout = resolveBattleCapitalCanvasLayout(430, 414);
 const landscapeCapitalLayout = resolveBattleCapitalCanvasLayout(874, 171);
-assert.equal(portraitCapitalLayout.columns.length, 22);
-assert.equal(tallPortraitCapitalLayout.columns.length, 22);
-assert.equal(landscapeCapitalLayout.columns.length, 22);
+const longPhoneCapitalLayout = resolveBattleCapitalCanvasLayout(430, 800);
+assert.equal(portraitCapitalLayout.columns.length, 24);
+assert.equal(tallPortraitCapitalLayout.columns.length, 24);
+assert.equal(landscapeCapitalLayout.columns.length, 24);
+assert.equal(longPhoneCapitalLayout.columns.length, 24);
+for (const [label, height, layout] of [
+  ['portrait', 414, portraitCapitalLayout],
+  ['long-phone portrait', 800, longPhoneCapitalLayout],
+  ['landscape', 171, landscapeCapitalLayout],
+] as const) {
+  const safeTopRatio = layout.landscape ? 0.06 : 0.22;
+  const floorRatio = layout.landscape ? 0.76 : 0.78;
+  const usableHeight = height * (floorRatio - safeTopRatio);
+  const fullPageExtent = Math.max(
+    ...layout.columns.map((column) => {
+      const depthScale = 0.97 + column.depth * 0.01;
+      const bodyHeight =
+        column.coinHeight * depthScale + 35 * column.layerStep * depthScale;
+      const baselineLift =
+        (column.bottom / 100) * height * 0.19 + column.depth * 0.25;
+      return bodyHeight + baselineLift;
+    })
+  );
+  assert.ok(
+    Math.abs(layout.pageTargetHeight / usableHeight - 0.9) < 1e-9 &&
+      fullPageExtent / usableHeight >= 0.9 &&
+      fullPageExtent / usableHeight <= 0.98,
+    `${label} full pages must consume roughly ninety percent of the usable coin field`
+  );
+}
 for (const [label, layout, maxGapRatio] of [
   ['portrait', portraitCapitalLayout, 0.15],
   ['landscape', landscapeCapitalLayout, 0.09],
@@ -478,7 +536,7 @@ for (const [label, layout, maxGapRatio] of [
   );
 }
 assert.ok(
-  portraitCapitalLayout.columns.every((column) => column.coinWidth >= 23.5),
+  portraitCapitalLayout.columns.every((column) => column.coinWidth >= 22),
   'portrait coins must remain large enough to read as decorated rolls'
 );
 assert.ok(
@@ -621,6 +679,64 @@ const landscapeBankPage = resolveBattleCapitalBankGeometry({
   tallestActiveExtent: 105,
   bankedPileCount: 1,
 });
+const noBankReservoirSink = resolveBattleCapitalReservoirSink({
+  height: 368,
+  bankedPileCount: 0,
+});
+const halfBankReservoirSink = resolveBattleCapitalReservoirSink({
+  height: 368,
+  bankedPileCount: 0.5,
+});
+const latePortraitReservoirSink = resolveBattleCapitalReservoirSink({
+  height: 368,
+  bankedPileCount: 1,
+});
+const lateLandscapeReservoirSink = resolveBattleCapitalReservoirSink({
+  height: 129,
+  bankedPileCount: 1,
+});
+assert.equal(noBankReservoirSink, 0);
+assert.ok(
+  halfBankReservoirSink > 0 &&
+    halfBankReservoirSink < latePortraitReservoirSink &&
+  latePortraitReservoirSink >= 84 && latePortraitReservoirSink <= 88 &&
+    lateLandscapeReservoirSink >= 29 && lateLandscapeReservoirSink <= 31,
+  'the first bank interpolates one-way into the measured reservoir depth in portrait and landscape'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const previousReservoirSinkPx = resolveBattleCapitalReservoirSink\(\{[\s\S]{0,140}bankedPileCount: previousBankedPileCount,[\s\S]{0,160}const targetReservoirSinkPx = resolveBattleCapitalReservoirSink\(\{[\s\S]{0,120}bankedPileCount,[\s\S]{0,180}const reservoirSinkPx = side\.frame\.bankTransfer[\s\S]{0,120}previousReservoirSinkPx \+[\s\S]{0,120}\(targetReservoirSinkPx - previousReservoirSinkPx\) \* transferProgress[\s\S]{0,80}: targetReservoirSinkPx;[\s\S]{0,100}const upperFloorY = bankGeometry\.activeBaseY \+ reservoirSinkPx;/,
+  'the Canvas must interpolate the old-to-new reservoir sink during transfer and retain the target sink throughout refill'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const physicalTrayY =[\s\S]{0,80}side\.frame\.bankTransfer[\s\S]{0,160}upperFloorY \+[\s\S]{0,120}drawnBankedPileCount \* bankGeometry\.pageTravelPx \+[\s\S]{0,80}transferOffset[\s\S]{0,80}: bankGeometry\.trayBaseY \+ reservoirSinkPx;/,
+  'the physical tray, hoard and glow must retain the reservoir sink after the transfer frame ends'
+);
+for (const fixture of [
+  {
+    safeTopY: 81,
+    packetHeight: 50,
+    landingBaseY: 92,
+    renderedCoinHeight: 5,
+    fieldHeight: 368,
+  },
+  {
+    safeTopY: 8,
+    packetHeight: 17,
+    landingBaseY: 15,
+    renderedCoinHeight: 10,
+    fieldHeight: 129,
+  },
+]) {
+  const startBaseY = resolveBattleCapitalPacketStartBaseY(fixture);
+  assert.ok(
+    startBaseY < fixture.landingBaseY &&
+      fixture.landingBaseY - startBaseY >=
+        fixture.fieldHeight * 0.08 - 1e-9,
+    'late incoming rolls must retain a measurable downward path in both orientations'
+  );
+}
 assert.ok(
   portraitBankPage.pageTravelPx >= 280 &&
     landscapeBankPage.pageTravelPx >= 105 &&
@@ -630,8 +746,8 @@ assert.ok(
 );
 assert.match(
   battleCapitalCanvasLayout,
-  /const areaWidth = safeWidth \* 0\.44;[\s\S]{0,120}const sideInset = safeWidth \* 0\.03;[\s\S]{0,520}Math\.max\(pitch \* \(landscape \? 0\.98 : 1\.03\), safeWidth \* 0\.055\)[\s\S]{0,220}landscape\s*\? clamp\(safeHeight \* 0\.011, 1\.8, 2\.6\)\s*:\s*clamp\(safeHeight \* 0\.013, 4\.4, 6\.2\)/,
-  'dense coins must keep their reviewed width while fitting a saturated wall above the still-visible pedestal'
+  /const areaWidth = safeWidth \* 0\.44;[\s\S]{0,120}const sideInset = safeWidth \* 0\.03;[\s\S]{0,520}Math\.max\(pitch \* \(landscape \? 0\.98 : 1\.03\), safeWidth \* 0\.055\)[\s\S]*const pageTargetHeight = usableHeight \* 0\.9;[\s\S]{0,700}const globalLayerStep = clamp\(Math\.max\(\.\.\.requiredSteps\), 1\.6, 14\.5\)/,
+  'dense coins must keep their reviewed width while a full page scales to ninety percent of every usable field'
 );
 assert.match(
   battleCapitalCanvas,
@@ -640,8 +756,8 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const seamCount = Math\.min\(15, Math\.max\(0, layers - 1\)\);/,
-  'coin columns must retain enough visible seams to read as stacks rather than flat bars'
+  /const seamCount = Math\.min\(48, Math\.max\(0, layers - 1\)\);/,
+  'a full thirty-six-layer page must retain all thirty-five visible seams while deeper banks stay bounded'
 );
 assert.match(
   battleCapitalCanvas,
@@ -671,13 +787,18 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /copyIndex < side\.frame\.incomingBundleCopies;[\s\S]{0,220}packetSeed \+ index \* 3 \+ copyIndex \* 17[\s\S]{0,420}\(side\.frame\.packetProgress - delay\) \/ Math\.max\(0\.01, 1 - delay\)[\s\S]{0,900}const startBaseY = safeTopY \+ packetHeight;/,
-  'each active Canvas2D column must receive one to three deterministic short bundles below the gauge without bounce physics'
+  /incomingBundleCopies:\s*Math\.round\([\s\S]{0,100}preview\?\.incomingBundleCopies \?\? 1/,
+  'capital waves must default to one physical bundle per active column'
 );
 assert.match(
   battleCapitalCanvas,
-  /const unmergedWave = 1 - Math\.pow\(staggeredProgress, 4\);[\s\S]{0,100}const copyOffset =[\s\S]{0,180}renderedCoinWidth \*[\s\S]{0,60}0\.16 \*[\s\S]{0,40}unmergedWave;[\s\S]{0,260}const copyTrail =[\s\S]{0,220}unmergedWave;[\s\S]{0,180}x \+ copyOffset,[\s\S]{0,80}packetBaseY \+ copyTrail/,
-  'mass copies must form a readable compact wave in flight and converge into the same settled column at landing'
+  /copyIndex < side\.frame\.incomingBundleCopies;[\s\S]{0,220}packetSeed \+ index \* 3 \+ copyIndex \* 17[\s\S]{0,420}\(side\.frame\.packetProgress - delay\) \/ Math\.max\(0\.01, 1 - delay\)[\s\S]{0,1100}const startBaseY = resolveBattleCapitalPacketStartBaseY\(\{[\s\S]{0,180}landingBaseY,[\s\S]{0,900}context\.clip\(\);/,
+  'each active Canvas2D column must receive its deterministic short bundle below the gauge without bounce physics'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const unmergedWave = 1 - Math\.pow\(staggeredProgress, 4\);[\s\S]{0,100}const copyOffset =[\s\S]{0,180}renderedCoinWidth \*[\s\S]{0,60}0\.16 \*[\s\S]{0,40}unmergedWave;[\s\S]{0,260}const copyTrail =[\s\S]{0,220}unmergedWave;[\s\S]{0,650}x \+ copyOffset,[\s\S]{0,80}packetBaseY \+ copyTrail/,
+  'the bounded compatibility copy path must preserve a compact in-flight wave and converge at landing'
 );
 assert.match(
   battleCapitalCanvas,
@@ -729,6 +850,16 @@ assert.match(
   battleCapitalCanvas,
   /Repaint only the front lip[\s\S]{0,500}rackWidth \* 0\.49[\s\S]{0,160}Math\.PI[\s\S]{0,80}context\.stroke\(\)/,
   'the final silver front lip must mask only the column roots after every coin pass'
+);
+assert.match(
+  battleCapitalCanvas,
+  /The lower treasury continues behind the real battle timing lane[\s\S]{0,180}Do not[\s\S]{0,80}second shelf or divider[\s\S]{0,140}continuous reservoir/,
+  'banked money must remain one continuous reservoir behind the real timing lane'
+);
+assert.doesNotMatch(
+  battleCapitalCanvas,
+  /A narrow opaque field rail|bankClipTopY \+ rackHeight[\s\S]{0,220}fillRect/,
+  'the renderer must not insert an opaque fictional divider between active and banked coins'
 );
 assert.match(
   battleCapitalCanvas,
@@ -1163,12 +1294,12 @@ assert.match(
 assert.match(
   battleModal,
   /compact: shouldUseCompactCapitalPresentation\(\{[\s\S]{0,180}reducedMotion,[\s\S]{0,100}isHighEndRaid/,
-  'high-end repeated investments must use the compact pile timeline to preserve decision tempo'
+  'direct investments must delegate compact selection to the reduced-motion-only capital policy'
 );
 assert.match(
   battleModal,
   /const compact = shouldUseCompactCapitalPresentation\(\{[\s\S]{0,180}reducedMotion,[\s\S]{0,100}isHighEndRaid/,
-  'high-end support and enemy capital previews must use the compact pile timeline too'
+  'support and enemy capital previews must delegate to the same accessibility-only compact policy'
 );
 assert.match(
   battleModal,
@@ -1293,19 +1424,7 @@ assert.doesNotMatch(
 assert.match(
   battleCapitalCanvas,
   /incomingBundleCopies:\s*Math\.round\([\s\S]{0,100}clamp\(preview\?\.incomingBundleCopies \?\? 1, 1, 3\)[\s\S]*copyIndex < side\.frame\.incomingBundleCopies/,
-  'each fixed active column must receive a bounded one-to-three bundle mass from the renderer-neutral frame'
-);
-assert.deepEqual(
-  [0.02, 0.05, 0.1, 0.2, 0.35].map((ratio) =>
-    getCapitalIncomingBundleCopies(0, ratio * 1_000_000, 1_000_000)
-  ),
-  [1, 1, 2, 2, 3],
-  'the live direct-investment levels must map to one, one, two, two and three incoming bundle copies'
-);
-assert.equal(
-  getCapitalIncomingBundleCopies(0, 350_000, 1_000_000),
-  getCapitalIncomingBundleCopies(8_000_000, 8_350_000, 1_000_000),
-  'incoming mass must depend on this commitment rather than shrink against an established pile'
+  'the renderer must consume one authored bundle per broad active column while bounding legacy compatibility frames'
 );
 assert.match(
   integratedCss,
@@ -1409,6 +1528,119 @@ const firstTrueOverflowTimeline = buildCapitalStackTimeline({
   seed: 91,
 });
 const repeatedFundingMarketPrice = 48_420_000;
+const onePageCapitalState = getBattleCapitalPageState(
+  300_000_000,
+  repeatedFundingMarketPrice
+);
+const twoPageCapitalState = getBattleCapitalPageState(
+  600_000_000,
+  repeatedFundingMarketPrice
+);
+const oneAndHalfPageCapitalState = getBattleCapitalPageState(
+  450_000_000,
+  repeatedFundingMarketPrice
+);
+const quarterPageCapitalState = getBattleCapitalPageState(
+  75_000_000,
+  repeatedFundingMarketPrice
+);
+const halfPageCapitalState = getBattleCapitalPageState(
+  150_000_000,
+  repeatedFundingMarketPrice
+);
+const twoPercentCapitalState = getBattleCapitalPageState(
+  repeatedFundingMarketPrice * 0.02,
+  repeatedFundingMarketPrice
+);
+const fivePercentCapitalState = getBattleCapitalPageState(
+  repeatedFundingMarketPrice * 0.05,
+  repeatedFundingMarketPrice
+);
+assert.ok(
+  twoPercentCapitalState.activeVisibleUnits > 0 &&
+    fivePercentCapitalState.activeVisibleUnits >
+      twoPercentCapitalState.activeVisibleUnits,
+  'sub-page bids must not snap to an empty settled tray'
+);
+const fullPagePlusTwoPercentState = getBattleCapitalPageState(
+  onePageCapitalState.fullPageCapital + repeatedFundingMarketPrice * 0.02,
+  repeatedFundingMarketPrice
+);
+assert.ok(
+  fullPagePlusTwoPercentState.pageEquivalent > 1 &&
+    fullPagePlusTwoPercentState.bankedPileCount === 1 &&
+    fullPagePlusTwoPercentState.activeVisibleUnits > 0,
+  'a small positive top-up after a full page must create a visible successor page'
+);
+assert.ok(
+  Math.abs(onePageCapitalState.fullPageCapital - 300_204_000) < 1e-9 &&
+    onePageCapitalState.bankedPileCount === 0 &&
+    onePageCapitalState.activeVisibleUnits ===
+      BATTLE_CAPITAL_COLUMN_COUNT * 36 &&
+    twoPageCapitalState.bankedPileCount === 1 &&
+    twoPageCapitalState.activeVisibleUnits ===
+      BATTLE_CAPITAL_COLUMN_COUNT * 36,
+  'capital must use one stable amount-continuous page capacity for the whole battle'
+);
+assert.ok(
+  Math.abs(
+    halfPageCapitalState.pageEquivalent /
+      quarterPageCapitalState.pageEquivalent -
+      2
+  ) < 1e-9 &&
+    halfPageCapitalState.activeVisibleUnits ===
+      quarterPageCapitalState.activeVisibleUnits * 2,
+  'doubling sub-page capital must double its represented page work and visible mass'
+);
+assert.ok(
+  oneAndHalfPageCapitalState.bankedPileCount === 1 &&
+    oneAndHalfPageCapitalState.activePageFraction > 0.49 &&
+    oneAndHalfPageCapitalState.activePageFraction < 0.51 &&
+    oneAndHalfPageCapitalState.activeVisibleUnits >
+      BATTLE_CAPITAL_COLUMN_COUNT * 17,
+  'money beyond one completed page must bank that page and preserve the fractional refill instead of shrinking the total hoard'
+);
+const fractionalFundingTimeline = buildCapitalStackTimeline({
+  id: 'visual-300m-to-450m-fractional-page',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 300_000_000,
+  nextCapital: 450_000_000,
+  marketPrice: repeatedFundingMarketPrice,
+  intensity: 'heavy',
+  seed: 299,
+});
+assert.equal(
+  fractionalFundingTimeline.frames.filter(
+    (frame) => frame.bankTransfer === true && frame.bankTransferPages === 1
+  ).length,
+  1,
+  'a partial second page must first bank the completed first page exactly once'
+);
+const samePageRefillTimeline = buildCapitalStackTimeline({
+  id: 'visual-75m-to-150m-same-page-refill',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 75_000_000,
+  nextCapital: 150_000_000,
+  marketPrice: repeatedFundingMarketPrice,
+  intensity: 'standard',
+  seed: 298,
+});
+const samePageRefillUnits = samePageRefillTimeline.frames
+  .filter((frame) => frame.phase === 'pour')
+  .map((frame) => frame.visibleUnits);
+assert.ok(
+  samePageRefillUnits.length > 0 &&
+    samePageRefillUnits[0] === quarterPageCapitalState.activeVisibleUnits &&
+    samePageRefillUnits.every(
+      (visibleUnits, index) =>
+        index === 0 || visibleUnits >= samePageRefillUnits[index - 1]
+    ) &&
+    samePageRefillTimeline.frames.at(-1)?.visibleUnits ===
+      halfPageCapitalState.activeVisibleUnits,
+  'a same-page refill must grow monotonically from the already-settled hoard instead of restarting below it'
+);
 const repeatedFundingTimeline = buildCapitalStackTimeline({
   id: 'visual-repeated-300m-overflow',
   side: 'player',
@@ -1428,8 +1660,9 @@ const repeatedFundingFirstPacket = repeatedFundingTimeline.frames.find(
 );
 assert.equal(repeatedFundingTransfer.length, 1);
 assert.ok(
-    repeatedFundingTransfer[0].activeColumnIndices.length === 0 &&
+  repeatedFundingTransfer[0].activeColumnIndices.length === 0 &&
     repeatedFundingTransfer[0].bankedPileCount === 1 &&
+    repeatedFundingTransfer[0].bankTransferPages === 1 &&
     repeatedFundingTransfer[0].stackDepth === 0 &&
     repeatedFundingTransfer[0].durationMs === BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS &&
     repeatedFundingFirstPacket &&
@@ -1437,39 +1670,295 @@ assert.ok(
       repeatedFundingTransfer[0].atMs + repeatedFundingTransfer[0].durationMs &&
     Math.max(...repeatedFundingFirstPacket.columnHeights) === 0 &&
     Math.max(...(repeatedFundingFirstPacket.bankedColumnHeights ?? [])) === 36,
-  'the second 300M must silently bank the whole old page before an empty upper field begins refilling'
+  'the second 300M must bank the whole old page in one decisive move before refilling an empty upper field'
 );
+const continuedReservoirTimeline = buildCapitalStackTimeline({
+  id: 'visual-reservoir-two-pages-to-three-pages',
+  side: 'player',
+  source: 'direct',
+  previousCapital: onePageCapitalState.fullPageCapital * 2,
+  nextCapital: onePageCapitalState.fullPageCapital * 3,
+  marketPrice: repeatedFundingMarketPrice,
+  intensity: 'heavy',
+  seed: 304,
+});
+const projectReservoirSink = (
+  frame: {
+    bankedPileCount?: number;
+    bankTransfer?: boolean;
+    bankTransferPages?: number;
+  },
+  transferProgress: number,
+  fieldHeight: number
+) => {
+  const targetBankedPileCount = Math.max(0, frame.bankedPileCount ?? 0);
+  const transferPages = frame.bankTransfer
+    ? Math.max(1, frame.bankTransferPages ?? 1)
+    : 0;
+  const previousBankedPileCount = frame.bankTransfer
+    ? Math.max(0, targetBankedPileCount - transferPages)
+    : targetBankedPileCount;
+  const previousSink = resolveBattleCapitalReservoirSink({
+    height: fieldHeight,
+    bankedPileCount: previousBankedPileCount,
+  });
+  const targetSink = resolveBattleCapitalReservoirSink({
+    height: fieldHeight,
+    bankedPileCount: targetBankedPileCount,
+  });
+  return frame.bankTransfer
+    ? previousSink +
+        (targetSink - previousSink) * Math.max(0, Math.min(1, transferProgress))
+    : targetSink;
+};
+const projectPhysicalTrayY = (
+  frame: {
+    bankedPileCount?: number;
+    bankTransfer?: boolean;
+    bankTransferPages?: number;
+  },
+  transferProgress: number,
+  fieldHeight: number,
+  landscape: boolean,
+  fullPageExtent: number
+) => {
+  const targetBankedPileCount = Math.max(0, frame.bankedPileCount ?? 0);
+  const transferPages = frame.bankTransfer
+    ? Math.max(1, frame.bankTransferPages ?? 1)
+    : 0;
+  const previousBankedPileCount = frame.bankTransfer
+    ? Math.max(0, targetBankedPileCount - transferPages)
+    : targetBankedPileCount;
+  const bankGeometry = resolveBattleCapitalBankGeometry({
+    height: fieldHeight,
+    landscape,
+    tallestActiveExtent: fullPageExtent,
+    bankedPileCount: targetBankedPileCount,
+  });
+  const transferGeometry = resolveBattleCapitalBankGeometry({
+    height: fieldHeight,
+    landscape,
+    tallestActiveExtent: fullPageExtent,
+    bankedPileCount: previousBankedPileCount,
+    transferProgress,
+  });
+  const sink = projectReservoirSink(frame, transferProgress, fieldHeight);
+  return frame.bankTransfer
+    ? bankGeometry.activeBaseY +
+        sink +
+        previousBankedPileCount * bankGeometry.pageTravelPx +
+        (transferGeometry.promotedPageBaseY -
+          transferGeometry.activeBaseY)
+    : bankGeometry.trayBaseY + sink;
+};
+for (const [label, timeline] of [
+  ['first bank', repeatedFundingTimeline],
+  ['continued bank', continuedReservoirTimeline],
+] as const) {
+  const transferIndex = timeline.frames.findIndex(
+    (frame) => frame.bankTransfer === true
+  );
+  const transferFrame = timeline.frames[transferIndex];
+  const preTransferFrame = timeline.frames[transferIndex - 1];
+  const emptyRefillFrame = timeline.frames
+    .slice(transferIndex + 1)
+    .find((frame) => frame.activeColumnIndices.length > 0);
+  const settleFrame = timeline.frames.at(-1);
+  assert.ok(
+    transferIndex > 0 &&
+      transferFrame &&
+      preTransferFrame &&
+      emptyRefillFrame &&
+      settleFrame &&
+      emptyRefillFrame.visibleUnits === 0 &&
+      Math.max(...emptyRefillFrame.columnHeights) === 0,
+    `${label} must expose a transfer, genuinely empty first refill and settle frame`
+  );
+  for (const [fieldHeight, landscape, fullPageExtent] of [
+    [368, false, 280],
+    [129, true, 105],
+  ] as const) {
+    const sinkSamples = [
+      projectReservoirSink(preTransferFrame, 1, fieldHeight),
+      projectReservoirSink(transferFrame, 0, fieldHeight),
+      projectReservoirSink(transferFrame, 0.25, fieldHeight),
+      projectReservoirSink(transferFrame, 0.5, fieldHeight),
+      projectReservoirSink(transferFrame, 0.75, fieldHeight),
+      projectReservoirSink(transferFrame, 1, fieldHeight),
+      projectReservoirSink(emptyRefillFrame, 1, fieldHeight),
+      projectReservoirSink(settleFrame, 1, fieldHeight),
+    ];
+    assert.ok(
+      sinkSamples.every(
+        (sink, index) => index === 0 || sink >= sinkSamples[index - 1] - 1e-9
+      ),
+      `${label} reservoir sink must never jump upward from transfer through empty refill and settle at ${fieldHeight}px`
+    );
+    assert.equal(
+      sinkSamples.at(-3),
+      sinkSamples.at(-2),
+      `${label} empty refill must retain the completed transfer sink at ${fieldHeight}px`
+    );
+    assert.equal(
+      sinkSamples.at(-2),
+      sinkSamples.at(-1),
+      `${label} settle must retain the refill sink at ${fieldHeight}px`
+    );
+    const completedTransferTrayY = projectPhysicalTrayY(
+      transferFrame,
+      1,
+      fieldHeight,
+      landscape,
+      fullPageExtent
+    );
+    const emptyRefillTrayY = projectPhysicalTrayY(
+      emptyRefillFrame,
+      1,
+      fieldHeight,
+      landscape,
+      fullPageExtent
+    );
+    const settleTrayY = projectPhysicalTrayY(
+      settleFrame,
+      1,
+      fieldHeight,
+      landscape,
+      fullPageExtent
+    );
+    assert.ok(
+      Math.abs(completedTransferTrayY - emptyRefillTrayY) < 1e-9 &&
+        Math.abs(emptyRefillTrayY - settleTrayY) < 1e-9,
+      `${label} tray/hoard/glow baseline must not jump upward after transfer at ${fieldHeight}px`
+    );
+  }
+}
 assert.ok(
   repeatedFundingTimeline.frames
     .filter((frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0)
-    .every((frame) => frame.durationMs === CAPITAL_OVERFLOW_RAPID_BEAT_MS),
-  'post-drop repeated funding must retain the reviewed rapid metallic cadence'
+    .every((frame) => frame.durationMs === CAPITAL_COIN_WAVE_MS),
+  'post-drop repeated funding must hold each broad falling group for the reviewed 198ms cadence'
 );
 assert.equal(repeatedFundingTimeline.frames.at(-1)?.bankedPileCount, 1);
 const repeatedFundingCurtain = repeatedFundingTimeline.frames.filter(
   (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
 );
-assert.equal(repeatedFundingCurtain.length, CAPITAL_MASS_CURTAIN_BEATS);
+assert.equal(repeatedFundingCurtain.length, CAPITAL_COIN_WAVES_PER_PAGE);
 assert.ok(
   repeatedFundingCurtain.every(
     (frame) =>
-      frame.activeColumnIndices.length === BATTLE_CAPITAL_COLUMN_COUNT &&
-      frame.incomingBundleCopies === 3 &&
-      frame.incomingBundleLayers === CAPITAL_MASS_CURTAIN_BUNDLE_LAYERS
+      frame.activeColumnIndices.length >= CAPITAL_COIN_WAVE_MIN_COLUMNS &&
+      frame.activeColumnIndices.length <= CAPITAL_COIN_WAVE_MAX_COLUMNS &&
+      frame.incomingBundleCopies === 1 &&
+      frame.incomingBundleLayers === CAPITAL_COIN_WAVE_BUNDLE_LAYERS
   ),
-  'the second treasury-sized commitment must cover the entire tray with repeated nine-layer curtains'
+  'each treasury page must arrive as nine broad eighteen-to-twenty-two-column waves of seven-layer rolls'
 );
 assert.deepEqual(
   repeatedFundingCurtain.map((frame) => Math.max(...frame.columnHeights)),
-  [0, 6, 12, 18, 24, 30],
+  [0, 4, 8, 12, 16, 20, 24, 28, 32],
   'the upper page must refill from zero instead of stretching the completed lower page'
 );
-assert.ok(
-  firstTrueOverflowTimeline.frames.every(
-    (frame) => frame.bankTransfer !== true && frame.bankedPileCount === 0
+assert.equal(
+  repeatedFundingTimeline.frames.at(-1)?.columnHeights.every(
+    (height) => height === 36
   ),
-  'the first large page must remain in the upper field; only a later page-sized repeat banks it'
+  true,
+  'the ninth wave must settle into one level twenty-four-column wall'
 );
+assert.ok(
+  firstTrueOverflowTimeline.frames
+    .filter((frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0)
+    .every(
+      (frame) =>
+        frame.durationMs === CAPITAL_COIN_WAVE_MS &&
+        frame.incomingBundleCopies === 1 &&
+        frame.incomingBundleLayers === CAPITAL_COIN_WAVE_BUNDLE_LAYERS
+    ),
+  'all amount scales must use the same broad physical coin-wave grammar'
+);
+
+const hugeRepeatedFundingTimeline = buildCapitalStackTimeline({
+  id: 'visual-repeated-300m-to-1500m',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 300_000_000,
+  nextCapital: 1_500_000_000,
+  marketPrice: repeatedFundingMarketPrice,
+  intensity: 'heavy',
+  seed: 301,
+});
+const hugeRepeatedTransfer = hugeRepeatedFundingTimeline.frames.filter(
+  (frame) => frame.bankTransfer === true
+);
+const hugeRepeatedWaves = hugeRepeatedFundingTimeline.frames.filter(
+  (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+);
+assert.equal(hugeRepeatedTransfer.length, 1);
+assert.equal(hugeRepeatedTransfer[0].bankTransferPages, 4);
+assert.equal(hugeRepeatedTransfer[0].bankedPileCount, 4);
+assert.equal(hugeRepeatedWaves.length, CAPITAL_COIN_WAVE_MAX_COUNT);
+assert.ok(
+  hugeRepeatedWaves.every(
+    (frame) =>
+      frame.durationMs === CAPITAL_COIN_WAVE_MS &&
+      frame.activeColumnIndices.length >= CAPITAL_COIN_WAVE_MIN_COLUMNS &&
+      frame.activeColumnIndices.length <= CAPITAL_COIN_WAVE_MAX_COLUMNS &&
+      frame.incomingBundleCopies === 1 &&
+      frame.incomingBundleLayers === CAPITAL_COIN_WAVE_BUNDLE_LAYERS
+  ),
+  'four added pages must descend in one precomputed transfer and sustain the full sixty-four-wave torrent'
+);
+
+const hugeInitialFundingTimeline = buildCapitalStackTimeline({
+  id: 'visual-initial-1500m',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 0,
+  nextCapital: 1_500_000_000,
+  marketPrice: repeatedFundingMarketPrice,
+  intensity: 'heavy',
+  seed: 302,
+});
+const hugeInitialTransfer = hugeInitialFundingTimeline.frames.filter(
+  (frame) => frame.bankTransfer === true
+);
+assert.equal(hugeInitialTransfer.length, 1);
+assert.equal(hugeInitialTransfer[0].bankTransferPages, 4);
+assert.equal(
+  hugeInitialFundingTimeline.frames.filter(
+    (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+  ).length,
+  CAPITAL_COIN_WAVE_MAX_COUNT,
+  'an initial fortune of four or more pages must also retain the sixty-four-wave cap'
+);
+assert.ok(
+  hugeInitialFundingTimeline.frames.indexOf(hugeInitialTransfer[0]) >
+    CAPITAL_COIN_WAVES_PER_PAGE - 1,
+  'an initial multi-page fortune must fill its first visible page, bank every completed page once, then continue the torrent'
+);
+const compactHugeFundingTimeline = buildCapitalStackTimeline({
+  id: 'visual-compact-1500m-reduced-motion',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 300_000_000,
+  nextCapital: 1_500_000_000,
+  marketPrice: repeatedFundingMarketPrice,
+  intensity: 'compact',
+  seed: 303,
+});
+const compactHugeTransfer = compactHugeFundingTimeline.frames.filter(
+  (frame) => frame.bankTransfer === true
+);
+const compactHugeWaves = compactHugeFundingTimeline.frames.filter(
+  (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+);
+assert.equal(compactHugeTransfer.length, 1);
+assert.equal(compactHugeTransfer[0].bankTransferPages, 4);
+assert.equal(compactHugeTransfer[0].durationMs, 24);
+assert.equal(compactHugeWaves.length, 1);
+assert.equal(compactHugeWaves[0].durationMs, CAPITAL_STACK_BEAT_MS.compact);
+assert.equal(compactHugeFundingTimeline.preloadMs, 24);
+assert.equal(compactHugeFundingTimeline.settleMs, 72);
 const saturatedReloadFrames = getMechanicalCapitalColumnFrames(
   BATTLE_CAPITAL_COLUMN_COUNT * 36,
   BATTLE_CAPITAL_COLUMN_COUNT * 36,
@@ -1510,8 +1999,8 @@ const oneOverflowSweep = getMechanicalCapitalColumnFrames(
 const playerCapitalSweepGroups = [
   [21, 14, 19, 8, 13],
   [3, 18, 7, 12, 2],
-  [17, 6, 11, 1],
-  [16, 5, 10, 0],
+  [23, 17, 6, 11, 1],
+  [16, 5, 10, 0, 22],
   [15, 4, 9, 20],
 ];
 const outwardCapitalSweep = playerCapitalSweepGroups.flat();
@@ -1577,8 +2066,15 @@ assert.ok(
     .filter(
       (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
     )
-    .every((frame) => frame.durationMs === CAPITAL_OVERFLOW_RAPID_BEAT_MS),
-  'exceptional reloads must preserve every bounded mass sweep at the ultra-fast recorded tick cadence'
+    .every(
+      (frame) =>
+        frame.durationMs === CAPITAL_COIN_WAVE_MS &&
+        frame.activeColumnIndices.length >= CAPITAL_COIN_WAVE_MIN_COLUMNS &&
+        frame.activeColumnIndices.length <= CAPITAL_COIN_WAVE_MAX_COLUMNS &&
+        frame.incomingBundleCopies === 1 &&
+        frame.incomingBundleLayers === CAPITAL_COIN_WAVE_BUNDLE_LAYERS
+    ),
+  'exceptional funding must remain a sustained broad coin torrent rather than collapsing into 66ms sprinkles'
 );
 assert.match(
   battleModal,
@@ -1885,7 +2381,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const bankGeometry = resolveBattleCapitalBankGeometry\(\{[\s\S]{0,220}bankedPileCount,[\s\S]{0,40}\}\);[\s\S]{0,80}const transferGeometry = resolveBattleCapitalBankGeometry\(\{[\s\S]{0,240}transferProgress,[\s\S]{0,40}\}\);[\s\S]{0,400}promotedPageBaseY - transferGeometry\.activeBaseY/,
+  /const bankGeometry = resolveBattleCapitalBankGeometry\(\{[\s\S]{0,220}bankedPileCount,[\s\S]{0,40}\}\);[\s\S]{0,80}const transferGeometry = resolveBattleCapitalBankGeometry\(\{[\s\S]{0,240}transferProgress,[\s\S]{0,40}\}\);[\s\S]{0,1000}promotedPageBaseY - transferGeometry\.activeBaseY/,
   'the Canvas2D rack must bank a whole rendered page independently before incoming bundles refill the upper field'
 );
 assert.match(
@@ -1912,11 +2408,6 @@ assert.match(
   integratedCss,
   /--battle-gauge-interpolation:\s*110ms;[\s\S]*recast-meter > i > u[\s\S]*transition:\s*width var\(--battle-gauge-interpolation\) linear;/,
   'player and enemy recast meters must bridge every 100ms logical update without an idle gap'
-);
-assert.match(
-  liveCapitalCanvas,
-  /rackFloorDepth:\s*playerCapitalRackFloorDepth,[\s\S]*rackFloorDepth:\s*enemyCapitalRackFloorDepth/,
-  'ending a preview must retain the deepest continuous overflow footing'
 );
 assert.doesNotMatch(
   battleModal,
@@ -1968,13 +2459,13 @@ assert.match(
 );
 assert.match(
   audio,
-  /const loopDurationMs = 1_188;[\s\S]{0,260}0, 65, 131, 198, 264, 330, 396, 462,[\s\S]{0,180}const accentEveryTicks = 3;[\s\S]{0,180}0\.985, 1\.035, 1\.015, 0\.995, 1\.025, 1\.045/,
-  'the cached stack loop must retain fine 65ms chatter while landing a strong recorded accent about every 198ms'
+  /const loopDurationMs = 1_188;[\s\S]{0,260}0, 65, 131, 198, 264, 330, 396, 462,[\s\S]{0,180}const accentEveryTicks = 6;[\s\S]{0,180}0\.985, 1\.035, 1\.015, 0\.995, 1\.025, 1\.045/,
+  'the cached stack loop must retain fine 65ms chatter while landing a strong recorded accent about every 400ms'
 );
 assert.match(
   audio,
   /const strongAccentGains = \[1, 0\.96, 1\.03, 0\.98, 1\.01, 0\.95\][\s\S]{0,100}const weakMicrotickGains = \[0\.26, 0\.2, 0\.23, 0\.18\][\s\S]{0,1600}tickIndex % accentEveryTicks === 0[\s\S]{0,280}strongAccentGains[\s\S]{0,240}weakMicrotickGains/,
-  'every third recorded tick must carry the metallic mass while the two intervening ticks stay as quiet coin chatter'
+  'every sixth recorded tick must carry the metallic mass while the five intervening ticks stay as quiet coin chatter'
 );
 assert.match(
   audio,
@@ -2015,10 +2506,11 @@ assert.ok(
   audibleFrameSelectors.every(
     (selection) =>
       selection.includes("frame.phase === 'pour'") &&
+      selection.includes('frame.bankTransfer === true') &&
       selection.includes('frame.activeColumnIndices.length > 0') &&
       !selection.includes('rackShift')
   ),
-  'the metallic stack loop must begin with the first falling bundle, not during the one-shot empty rack descent'
+  'the same metallic stack loop must begin with the decisive bank descent and continue through the final falling wave'
 );
 assert.match(
   battleModal,

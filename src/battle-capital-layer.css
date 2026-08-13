@@ -1,6 +1,6 @@
 /*
  * Final capital-layer composition.
- * Loaded after the integrated field so the pile owns the whole visual row
+ * Loaded after the integrated field so the capital pages own the whole visual row
  * behind the actor instead of reserving a quarter of it for the portrait.
  */
 .integrated-battlefield .capital-visual-row > .gil-tower {
@@ -26,8 +26,8 @@
 }
 
 .integrated-battlefield .capital-visual-row .ownership-fighter {
-  /* The actor remains the readable subject while bounded coin packets pass
-   * through the rack beneath them. Settled piles already live at z-index 1. */
+  /* The actor remains the readable subject while bounded incoming waves pass
+   * through the rack beneath them. Settled pages already live at z-index 1. */
   z-index: 24;
 }
 
@@ -1338,11 +1338,9 @@
 }
 
 /*
- * Fixed-node capital formations.
- * The six pieces change silhouette at each campaign band: scattered coins,
- * uneven stacks, terraces, a treasury wall, sealed vaults, then an overflow
- * field. No idle animation is used, so the richer composition costs almost
- * nothing between investments.
+ * Legacy fixed-node fallback formations. The live Canvas uses reusable
+ * active/banked pages and bounded incoming waves; these decorative nodes stay
+ * amount-independent and do not animate while idle.
  */
 .integrated-battlefield .gil-tower {
   --formation-light: #fff2a8;
@@ -1635,8 +1633,8 @@
 }
 
 /*
- * The pile itself is scenery. Weight comes from the fixed bundles landing in
- * order and the table reacting once, never from wobbling the completed hoard.
+ * The settled page field is scenery. Weight comes from bounded incoming waves
+ * landing in order and the tray reacting once, never from wobbling the bank.
  */
 .integrated-battlefield .gil-tower--impact {
   transform: none;
@@ -2049,7 +2047,7 @@
 
 /*
  * Flying values originate beside the actors and rise away from the capital
- * piles. Negative text keeps its red treatment but no longer falls into the
+ * pages. Negative text keeps its red treatment but no longer falls into the
  * command area.
  */
 .battle-flying-texts .gil-floater {
@@ -2156,7 +2154,7 @@
  *
  * Money is the reward, so one direct investment now owns a readable sequence:
  * prepare, carry, contact/settle, then afterglow. It reuses the existing
- * Tataru, stake preview, pile and table aura; no new particles or idle loops.
+ * Tataru, stake preview, page field and table aura; no new particles or idle loops.
  */
 .buyout-screen--capital-commit
   :is(
@@ -2730,7 +2728,7 @@
 }
 
 /* Keep the fixed column centres clear of the outer-edge actors. This final
- * override intentionally wins over legacy pile geometry above. */
+ * override intentionally wins over legacy rack geometry above. */
 .integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips {
   top: -1.35rem;
   right: -4%;
@@ -2907,7 +2905,7 @@
 
 /*
  * Post-Ultimate CRUEL presentation. This recolours the existing fixed
- * twenty-two-column rack; it does not add amount-proportional nodes or an idle
+ * twenty-four-column rack; it does not add amount-proportional nodes or an idle
  * animation. The warning card is one transient, readable decision surface.
  */
 .integrated-battlefield--cruel {
@@ -3338,10 +3336,10 @@
 }
 
 /*
- * Portrait phones have only half a field per side. Nudge each fixed-size pile
- * slightly toward the centre so its middle growth remains visible beside the
+ * Portrait phones have only half a field per side. Nudge each fixed-size page
+ * slightly toward the centre so its broad growth remains visible beside the
  * foreground actor. Width and node counts stay unchanged, and the centre lane
- * still separates the two mounds.
+ * still separates the two page fields.
  */
 @media (max-width: 639px) and (min-height: 701px) {
   .integrated-battlefield
@@ -3447,7 +3445,7 @@
   animation-timing-function: cubic-bezier(.2, .72, .24, 1);
 }
 
-/* Funding is the primary reward beat. Keep its exact amount above the pile,
+/* Funding is the primary reward beat. Keep its exact amount above the active page,
  * where it remains visible while the lower command strip is locked. */
 .battle-flying-texts .gil-floater--support {
   top: auto;
@@ -3496,7 +3494,7 @@
 }
 
 /*
- * Fixed twenty-two-column capital field.
+ * Fixed twenty-four-column active-page capital field.
  *
  * The portrait-phone composition is the source of truth: the actor owns the
  * outside edge while the centre of each independent column group sits toward
@@ -3542,10 +3540,9 @@
   transition: translate 280ms cubic-bezier(.24, .02, .42, 1);
 }
 
-/* Exceptional funding reuses the fixed twenty-two columns as a lowered
- * loading tray. The frame signal survived the overflow rewrite, so reconnect
- * it here instead of adding amount-proportional coins. Once activated, the
- * battle presentation keeps this lowered footing through every later pour. */
+/* A completed page reuses the fixed twenty-four columns as a lowered banked
+ * tray. The upper page moves down before the bounded incoming waves refill it;
+ * amount growth changes timeline work, never the number of rendered nodes. */
 .integrated-battlefield
   .gil-column-field[data-rack-compressed="true"] {
   --capital-rack-compression: clamp(1.8rem, 4.2vh, 2.5rem);
@@ -3555,7 +3552,7 @@
 }
 
 /* During the pour the wealth itself is the acting character. Raise only the
- * bounded fixed rack for that beat; settled piles return behind the portraits. */
+ * bounded fixed rack for that beat; settled pages return behind the portraits. */
 .integrated-battlefield
   .gil-column-field[data-packet-active="true"] {
   z-index: 26;
@@ -3911,7 +3908,7 @@
 
 /* Tablet landscape has room for a broad treasury rack. Keep the phone
  * portrait composition unchanged, but use the same wide slot spread here so
- * twenty-two fixed columns fill the available half-field instead of huddling
+ * twenty-four fixed columns fill the available half-field instead of huddling
  * around its centre. DOM count and battle state remain identical. */
 @media (orientation: landscape) and (min-width: 900px) and (min-height: 600px) {
   .integrated-battlefield .gil-column-field {
@@ -4402,8 +4399,8 @@
   }
 }
 
-/* Final mobile-first pile placement: actors stay on the outer edge and each
- * independent twenty-two-column field keeps its centre visible toward mid-screen. */
+/* Final mobile-first page placement: actors stay on the outer edge and each
+ * independent twenty-four-column field keeps its centre visible toward mid-screen. */
 .integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips {
   top: -1.35rem;
   right: -4%;
