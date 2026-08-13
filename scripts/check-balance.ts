@@ -48,6 +48,7 @@ import {
   canConfirmBattleResult,
   enqueueBattleStatusMessage,
   getBattleCapitalVisualBundleCount,
+  getBattleCapitalOverflowDepth,
   getBattleCapitalOverflowTier,
   getBattleCapitalVisibleUnits,
   getCapitalIncomingBundleCopies,
@@ -2310,6 +2311,59 @@ assert.equal(
   saturatedCounterTimeline.frames.at(-1)?.presentedCapital,
   8_160_000,
   'the saturated reload ends at the exact committed capital'
+);
+const repeatedFundingMarketPrice = 48_420_000;
+const repeatedFundingPreviousDepth = getBattleCapitalOverflowDepth(
+  300_000_000,
+  repeatedFundingMarketPrice
+);
+const repeatedFundingTargetDepth = getBattleCapitalOverflowDepth(
+  600_000_000,
+  repeatedFundingMarketPrice
+);
+const repeatedFundingTimeline = buildCapitalStackTimeline({
+  id: 'balance-repeated-300m-overflow',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 300_000_000,
+  nextCapital: 600_000_000,
+  marketPrice: repeatedFundingMarketPrice,
+  intensity: 'heavy',
+  seed: 300,
+});
+const repeatedFundingShift = repeatedFundingTimeline.frames.filter(
+  (frame) => frame.rackShift === true
+);
+assert.ok(
+  repeatedFundingPreviousDepth > 3 &&
+    repeatedFundingTargetDepth > repeatedFundingPreviousDepth + 0.9,
+  'repeated funding beyond the third decoration grade must retain additional structural depth'
+);
+assert.equal(
+  repeatedFundingShift.length,
+  1,
+  'the second 300M commitment must calculate one new rack destination'
+);
+assert.deepEqual(
+  [repeatedFundingShift[0].rackDepth, repeatedFundingShift[0].stackDepth],
+  [repeatedFundingTargetDepth, repeatedFundingPreviousDepth],
+  'the old 300M pile must descend intact before the next 300M is absorbed'
+);
+const repeatedFundingFirstPacket = repeatedFundingTimeline.frames.find(
+  (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+);
+assert.ok(
+  repeatedFundingFirstPacket &&
+    repeatedFundingFirstPacket.atMs >=
+      repeatedFundingShift[0].atMs + repeatedFundingShift[0].durationMs &&
+    repeatedFundingFirstPacket.rackDepth === repeatedFundingTargetDepth &&
+    repeatedFundingFirstPacket.stackDepth === repeatedFundingPreviousDepth,
+  'rapid packets may begin only after the completed treasury reaches its new depth'
+);
+assert.equal(
+  repeatedFundingTimeline.frames.at(-1)?.stackDepth,
+  repeatedFundingTargetDepth,
+  'the repeated event must retain its new physical mass after the preview ends'
 );
 const cruelOpeningFrames = getMechanicalCapitalColumnFrames(
   0,

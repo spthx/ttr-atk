@@ -79,6 +79,7 @@ import {
   getBattleHitStopTiming,
   getBossEnemyPartySize,
   getBattleCinematicLayer,
+  getBattleCapitalOverflowDepth,
   getBattleCapitalOverflowTier,
   getCapitalCommitTiming,
   getCapitalPresentationRecoveryAction,
@@ -1139,9 +1140,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     useState<CapitalPilePresentationFrame | null>(null);
   const [enemyCapitalPilePreviewStage, setEnemyCapitalPilePreviewStage] =
     useState<CapitalPilePresentationFrame | null>(null);
-  const [playerCapitalRackFloorTier, setPlayerCapitalRackFloorTier] =
+  const [playerCapitalRackFloorDepth, setPlayerCapitalRackFloorDepth] =
     useState(0);
-  const [enemyCapitalRackFloorTier, setEnemyCapitalRackFloorTier] =
+  const [enemyCapitalRackFloorDepth, setEnemyCapitalRackFloorDepth] =
     useState(0);
   const [terminalCapitalSnapshot, setTerminalCapitalSnapshot] =
     useState<CapitalCommitSnapshot | null>(null);
@@ -1746,6 +1747,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         nextCapital,
         targetProperty.marketPrice
       );
+      const overflowDepth = getBattleCapitalOverflowDepth(
+        nextCapital,
+        targetProperty.marketPrice
+      );
       const intensity: CapitalStackIntensity = compact
         ? 'compact'
         : strongPresentation
@@ -1799,12 +1804,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         const overflowReloading = (frame.overflowPass ?? 0) > 0;
         if (isFinalFrame) {
           if (side === 'player') {
-            setPlayerCapitalRackFloorTier((current) =>
-              Math.max(current, overflowTier)
+            setPlayerCapitalRackFloorDepth((current) =>
+              Math.max(current, frame.rackDepth ?? overflowDepth)
             );
           } else {
-            setEnemyCapitalRackFloorTier((current) =>
-              Math.max(current, overflowTier)
+            setEnemyCapitalRackFloorDepth((current) =>
+              Math.max(current, frame.rackDepth ?? overflowDepth)
             );
           }
         }
@@ -6842,6 +6847,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       snapshot.previousCapital + snapshot.amount,
       targetProperty.marketPrice
     );
+    const overflowDepth = getBattleCapitalOverflowDepth(
+      snapshot.previousCapital + snapshot.amount,
+      targetProperty.marketPrice
+    );
     const intensity: CapitalStackIntensity = snapshot.compact
       ? 'compact'
       : snapshot.level >= 4
@@ -6937,8 +6946,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const isFinalFrame = index === timeline.frames.length - 1;
       const overflowReloading = (frame.overflowPass ?? 0) > 0;
       if (isFinalFrame) {
-        setPlayerCapitalRackFloorTier((current) =>
-          Math.max(current, overflowTier)
+        setPlayerCapitalRackFloorDepth((current) =>
+          Math.max(current, frame.rackDepth ?? overflowDepth)
         );
       }
       setCapitalPreviewStage({
@@ -8949,14 +8958,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             marketPrice: targetProperty.marketPrice,
             previewFrame:
               capitalPreviewStage ?? playerCapitalPilePreviewStage,
-            rackFloorTier: playerCapitalRackFloorTier,
+            rackFloorDepth: playerCapitalRackFloorDepth,
             impact: playerCapitalMotion === 'player',
           }}
           enemy={{
             amount: displayedEnemyInvested,
             marketPrice: targetProperty.marketPrice,
             previewFrame: enemyCapitalPilePreviewStage,
-            rackFloorTier: enemyCapitalRackFloorTier,
+            rackFloorDepth: enemyCapitalRackFloorDepth,
             impact: motion === 'enemy' || motion === 'rebel',
           }}
           ownershipPercent={displayedOwnership}

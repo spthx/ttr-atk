@@ -8,6 +8,7 @@ import {
   CAPITAL_OVERFLOW_RESTACK_BEATS,
   CAPITAL_STACK_BEAT_MS,
   buildCapitalStackTimeline,
+  getBattleCapitalOverflowDepth,
   getCapitalIncomingBundleCopies,
   getCapitalOverflowPassCount,
   getCapitalPresentationRecoveryAction,
@@ -30,6 +31,7 @@ import {
   BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS,
   BATTLE_CAPITAL_RACK_TWEEN_MS,
   easeBattleCapitalRackDepth,
+  resolveBattleCapitalEffectiveDepth,
   resolveBattleCapitalCanvasLayout,
   resolveBattleCapitalHoardVerticalGeometry,
   resolveBattleCapitalStackGeometry,
@@ -304,8 +306,8 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /rackDepth:\s*clamp\([\s\S]{0,180}preview\?\.rackDepth \?\? Math\.max\(overflowTier, state\.rackFloorTier \?\? 0\)[\s\S]{0,180}stackDepth:\s*clamp\([\s\S]{0,180}preview\?\.stackDepth \?\? Math\.max\(overflowTier, state\.rackFloorTier \?\? 0\)/,
-  'the Canvas2D rack must keep completed-pile descent separate from absorbed overflow layers'
+  /const amountOverflowDepth = getBattleCapitalOverflowDepth\([\s\S]{0,100}amount,[\s\S]{0,100}marketPrice[\s\S]*rackDepth:\s*finiteNonNegative\([\s\S]{0,180}Math\.max\(amountOverflowDepth, state\.rackFloorDepth \?\? 0\)[\s\S]{0,180}stackDepth:\s*finiteNonNegative\([\s\S]{0,180}Math\.max\(amountOverflowDepth, state\.rackFloorDepth \?\? 0\)/,
+  'the Canvas2D rack must retain continuous completed-pile depth after a preview ends'
 );
 assert.doesNotMatch(
   battleCapitalCanvas,
@@ -374,8 +376,8 @@ assert.match(
 );
 assert.match(
   liveCapitalCanvas,
-  /player=\{\{[\s\S]*amount:\s*displayedPlayerInvested,[\s\S]*previewFrame:\s*capitalPreviewStage \?\? playerCapitalPilePreviewStage,[\s\S]*rackFloorTier:\s*playerCapitalRackFloorTier,[\s\S]*enemy=\{\{[\s\S]*amount:\s*displayedEnemyInvested,[\s\S]*previewFrame:\s*enemyCapitalPilePreviewStage,[\s\S]*rackFloorTier:\s*enemyCapitalRackFloorTier,/,
-  'both live capital ledgers and their actual overflow tiers must feed the shared canvas'
+  /player=\{\{[\s\S]*amount:\s*displayedPlayerInvested,[\s\S]*previewFrame:\s*capitalPreviewStage \?\? playerCapitalPilePreviewStage,[\s\S]*rackFloorDepth:\s*playerCapitalRackFloorDepth,[\s\S]*enemy=\{\{[\s\S]*amount:\s*displayedEnemyInvested,[\s\S]*previewFrame:\s*enemyCapitalPilePreviewStage,[\s\S]*rackFloorDepth:\s*enemyCapitalRackFloorDepth,/,
+  'both live capital ledgers and their continuous overflow depth must feed the shared canvas'
 );
 assert.match(
   liveCapitalCanvas,
@@ -550,13 +552,13 @@ const portraitTallerPile = resolveBattleCapitalStackGeometry(414, false, 320);
 assert.ok(
   portraitTallerPile.scrollPx >= portraitTallPile.scrollPx &&
     portraitTallerPile.baseY + 14 * 1.16 < 414,
-  'extra height may clip above the field but must not bury the reviewed pedestal below the Canvas'
+  'legacy pile height may clip above the field but must not bury the reviewed pedestal below the Canvas'
 );
 const portraitExtremePile = resolveBattleCapitalStackGeometry(414, false, 380);
 assert.ok(
   portraitExtremePile.scrollPx === portraitTallerPile.scrollPx &&
     portraitExtremePile.baseY + 14 * 1.16 < 414,
-  'an extreme wall may clip above the field while its silver footing stays visibly attached'
+  'a legacy extreme wall may clip above the field while its silver footing stays visibly attached'
 );
 const landscapeShortPile = resolveBattleCapitalStackGeometry(171, true, 50);
 assert.equal(landscapeShortPile.scrollPx, 0);
@@ -713,7 +715,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /side\.frame\.stackDepth \* BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER[\s\S]{0,1600}resolveBattleCapitalStackGeometry\([\s\S]{0,140}side\.frame\.rackDepth/,
+  /resolveBattleCapitalEffectiveDepth\(side\.frame\.stackDepth\) \*[\s\S]{0,80}BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER[\s\S]{0,1600}resolveBattleCapitalStackGeometry\([\s\S]{0,140}side\.frame\.rackDepth/,
   'completed-pile descent and newly absorbed coin layers must remain separate visual inputs'
 );
 assert.match(
@@ -1384,6 +1386,100 @@ const firstTrueOverflowTimeline = buildCapitalStackTimeline({
   intensity: 'standard',
   seed: 91,
 });
+const repeatedFundingMarketPrice = 48_420_000;
+const repeatedFundingDepths = [300_000_000, 600_000_000, 1_000_000_000].map(
+  (amount) => getBattleCapitalOverflowDepth(amount, repeatedFundingMarketPrice)
+);
+assert.ok(
+  repeatedFundingDepths[0] > 3 &&
+    repeatedFundingDepths[1] > repeatedFundingDepths[0] + 0.9 &&
+    repeatedFundingDepths[2] > repeatedFundingDepths[1],
+  'capital beyond the old third grade must retain continuous structural depth'
+);
+assert.equal(
+  resolveBattleCapitalEffectiveDepth(repeatedFundingDepths[0]),
+  3,
+  'the first reviewed 300M-class pile must keep its existing three-grade silhouette'
+);
+assert.ok(
+  resolveBattleCapitalEffectiveDepth(repeatedFundingDepths[1]) > 3.9,
+  'the next equal 300M funding wave must add roughly another eight-layer bank'
+);
+const repeatedFundingTimeline = buildCapitalStackTimeline({
+  id: 'visual-repeated-300m-overflow',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 300_000_000,
+  nextCapital: 600_000_000,
+  marketPrice: repeatedFundingMarketPrice,
+  intensity: 'heavy',
+  seed: 300,
+});
+const repeatedFundingShift = repeatedFundingTimeline.frames.filter(
+  (frame) => frame.rackShift === true
+);
+const repeatedFundingFirstPacket = repeatedFundingTimeline.frames.find(
+  (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+);
+assert.equal(repeatedFundingShift.length, 1);
+assert.ok(
+  repeatedFundingShift[0].activeColumnIndices.length === 0 &&
+    repeatedFundingShift[0].rackDepth === repeatedFundingDepths[1] &&
+    repeatedFundingShift[0].stackDepth === repeatedFundingDepths[0] &&
+    repeatedFundingFirstPacket &&
+    repeatedFundingFirstPacket.atMs >=
+      repeatedFundingShift[0].atMs + repeatedFundingShift[0].durationMs,
+  'the second 300M must lower the old tray once, with no new coin pre-positioned before the drop finishes'
+);
+assert.ok(
+  repeatedFundingTimeline.frames
+    .filter((frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0)
+    .every((frame) => frame.durationMs === CAPITAL_OVERFLOW_RAPID_BEAT_MS),
+  'post-drop repeated funding must retain the reviewed rapid metallic cadence'
+);
+assert.equal(
+  repeatedFundingTimeline.frames.at(-1)?.stackDepth,
+  repeatedFundingDepths[1]
+);
+const repeatedPortraitBefore = resolveBattleCapitalStackGeometry(
+  368,
+  false,
+  190,
+  repeatedFundingDepths[0]
+);
+const repeatedPortraitAfter = resolveBattleCapitalStackGeometry(
+  368,
+  false,
+  190,
+  repeatedFundingDepths[1]
+);
+const repeatedLandscapeBefore = resolveBattleCapitalStackGeometry(
+  129,
+  true,
+  80,
+  repeatedFundingDepths[0]
+);
+const repeatedLandscapeAfter = resolveBattleCapitalStackGeometry(
+  129,
+  true,
+  80,
+  repeatedFundingDepths[1]
+);
+assert.ok(
+  repeatedPortraitAfter.baseY - repeatedPortraitBefore.baseY >= 36 &&
+    repeatedLandscapeAfter.baseY - repeatedLandscapeBefore.baseY >= 13,
+  'the second 300M must visibly lower the rigid tray and old mountain in both portrait and landscape layouts'
+);
+assert.ok(
+  repeatedPortraitBefore.baseY + 14 * 1.16 < 368 &&
+    repeatedLandscapeBefore.baseY + 7 * 1.16 < 129,
+  'the first reviewed 300M pile must keep the previously approved visible silver rim'
+);
+assert.match(
+  battleCapitalCanvasLayout,
+  /const legacyScroll = Math\.min\([\s\S]{0,180}maximumVisibleLegacyScroll[\s\S]{0,100}const scrollPx = legacyScroll \+ continuousRackScroll/,
+  'only continuous mass beyond the approved three-grade scene may pass the old visible-pedestal cap'
+);
 const firstTrueRackShift = firstTrueOverflowTimeline.frames.find(
   (frame) => frame.rackShift === true
 );
@@ -1889,7 +1985,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const overflowLayers =[\s\S]{0,120}side\.frame\.stackDepth \* BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;[\s\S]*const stackGeometry = resolveBattleCapitalStackGeometry\([\s\S]{0,120}tallestColumnExtent,[\s\S]{0,60}side\.frame\.rackDepth[\s\S]{0,80}const \{ baseY, safeTopY \} = stackGeometry;/,
+  /const overflowLayers =[\s\S]{0,160}resolveBattleCapitalEffectiveDepth\(side\.frame\.stackDepth\)[\s\S]{0,100}BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;[\s\S]*const stackGeometry = resolveBattleCapitalStackGeometry\([\s\S]{0,120}tallestColumnExtent,[\s\S]{0,60}side\.frame\.rackDepth[\s\S]{0,80}const \{ baseY, safeTopY \} = stackGeometry;/,
   'the Canvas2D rack must lower the completed pile independently while incoming overflow bundles keep stacking'
 );
 assert.match(
@@ -1919,8 +2015,8 @@ assert.match(
 );
 assert.match(
   liveCapitalCanvas,
-  /rackFloorTier:\s*playerCapitalRackFloorTier,[\s\S]*rackFloorTier:\s*enemyCapitalRackFloorTier/,
-  'ending a preview must retain only the deepest actual overflow tier'
+  /rackFloorDepth:\s*playerCapitalRackFloorDepth,[\s\S]*rackFloorDepth:\s*enemyCapitalRackFloorDepth/,
+  'ending a preview must retain the deepest continuous overflow footing'
 );
 assert.doesNotMatch(
   battleModal,
@@ -1929,22 +2025,22 @@ assert.doesNotMatch(
 );
 assert.match(
   battleModal,
-  /const \[playerCapitalRackFloorTier, setPlayerCapitalRackFloorTier\][\s\S]*const \[enemyCapitalRackFloorTier, setEnemyCapitalRackFloorTier\]/,
-  'each side must retain the deepest overflow footing reached during the battle'
+  /const \[playerCapitalRackFloorDepth, setPlayerCapitalRackFloorDepth\][\s\S]*const \[enemyCapitalRackFloorDepth, setEnemyCapitalRackFloorDepth\]/,
+  'each side must retain the deepest continuous overflow footing reached during the battle'
 );
 assert.match(
   battleModal,
-  /if \(isFinalFrame\) \{[\s\S]{0,160}setPlayerCapitalRackFloorTier\(\(current\) =>[\s\S]{0,80}Math\.max\(current, overflowTier\)[\s\S]{0,180}setEnemyCapitalRackFloorTier\(\(current\) =>[\s\S]{0,80}Math\.max\(current, overflowTier\)/,
-  'only the final actual overflow tier may be latched monotonically after its visible pile arrives'
+  /if \(isFinalFrame\) \{[\s\S]{0,180}setPlayerCapitalRackFloorDepth\(\(current\) =>[\s\S]{0,100}Math\.max\(current, frame\.rackDepth \?\? overflowDepth\)[\s\S]{0,220}setEnemyCapitalRackFloorDepth\(\(current\) =>[\s\S]{0,100}Math\.max\(current, frame\.rackDepth \?\? overflowDepth\)/,
+  'only the final actual continuous depth may be latched monotonically after its visible pile arrives'
 );
 assert.doesNotMatch(
   battleModal,
-  /deepestRackFloorTier|overflowPass[\s\S]{0,120}\? 1/,
+  /deepestRackFloor(?:Tier|Depth)|overflowPass[\s\S]{0,120}\? 1/,
   'a temporary heavy reload pass must not synthesize a hidden rack tier'
 );
 assert.doesNotMatch(
   battleModal,
-  /set(?:Player|Enemy)CapitalRackFloorTier\(0\)/,
+  /set(?:Player|Enemy)CapitalRackFloorDepth\(0\)/,
   'the deepest rack footing must never reset while the battle modal remains mounted'
 );
 assert.deepEqual(

@@ -1259,17 +1259,17 @@ export const buildCapitalStackTimeline = (
     event.marketPrice,
     heavy
   );
-  const previousOverflowTier = getBattleCapitalOverflowTier(
+  const previousOverflowDepth = getBattleCapitalOverflowDepth(
     event.previousCapital,
     event.marketPrice
   );
-  const targetOverflowTier = getBattleCapitalOverflowTier(
+  const targetOverflowDepth = getBattleCapitalOverflowDepth(
     event.nextCapital,
     event.marketPrice
   );
-  const overflowTierGrowth = Math.max(
+  const overflowDepthGrowth = Math.max(
     0,
-    targetOverflowTier - previousOverflowTier
+    targetOverflowDepth - previousOverflowDepth
   );
   // Once the bounded rack is full, any further positive capital still needs a
   // visible packet. Otherwise common 7–16% enemy counters update only the
@@ -1277,8 +1277,8 @@ export const buildCapitalStackTimeline = (
   const reloadPasses = Math.min(
     3,
     previousStage === targetStage && event.nextCapital > event.previousCapital
-      ? Math.max(1, requestedReloadPasses, overflowTierGrowth)
-      : Math.max(requestedReloadPasses, overflowTierGrowth)
+      ? Math.max(1, requestedReloadPasses, Math.ceil(overflowDepthGrowth - 1e-9))
+      : Math.max(requestedReloadPasses, Math.ceil(overflowDepthGrowth - 1e-9))
   );
   const willCompress = heavy || reloadPasses > 0;
   // Heavy/reload commands keep a readable anticipation beat before the first
@@ -1313,7 +1313,7 @@ export const buildCapitalStackTimeline = (
     ...growthFrames,
     ...overflowFrames,
   ];
-  if (overflowTierGrowth > 0) {
+  if (overflowDepthGrowth > 1e-9) {
     const shiftAfterBaseFill = previousStage === 0;
     const shiftSource = shiftAfterBaseFill
       ? growthFrames.at(-1)
@@ -1376,8 +1376,8 @@ export const buildCapitalStackTimeline = (
     activeColumnIndices: [],
     incomingBundleCopies,
     rackCompressed: willCompress,
-    rackDepth: previousOverflowTier,
-    stackDepth: previousOverflowTier,
+    rackDepth: previousOverflowDepth,
+    stackDepth: previousOverflowDepth,
     presentedCapital: event.previousCapital,
     packetSeed: seed,
   };
@@ -1402,7 +1402,7 @@ export const buildCapitalStackTimeline = (
   let pourAtMs = preloadMs;
   let completedActiveFrames = 0;
   let completedOverflowActiveFrames = 0;
-  let rackHasShifted = overflowTierGrowth <= 0;
+  let rackHasShifted = overflowDepthGrowth <= 1e-9;
   let settledVisibleUnits = previousStage;
   let settledColumnHeights = getCapitalColumnHeights(previousStage);
   const pourFrames = mechanicalFrames.map(
@@ -1412,14 +1412,14 @@ export const buildCapitalStackTimeline = (
       const isOverflowActive = (frame.overflowPass ?? 0) > 0 && isActive;
       const completedBefore = completedActiveFrames;
       const absorbedProgress =
-        overflowTierGrowth > 0
+        overflowDepthGrowth > 1e-9
           ? completedOverflowActiveFrames /
             Math.max(1, overflowActiveFrameCount)
           : 0;
       const rackDepthForFrame =
         isRackShift || rackHasShifted
-          ? targetOverflowTier
-          : previousOverflowTier;
+          ? targetOverflowDepth
+          : previousOverflowDepth;
       // Let the completed treasury finish its one total descent before the
       // first bundle. Thereafter every reload sweep runs at the recorded coin
       // tick cadence with no idle boundary between tiers.
@@ -1451,7 +1451,7 @@ export const buildCapitalStackTimeline = (
         rackDepth:
           rackDepthForFrame,
         stackDepth:
-          previousOverflowTier + overflowTierGrowth * absorbedProgress,
+          previousOverflowDepth + overflowDepthGrowth * absorbedProgress,
         rackShift: isRackShift,
         presentedCapital: presentedCapitalFor(
           isActive && reloadPasses > 0
@@ -1483,8 +1483,8 @@ export const buildCapitalStackTimeline = (
     activeColumnIndices: [],
     incomingBundleCopies,
     rackCompressed: heavy,
-    rackDepth: targetOverflowTier,
-    stackDepth: targetOverflowTier,
+    rackDepth: targetOverflowDepth,
+    stackDepth: targetOverflowDepth,
     presentedCapital: event.nextCapital,
     packetSeed: seed + (pourFrames.length + 1) * 7_919,
   };
@@ -1500,12 +1500,13 @@ export const buildCapitalStackTimeline = (
 };
 
 /**
- * Fixed visual grades beyond the drawable 22x36 rack. Overflow begins when
- * the price-scaled layer demand actually exceeds that rack, then advances once
- * per eight hidden layers. This keeps late-game treasuries from waiting for an
- * unrelated 1.5x price ratio even after the visible tray is already full.
+ * Structural depth beyond the drawable 22x36 rack. The first twenty-four
+ * hidden layers preserve the three familiar visual grades. Beyond that point
+ * the depth remains continuous and logarithmic, so another material funding
+ * wave can lower the completed treasury again without creating an unbounded
+ * amount-proportional particle system.
  */
-export const getBattleCapitalOverflowTier = (
+export const getBattleCapitalOverflowDepth = (
   amount: number,
   marketPrice: number
 ) => {
@@ -1515,16 +1516,23 @@ export const getBattleCapitalOverflowTier = (
       MAX_BATTLE_CAPITAL_COLUMN_LAYERS
   );
   if (overflowLayers <= 1e-9) return 0;
-  return Math.min(
-    3,
-    Math.max(
+  const legacyCapacity = BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER * 3;
+  if (overflowLayers <= legacyCapacity + 1e-9) {
+    return Math.max(
       1,
       Math.ceil(
         overflowLayers / BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER - 1e-9
       )
-    )
-  );
+    );
+  }
+  return 3 + Math.log2(overflowLayers / legacyCapacity);
 };
+
+/** Three bounded decoration grades; physical rack depth is continuous. */
+export const getBattleCapitalOverflowTier = (
+  amount: number,
+  marketPrice: number
+) => Math.min(3, Math.ceil(getBattleCapitalOverflowDepth(amount, marketPrice)));
 
 /**
  * Bounded deterministic paint sequence. It changes only presentation state;

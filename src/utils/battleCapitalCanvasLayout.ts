@@ -4,6 +4,22 @@ export const BATTLE_CAPITAL_RACK_SETTLE_MS = 40;
 export const BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS =
   BATTLE_CAPITAL_RACK_TWEEN_MS + BATTLE_CAPITAL_RACK_SETTLE_MS;
 export const BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER = 8;
+export const BATTLE_CAPITAL_CONTINUOUS_DEPTH_DEADBAND = 0.15;
+
+/**
+ * Keeps the already-approved three-grade pile unchanged, then exposes every
+ * later funding wave as additional physical depth. The small deadband absorbs
+ * the fractional tail of the first full 300M-class fill, so that first scene
+ * does not shift merely because the structural model became continuous.
+ */
+export const resolveBattleCapitalEffectiveDepth = (depth: number) => {
+  const normalized = Math.max(0, Number.isFinite(depth) ? depth : 0);
+  if (normalized <= 3) return normalized;
+  return 3 + Math.max(
+    0,
+    normalized - 3 - BATTLE_CAPITAL_CONTINUOUS_DEPTH_DEADBAND
+  );
+};
 
 export interface BattleCapitalHoardVerticalGeometry {
   tier: number;
@@ -171,12 +187,13 @@ export const resolveBattleCapitalVisualLayers = ({
 
 /**
  * Keeps the treasury on its visible floor until the tallest completed column
- * reaches the upper safe line. A true overflow tier then moves the completed
- * tray by one authored screen-relative stop. The DOM command lane is excluded
- * from the Canvas height, so the pedestal remains visibly attached to the pile
- * at the end of its first drop instead of disappearing behind the controls.
- * Content safety is measured after that authored drop: otherwise the same pile
- * height was counted twice and silently pushed the pedestal outside the Canvas.
+ * reaches the upper safe line. The first true overflow preserves the reviewed
+ * screen-relative stop; later continuous depth moves the old treasury by the
+ * exact height of each additional eight-layer bank. The DOM command lane is
+ * excluded from the Canvas height, so the first drop keeps its visible plate,
+ * while genuinely larger repeated funding may continue behind that lower band.
+ * Content safety is measured after the authored drop to avoid counting the same
+ * pile height twice.
  */
 export const resolveBattleCapitalStackGeometry = (
   height: number,
@@ -191,36 +208,49 @@ export const resolveBattleCapitalStackGeometry = (
   // lets a full 36-layer wall fit without pre-burying its pedestal.
   const safeTopY = safeHeight * (landscape ? 0.06 : 0.22);
   const visibleWindow = floorY - safeTopY;
-  const normalizedRackDepth = clamp(rackDepth, 0, 3);
-  // The first overflow keeps the approved, clearly readable 14% drop. Later
-  // tiers are resolved into the same one-shot destination without burying the
-  // silver pedestal again: the wall itself may clip above the field, while a
-  // thin rim remains visible as proof that the whole treasury moved together.
+  const effectiveRackDepth = resolveBattleCapitalEffectiveDepth(rackDepth);
+  // The first overflow keeps the approved, clearly readable 14% drop. The next
+  // two legacy grades remain compact; continuous depth beyond them is handled
+  // below in actual eight-layer increments.
   const rackStops = landscape
     ? [0, safeHeight * 0.14, safeHeight * 0.16, safeHeight * 0.175]
     : [0, safeHeight * 0.14, safeHeight * 0.16, safeHeight * 0.175];
-  const lowerStop = Math.floor(normalizedRackDepth);
-  const upperStop = Math.ceil(normalizedRackDepth);
-  const stopProgress = normalizedRackDepth - lowerStop;
-  const authoredRackScroll =
+  const boundedLegacyDepth = Math.min(3, effectiveRackDepth);
+  const lowerStop = Math.floor(boundedLegacyDepth);
+  const upperStop = Math.ceil(boundedLegacyDepth);
+  const stopProgress = boundedLegacyDepth - lowerStop;
+  const legacyRackScroll =
     rackStops[lowerStop] +
     (rackStops[upperStop] - rackStops[lowerStop]) * stopProgress;
-  const contentSafetyScroll = Math.max(
+  const overflowLayerStep = landscape
+    ? clamp(safeHeight * 0.011, 1.8, 2.6)
+    : clamp(safeHeight * 0.013, 4.4, 6.2);
+  const continuousRackScroll =
+    Math.max(0, effectiveRackDepth - 3) *
+    BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER *
+    overflowLayerStep;
+  const legacyColumnExtent = Math.max(
     0,
     (Number.isFinite(tallestColumnExtent) ? tallestColumnExtent : 0) -
-      (visibleWindow + authoredRackScroll)
+      continuousRackScroll
   );
-  // Authored descent itself creates visible room for the next eight layers.
-  // Only content beyond that enlarged window may push the footing farther.
+  const legacyContentSafetyScroll = Math.max(
+    0,
+    legacyColumnExtent - (visibleWindow + legacyRackScroll)
+  );
   const rackHeight = clamp(safeHeight * 0.04, 7, 14);
-  const maximumVisibleScroll = Math.max(
+  const maximumVisibleLegacyScroll = Math.max(
     0,
     safeHeight - floorY - rackHeight * 1.16 - 1
   );
-  const scrollPx = Math.min(
-    contentSafetyScroll + authoredRackScroll,
-    maximumVisibleScroll
+  // Keep the already-approved first 300M-class treasury and its silver rim at
+  // the old visible cap. Only mass beyond that three-grade scene is allowed to
+  // carry the same physical tray farther behind the lower information band.
+  const legacyScroll = Math.min(
+    legacyContentSafetyScroll + legacyRackScroll,
+    maximumVisibleLegacyScroll
   );
+  const scrollPx = legacyScroll + continuousRackScroll;
   return {
     baseY: floorY + scrollPx,
     floorY,

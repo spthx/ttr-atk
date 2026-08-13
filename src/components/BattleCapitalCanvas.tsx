@@ -7,6 +7,7 @@ import {
 import {
   BATTLE_CAPITAL_COLUMN_COUNT,
   MAX_BATTLE_CAPITAL_COLUMN_LAYERS,
+  getBattleCapitalOverflowDepth,
   getBattleCapitalOverflowTier,
   getBattleCapitalVisibleUnits,
   getCapitalColumnHeights,
@@ -17,6 +18,7 @@ import {
   BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER,
   easeBattleCapitalRackDepth,
   resolveBattleCapitalCanvasLayout,
+  resolveBattleCapitalEffectiveDepth,
   resolveBattleCapitalHoardVerticalGeometry,
   resolveBattleCapitalStackGeometry,
   resolveBattleCapitalVisualLayers,
@@ -54,7 +56,7 @@ export interface BattleCapitalCanvasSideState {
   /** Defaults to amount / marketPrice and affects decoration, never geometry. */
   capitalRatio?: number;
   previewFrame?: BattleCapitalCanvasPreviewFrame | null;
-  rackFloorTier?: number;
+  rackFloorDepth?: number;
   impact?: boolean;
 }
 
@@ -202,6 +204,10 @@ const normalizeSide = (
     marketPrice
   );
   const preview = state.previewFrame;
+  const amountOverflowDepth = getBattleCapitalOverflowDepth(
+    amount,
+    marketPrice
+  );
   const visibleUnits = Math.max(
     0,
     Math.round(preview?.visibleUnits ?? fallbackVisibleUnits)
@@ -234,7 +240,7 @@ const normalizeSide = (
       Math.max(
         preview?.overflowTier ??
           getBattleCapitalOverflowTier(amount, marketPrice),
-        state.rackFloorTier ?? 0
+        Math.min(3, state.rackFloorDepth ?? 0)
       ),
       0,
       3
@@ -261,15 +267,13 @@ const normalizeSide = (
       packetSeed: Math.round(finiteNonNegative(preview?.packetSeed ?? 0)),
       packetProgress: activeColumnIndices.length > 0 ? 0 : 1,
       beatDurationMs: Math.max(1, preview?.beatDurationMs ?? 90),
-      rackDepth: clamp(
-        preview?.rackDepth ?? Math.max(overflowTier, state.rackFloorTier ?? 0),
-        0,
-        3
+      rackDepth: finiteNonNegative(
+        preview?.rackDepth ??
+          Math.max(amountOverflowDepth, state.rackFloorDepth ?? 0)
       ),
-      stackDepth: clamp(
-        preview?.stackDepth ?? Math.max(overflowTier, state.rackFloorTier ?? 0),
-        0,
-        3
+      stackDepth: finiteNonNegative(
+        preview?.stackDepth ??
+          Math.max(amountOverflowDepth, state.rackFloorDepth ?? 0)
       ),
     },
   };
@@ -679,7 +683,8 @@ const drawCapitalSide = (
   const activeColumns = new Set(side.frame.activeColumnIndices);
   const maxRawLayers = Math.max(0, ...side.frame.columnHeights);
   const overflowLayers =
-    side.frame.stackDepth * BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;
+    resolveBattleCapitalEffectiveDepth(side.frame.stackDepth) *
+    BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;
   const renderedColumns = layout.columns.map((column, index) => {
     const layers = side.frame.columnHeights[index] ?? 0;
     const stackVariation = 0.98 + deterministicNoise(index * 37 + 11) * 0.04;
