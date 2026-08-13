@@ -78,8 +78,8 @@ export const resolveBattleCapitalCanvasLayout = (
     );
     const coinHeight = clamp(coinWidth * 0.2, 4.5, 12);
     const layerStep = landscape
-      ? clamp(safeHeight * 0.016, 2.1, 3.2)
-      : clamp(safeHeight * 0.014, 4.4, 7.2);
+      ? clamp(safeHeight * 0.011, 1.8, 2.6)
+      : clamp(safeHeight * 0.013, 4.4, 6.2);
 
     for (let column = 0; column < count; column += 1) {
       const centered = column - (count - 1) / 2;
@@ -123,11 +123,11 @@ export const resolveBattleCapitalVisualLayers = ({
 /**
  * Keeps the treasury on its visible floor until the tallest completed column
  * reaches the upper safe line. A true overflow tier then moves the completed
- * tray by one authored screen-relative stop. The timeline completes this drop
- * before the next bundles start, so the old treasury visibly makes room for the
- * new one instead of both layers intersecting. Content that grows beyond that
- * stop still scrolls pixel-for-pixel, so the visible wall never shrinks and an
- * all-in command cannot pre-bury an empty rack.
+ * tray by one authored screen-relative stop. The DOM command lane is excluded
+ * from the Canvas height, so the pedestal remains visibly attached to the pile
+ * at the end of its first drop instead of disappearing behind the controls.
+ * Content safety is measured after that authored drop: otherwise the same pile
+ * height was counted twice and silently pushed the pedestal outside the Canvas.
  */
 export const resolveBattleCapitalStackGeometry = (
   height: number,
@@ -137,12 +137,14 @@ export const resolveBattleCapitalStackGeometry = (
 ): BattleCapitalStackGeometry => {
   const safeHeight = Math.max(1, Number.isFinite(height) ? height : 1);
   const floorY = safeHeight * (landscape ? 0.76 : 0.78);
-  // Landscape keeps the wall beneath the compact DOM gauge/readout band.
-  const safeTopY = safeHeight * (landscape ? 0.42 : 0.22);
+  // The Canvas is behind the semantic DOM gauge/readout, so a landscape wall
+  // may extend behind that compact overlay. Keeping only a small clip margin
+  // lets a full 36-layer wall fit without pre-burying its pedestal.
+  const safeTopY = safeHeight * (landscape ? 0.06 : 0.22);
   const visibleWindow = floorY - safeTopY;
   const normalizedRackDepth = clamp(rackDepth, 0, 3);
   const rackStops = landscape
-    ? [0, safeHeight * 0.2, safeHeight * 0.4, safeHeight * 0.6]
+    ? [0, safeHeight * 0.14, safeHeight * 0.28, safeHeight * 0.42]
     : [0, safeHeight * 0.14, safeHeight * 0.28, safeHeight * 0.42];
   const lowerStop = Math.floor(normalizedRackDepth);
   const upperStop = Math.ceil(normalizedRackDepth);
@@ -153,11 +155,10 @@ export const resolveBattleCapitalStackGeometry = (
   const contentSafetyScroll = Math.max(
     0,
     (Number.isFinite(tallestColumnExtent) ? tallestColumnExtent : 0) -
-      visibleWindow
+      (visibleWindow + authoredRackScroll)
   );
-  // Content safety keeps the current wall below the gauge. Authored rack
-  // descent is additional: otherwise a tall existing wall consumes the whole
-  // drop and visually moves only a few pixels before the next bundles arrive.
+  // Authored descent itself creates visible room for the next eight layers.
+  // Only content beyond that enlarged window may push the footing farther.
   const scrollPx = contentSafetyScroll + authoredRackScroll;
   return {
     baseY: floorY + scrollPx,

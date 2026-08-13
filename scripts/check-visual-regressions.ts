@@ -336,6 +336,16 @@ assert.match(
   'the opaque capital canvas must never intercept battle controls'
 );
 assert.match(
+  battleCapitalCanvasCss,
+  /inset:\s*0 0 auto;[\s\S]{0,180}block-size:\s*calc\(100% - var\(--battlefield-timing-height, 2\.65rem\)\);/,
+  'the capital canvas must end above the opaque command lane so a descended pedestal remains visible'
+);
+assert.match(
+  integratedCss,
+  /\.integrated-battlefield\s*\{\s*--battlefield-timing-height:\s*2\.65rem;\s*\}[\s\S]{0,420}\.battlefield-capital\s*\{\s*bottom:\s*var\(--battlefield-timing-height\);[\s\S]{0,300}\.battlefield-timing\s*\{[\s\S]{0,100}height:\s*var\(--battlefield-timing-height\);[\s\S]*@media \(max-width:\s*639px\)[\s\S]{0,160}--battlefield-timing-height:\s*2\.9rem;/,
+  'the canvas, capital DOM and command lane must share one desktop/mobile bottom reserve'
+);
+assert.match(
   battleCapitalCanvas,
   /createBattleCapitalCanvasScene[\s\S]*player:\s*normalizeSide\('player', player\),[\s\S]*enemy:\s*normalizeSide\('enemy', enemy\),/,
   'player and enemy capital must be normalized into the same canvas scene'
@@ -556,11 +566,11 @@ assert.ok(
 const landscapeTallPile = resolveBattleCapitalStackGeometry(171, true, 150);
 assert.ok(landscapeTallPile.scrollPx > 0);
 assert.ok(
-  landscapeTallPile.safeTopY >= 171 * 0.42 &&
+  landscapeTallPile.safeTopY >= 171 * 0.06 &&
     Math.abs(
       landscapeTallPile.baseY - 150 - landscapeTallPile.safeTopY
     ) < 1e-9,
-  'a landscape overflow wall must stay below the compact gauge/readout band while retaining its full visible height'
+  'a landscape overflow wall may pass behind the DOM gauge but must retain its full visible height without pre-burying the pedestal'
 );
 assert.equal(
   BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER,
@@ -581,7 +591,7 @@ const landscapeFirstOverflow = resolveBattleCapitalStackGeometry(
 );
 assert.ok(
   portraitFirstOverflow.scrollPx >= 414 * 0.14 - 1e-9 &&
-    landscapeFirstOverflow.scrollPx >= 171 * 0.2 - 1e-9,
+    landscapeFirstOverflow.scrollPx >= 171 * 0.14 - 1e-9,
   'the first true overflow must move the completed tray decisively into the lower bank in both orientations'
 );
 assert.equal(BATTLE_CAPITAL_RACK_TWEEN_MS, 180);
@@ -595,8 +605,8 @@ assert.ok(
 );
 assert.match(
   battleCapitalCanvasLayout,
-  /const areaWidth = safeWidth \* 0\.44;[\s\S]{0,120}const sideInset = safeWidth \* 0\.03;[\s\S]{0,520}Math\.max\(pitch \* \(landscape \? 0\.98 : 1\.03\), safeWidth \* 0\.055\)/,
-  'dense coins must keep their reviewed size while leaving a clear centre aisle on portrait phones'
+  /const areaWidth = safeWidth \* 0\.44;[\s\S]{0,120}const sideInset = safeWidth \* 0\.03;[\s\S]{0,520}Math\.max\(pitch \* \(landscape \? 0\.98 : 1\.03\), safeWidth \* 0\.055\)[\s\S]{0,220}landscape\s*\? clamp\(safeHeight \* 0\.011, 1\.8, 2\.6\)\s*:\s*clamp\(safeHeight \* 0\.013, 4\.4, 6\.2\)/,
+  'dense coins must keep their reviewed width while fitting a saturated wall above the still-visible pedestal'
 );
 assert.match(
   battleCapitalCanvas,
@@ -1359,28 +1369,32 @@ assert.ok(
     (firstTrueOverflowPacket.stackDepth ?? 0) === 0,
   'the first post-drop packet must remain visually separate until it lands'
 );
+// Production Canvas heights exclude the shared command lane: approximately
+// 368px on a 430x932 portrait and 129px on a compact landscape phone.
+const portraitCanvasHeight = 368;
+const landscapeCanvasHeight = 129;
 const portraitCapacityPinnedBefore = resolveBattleCapitalStackGeometry(
-  414,
+  portraitCanvasHeight,
   false,
-  300,
+  190,
   0
 );
 const portraitCapacityPinnedAfter = resolveBattleCapitalStackGeometry(
-  414,
+  portraitCanvasHeight,
   false,
-  300,
+  190,
   1
 );
 const landscapeCapacityPinnedBefore = resolveBattleCapitalStackGeometry(
-  171,
+  landscapeCanvasHeight,
   true,
-  150,
+  80,
   0
 );
 const landscapeCapacityPinnedAfter = resolveBattleCapitalStackGeometry(
-  171,
+  landscapeCanvasHeight,
   true,
-  150,
+  80,
   1
 );
 assert.ok(
@@ -1390,13 +1404,29 @@ assert.ok(
   'incoming bundles must not start until the old treasury has fully descended and settled'
 );
 assert.ok(
-  portraitCapacityPinnedAfter.scrollPx -
-      portraitCapacityPinnedBefore.scrollPx >=
-    414 * 0.14 - 1e-9 &&
-    landscapeCapacityPinnedAfter.scrollPx -
-      landscapeCapacityPinnedBefore.scrollPx >=
-    171 * 0.2 - 1e-9,
-  'a tall capacity-pinned treasury must still receive the full authored drop before new coins arrive'
+  Math.abs(
+    portraitCapacityPinnedAfter.baseY -
+      portraitCapacityPinnedBefore.baseY -
+      portraitCanvasHeight * 0.14
+  ) < 1e-9 &&
+    Math.abs(
+      landscapeCapacityPinnedAfter.baseY -
+        landscapeCapacityPinnedBefore.baseY -
+        landscapeCanvasHeight * 0.14
+    ) < 1e-9,
+  'a saturated production treasury must move its columns and pedestal by the full authored drop before new coins arrive'
+);
+const portraitRackHeight = 14;
+const landscapeRackHeight = 7;
+assert.ok(
+  portraitCapacityPinnedAfter.baseY + portraitRackHeight * 1.16 <
+    portraitCanvasHeight,
+  'the descended portrait pedestal rim must remain visibly inside the canvas above the command lane'
+);
+assert.ok(
+  landscapeCapacityPinnedAfter.baseY + landscapeRackHeight * 1.16 <
+    landscapeCanvasHeight,
+  'the descended landscape pedestal rim must remain visibly inside the canvas above the command lane'
 );
 const firstTrueOverflowAbsorption = firstTrueOverflowTimeline.frames.find(
   (frame) =>

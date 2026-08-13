@@ -1,10 +1,10 @@
 .battle-capital-canvas {
   position: absolute;
   z-index: 1;
-  inset: 0;
+  inset: 0 0 auto;
   display: block;
   inline-size: 100%;
-  block-size: 100%;
+  block-size: calc(100% - var(--battlefield-timing-height, 2.65rem));
   min-block-size: 0;
   aspect-ratio: auto;
   overflow: hidden;
