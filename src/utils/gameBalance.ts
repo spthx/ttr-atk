@@ -1,17 +1,44 @@
 import type { BattleMode, CommunityType, Property, TacticalSkill } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
+import {
+  BLACKEST_NIGHT_BALANCE,
+  CAPITAL_REVERSAL_BALANCE,
+  DIVINE_BENISON_BALANCE,
+  ENEMY_SUPPORT_SKILL_BALANCE,
+  FORCED_LIQUIDATION_BALANCE,
+  SAVAGE_ENEMY_AUTO_PROFILES,
+  SAVAGE_ENEMY_SUPPORT_PROFILES,
+  ULTIMATE_ENEMY_AUTO_PATTERNS,
+  type EnemySupportSkillId,
+} from '../data/battleEncounterData';
+import {
+  CAMPAIGN_ENCOUNTER_DEFINITIONS,
+  getCampaignEncounterDefinition,
+} from '../data/campaignEncounterData';
+
+export {
+  BLACKEST_NIGHT_BALANCE,
+  CAPITAL_REVERSAL_BALANCE,
+  DIVINE_BENISON_BALANCE,
+  ENEMY_SUPPORT_SKILL_BALANCE,
+  FORCED_LIQUIDATION_BALANCE,
+  ULTIMATE_ENEMY_AUTO_PATTERNS,
+};
+export type { EnemySupportSkillId };
 
 export const PASSIVE_REVENUE_MULTIPLIER = 2;
 export const INITIAL_PLAYER_FUNDS = 20_000;
 export const PLAYER_BATTLE_CASH_CAP_RATIO = 1;
 export const BATTLE_GAUGE_SPEED_FACTOR = 4;
+export const NORMAL_BATTLE_GAUGE_SPEED_FACTOR = 4.5;
+export const INITIAL_BATTLE_COMMAND_PROGRESS = 100;
 export const TRAINING_GAUGE_SPEED_MULTIPLIER = 0.1;
 export const TRAINING_MIN_OWNERSHIP_PERCENT = 1;
 export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
-export const STARTER_BAKERY_ENEMY_BUDGET_RATIO = 0.8;
 export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.58;
-export const SAVAGE_LAYER_BUDGET_MULTIPLIERS = [1, 1.08, 1.16, 1.25] as const;
-export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 2.2;
+export const SAVAGE_LAYER_BUDGET_MULTIPLIERS = [1, 1.08, 1.18, 1.25] as const;
+export const SAVAGE_SERIES_BUDGET_MULTIPLIERS = [1, 1.035, 1.075] as const;
+export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 2.75;
 export const LIMIT_BREAK_CHARGE_PER_BAR = 100;
 export const LIMIT_BREAK_MAX_BARS = 3;
 
@@ -19,6 +46,31 @@ export const applyTrainingGaugeSpeed = (
   velocity: number,
   isTraining: boolean
 ) => velocity * (isTraining ? TRAINING_GAUGE_SPEED_MULTIPLIER : 1);
+
+export const resolveBattleGaugeSpeedFactor = ({
+  isTraining,
+  isHighEndRaid,
+}: {
+  isTraining: boolean;
+  isHighEndRaid: boolean;
+}) =>
+  isTraining || isHighEndRaid
+    ? BATTLE_GAUGE_SPEED_FACTOR
+    : NORMAL_BATTLE_GAUGE_SPEED_FACTOR;
+
+/**
+ * Claims a once-per-battle synergy without mutating the caller's Set.
+ * Returning null lets the UI and effect handler share one atomic guard.
+ */
+export const claimBattleSynergyUsage = (
+  usedSynergyIds: ReadonlySet<string>,
+  synergyId: string
+) => {
+  if (usedSynergyIds.has(synergyId)) return null;
+  const next = new Set(usedSynergyIds);
+  next.add(synergyId);
+  return next;
+};
 
 export const calculatePlayerBattleCashLimit = (marketPrice: number) =>
   Math.max(10, Math.round(Math.max(0, marketPrice) * PLAYER_BATTLE_CASH_CAP_RATIO));
@@ -30,11 +82,15 @@ export const holdTrainingGaugeAboveDefeat = (
   : gauge;
 
 export const DIRECT_INVESTMENT_BALANCE = {
-  baseGaugeImpact: 1.2,
-  gaugeImpactPerMarketRatio: 20,
-  standardImpactCap: 14,
+  baseGaugeImpact: 1.9,
+  gaugeImpactPerMarketRatio: 29,
+  largeCommitThresholdRatio: 0.1,
+  largeCommitBonusPerMarketRatio: 19,
+  standardImpactCap: 19,
   levelOneTrainingMultiplier: 12.5,
-  levelOneTrainingImpactCap: 40,
+  levelOneTrainingImpactCap: 50,
+  advancedTrainingMultiplier: 2,
+  advancedTrainingImpactCap: 24,
 } as const;
 
 /**
@@ -47,29 +103,41 @@ export const calculateDirectInvestmentGaugeImpact = ({
   marketPrice,
   windMultiplier = 1,
   levelOneTraining = false,
+  trainingLevel,
 }: {
   investmentAmount: number;
   marketPrice: number;
   windMultiplier?: number;
   levelOneTraining?: boolean;
+  trainingLevel?: number;
 }) => {
+  const marketRatio =
+    Math.max(0, investmentAmount) / Math.max(1, marketPrice);
   const baseImpact =
     (
       DIRECT_INVESTMENT_BALANCE.baseGaugeImpact +
-      (
-        Math.max(0, investmentAmount) /
-        Math.max(1, marketPrice)
-      ) *
-        DIRECT_INVESTMENT_BALANCE.gaugeImpactPerMarketRatio
+      marketRatio * DIRECT_INVESTMENT_BALANCE.gaugeImpactPerMarketRatio +
+      Math.max(
+        0,
+        marketRatio - DIRECT_INVESTMENT_BALANCE.largeCommitThresholdRatio
+      ) * DIRECT_INVESTMENT_BALANCE.largeCommitBonusPerMarketRatio
     ) *
     Math.max(0, windMultiplier);
 
-  return levelOneTraining
+  const resolvedTrainingLevel = levelOneTraining ? 1 : trainingLevel;
+
+  return resolvedTrainingLevel === 1
     ? Math.min(
         DIRECT_INVESTMENT_BALANCE.levelOneTrainingImpactCap,
         baseImpact *
           DIRECT_INVESTMENT_BALANCE.levelOneTrainingMultiplier
       )
+    : resolvedTrainingLevel && resolvedTrainingLevel >= 2
+      ? Math.min(
+          DIRECT_INVESTMENT_BALANCE.advancedTrainingImpactCap,
+          baseImpact *
+            DIRECT_INVESTMENT_BALANCE.advancedTrainingMultiplier
+        )
     : Math.min(
         DIRECT_INVESTMENT_BALANCE.standardImpactCap,
         baseImpact
@@ -95,41 +163,12 @@ export const LIMIT_BREAK_CHARGE_GAIN_MULTIPLIER = 1.2;
 export const BATTLE_CASH_RECOVERY_RATE_PER_SECOND = 0.003;
 export const BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO = 0.2;
 
-export type EnemySupportSkillId =
-  | 'cure'
-  | 'mug'
-  | 'drill'
-  | 'divination';
-
 export interface EnemySupportDifficultyContext {
   isSavage?: boolean;
   isUltimate?: boolean;
+  isCruel?: boolean;
+  isKarma?: boolean;
 }
-
-export const ENEMY_SUPPORT_SKILL_BALANCE = {
-  cure: {
-    normalRecoveryRatio: 0.08,
-    highDifficultyRecoveryRatio: 0.1,
-    triggerReserveRatio: 0.35,
-    triggerPlayerOwnership: 55,
-    minimumUsefulRecoveryRatio: 0.03,
-  },
-  mug: {
-    maxMarks: 1,
-    nextGaugeImpactMultiplier: 1.05,
-  },
-  drill: {
-    normalOwnershipPush: 4,
-    savageOwnershipPush: 5,
-    ultimateOwnershipPush: 6,
-    reserveCostRatio: 0.06,
-  },
-  divination: {
-    normalDurationMs: 3_500,
-    highDifficultyDurationMs: 4_000,
-    enemyInvestmentMultiplier: 1.35,
-  },
-} as const;
 
 export type BattleCashRecoveryWindType =
   | 'TAILWIND_PLAYER'
@@ -161,6 +200,7 @@ export interface BattleCashRecoveryStepInput
   timeScale: number;
   windMultiplier: number;
   terminal: boolean;
+  cumulativeCapRatio?: number;
 }
 
 export interface BattleCashRecoveryStepResult
@@ -184,14 +224,18 @@ export const advanceBattleCashRecovery = ({
   timeScale,
   windMultiplier,
   terminal,
+  cumulativeCapRatio = BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO,
 }: BattleCashRecoveryStepInput): BattleCashRecoveryStepResult => {
   const baseline = finiteNonNegative(baselineFunds);
-  const currentFunds = Math.min(
-    baseline,
-    finiteNonNegative(availableFunds)
-  );
+  // Drain may legitimately put the battle-local reserve above its authored
+  // opening budget. Preserve that surplus; recovery waits until the reserve
+  // falls below the original baseline instead of deleting transferred funds.
+  const currentFunds = finiteNonNegative(availableFunds);
   const cumulativeCap =
-    baseline * BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO;
+    baseline * Math.max(
+      0,
+      Math.min(BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO, cumulativeCapRatio)
+    );
   const recoveredSoFar = Math.min(
     cumulativeCap,
     finiteNonNegative(cumulativeRecovered)
@@ -222,7 +266,7 @@ export const advanceBattleCashRecovery = ({
     finiteNonNegative(windMultiplier);
   const recoveredThisStep = Math.min(
     requestedRecovery,
-    baseline - currentFunds,
+    Math.max(0, baseline - currentFunds),
     cumulativeCap - recoveredSoFar
   );
   const nextCumulativeRecovered =
@@ -241,102 +285,195 @@ export const getBattleCashRecoveryWindMultipliers = (
   windType: BattleCashRecoveryWindType
 ) => BATTLE_CASH_RECOVERY_WIND_MULTIPLIERS[windType];
 
-export const getEnemyCureRecoveryRatio = ({
-  isSavage = false,
-  isUltimate = false,
-}: EnemySupportDifficultyContext) =>
-  isSavage || isUltimate
-    ? ENEMY_SUPPORT_SKILL_BALANCE.cure.highDifficultyRecoveryRatio
-    : ENEMY_SUPPORT_SKILL_BALANCE.cure.normalRecoveryRatio;
-
-export interface EnemyCureRecoveryInput
-  extends BattleCashRecoveryState,
-    EnemySupportDifficultyContext {
-  baselineFunds: number;
+export interface BlackestNightGaugeInput {
+  currentGauge: number;
+  nextGauge: number;
+  protects: 'player' | 'opponent';
+  remainingGaugeCapacity: number;
 }
 
 /**
- * Applies the one-shot enemy Cure to the same cumulative 20% recovery pool as
- * passive battle recovery. It never changes ownership or invested capital.
+ * Shared player/enemy finite barrier resolver. It deliberately contains no
+ * React state or timers so the same contract can be exported to Unity.
  */
-export const applyEnemyCureRecovery = ({
-  baselineFunds,
-  availableFunds,
-  cumulativeRecovered,
-  isSavage = false,
-  isUltimate = false,
-}: EnemyCureRecoveryInput): BattleCashRecoveryStepResult => {
-  const baseline = finiteNonNegative(baselineFunds);
-  const currentFunds = Math.min(
-    baseline,
-    finiteNonNegative(availableFunds)
+export const applyBlackestNightToGaugeDelta = ({
+  currentGauge,
+  nextGauge,
+  protects,
+  remainingGaugeCapacity,
+}: BlackestNightGaugeInput) => {
+  const current = Number.isFinite(currentGauge) ? currentGauge : 0;
+  const candidate = Number.isFinite(nextGauge) ? nextGauge : current;
+  const capacity = finiteNonNegative(remainingGaugeCapacity);
+  const delta = candidate - current;
+  const incoming =
+    protects === 'player' ? Math.max(0, delta) : Math.max(0, -delta);
+  const absorbedGauge = Math.min(
+    incoming * BLACKEST_NIGHT_BALANCE.absorbRatio,
+    capacity
   );
-  const cumulativeCap =
-    baseline * BATTLE_CASH_RECOVERY_TOTAL_CAP_RATIO;
-  const recoveredSoFar = Math.min(
-    cumulativeCap,
-    finiteNonNegative(cumulativeRecovered)
-  );
-  const requestedRecovery =
-    baseline *
-    getEnemyCureRecoveryRatio({ isSavage, isUltimate });
-  const recoveredThisStep = Math.min(
-    requestedRecovery,
-    baseline - currentFunds,
-    cumulativeCap - recoveredSoFar
-  );
-  const nextCumulativeRecovered =
-    recoveredSoFar + recoveredThisStep;
+  const nextCapacity = Math.max(0, capacity - absorbedGauge);
 
   return {
-    availableFunds: currentFunds + recoveredThisStep,
-    cumulativeRecovered: nextCumulativeRecovered,
-    recoveredThisStep,
-    cumulativeRecoveryRatio:
-      baseline > 0 ? nextCumulativeRecovered / baseline : 0,
+    nextGauge:
+      protects === 'player'
+        ? candidate - absorbedGauge
+        : candidate + absorbedGauge,
+    absorbedGauge,
+    remainingGaugeCapacity: nextCapacity,
+    didFullyBreak: capacity > 0 && incoming > 0 && nextCapacity === 0,
   };
 };
 
-export interface EnemyCureTriggerInput
-  extends EnemyCureRecoveryInput {
-  playerOwnership: number;
-  terminal: boolean;
-}
+export const getBlackestNightDisplayPercent = ({
+  remainingGaugeCapacity,
+  remainingMs,
+}: {
+  remainingGaugeCapacity: number;
+  remainingMs: number;
+}) => {
+  if (remainingGaugeCapacity <= 0 || remainingMs <= 0) return 0;
+  const capacityRatio =
+    finiteNonNegative(remainingGaugeCapacity) /
+    BLACKEST_NIGHT_BALANCE.gaugeCapacity;
+  const timeRatio =
+    finiteNonNegative(remainingMs) / BLACKEST_NIGHT_BALANCE.durationMs;
+  const rawPercent = Math.max(0, Math.min(1, capacityRatio, timeRatio)) * 100;
+  return Math.max(5, Math.min(100, Math.ceil(rawPercent / 5) * 5));
+};
 
-export const shouldEnemyUseCure = ({
+export const shouldEnemyUseBlackestNight = ({
   playerOwnership,
   terminal,
-  ...recoveryInput
-}: EnemyCureTriggerInput) => {
-  if (terminal) return false;
-  const baseline = finiteNonNegative(recoveryInput.baselineFunds);
-  if (baseline <= 0) return false;
-  const currentFunds = Math.min(
-    baseline,
-    finiteNonNegative(recoveryInput.availableFunds)
-  );
-  const reserveRatio = currentFunds / baseline;
-  const pressureTrigger =
-    normalizeBattleOwnership(playerOwnership) >=
-    ENEMY_SUPPORT_SKILL_BALANCE.cure.triggerPlayerOwnership;
-  const reserveTrigger =
-    reserveRatio <=
-    ENEMY_SUPPORT_SKILL_BALANCE.cure.triggerReserveRatio;
-  if (!pressureTrigger && !reserveTrigger) return false;
+}: {
+  playerOwnership: number;
+  terminal: boolean;
+}) =>
+  !terminal &&
+  normalizeBattleOwnership(playerOwnership) >=
+    BLACKEST_NIGHT_BALANCE.triggerPlayerOwnership;
 
-  const recovery = applyEnemyCureRecovery(recoveryInput);
-  return (
-    recovery.recoveredThisStep >=
-    baseline *
-      ENEMY_SUPPORT_SKILL_BALANCE.cure.minimumUsefulRecoveryRatio
+export const getBlackestNightDarkWaveGaugeDelta = (
+  protects: 'player' | 'opponent'
+) =>
+  protects === 'player'
+    ? -BLACKEST_NIGHT_BALANCE.darkWaveGaugeDelta
+    : BLACKEST_NIGHT_BALANCE.darkWaveGaugeDelta;
+
+/** Resolves the one direct-investment hit consumed by 資本反転. */
+export const resolveCapitalReversal = (
+  intendedOwnershipPush: number,
+  reflectedOwnershipCap: number = CAPITAL_REVERSAL_BALANCE.reflectedOwnershipCap
+) => {
+  const intended = finiteNonNegative(intendedOwnershipPush);
+  const normalizedReflectionCap = Number.isFinite(reflectedOwnershipCap)
+    ? finiteNonNegative(reflectedOwnershipCap)
+    : Number.POSITIVE_INFINITY;
+  const retainedOwnershipPush =
+    intended * CAPITAL_REVERSAL_BALANCE.retainedDirectInvestmentRatio;
+  const reflectedOwnershipPush = Math.min(
+    intended * CAPITAL_REVERSAL_BALANCE.reflectedOwnershipRatio,
+    normalizedReflectionCap
   );
+  return {
+    retainedOwnershipPush,
+    reflectedOwnershipPush,
+    netPlayerOwnershipPush: retainedOwnershipPush - reflectedOwnershipPush,
+    gaugeDelta: (reflectedOwnershipPush - retainedOwnershipPush) * 2,
+  };
+};
+
+/** Unmitigated 強制清算 pressure; mitigation and barriers apply afterwards. */
+export const calculateForcedLiquidationGaugeDelta = (
+  currentPlayerOwnership: number
+) =>
+  Math.max(
+    0,
+    normalizeBattleOwnership(currentPlayerOwnership) -
+      FORCED_LIQUIDATION_BALANCE.unmitigatedTargetPlayerOwnership
+  ) * 2;
+
+/**
+ * Resolves the continuous ownership velocity during 強制清算 recovery.
+ *
+ * Both sides pause during the authored grace. If the player lets that grace
+ * expire without answering, enemy pressure resumes but pre-cast player-side
+ * pressure stays suspended until the first genuine counter-command.
+ */
+export const resolveForcedLiquidationContinuousVelocity = ({
+  velocity,
+  recoveryRemaining,
+  awaitingManualCounter,
+}: {
+  velocity: number;
+  recoveryRemaining: number;
+  awaitingManualCounter: boolean;
+}) => {
+  if (awaitingManualCounter) {
+    return recoveryRemaining > 0 ? 0 : Math.max(0, velocity);
+  }
+  return recoveryRemaining > 0 ? Math.min(0, velocity) : velocity;
+};
+
+/** @deprecated Use the Blackest Night names in current runtime code. */
+export type DivineBenisonGaugeInput = BlackestNightGaugeInput;
+/** @deprecated Use applyBlackestNightToGaugeDelta. */
+export const applyDivineBenisonToGaugeDelta = applyBlackestNightToGaugeDelta;
+/** @deprecated Use getBlackestNightDisplayPercent. */
+export const getDivineBenisonDisplayPercent = getBlackestNightDisplayPercent;
+/** @deprecated Use shouldEnemyUseBlackestNight. */
+export const shouldEnemyUseDivineBenison = shouldEnemyUseBlackestNight;
+
+export const calculateEnemyDrainAmount = ({
+  playerCash,
+  marketPrice,
+}: {
+  playerCash: number;
+  marketPrice: number;
+}) =>
+  Math.max(
+    0,
+    Math.min(
+      Math.round(
+        finiteNonNegative(playerCash) *
+          ENEMY_SUPPORT_SKILL_BALANCE.drain.handCashRatio
+      ),
+      Math.round(
+        finiteNonNegative(marketPrice) *
+          ENEMY_SUPPORT_SKILL_BALANCE.drain.marketPriceCapRatio
+      )
+    )
+  );
+
+/** Moves only uncommitted battle cash; ownership, invested capital and LB stay untouched. */
+export const resolveEnemyDrainTransfer = ({
+  playerCash,
+  enemyReserve,
+  marketPrice,
+}: {
+  playerCash: number;
+  enemyReserve: number;
+  marketPrice: number;
+}) => {
+  const safePlayerCash = finiteNonNegative(playerCash);
+  const safeEnemyReserve = finiteNonNegative(enemyReserve);
+  const transferred = calculateEnemyDrainAmount({
+    playerCash: safePlayerCash,
+    marketPrice,
+  });
+  return {
+    playerCash: safePlayerCash - transferred,
+    enemyReserve: safeEnemyReserve + transferred,
+    transferred,
+  };
 };
 
 export const getEnemyDrillOwnershipPush = ({
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
 }: EnemySupportDifficultyContext) =>
-  isUltimate
+  isUltimate || isCruel
     ? ENEMY_SUPPORT_SKILL_BALANCE.drill.ultimateOwnershipPush
     : isSavage
       ? ENEMY_SUPPORT_SKILL_BALANCE.drill.savageOwnershipPush
@@ -361,50 +498,72 @@ export const canEnemyAffordDrill = (
   finiteNonNegative(enemyReserve) >=
     calculateEnemyDrillReserveCost(enemyBudget);
 
+/**
+ * Ultimate cannot be defeated by skipping its authored critical action with one
+ * oversized push. This is a mechanic check, not extra enemy capital: draining
+ * the reserve needed for Drill remains a valid way to deny that action.
+ */
+export const shouldForceUltimateCriticalBeforeVictory = ({
+  isUltimate,
+  terminalWinner,
+  criticalSkillId,
+  criticalSkillUsed,
+  gateConsumed,
+  enemyReserve,
+  enemyBudget,
+}: {
+  isUltimate: boolean;
+  terminalWinner: 'player' | 'opponent' | null;
+  criticalSkillId: EnemySupportSkillId | null;
+  criticalSkillUsed: boolean;
+  gateConsumed: boolean;
+  enemyReserve: number;
+  enemyBudget: number;
+}) =>
+  isUltimate &&
+  terminalWinner === 'player' &&
+  criticalSkillId !== null &&
+  !criticalSkillUsed &&
+  !gateConsumed &&
+  (
+    criticalSkillId !== 'drill' ||
+    canEnemyAffordDrill(enemyReserve, enemyBudget)
+  );
+
 export const getEnemyDrillImpact = ({
   enemyBudget,
-  hasMugMark = false,
   isSavage = false,
   isUltimate = false,
-}: EnemySupportDifficultyContext & {
-  enemyBudget: number;
-  hasMugMark?: boolean;
-}) => {
+  isCruel = false,
+}: EnemySupportDifficultyContext & { enemyBudget: number }) => {
   const baseOwnershipPush = getEnemyDrillOwnershipPush({
     isSavage,
     isUltimate,
+    isCruel,
   });
-  const ownershipPush = Number(
-    (
-      baseOwnershipPush *
-      (
-        hasMugMark
-          ? ENEMY_SUPPORT_SKILL_BALANCE.mug.nextGaugeImpactMultiplier
-          : 1
-      )
-    ).toFixed(2)
-  );
+  const ownershipPush = Number(baseOwnershipPush.toFixed(2));
   return {
     baseOwnershipPush,
     ownershipPush,
     gaugeDelta: Number((ownershipPush * 2).toFixed(2)),
     reserveCost: calculateEnemyDrillReserveCost(enemyBudget),
-    consumesMugMark: hasMugMark,
   };
 };
 
 export const getEnemyDivinationDurationMs = ({
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
 }: EnemySupportDifficultyContext) =>
-  isSavage || isUltimate
+  isSavage || isUltimate || isCruel
     ? ENEMY_SUPPORT_SKILL_BALANCE.divination.highDifficultyDurationMs
     : ENEMY_SUPPORT_SKILL_BALANCE.divination.normalDurationMs;
 
 export const TACTICAL_SKILL_BALANCE = {
   fastAction: {
     durationMs: 15_000,
-    cooldownMs: 18_000,
+    cooldownMs: 0,
+    maxUsesPerBattle: 1,
     baseCommandProgressPerTick: 2.8,
     boostedCommandProgressPerTick: 5.2,
   },
@@ -412,14 +571,22 @@ export const TACTICAL_SKILL_BALANCE = {
     loyaltyRiskDivisor: 2,
   },
   disruption: {
-    durationMs: 15_000,
-    interruptChance: 0.75,
-    collapseMarketRatio: 0.14,
+    /** Legacy STUN data retained only for older authored content. */
+    durationMs: 0,
+    interruptChance: 1,
+    collapseMarketRatio: 0,
+    requiresEnemyTelegraph: true,
+    maxInterruptsPerUse: 1,
+  },
+  feint: {
+    durationMs: 10_000,
+    enemyPushMultiplier: 0.9,
+    maxUsesPerBattle: 1,
   },
   cover: {
-    durationMs: 10_000,
-    absorbRatio: 0.6,
-    gaugeCapacity: 24,
+    durationMs: 16_000,
+    absorbRatio: 0.92,
+    gaugeCapacity: 84,
   },
   capitalBoost: {
     marketRatio: 0.4,
@@ -431,45 +598,7 @@ export const TACTICAL_SKILL_BALANCE = {
     recoveryOwnership: 30,
     requiredAssetValue: 1_000_000,
   },
-  battleLitany: {
-    durationMs: 14_000,
-    pushMultiplier: 1.8,
-  },
-  eraWind: {
-    durationMs: 16_000,
-    cooldownMs: 0,
-    minimumCost: 100_000,
-    marketCostRatio: 0.02,
-    useCostMultipliers: [1],
-    baseGaugePushPerSecond: 1.55,
-    pushStepPerUse: 0,
-    maxUsesPerBattle: 1,
-  },
 } as const;
-
-export const calculateEraWindCost = (
-  marketPrice: number,
-  previousUses: number
-) => {
-  const baseCost = Math.max(
-    TACTICAL_SKILL_BALANCE.eraWind.minimumCost,
-    Math.round(
-      Math.max(0, marketPrice) *
-        TACTICAL_SKILL_BALANCE.eraWind.marketCostRatio
-    )
-  );
-  const multipliers = TACTICAL_SKILL_BALANCE.eraWind.useCostMultipliers;
-  const multiplier =
-    multipliers[Math.min(multipliers.length - 1, Math.max(0, previousUses))];
-  return Math.round(baseCost * multiplier);
-};
-
-export const getEraWindGaugePushPerSecond = (previousUses: number) =>
-  TACTICAL_SKILL_BALANCE.eraWind.baseGaugePushPerSecond +
-  Math.min(
-    TACTICAL_SKILL_BALANCE.eraWind.maxUsesPerBattle - 1,
-    Math.max(0, previousUses)
-  ) * TACTICAL_SKILL_BALANCE.eraWind.pushStepPerUse;
 
 export const calculateBattleVictoryReward = (
   marketPrice: number,
@@ -479,9 +608,10 @@ export const calculateBattleVictoryReward = (
 ) => {
   if (
     !isPlayerVictory ||
-    mode === 'ultimate' ||
     mode === 'training' ||
-    (mode === 'savage' && alreadyCleared)
+    mode === 'phantom' ||
+    mode === 'karma' ||
+    (mode !== 'normal' && alreadyCleared)
   ) {
     return 0;
   }
@@ -507,6 +637,183 @@ export const normalizeBattleOwnership = (ownership: number) =>
 
 export const calculateOwnershipFromGauge = (gauge: number) =>
   normalizeBattleOwnership((100 - gauge) / 2);
+
+export const NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD = 85;
+export const NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND = 0.75;
+export const LIQUIDITY_CLOSEOUT_OWNERSHIP_THRESHOLD = 75;
+export const LIQUIDITY_CLOSEOUT_MIN_GAUGE_PER_SECOND = 8;
+
+export const isNormalPlayerLiquidityCloseoutActive = ({
+  playerOwnership,
+  enemyReserve,
+  enemyMinimumCommitment,
+  velocity,
+}: {
+  playerOwnership: number;
+  enemyReserve: number;
+  enemyMinimumCommitment: number;
+  velocity: number;
+}) =>
+  playerOwnership >= LIQUIDITY_CLOSEOUT_OWNERSHIP_THRESHOLD &&
+  enemyReserve < enemyMinimumCommitment &&
+  velocity < 0;
+
+/**
+ * Resolves the player-side momentum floor without deciding whether the
+ * current pressure actually points toward the player. A faster floor is used
+ * only after the rival cannot currently afford another commitment. This keeps
+ * the rich gauge sweep visible while removing a passive wait for an empty cash
+ * tank; any recovered counter-investment cancels the faster floor immediately.
+ */
+export const resolveNormalPlayerCloseoutMinimumGaugePerSecond = ({
+  playerOwnership,
+  enemyLiquidityExhausted = false,
+}: {
+  playerOwnership: number;
+  enemyLiquidityExhausted?: boolean;
+}) => {
+  const threshold = enemyLiquidityExhausted
+    ? LIQUIDITY_CLOSEOUT_OWNERSHIP_THRESHOLD
+    : NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD;
+  if (playerOwnership < threshold) return 0;
+  return enemyLiquidityExhausted
+    ? LIQUIDITY_CLOSEOUT_MIN_GAUGE_PER_SECOND
+    : NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND;
+};
+
+/**
+ * Prevents a normal battle from lingering after one side has earned a decisive
+ * lead. The floor only follows the current pressure direction, so a capital
+ * reversal immediately cancels or reverses the closeout push.
+ */
+export const applyNormalClosingMomentum = ({
+  velocity,
+  gauge,
+  isTraining,
+  isHighEndRaid,
+  enemyReserve = Number.POSITIVE_INFINITY,
+  enemyMinimumCommitment = 0,
+}: {
+  velocity: number;
+  gauge: number;
+  isTraining: boolean;
+  isHighEndRaid: boolean;
+  enemyReserve?: number;
+  enemyMinimumCommitment?: number;
+}) => {
+  if (isTraining || isHighEndRaid) return velocity;
+
+  const playerOwnership = calculateOwnershipFromGauge(gauge);
+  const enemyLiquidityExhausted =
+    enemyReserve < enemyMinimumCommitment;
+  const playerCloseoutMinimum =
+    resolveNormalPlayerCloseoutMinimumGaugePerSecond({
+      playerOwnership,
+      enemyLiquidityExhausted,
+    });
+  if (playerCloseoutMinimum > 0 && velocity < 0) {
+    return Math.min(velocity, -playerCloseoutMinimum);
+  }
+  if (
+    playerOwnership <= 100 - NORMAL_CLOSEOUT_OWNERSHIP_THRESHOLD &&
+    velocity > 0
+  ) {
+    return Math.max(velocity, NORMAL_CLOSEOUT_MIN_GAUGE_PER_SECOND);
+  }
+  return velocity;
+};
+
+export const CRITICAL_AUTO_OWNERSHIP_THRESHOLD = 25;
+
+export interface CriticalAutoInterception {
+  shouldIntercept: boolean;
+  heldGauge: number;
+}
+
+export type CriticalAutoResolutionPhase =
+  | 'idle'
+  | 'held'
+  | 'cinematic'
+  | 'effect_committed'
+  | 'presentation_complete';
+
+export type CriticalAutoResolutionEvent =
+  | 'hold'
+  | 'start_cinematic'
+  | 'commit_effect'
+  | 'complete_presentation'
+  | 'release'
+  | 'cancel';
+
+/**
+ * Pure ordering contract for the critical AUTO interrupt. The web UI and a
+ * future Unity runner can share the same rule: hold the battle, show the
+ * ability, commit its effect, finish any capital presentation, then release.
+ * Invalid out-of-order events are ignored instead of unlocking combat early.
+ */
+export const advanceCriticalAutoResolution = (
+  phase: CriticalAutoResolutionPhase,
+  event: CriticalAutoResolutionEvent
+): CriticalAutoResolutionPhase => {
+  if (event === 'cancel') return 'idle';
+  if (phase === 'idle' && event === 'hold') return 'held';
+  if (phase === 'held' && event === 'start_cinematic') return 'cinematic';
+  if (phase === 'cinematic' && event === 'commit_effect') {
+    return 'effect_committed';
+  }
+  if (
+    phase === 'effect_committed' &&
+    event === 'complete_presentation'
+  ) {
+    return 'presentation_complete';
+  }
+  if (phase === 'presentation_complete' && event === 'release') return 'idle';
+  return phase;
+};
+
+/**
+ * Resolves the state boundary for a once-per-battle critical AUTO skill.
+ *
+ * The triggering enemy push stops at 25% ownership before the AUTO effect is
+ * resolved. Its overshoot is deliberately not replayed afterwards. A late
+ * frame may observe the player just below the line, so the once-per-battle
+ * interrupt still restores the held 25% boundary instead of firing uselessly
+ * at 7% immediately before defeat. The caller must arm this transition before
+ * combat pressure begins; it must not become available dynamically below the
+ * threshold. Named mechanics that have already resolved all mitigation may
+ * opt into preserving their candidate value while still triggering the AUTO.
+ */
+export const resolveCriticalAutoInterception = ({
+  currentGauge,
+  candidateGauge,
+  canIntercept,
+  preserveResolvedCandidate = false,
+}: {
+  currentGauge: number;
+  candidateGauge: number;
+  canIntercept: boolean;
+  preserveResolvedCandidate?: boolean;
+}): CriticalAutoInterception => {
+  if (
+    !canIntercept ||
+    !Number.isFinite(currentGauge) ||
+    !Number.isFinite(candidateGauge) ||
+    candidateGauge <= currentGauge ||
+    calculateOwnershipFromGauge(candidateGauge) >
+      CRITICAL_AUTO_OWNERSHIP_THRESHOLD
+  ) {
+    return { shouldIntercept: false, heldGauge: candidateGauge };
+  }
+
+  const thresholdGauge =
+    100 - CRITICAL_AUTO_OWNERSHIP_THRESHOLD * 2;
+  return {
+    shouldIntercept: true,
+    heldGauge: preserveResolvedCandidate
+      ? candidateGauge
+      : thresholdGauge,
+  };
+};
 
 export const resolveLivingDeadOutcome = (
   phase: LivingDeadPhase,
@@ -559,37 +866,133 @@ export const LIMIT_BREAK_CAPITAL_CAP_RATIOS: Record<
 };
 
 export const ENEMY_BALANCE_FACTOR = {
-  tutorial: 1.08,
+  tutorial: 0.98,
   gridania: 1.3,
   limsa: 1.42,
   uldah: 1.55,
-  goldSaucer: 1.72,
+  goldSaucer: 1.68,
   advanced: 1.55,
-  cartelHQ: 1.75,
+  cartelMember: 1.68,
+  cartelHQ: 1.85,
 } as const;
 
 export const BATTLE_SUPPORT_BALANCE = {
-  subsidiaryMarketRatio: 0.52,
-  subsidiaryImpactBase: 1.2,
-  subsidiaryImpactPerMarketRatio: 9,
-  subsidiaryImpactCap: 7.5,
-  synergyMemberMarketRatio: 0.46,
+  subsidiaryMarketRatio: 0.75,
+  subsidiaryImpactBase: 2.5,
+  subsidiaryImpactPerMarketRatio: 13,
+  subsidiaryImpactCap: 12,
+  synergyMemberMarketRatio: 0.65,
   synergyDefaultMultiplier: 1.45,
-  synergyImpactBase: 3,
-  synergyImpactPerMarketRatio: 9,
-  synergyImpactCap: 16,
+  synergyImpactBase: 5,
+  synergyImpactPerMarketRatio: 13,
+  synergyImpactCap: 22,
 } as const;
+
+/**
+ * One network request retains full strength. Every later direct request in the
+ * same battle decays even when the player changes companies, so rotating the
+ * contact list cannot bypass diminishing returns. The shared counter is
+ * battle-local, so old saves need no migration.
+ */
+export const REPEATED_NETWORK_SUPPORT_BALANCE = {
+  fullStrengthUses: 1,
+  reductionPerPreviousUse: 0.1,
+  minimumMultiplier: 0.5,
+} as const;
+
+/**
+ * High difficulty asks the player to plan a build instead of replacing every
+ * mistake with another company call. Savage has room to learn the authored
+ * guard baits. Ultimate is tighter: eight requests make the player assign each
+ * contact to a telegraphed danger instead of consuming a full support rotation.
+ * Cruel keeps its separate assessment tuning.
+ */
+export const SAVAGE_NETWORK_SUPPORT_LIMIT = 18;
+export const ULTIMATE_NETWORK_SUPPORT_LIMIT = 8;
+export const ULTIMATE_LIMIT_BREAK_LIMIT = 1;
+export const ULTIMATE_APPRAISAL_LIMIT_MS = 108_000;
+
+export const canRequestLimitedNetworkSupport = (
+  previousUses: number,
+  limit: number
+) => {
+  const normalizedUses = Number.isFinite(previousUses)
+    ? Math.max(0, Math.floor(previousUses))
+    : 0;
+  return normalizedUses < Math.max(0, Math.floor(limit));
+};
+
+export const getRepeatedNetworkSupportMultiplier = (previousUses: number) => {
+  const normalizedUses = Number.isFinite(previousUses)
+    ? Math.max(0, Math.floor(previousUses))
+    : 0;
+  const decaySteps = Math.max(
+    0,
+    normalizedUses - (REPEATED_NETWORK_SUPPORT_BALANCE.fullStrengthUses - 1)
+  );
+  return Math.max(
+    REPEATED_NETWORK_SUPPORT_BALANCE.minimumMultiplier,
+    1 - REPEATED_NETWORK_SUPPORT_BALANCE.reductionPerPreviousUse * decaySteps
+  );
+};
+
+export const applyRepeatedNetworkSupportDecay = (
+  amount: number,
+  previousUses: number
+) =>
+  Math.round(
+    Math.max(0, amount) * getRepeatedNetworkSupportMultiplier(previousUses)
+  );
 
 export const BATTLE_LOYALTY_BALANCE = {
   individualRiskIncrease: 12,
   limitBreakRiskIncrease: 8,
   synergyRiskIncrease: 10,
-  celebrationRiskReduction: 20,
-  celebrationRewardRatio: 0.1,
+  // 五分の祝儀は勝利利益の50%を人脈全体へ均等に配る。
+  // 大盤振る舞いは利益をすべて配り、今回の離反を防いで危険度も回復する。
+  profitShareRewardRatio: 0.5,
+  lavishRiskRecovery: 30,
   reacquisitionSupportBonusPerLevel: 0.1,
   reacquisitionRiskReductionPerLevel: 2,
   maxReacquisitionLevel: 2,
 } as const;
+
+/**
+ * Endgame duties are fought by the whole acquired network, not petty cash.
+ * The extra weight keeps ally calls satisfying after enemy barriers, Passage and
+ * LB3 were made meaningful, without raising the player's personal bankroll.
+ */
+export const HIGH_DIFFICULTY_SUPPORT_MULTIPLIER = 1.7;
+
+export const PROFIT_ALLOCATION_OPTIONS = [
+  {
+    id: 'keep',
+    label: '利益独占',
+    rate: 0,
+    departureProbabilityMultiplier: 1,
+    loyaltyRiskReduction: 0,
+  },
+  {
+    id: 'share50',
+    label: '五分の祝儀',
+    rate: 0.5,
+    // 高コストに見合う強い抑止。ただし離反を保証で0にはしない。
+    departureProbabilityMultiplier: 0.2,
+    loyaltyRiskReduction: 0,
+  },
+  {
+    id: 'share100',
+    label: '大盤振る舞い',
+    rate: 1,
+    departureProbabilityMultiplier: 0,
+    loyaltyRiskReduction: BATTLE_LOYALTY_BALANCE.lavishRiskRecovery,
+  },
+] as const;
+
+export type ProfitAllocationOption =
+  (typeof PROFIT_ALLOCATION_OPTIONS)[number];
+export type ProfitAllocationOptionId = ProfitAllocationOption['id'];
+export type ProfitAllocationRate = ProfitAllocationOption['rate'];
 
 export const getReacquisitionLevel = (property: Property) =>
   Math.max(
@@ -600,16 +1003,57 @@ export const getReacquisitionLevel = (property: Property) =>
     )
   );
 
+export const isExtremeReacquisition = (property: Property) =>
+  property.owner === 'independent' && getReacquisitionLevel(property) > 0;
+
+export const EXTREME_REACQUISITION_BALANCE = {
+  budgetMultiplierByLevel: [1, 1.2, 1.35],
+  maximumDifficultyLevel: 5,
+} as const;
+
+export const getExtremeReacquisitionBudgetMultiplier = (
+  property: Property
+) =>
+  isExtremeReacquisition(property)
+    ? EXTREME_REACQUISITION_BALANCE.budgetMultiplierByLevel[
+        getReacquisitionLevel(property)
+      ]
+    : 1;
+
+export const getExtremeReacquisitionOpeningSkill = (
+  property: Property
+): EnemySupportSkillId => {
+  const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(property.community);
+  // Extreme reacquisition is a payoff battle. It may present a small barrier,
+  // but never takes permanent cash through Drain.
+  if (campaignIndex <= 2) return 'blackest_night';
+  if (campaignIndex <= 6) return 'divination';
+  return 'drill';
+};
+
 export const getSubsidiarySupportMultiplier = (property: Property) =>
   1 +
   getReacquisitionLevel(property) *
     BATTLE_LOYALTY_BALANCE.reacquisitionSupportBonusPerLevel;
 
-export const calculateSubsidiarySupportAmount = (property: Property) =>
-  Math.round(
+export const calculateSubsidiarySupportAmount = (
+  property: Property,
+  previousNetworkSupportUses = 0
+) =>
+  applyRepeatedNetworkSupportDecay(
     property.marketPrice *
       BATTLE_SUPPORT_BALANCE.subsidiaryMarketRatio *
-      getSubsidiarySupportMultiplier(property)
+      getSubsidiarySupportMultiplier(property),
+    previousNetworkSupportUses
+  );
+
+/** Inverts the LIMIT BREAK pressure formula: amount / price * 85 = push pt. */
+export const calculateLimitBreakPushGilEquivalent = (
+  marketPrice: number,
+  ownershipPoints: number
+) =>
+  Math.round(
+    (Math.max(0, marketPrice) * Math.max(0, ownershipPoints)) / 85
   );
 
 export const sortSubsidiariesBySupport = (properties: Property[]) =>
@@ -632,16 +1076,25 @@ export const getSubsidiaryRiskIncrease = (
         BATTLE_LOYALTY_BALANCE.reacquisitionRiskReductionPerLevel
   );
 
-export const calculateCelebrationGiftCost = (
+export const calculateProfitAllocationCost = (
   subsidiaries: Property[],
-  victoryReward: number
+  victoryReward: number,
+  rate: number = BATTLE_LOYALTY_BALANCE.profitShareRewardRatio
 ) => {
-  if (subsidiaries.length === 0 || victoryReward <= 0) return 0;
+  const normalizedRate = Number.isFinite(rate)
+    ? Math.max(0, Math.min(1, rate))
+    : 0;
+  if (
+    subsidiaries.length === 0 ||
+    victoryReward <= 0 ||
+    normalizedRate <= 0
+  ) {
+    return 0;
+  }
+  // `rate` is the total pool shared by every ally, not a per-ally charge.
   return Math.max(
     1,
-    Math.round(
-      victoryReward * BATTLE_LOYALTY_BALANCE.celebrationRewardRatio
-    )
+    Math.round(victoryReward * normalizedRate)
   );
 };
 
@@ -716,7 +1169,7 @@ export const getEnemyMinimumCommitment = (marketPrice: number) =>
 export const NORMAL_ENEMY_BUDGET_MULTIPLIER = 0.96;
 
 export const NORMAL_ENEMY_CAMPAIGN_MULTIPLIERS = {
-  tutorial: 0.72,
+  tutorial: 0.62,
   gridania: 0.82,
   limsa: 0.86,
   midgameAndLater: 1,
@@ -750,6 +1203,9 @@ interface EnemyBudgetContext {
   isTutorial: boolean;
   isSavage?: boolean;
   isUltimate?: boolean;
+  isCruel?: boolean;
+  isKarma?: boolean;
+  isCityBoss?: boolean;
 }
 
 interface SkillUnlockContext {
@@ -757,6 +1213,8 @@ interface SkillUnlockContext {
   ownedProperties: Property[];
   totalFunds: number;
   activeSynergyCount: number;
+  conqueredCommunityIds?: ReadonlySet<CommunityType>;
+  savageClearedRaidIds?: ReadonlySet<string>;
 }
 
 export const countsTowardCityConquest = (property: Property) =>
@@ -765,11 +1223,19 @@ export const countsTowardCityConquest = (property: Property) =>
 export const getCampaignProperties = (
   properties: Property[],
   community: CommunityType
-) =>
-  properties.filter(
-    (property) =>
-      property.community === community && countsTowardCityConquest(property)
+) => {
+  const propertyById = new Map(
+    properties.map((property) => [property.id, property])
   );
+  return CAMPAIGN_ENCOUNTER_DEFINITIONS.flatMap((definition) => {
+    const property = propertyById.get(definition.targetPropertyId);
+    return property &&
+      property.community === community &&
+      countsTowardCityConquest(property)
+      ? [property]
+      : [];
+  });
+};
 
 export type BossAbilityTier =
   | 'none'
@@ -794,45 +1260,65 @@ export const getBossAbilityTier = ({
   isCityBoss,
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
+  isKarma = false,
 }: {
   targetProperty: Property;
   isCityBoss: boolean;
   isSavage?: boolean;
   isUltimate?: boolean;
+  isCruel?: boolean;
+  isKarma?: boolean;
 }): BossAbilityTier => {
+  // The four-page imitation ledger is Karma's authored mechanic. Do not stack
+  // a legacy Cover/Invincible script on top of it.
+  if (isKarma) return 'none';
   if (isUltimate) return 'invincible';
+  if (isCruel) return 'enhanced_cover';
   if (isSavage) {
     const layer = getSavageLayer(targetProperty);
     if (layer >= 4) return 'invincible';
     if (layer >= 2) return 'enhanced_cover';
     return 'cover';
   }
-  if (!isCityBoss) return 'none';
-  const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
-    targetProperty.community
-  );
-  if (campaignIndex >= 9) return 'invincible';
-  if (campaignIndex >= 7) return 'enhanced_cover';
-  if (campaignIndex >= 3) return 'cover';
-  return 'boss';
+  // A returning company is a reward battle against a slightly strengthened
+  // former subsidiary, not a replay of a late boss's long invulnerability.
+  if (isExtremeReacquisition(targetProperty)) return 'boss';
+  if (isCityBoss) {
+    const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
+      targetProperty.community
+    );
+    if (campaignIndex >= 9) return 'invincible';
+    if (campaignIndex >= 7) return 'enhanced_cover';
+    if (campaignIndex >= 3) return 'cover';
+    return 'boss';
+  }
+  if (targetProperty.isCartelHQ) return 'enhanced_cover';
+  if (targetProperty.cartelId) return 'cover';
+  return 'none';
 };
 
 export const BOSS_COVER_BALANCE = {
   triggerPlayerOwnership: 60,
   cover: {
-    durationMs: 10_000,
-    absorbRatio: 0.65,
-    gaugeCapacity: 24,
+    durationMs: 18_000,
+    absorbRatio: 0.84,
+    gaugeCapacity: 58,
+    counterCapitalRatio: 0.06,
   },
   enhancedCover: {
-    durationMs: 12_000,
-    absorbRatio: 0.8,
-    gaugeCapacity: 36,
+    durationMs: 16_000,
+    absorbRatio: 0.92,
+    gaugeCapacity: 84,
+    counterCapitalRatio: 0.12,
   },
   invincible: {
-    durationMs: 8_000,
+    durationMs: 5_000,
     absorbRatio: 1,
     gaugeCapacity: Number.POSITIVE_INFINITY,
+    counterCapitalRatio: 0.18,
+    followupDurationMs: 6_000,
+    followupGaugeCapacity: 44,
   },
 } as const;
 
@@ -876,25 +1362,74 @@ export const applyCoverToGaugeDelta = ({
   };
 };
 
+export const getCoverGuardDisplayPercent = ({
+  remainingGaugeCapacity,
+  maximumGaugeCapacity,
+  remainingMs,
+  durationMs,
+}: {
+  remainingGaugeCapacity: number;
+  maximumGaugeCapacity: number;
+  remainingMs: number;
+  durationMs: number;
+}) => {
+  if (remainingMs <= 0 || durationMs <= 0 || remainingGaugeCapacity <= 0) {
+    return 0;
+  }
+  const capacityRatio = Number.isFinite(maximumGaugeCapacity)
+    ? remainingGaugeCapacity / Math.max(1, maximumGaugeCapacity)
+    : 1;
+  const timeRatio = remainingMs / durationMs;
+  const rawPercent =
+    Math.max(0, Math.min(1, capacityRatio, timeRatio)) * 100;
+  return Math.max(5, Math.min(100, Math.ceil(rawPercent / 5) * 5));
+};
+
 export const getSavageLayer = (targetProperty: Property) => {
   const match = targetProperty.name.match(/商戦 零式：第([1-4])層/);
   return match ? Math.max(1, Math.min(4, Number(match[1]))) : 1;
 };
 
+export const getSavageSeries = (targetProperty: Property) => {
+  const match = targetProperty.id.match(/^savage_raid_([1-3])_layer_[1-4]$/);
+  return match ? Math.max(1, Math.min(3, Number(match[1]))) : 1;
+};
+
 const NO_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [];
-const CURE_ONLY: readonly EnemySupportSkillId[] = ['cure'];
-const MUG_ONLY: readonly EnemySupportSkillId[] = ['mug'];
-const MUG_DRILL: readonly EnemySupportSkillId[] = ['mug', 'drill'];
-const DIVINATION_ONLY: readonly EnemySupportSkillId[] = ['divination'];
-const CURE_DIVINATION: readonly EnemySupportSkillId[] = [
-  'cure',
+const BENISON_ONLY: readonly EnemySupportSkillId[] = ['blackest_night'];
+const BENISON_DRAIN: readonly EnemySupportSkillId[] = [
+  'blackest_night',
+  'drain',
+];
+const DRAIN_ONLY: readonly EnemySupportSkillId[] = ['drain'];
+const DRAIN_DIVINATION: readonly EnemySupportSkillId[] = [
+  'drain',
   'divination',
 ];
+const DRAIN_DRILL: readonly EnemySupportSkillId[] = ['drain', 'drill'];
+const DIVINATION_ONLY: readonly EnemySupportSkillId[] = ['divination'];
+const BENISON_DIVINATION: readonly EnemySupportSkillId[] = [
+  'blackest_night',
+  'divination',
+];
+const BENISON_RAPID_ASSAULT: readonly EnemySupportSkillId[] = [
+  'blackest_night',
+  'rapid_assault',
+];
 const ALL_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [
-  'cure',
-  'mug',
+  'blackest_night',
+  'drain',
   'drill',
   'divination',
+  'capital_reversal',
+  'forced_liquidation',
+];
+const CRUEL_ENEMY_SUPPORT_SKILLS: readonly EnemySupportSkillId[] = [
+  'blackest_night',
+  'drill',
+  'divination',
+  'rapid_assault',
+  'limit_break_3',
 ];
 
 export interface EnemySupportProfileContext
@@ -902,6 +1437,25 @@ export interface EnemySupportProfileContext
   targetProperty: Property;
   isCityBoss: boolean;
 }
+
+export interface EnemySupportAutoProfile {
+  opening: EnemySupportSkillId | null;
+  critical: EnemySupportSkillId | null;
+}
+
+export const getUltimateEnemyAutoProfile = (
+  patternIndex: number
+): EnemySupportAutoProfile => {
+  const normalizedIndex = Number.isFinite(patternIndex)
+    ? Math.abs(Math.floor(patternIndex)) %
+      ULTIMATE_ENEMY_AUTO_PATTERNS.length
+    : 0;
+  const pattern = ULTIMATE_ENEMY_AUTO_PATTERNS[normalizedIndex];
+  return {
+    opening: pattern.opening,
+    critical: pattern.critical,
+  };
+};
 
 /**
  * Keeps support mechanics on authored boss encounters. Ordinary properties
@@ -912,46 +1466,165 @@ export const getEnemySupportSkillProfile = ({
   isCityBoss,
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
+  isKarma = false,
 }: EnemySupportProfileContext): readonly EnemySupportSkillId[] => {
+  if (isKarma) return NO_ENEMY_SUPPORT_SKILLS;
+  if (isCruel) return CRUEL_ENEMY_SUPPORT_SKILLS;
   if (isUltimate) return ALL_ENEMY_SUPPORT_SKILLS;
   if (isSavage) {
+    const series = getSavageSeries(targetProperty);
     const layer = getSavageLayer(targetProperty);
-    if (layer === 1) return CURE_ONLY;
-    if (layer === 2) return MUG_ONLY;
-    if (layer === 3) return MUG_DRILL;
-    return DIVINATION_ONLY;
+    return SAVAGE_ENEMY_SUPPORT_PROFILES[series - 1][layer - 1];
+  }
+  if (isExtremeReacquisition(targetProperty)) {
+    return [getExtremeReacquisitionOpeningSkill(targetProperty)];
+  }
+  if (!isCityBoss && targetProperty.cartelId === 'cartel_abyss') {
+    return targetProperty.isCartelHQ ? DRAIN_DRILL : DRAIN_DIVINATION;
+  }
+  if (!isCityBoss && targetProperty.cartelId === 'cartel_dofor') {
+    return targetProperty.isCartelHQ ? DRAIN_DIVINATION : BENISON_DRAIN;
   }
   if (!isCityBoss) return NO_ENEMY_SUPPORT_SKILLS;
 
   const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
     targetProperty.community
   );
-  if (campaignIndex === 5) return CURE_ONLY;
-  if (campaignIndex === 6) return MUG_ONLY;
-  if (campaignIndex === 7) return MUG_DRILL;
+  if (campaignIndex === 2) return DRAIN_ONLY;
+  if (campaignIndex === 3) return BENISON_ONLY;
+  if (campaignIndex === 4) return BENISON_RAPID_ASSAULT;
+  if (campaignIndex === 5) return BENISON_ONLY;
+  if (campaignIndex === 6) return DRAIN_ONLY;
+  if (campaignIndex === 7) return DRAIN_DRILL;
   if (campaignIndex === 8) return DIVINATION_ONLY;
-  if (campaignIndex === 9) return CURE_DIVINATION;
+  if (campaignIndex === 9) return BENISON_DIVINATION;
   return NO_ENEMY_SUPPORT_SKILLS;
 };
 
+/**
+ * High-end duties reserve explicit support actions for authored battle beats.
+ * Savage layer two owns a separate opening Cover. Layer three adds one
+ * interruptible opening check, while layer four keeps its authored opening
+ * and critical pair. Ultimate chooses one curated pair at battle start so
+ * every surprise remains deterministic for that attempt.
+ */
+export const getEnemySupportAutoProfile = ({
+  targetProperty,
+  isSavage = false,
+  isUltimate = false,
+  isCruel = false,
+  isKarma = false,
+  ultimatePatternIndex = 0,
+}: EnemySupportProfileContext & {
+  ultimatePatternIndex?: number;
+}): EnemySupportAutoProfile => {
+  if (isKarma) return { opening: null, critical: null };
+  if (isCruel) {
+    return { opening: 'divination', critical: null };
+  }
+  if (isUltimate) {
+    return getUltimateEnemyAutoProfile(ultimatePatternIndex);
+  }
+  if (isSavage) {
+    const series = getSavageSeries(targetProperty);
+    const layer = getSavageLayer(targetProperty);
+    return SAVAGE_ENEMY_AUTO_PROFILES[series - 1][layer - 1];
+  }
+  if (isExtremeReacquisition(targetProperty)) {
+    return {
+      opening: getExtremeReacquisitionOpeningSkill(targetProperty),
+      critical: null,
+    };
+  }
+  if (targetProperty.isCartelHQ) {
+    return targetProperty.cartelId === 'cartel_abyss'
+      ? { opening: 'divination', critical: 'drill' }
+      : { opening: 'drain', critical: 'blackest_night' };
+  }
+  return {
+    opening: null,
+    critical: null,
+  };
+};
+
+export const getOpeningBossAbilityTier = ({
+  targetProperty,
+  isSavage = false,
+}: {
+  targetProperty: Property;
+  isSavage?: boolean;
+}): BossAbilityTier =>
+  isSavage && getSavageLayer(targetProperty) === 2 ? 'cover' : 'none';
+
 export const getSavageLayerBudgetMultiplier = (targetProperty: Property) =>
   SAVAGE_LAYER_BUDGET_MULTIPLIERS[getSavageLayer(targetProperty) - 1];
+
+export const getSavageSeriesBudgetMultiplier = (targetProperty: Property) =>
+  SAVAGE_SERIES_BUDGET_MULTIPLIERS[getSavageSeries(targetProperty) - 1];
+
+export const SAVAGE_ENEMY_DIFFICULTY_LEVELS = [
+  [4, 5, 5, 6],
+  [5, 5, 6, 6],
+  [5, 6, 6, 6],
+] as const;
 
 export const getEnemyDifficultyLevel = (
   targetProperty: Property,
   isTutorial: boolean,
   isSavage = false,
-  isUltimate = false
+  isUltimate = false,
+  isCityBoss = false,
+  isCruel = false,
+  isKarma = false
 ) => {
-  if (isTutorial) return 0;
+  if (isKarma) return 6;
+  if (isCruel) return 6;
   if (isUltimate) return 6;
-  if (isSavage) return getSavageLayer(targetProperty) >= 3 ? 6 : 5;
-  if (targetProperty.id === 'prop_casino_grand') return 4;
+  if (isSavage) {
+    return SAVAGE_ENEMY_DIFFICULTY_LEVELS[getSavageSeries(targetProperty) - 1][
+      getSavageLayer(targetProperty) - 1
+    ];
+  }
+  if (isExtremeReacquisition(targetProperty)) {
+    const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
+      targetProperty.community
+    );
+    const baseDifficulty =
+      campaignIndex <= 0
+        ? 1
+        : campaignIndex === 1
+          ? 2
+          : campaignIndex === 2
+            ? 3
+            : 4;
+    return Math.min(
+      EXTREME_REACQUISITION_BALANCE.maximumDifficultyLevel,
+      baseDifficulty + 1
+    );
+  }
+  if (isTutorial) return 0;
+  if (targetProperty.id === 'prop_casino_grand') {
+    // ゴールドソーサーは専用の高予算補正だけで十分に手強い。
+    // 都市ボス補正まで重ねると、判断レベル5の温存挙動で泥仕合化する。
+    return 4;
+  }
   const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community);
-  if (campaignIndex === 0) return 1;
-  if (campaignIndex === 1) return 2;
-  if (campaignIndex === 2) return 3;
-  return 4;
+  const baseDifficulty =
+    campaignIndex === 0
+      ? 1
+      : campaignIndex === 1
+        ? 2
+        : campaignIndex === 2
+          ? 3
+          : 4;
+  return Math.min(
+    6,
+    baseDifficulty +
+      (isCityBoss ? 1 : 0) +
+      (targetProperty.cartelId ? 1 : 0) +
+      (targetProperty.isCartelHQ ? 1 : 0)
+  );
 };
 
 export const calculateEnemyBudget = ({
@@ -961,8 +1634,12 @@ export const calculateEnemyBudget = ({
   isTutorial,
   isSavage = false,
   isUltimate = false,
+  isCruel = false,
+  isKarma = false,
+  isCityBoss = false,
 }: EnemyBudgetContext) => {
   const price = targetProperty.marketPrice;
+  const isExtreme = isExtremeReacquisition(targetProperty);
   const rankFactor =
     price >= 20_000_000
       ? 1.05
@@ -978,44 +1655,72 @@ export const calculateEnemyBudget = ({
   );
   const baseBudget =
     price *
-    (rankFactor + (targetProperty.isCartelHQ ? 0.3 : 0)) *
+    (rankFactor +
+      (
+        targetProperty.isCartelHQ &&
+        !isSavage &&
+        !isUltimate &&
+        !isCruel &&
+        !isKarma
+          ? 0.3
+          : 0
+      )) *
     (1 - defenseDiscount);
-  const balanceFactor = isTutorial
+  const balanceFactor = isSavage || isUltimate || isCruel || isKarma
+    ? ENEMY_BALANCE_FACTOR.advanced
+    : isTutorial && !isExtreme
     ? ENEMY_BALANCE_FACTOR.tutorial
     : targetProperty.isCartelHQ
       ? ENEMY_BALANCE_FACTOR.cartelHQ
-      : targetProperty.id === 'prop_casino_grand'
-        ? ENEMY_BALANCE_FACTOR.goldSaucer
-        : COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community) === 0
-          ? ENEMY_BALANCE_FACTOR.gridania
-          : COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community) === 1
-            ? ENEMY_BALANCE_FACTOR.limsa
-            : COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community) === 2
-              ? ENEMY_BALANCE_FACTOR.uldah
-              : ENEMY_BALANCE_FACTOR.advanced;
+      : targetProperty.cartelId
+        ? ENEMY_BALANCE_FACTOR.cartelMember
+        : targetProperty.id === 'prop_casino_grand'
+          ? ENEMY_BALANCE_FACTOR.goldSaucer
+          : COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community) === 0
+            ? ENEMY_BALANCE_FACTOR.gridania
+            : COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community) === 1
+              ? ENEMY_BALANCE_FACTOR.limsa
+              : COMMUNITY_CAMPAIGN_ORDER.indexOf(targetProperty.community) === 2
+                ? ENEMY_BALANCE_FACTOR.uldah
+                : ENEMY_BALANCE_FACTOR.advanced;
+
+  const campaignIndex = COMMUNITY_CAMPAIGN_ORDER.indexOf(
+    targetProperty.community
+  );
+  const authoredNormalBudgetMultiplier =
+    !isSavage && !isUltimate && !isCruel && !isKarma
+      ? getCampaignEncounterDefinition(targetProperty.id)
+          ?.enemyBudgetMultiplier ?? 1
+      : 1;
+  const cityBossBudgetMultiplier =
+    !isCityBoss ||
+    campaignIndex < 0 ||
+    targetProperty.id === 'prop_casino_grand'
+      ? 1
+      : campaignIndex <= 1
+        ? 1.05
+        : campaignIndex <= 4
+          ? 1.04
+          : 1.02;
 
   const calculatedBudget = Math.round(
-    baseBudget * balanceFactor *
-    (isUltimate
+    baseBudget * balanceFactor * cityBossBudgetMultiplier *
+    authoredNormalBudgetMultiplier *
+    (isUltimate || isCruel || isKarma
       ? ULTIMATE_ENEMY_BUDGET_MULTIPLIER
       : isSavage
         ? SAVAGE_ENEMY_BUDGET_MULTIPLIER *
-          getSavageLayerBudgetMultiplier(targetProperty)
+          getSavageLayerBudgetMultiplier(targetProperty) *
+          getSavageSeriesBudgetMultiplier(targetProperty)
         : NORMAL_ENEMY_BUDGET_MULTIPLIER *
-          getNormalEnemyCampaignMultiplier(targetProperty, isTutorial))
+          getNormalEnemyCampaignMultiplier(
+            targetProperty,
+            isTutorial && !isExtreme
+          )) *
+      (isSavage || isUltimate || isCruel || isKarma
+        ? 1
+        : getExtremeReacquisitionBudgetMultiplier(targetProperty))
   );
-
-  if (
-    !isTutorial &&
-    !isSavage &&
-    !isUltimate &&
-    targetProperty.id === 'prop_starter_bakery'
-  ) {
-    return Math.max(
-      calculatedBudget,
-      Math.round(price * STARTER_BAKERY_ENEMY_BUDGET_RATIO)
-    );
-  }
 
   return calculatedBudget;
 };
@@ -1062,7 +1767,8 @@ export const calculateLimitBreakChargeGain = (
 export const calculateLimitBreakAmount = (
   targetMarketPrice: number,
   participatingSubsidiaries: Property[],
-  tier: LimitBreakTier
+  tier: LimitBreakTier,
+  previousNetworkSupportUses: Readonly<Record<string, number>> = {}
 ) => {
   if (tier === 0) return 0;
   const selfSlot = Math.round(targetMarketPrice * 0.28);
@@ -1072,7 +1778,10 @@ export const calculateLimitBreakAmount = (
       Math.round(
         property.marketPrice *
           0.28 *
-          getSubsidiarySupportMultiplier(property)
+          getSubsidiarySupportMultiplier(property) *
+          getRepeatedNetworkSupportMultiplier(
+            previousNetworkSupportUses[property.id] ?? 0
+          )
       ),
     0
   );
@@ -1121,6 +1830,8 @@ export const isSkillUnlocked = ({
   ownedProperties,
   totalFunds,
   activeSynergyCount,
+  conqueredCommunityIds = new Set<CommunityType>(),
+  savageClearedRaidIds = new Set<string>(),
 }: SkillUnlockContext) => {
   const ownedPropertyIds = new Set(
     ownedProperties.map((property) => property.id)
@@ -1157,6 +1868,18 @@ export const isSkillUnlocked = ({
     return false;
   }
   if (skill.requiresActiveSynergy && activeSynergyCount <= 0) {
+    return false;
+  }
+  if (
+    skill.unlockAfterCommunity &&
+    !conqueredCommunityIds.has(skill.unlockAfterCommunity)
+  ) {
+    return false;
+  }
+  if (
+    skill.unlockAfterSavageRaidId &&
+    !savageClearedRaidIds.has(skill.unlockAfterSavageRaidId)
+  ) {
     return false;
   }
   return true;

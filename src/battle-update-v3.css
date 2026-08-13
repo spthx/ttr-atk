@@ -237,6 +237,7 @@
   background: rgba(2, 20, 20, .94);
   box-shadow: 0 .7rem 2rem rgba(0, 0, 0, .42), 0 0 1rem rgba(16, 185, 129, .15);
   animation: offline-income-in .35s ease-out both;
+  pointer-events: none;
 }
 
 .offline-income-toast small {
@@ -468,23 +469,6 @@
 
 .buyout-screen--limit-impact .capital-clash {
   animation: limit-board-impact .48s steps(2) 1;
-}
-
-.buyout-screen--lightweight .limit-impact-field span:nth-of-type(n + 2) {
-  display: none;
-}
-
-.buyout-screen--lightweight
-  .limit-impact-field--tier-3 span:nth-of-type(2) {
-  display: block;
-}
-
-.buyout-screen--lightweight .limit-impact-field::after {
-  display: none;
-}
-
-.buyout-screen--lightweight.buyout-screen--limit-impact .capital-clash {
-  animation: none;
 }
 
 @keyframes wind-board-player { to { filter: brightness(1.32); transform: translateX(.12rem); } }

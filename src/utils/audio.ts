@@ -1,17 +1,36 @@
-import { FANKIT_AUDIO } from '../data/fankitAssets';
+import { FANKIT_AUDIO, GAME_AUDIO } from '../data/fankitAssets';
 
 /**
  * Retro-Modern Web Audio API Synthesizer
  * Generates arcade-style sound effects for the financial simulation game.
  */
 
+type CapitalRapidFireSide = 'player' | 'opponent';
+
+type CapitalRapidFireSession = {
+  generation: number;
+  side: CapitalRapidFireSide;
+  active: boolean;
+  stopAtMs: number | null;
+  stopTimer: number | null;
+  source: AudioBufferSourceNode | null;
+  master: GainNode | null;
+  panner: StereoPannerNode | null;
+};
+
 class SoundEffects {
   private ctx: AudioContext | null = null;
   private bufferCache = new Map<string, Promise<AudioBuffer>>();
+  private synthesizedNoiseBufferCache = new Map<string, AudioBuffer>();
   private cinematicAudioGeneration = 0;
   private cinematicSource: AudioBufferSourceNode | null = null;
   private cinematicGain: GainNode | null = null;
   private limitImpactTimer: number | null = null;
+  private capitalRapidFireGeneration = 0;
+  private capitalRapidFireLoopBuffers = new Map<string, AudioBuffer>();
+  private capitalRapidFireSessions: Partial<
+    Record<CapitalRapidFireSide, CapitalRapidFireSession>
+  > = {};
   public enabled: boolean = true;
 
   private stopCinematicAudio(fadeMs = 0) {
@@ -44,6 +63,8 @@ class SoundEffects {
       window.clearTimeout(this.limitImpactTimer);
       this.limitImpactTimer = null;
     }
+    this.stopCapitalStackStream('player');
+    this.stopCapitalStackStream('opponent');
     this.stopCinematicAudio(fadeMs);
   }
 
@@ -56,13 +77,34 @@ class SoundEffects {
     if (!this.enabled || typeof window === 'undefined') return;
     const state = this.ctx?.state as string | undefined;
     if (state === 'closed' || state === 'interrupted') {
-      this.stopCinematicAudio();
+      const staleCtx = this.ctx;
+      // Dropping the JavaScript reference is not enough on iOS: an
+      // interrupted context may keep its native mixer and scheduled synth
+      // voices alive. Stop the tracked cue, detach the singleton first, then
+      // close the old mixer while this user gesture creates its replacement.
+      this.stopBattleCinematicAudio(0);
       this.ctx = null;
       this.bufferCache.clear();
+      this.synthesizedNoiseBufferCache.clear();
+      this.capitalRapidFireLoopBuffers.clear();
+      if (staleCtx && state !== 'closed') {
+        try {
+          void staleCtx.close().catch(() => {});
+        } catch {
+          // Safari may throw synchronously while leaving an interrupted page.
+        }
+      }
     }
     const ctx = this.initCtx();
     if (ctx?.state === 'suspended') {
       void ctx.resume().catch(() => {});
+    }
+    if (ctx) {
+      void this.getDecodedAudioBuffer(ctx, GAME_AUDIO.capitalRapidFire).catch(
+        () => {
+          this.bufferCache.delete(GAME_AUDIO.capitalRapidFire);
+        }
+      );
     }
   }
 
@@ -94,6 +136,7 @@ class SoundEffects {
         .then(async (buffer) => {
           if (
             !this.enabled ||
+            ctx !== this.ctx ||
             (channel === 'cinematic' && generation !== this.cinematicAudioGeneration)
           ) {
             return;
@@ -101,6 +144,7 @@ class SoundEffects {
           if (ctx.state === 'suspended') await ctx.resume();
           if (
             !this.enabled ||
+            ctx !== this.ctx ||
             (channel === 'cinematic' && generation !== this.cinematicAudioGeneration)
           ) {
             return;
@@ -111,23 +155,35 @@ class SoundEffects {
           gain.gain.setValueAtTime(volume, ctx.currentTime);
           source.connect(gain);
           gain.connect(ctx.destination);
+          source.onended = () => {
+            try {
+              source.disconnect();
+              gain.disconnect();
+            } catch {
+              // An interrupted iOS audio context may already be disconnected.
+            }
+            if (this.cinematicSource === source) {
+              this.cinematicSource = null;
+              this.cinematicGain = null;
+            }
+          };
           if (channel === 'cinematic') {
             this.cinematicSource = source;
             this.cinematicGain = gain;
-            source.onended = () => {
-              if (this.cinematicSource === source) {
-                this.cinematicSource = null;
-                this.cinematicGain = null;
-              }
-            };
           }
           source.start();
         })
         .catch(() => {
-          this.bufferCache.delete(url);
+          // A fetch/decode owned by a discarded context must not evict the
+          // replacement context's newer promise for the same asset.
+          if (this.bufferCache.get(url) === pendingBuffer) {
+            this.bufferCache.delete(url);
+          }
+          const currentContext = this.enabled && ctx === this.ctx;
           if (
-            channel !== 'cinematic' ||
-            generation === this.cinematicAudioGeneration
+            currentContext &&
+            (channel !== 'cinematic' ||
+              generation === this.cinematicAudioGeneration)
           ) {
             fallback();
           }
@@ -153,6 +209,57 @@ class SoundEffects {
       // Ignore audio context errors gracefully
     }
     return this.ctx;
+  }
+
+  private getSynthesizedNoiseBuffer(
+    ctx: AudioContext,
+    key: string,
+    duration: number,
+    envelope: (progress: number) => number
+  ) {
+    const cacheKey = `${ctx.sampleRate}:${key}`;
+    const cached = this.synthesizedNoiseBufferCache.get(cacheKey);
+    if (cached) return cached;
+    const frameCount = Math.max(1, Math.ceil(ctx.sampleRate * duration));
+    const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
+    const channel = buffer.getChannelData(0);
+    for (let index = 0; index < frameCount; index += 1) {
+      const progress = index / frameCount;
+      channel[index] = (Math.random() * 2 - 1) * envelope(progress);
+    }
+    this.synthesizedNoiseBufferCache.set(cacheKey, buffer);
+    return buffer;
+  }
+
+  private getDecodedAudioBuffer(ctx: AudioContext, url: string) {
+    let pendingBuffer = this.bufferCache.get(url);
+    if (!pendingBuffer) {
+      pendingBuffer = fetch(url)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`audio fetch failed: ${response.status}`);
+          }
+          return response.arrayBuffer();
+        })
+        .then((data) => ctx.decodeAudioData(data.slice(0)));
+      this.bufferCache.set(url, pendingBuffer);
+    }
+    return pendingBuffer;
+  }
+
+  private disconnectOnEnded(
+    source: AudioScheduledSourceNode,
+    ...nodes: Array<AudioNode | null>
+  ) {
+    source.onended = () => {
+      nodes.forEach((node) => {
+        try {
+          node?.disconnect();
+        } catch {
+          // An interrupted/closed context may have released the graph already.
+        }
+      });
+    };
   }
 
   // Coin / Investment Chime
@@ -213,6 +320,7 @@ class SoundEffects {
         gain.gain.exponentialRampToValueAtTime(0.001, start + 0.14);
         osc.connect(gain);
         gain.connect(this.ctx.destination);
+        this.disconnectOnEnded(osc, osc, gain);
         osc.start(start);
         osc.stop(start + 0.15);
       });
@@ -242,12 +350,283 @@ class SoundEffects {
 
         osc.connect(gain);
         gain.connect(this.ctx.destination);
+        this.disconnectOnEnded(osc, osc, gain);
 
         osc.start(now + i * 0.04);
         osc.stop(now + i * 0.04 + 0.25);
       });
     } catch {
       // Audio fallback
+    }
+  }
+
+  private releaseCapitalRapidFireLoop(
+    session: CapitalRapidFireSession,
+    fadeMs = 24
+  ) {
+    const source = session.source;
+    const master = session.master;
+    const panner = session.panner;
+    session.source = null;
+    session.master = null;
+    session.panner = null;
+    const ctx = this.ctx;
+    const now = ctx?.currentTime ?? 0;
+    const fadeSeconds = Math.max(0, fadeMs) / 1_000;
+    if (master && ctx) {
+      try {
+        master.gain.cancelScheduledValues(now);
+        master.gain.setValueAtTime(Math.max(master.gain.value, 0.0001), now);
+        master.gain.linearRampToValueAtTime(0.0001, now + fadeSeconds);
+      } catch {
+        // The context may have been interrupted between visual frames.
+      }
+    }
+    if (source) {
+      try {
+        source.stop(ctx ? now + fadeSeconds + 0.008 : undefined);
+      } catch {
+        // A completed loop needs no second stop.
+      }
+    }
+    const disconnect = () => {
+      try {
+        source?.disconnect();
+        master?.disconnect();
+        panner?.disconnect();
+      } catch {
+        // An interrupted context may already have released the graph.
+      }
+    };
+    if (typeof window === 'undefined') {
+      disconnect();
+    } else {
+      window.setTimeout(disconnect, fadeMs + 24);
+    }
+  }
+
+  private getCapitalRapidFireLoopBuffer(
+    ctx: AudioContext,
+    tickBuffer: AudioBuffer
+  ) {
+    const cacheKey = `${ctx.sampleRate}:${tickBuffer.sampleRate}:${tickBuffer.length}`;
+    const cached = this.capitalRapidFireLoopBuffers.get(cacheKey);
+    if (cached) return cached;
+
+    // Direct measurements of the reference put the metallic supply clock at
+    // roughly 60–75ms. Build one reusable mono loop from the approved local
+    // tick so long investments keep a single AudioBufferSource voice on iOS.
+    // Fresh frame/audio measurements retain the fine coin chatter at about
+    // 65ms, while the recognisable major cascades recur around 400ms. Bake a
+    // strong landing every six microticks and retain the five lighter ticks
+    // between them, so the stream stays rapid without turning every sub-wave
+    // into an equally loud strike.
+    // reusable loop made only from the approved recorded tick.
+    const loopDurationMs = 1_188;
+    const tickOffsetsMs = [
+      0, 65, 131, 198, 264, 330, 396, 462, 528,
+      594, 660, 726, 792, 858, 924, 990, 1_056, 1_122,
+    ] as const;
+    const accentEveryTicks = 6;
+    const playbackRates = [
+      0.985, 1.035, 1.015, 0.995, 1.025, 1.045,
+      0.98, 1.03, 1.01,
+    ] as const;
+    const strongAccentGains = [1, 0.96, 1.03, 0.98, 1.01, 0.95] as const;
+    const weakMicrotickGains = [0.26, 0.2, 0.23, 0.18] as const;
+    const output = ctx.createBuffer(
+      1,
+      Math.ceil(ctx.sampleRate * loopDurationMs / 1_000),
+      ctx.sampleRate
+    );
+    const outputData = output.getChannelData(0);
+    const inputChannels = Array.from(
+      { length: tickBuffer.numberOfChannels },
+      (_, channel) => tickBuffer.getChannelData(channel)
+    );
+    let firstAudibleFrame = 0;
+    while (firstAudibleFrame < tickBuffer.length) {
+      const magnitude = inputChannels.reduce(
+        (sum, channel) => sum + Math.abs(channel[firstAudibleFrame] ?? 0),
+        0
+      ) / Math.max(1, inputChannels.length);
+      if (magnitude >= 0.003) break;
+      firstAudibleFrame += 1;
+    }
+    const tickWindowFrames = Math.min(
+      tickBuffer.length - firstAudibleFrame,
+      Math.ceil(tickBuffer.sampleRate * 0.058)
+    );
+
+    tickOffsetsMs.forEach((offsetMs, tickIndex) => {
+      const destinationStart = Math.round(ctx.sampleRate * offsetMs / 1_000);
+      const rate = playbackRates[tickIndex % playbackRates.length];
+      const isStrongAccent = tickIndex % accentEveryTicks === 0;
+      const gain = isStrongAccent
+        ? strongAccentGains[
+            Math.floor(tickIndex / accentEveryTicks) % strongAccentGains.length
+          ]
+        : weakMicrotickGains[(tickIndex - 1) % weakMicrotickGains.length];
+      const destinationFrames = Math.ceil(
+        tickWindowFrames * ctx.sampleRate / tickBuffer.sampleRate / rate
+      );
+      for (let frame = 0; frame < destinationFrames; frame += 1) {
+        const destination = destinationStart + frame;
+        if (destination >= outputData.length) break;
+        const sourceFrame = firstAudibleFrame + Math.floor(
+          frame * tickBuffer.sampleRate * rate / ctx.sampleRate
+        );
+        if (sourceFrame >= firstAudibleFrame + tickWindowFrames) break;
+        const progress = frame / Math.max(1, destinationFrames - 1);
+        const attack = Math.min(1, frame / Math.max(1, ctx.sampleRate * 0.005));
+        const release = progress < 0.78 ? 1 : (1 - progress) / 0.22;
+        const sample = inputChannels.reduce(
+          (sum, channel) => sum + (channel[sourceFrame] ?? 0),
+          0
+        ) / Math.max(1, inputChannels.length);
+        outputData[destination] += sample * gain * attack * Math.max(0, release);
+      }
+    });
+    const peak = outputData.reduce(
+      (maximum, sample) => Math.max(maximum, Math.abs(sample)),
+      0
+    );
+    if (peak > 0.94) {
+      const scale = 0.94 / peak;
+      for (let frame = 0; frame < outputData.length; frame += 1) {
+        outputData[frame] *= scale;
+      }
+    }
+    this.capitalRapidFireLoopBuffers.set(cacheKey, output);
+    return output;
+  }
+
+  private startCapitalRapidFireLoop(
+    session: CapitalRapidFireSession,
+    tickBuffer: AudioBuffer
+  ) {
+    const ctx = this.ctx;
+    if (
+      !ctx ||
+      !session.active ||
+      this.capitalRapidFireSessions[session.side]?.generation !==
+        session.generation
+    ) {
+      return;
+    }
+    const now = ctx.currentTime;
+    const source = ctx.createBufferSource();
+    const master = ctx.createGain();
+    const panner =
+      typeof ctx.createStereoPanner === 'function'
+        ? ctx.createStereoPanner()
+        : null;
+    source.buffer = this.getCapitalRapidFireLoopBuffer(ctx, tickBuffer);
+    source.loop = true;
+    source.loopStart = 0;
+    source.loopEnd = source.buffer.duration;
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.linearRampToValueAtTime(0.14, now + 0.012);
+    if (panner) {
+      panner.pan.setValueAtTime(
+        session.side === 'player' ? -0.1 : 0.1,
+        now
+      );
+      master.connect(panner);
+      panner.connect(ctx.destination);
+    } else {
+      master.connect(ctx.destination);
+    }
+    source.connect(master);
+    session.source = source;
+    session.master = master;
+    session.panner = panner;
+    source.start(now);
+  }
+
+  private beginCapitalRapidFire(side: CapitalRapidFireSide) {
+    this.stopCapitalStackStream(side);
+    const ctx = this.initCtx();
+    if (!ctx) return null;
+    const session: CapitalRapidFireSession = {
+      generation: ++this.capitalRapidFireGeneration,
+      side,
+      active: true,
+      stopAtMs: null,
+      stopTimer: null,
+      source: null,
+      master: null,
+      panner: null,
+    };
+    this.capitalRapidFireSessions[side] = session;
+    const pendingBuffer = this.getDecodedAudioBuffer(
+      ctx,
+      GAME_AUDIO.capitalRapidFire
+    );
+    void pendingBuffer
+      .then((buffer) => {
+        if (
+          session.active &&
+          this.ctx === ctx &&
+          this.capitalRapidFireSessions[side]?.generation ===
+            session.generation
+        ) {
+          this.startCapitalRapidFireLoop(session, buffer);
+        }
+      })
+      .catch(() => {
+        if (this.bufferCache.get(GAME_AUDIO.capitalRapidFire) === pendingBuffer) {
+          this.bufferCache.delete(GAME_AUDIO.capitalRapidFire);
+        }
+        this.stopCapitalStackStream(side);
+      });
+    return session;
+  }
+
+  stopCapitalStackStream(side: CapitalRapidFireSide) {
+    const session = this.capitalRapidFireSessions[side];
+    if (!session) return;
+    session.active = false;
+    if (session.stopTimer !== null && typeof window !== 'undefined') {
+      window.clearTimeout(session.stopTimer);
+      session.stopTimer = null;
+    }
+    this.releaseCapitalRapidFireLoop(session);
+    if (
+      this.capitalRapidFireSessions[side]?.generation === session.generation
+    ) {
+      delete this.capitalRapidFireSessions[side];
+    }
+  }
+
+  /** Keep the approved rapid-fire click locked to the visible pour window. */
+  playCapitalStackStep(
+    side: CapitalRapidFireSide,
+    index: number,
+    total: number,
+    _includeFinalWeight = true,
+    frameDurationMs = 96
+  ) {
+    if (!this.enabled) return;
+    const resolvedTotal = Math.max(1, Math.floor(total));
+    const resolvedIndex = Math.max(
+      0,
+      Math.min(resolvedTotal - 1, Math.floor(index))
+    );
+    let session = this.capitalRapidFireSessions[side];
+    if (resolvedIndex === 0 || !session?.active) {
+      session = this.beginCapitalRapidFire(side) ?? undefined;
+    }
+    if (!session) return;
+    if (resolvedIndex === resolvedTotal - 1) {
+      const stopDelayMs = Math.max(1, Math.round(frameDurationMs));
+      session.stopAtMs = performance.now() + stopDelayMs;
+      if (session.stopTimer !== null) {
+        window.clearTimeout(session.stopTimer);
+      }
+      session.stopTimer = window.setTimeout(() => {
+        this.stopCapitalStackStream(side);
+      }, stopDelayMs);
     }
   }
 
@@ -270,6 +649,14 @@ class SoundEffects {
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {
+          // An interrupted iOS audio context may already be disconnected.
+        }
+      };
 
       osc.start(now);
       osc.stop(now + 0.03);
@@ -316,6 +703,17 @@ class SoundEffects {
       coinGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
       coin.connect(coinGain);
       coinGain.connect(gain);
+      throb.onended = () => {
+        try {
+          throb.disconnect();
+          coin.disconnect();
+          coinGain.disconnect();
+          gain.disconnect();
+          panner?.disconnect();
+        } catch {
+          // An interrupted iOS audio context may already be disconnected.
+        }
+      };
       coin.start(now + 0.025);
       coin.stop(now + 0.1);
     } catch {
@@ -343,6 +741,14 @@ class SoundEffects {
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {
+          // An interrupted iOS audio context may already be disconnected.
+        }
+      };
 
       osc.start(now);
       osc.stop(now + 0.35);
@@ -362,6 +768,7 @@ class SoundEffects {
       if (!ctx) return;
       const now = ctx.currentTime;
       const hostile =
+        effectType === 'FEINT' ||
         effectType === 'INDEPENDENCE_SABOTAGE';
       const wind = effectType === 'ERA_WIND' || effectType === 'COOLDOWN_REDUCTION';
       const notes = hostile
@@ -384,6 +791,7 @@ class SoundEffects {
         gain.gain.exponentialRampToValueAtTime(0.001, start + 0.24);
         osc.connect(gain);
         gain.connect(ctx.destination);
+        this.disconnectOnEnded(osc, osc, gain);
         osc.start(start);
         osc.stop(start + 0.25);
       });
@@ -404,13 +812,12 @@ class SoundEffects {
       if (!ctx) return;
       const now = ctx.currentTime;
       const duration = effectType === 'ERA_WIND' ? 0.42 : 0.26;
-      const frameCount = Math.max(1, Math.floor(ctx.sampleRate * duration));
-      const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
-      const channel = buffer.getChannelData(0);
-      for (let index = 0; index < frameCount; index += 1) {
-        const envelope = Math.sin(Math.PI * index / frameCount);
-        channel[index] = (Math.random() * 2 - 1) * envelope;
-      }
+      const buffer = this.getSynthesizedNoiseBuffer(
+        ctx,
+        effectType === 'ERA_WIND' ? 'skill-whoosh-era' : 'skill-whoosh-short',
+        duration,
+        (progress) => Math.sin(Math.PI * progress)
+      );
       const source = ctx.createBufferSource();
       const filter = ctx.createBiquadFilter();
       const gain = ctx.createGain();
@@ -444,6 +851,7 @@ class SoundEffects {
       } else {
         gain.connect(ctx.destination);
       }
+      this.disconnectOnEnded(source, source, filter, gain, panner);
       source.start(now);
       source.stop(now + duration);
     } catch {
@@ -465,6 +873,7 @@ class SoundEffects {
       if (!ctx) return;
       const now = ctx.currentTime;
       const hostile =
+        effectType === 'FEINT' ||
         effectType === 'INDEPENDENCE_SABOTAGE';
       const wind = effectType === 'ERA_WIND' || effectType === 'COOLDOWN_REDUCTION';
       const master = ctx.createGain();
@@ -504,7 +913,10 @@ class SoundEffects {
    * bounded voices become one, two or three cuts so higher tiers sound
    * stronger without loading or decoding another asset.
    */
-  playLimitBreakImpact(tier: number = 1) {
+  playLimitBreakImpact(
+    tier: number = 1,
+    side: 'player' | 'opponent' = 'player'
+  ) {
     if (!this.enabled) return;
     try {
       const ctx = this.initCtx();
@@ -528,6 +940,7 @@ class SoundEffects {
       drawGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
       draw.connect(drawGain);
       drawGain.connect(master);
+      this.disconnectOnEnded(draw, draw, drawGain);
       draw.start(now);
       draw.stop(now + 0.15);
 
@@ -535,17 +948,12 @@ class SoundEffects {
       slashDelays.forEach((delay, index) => {
         const start = now + delay;
         const duration = 0.105;
-        const noiseBuffer = ctx.createBuffer(
-          1,
-          Math.ceil(ctx.sampleRate * duration),
-          ctx.sampleRate
+        const noiseBuffer = this.getSynthesizedNoiseBuffer(
+          ctx,
+          `limit-slash-${index}`,
+          duration,
+          (progress) => Math.pow(1 - progress, 2.4)
         );
-        const samples = noiseBuffer.getChannelData(0);
-        for (let sample = 0; sample < samples.length; sample += 1) {
-          const progress = sample / samples.length;
-          samples[sample] =
-            (Math.random() * 2 - 1) * Math.pow(1 - progress, 2.4);
-        }
 
         const slash = ctx.createBufferSource();
         const slashFilter = ctx.createBiquadFilter();
@@ -560,6 +968,7 @@ class SoundEffects {
         slash.connect(slashFilter);
         slashFilter.connect(slashGain);
         slashGain.connect(master);
+        this.disconnectOnEnded(slash, slash, slashFilter, slashGain);
         slash.start(start);
 
         const blade = ctx.createOscillator();
@@ -575,6 +984,19 @@ class SoundEffects {
         bladeGain.gain.exponentialRampToValueAtTime(0.001, start + 0.115);
         blade.connect(bladeGain);
         bladeGain.connect(master);
+        if (index === slashDelays.length - 1) {
+          blade.onended = () => {
+            try {
+              blade.disconnect();
+              bladeGain.disconnect();
+              master.disconnect();
+            } catch {
+              // An interrupted/closed context may have released the graph.
+            }
+          };
+        } else {
+          this.disconnectOnEnded(blade, blade, bladeGain);
+        }
         blade.start(start);
         blade.stop(start + 0.12);
       });
@@ -585,14 +1007,14 @@ class SoundEffects {
       this.limitImpactTimer = window.setTimeout(() => {
         this.limitImpactTimer = null;
         this.playCapitalImpact(
-          'player',
+          side,
           resolvedTier === 1 ? 0.55 : resolvedTier === 2 ? 0.78 : 1
         );
       }, Math.round((finalSlashDelay + 0.11) * 1_000));
     } catch {
       const resolvedTier = Math.max(1, Math.min(3, Math.floor(tier)));
       this.playCapitalImpact(
-        'player',
+        side,
         resolvedTier === 1 ? 0.55 : resolvedTier === 2 ? 0.78 : 1
       );
     }

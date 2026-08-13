@@ -28,6 +28,7 @@ export const SAVAGE_YIELD_BONUS_PER_RANK = 0.05;
 export const SAVAGE_PROPERTY_YIELD_BONUS = 0.1;
 export const SAVAGE_GROUP_MULTIPLIER_BASE = 1.45;
 export const SAVAGE_GROUP_MULTIPLIER_BONUS_PER_RANK = 0.04;
+export const SAVAGE_BATTLE_ONLY_CAPITAL_BONUS_PER_RANK = 0.02;
 
 export const SAVAGE_SERIES_DEFINITIONS = [
   {
@@ -66,14 +67,13 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     battlePropertyId: 'prop_starter_farm',
     memberPropertyIds: [
       'prop_starter_farm',
-      'prop_starter_bakery',
       'prop_timber_ake',
     ],
     communities: ['グリダニア'],
     rewardSynergyIds: ['GRIDANIA_FOREST_ECONOMY'],
-    marketPrice: 600_000_000,
+    marketPrice: 3_000_000_000,
     description:
-      '森林資源と生活物資の連携を崩す開幕層。小口の連携と資金源管理を同時に試します。',
+      '森林資源と生活物資の連携を崩す開幕層。小口の連携と人脈管理を同時に試します。',
   },
   {
     id: 'prop_blacksmith',
@@ -81,11 +81,11 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     layer: 2,
     encounterName: '黒潮輸送共同体',
     coalitionName: 'バイルブランド海陸運連合',
-    battlePropertyId: 'prop_blacksmith',
+    battlePropertyId: 'prop_land_transport',
     memberPropertyIds: ['prop_land_transport'],
     communities: ['リムサ・ロミンサ'],
     rewardSynergyIds: [],
-    marketPrice: 675_000_000,
+    marketPrice: 3_200_000_000,
     description:
       '海運と陸運が交互に資本を運ぶ第2層。短い予兆から続く集中防衛を崩します。',
   },
@@ -98,11 +98,10 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     battlePropertyId: 'prop_wheat_farm',
     memberPropertyIds: [
       'prop_brewery_beer',
-      'prop_pub_central',
     ],
     communities: ['リムサ・ロミンサ', 'ウルダハ'],
     rewardSynergyIds: ['EORZEA_FOOD_ROUTE'],
-    marketPrice: 765_000_000,
+    marketPrice: 3_400_000_000,
     description:
       '需要の波を味方につける第3層。時代の風と競合アクションの読み合いが重なります。',
   },
@@ -118,8 +117,8 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
       'prop_casino_grand',
     ],
     communities: ['ウルダハ'],
-    rewardSynergyIds: ['ULDAH_LUXURY_MARKET'],
-    marketPrice: 860_000_000,
+    rewardSynergyIds: ['ULDAH_LUXURY_MARKET', 'GRAND_COMPANY_EORZEA'],
+    marketPrice: 3_600_000_000,
     description:
       '三都市編の締めとなる無敵防衛戦。全押し込み経路を見極めて突破する総力戦です。',
   },
@@ -130,10 +129,10 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     encounterName: '蒼天畜産共同体',
     coalitionName: 'クルザス生産者連盟',
     battlePropertyId: 'prop_ranch_1',
-    memberPropertyIds: ['prop_ranch_1', 'prop_horse_meat'],
+    memberPropertyIds: ['prop_ranch_1'],
     communities: ['イシュガルド'],
     rewardSynergyIds: [],
-    marketPrice: 1_100_000_000,
+    marketPrice: 3_200_000_000,
     description:
       '寒冷地の供給網が粘り強く資本を戻す第1層。基礎手順を高い速度で試します。',
   },
@@ -144,12 +143,12 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     encounterName: '蒼天産業共同体',
     coalitionName: 'イシュガルド機工防衛会',
     battlePropertyId: 'prop_weapon_dealer',
-    memberPropertyIds: ['prop_blacksmith', 'prop_weapon_dealer'],
+    memberPropertyIds: ['prop_weapon_dealer'],
     communities: ['イシュガルド'],
     rewardSynergyIds: ['ISHGARD_DEFENSE_INDUSTRY'],
-    marketPrice: 1_235_000_000,
+    marketPrice: 3_400_000_000,
     description:
-      '生産拠点が一体となる第2層。強化かばうを挟む集中防衛を崩します。',
+      '生産拠点が一体となる第2層。パッセを挟む集中防衛を崩します。',
   },
   {
     id: 'savage_raid_2_layer_3',
@@ -161,7 +160,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     memberPropertyIds: ['prop_detective'],
     communities: ['クガネ'],
     rewardSynergyIds: [],
-    marketPrice: 1_400_000_000,
+    marketPrice: 3_600_000_000,
     description:
       '投入履歴を読んで先回りする第3層。情報戦と資本の間を崩さず攻め続けます。',
   },
@@ -174,8 +173,8 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     battlePropertyId: 'prop_info_broker',
     memberPropertyIds: ['prop_info_broker'],
     communities: ['クガネ'],
-    rewardSynergyIds: ['KUGANE_TRADE_GATEWAY'],
-    marketPrice: 1_580_000_000,
+    rewardSynergyIds: ['KUGANE_TRADE_GATEWAY', 'GRAND_COMPANY_EORZEA'],
+    marketPrice: 3_800_000_000,
     description:
       '東方交易の全経路を閉ざす第4層。無敵時間を越えて決定打を通す連続戦です。',
   },
@@ -189,7 +188,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     memberPropertyIds: ['prop_inn_town'],
     communities: ['クリスタリウム'],
     rewardSynergyIds: [],
-    marketPrice: 2_000_000_000,
+    marketPrice: 3_500_000_000,
     description:
       '復興需要が絶えず循環する最終編第1層。資金回復を含む長期戦の入口です。',
   },
@@ -203,9 +202,9 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     memberPropertyIds: ['prop_wheat_farm', 'prop_security_firm'],
     communities: ['オールド・シャーレアン', 'ラザハン'],
     rewardSynergyIds: ['EORZEA_FOOD_ROUTE'],
-    marketPrice: 2_250_000_000,
+    marketPrice: 3_700_000_000,
     description:
-      '学術予測と港湾防衛が同期する第2層。強化かばうの後隙へ商流を集中させます。',
+      '学術予測と港湾防衛が同期する第2層。パッセの後隙へ商流を集中させます。',
   },
   {
     id: 'savage_raid_3_layer_3',
@@ -217,7 +216,7 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     memberPropertyIds: ['prop_coffee_aurora'],
     communities: ['トライヨラ'],
     rewardSynergyIds: [],
-    marketPrice: 2_550_000_000,
+    marketPrice: 3_900_000_000,
     description:
       '世界規模の需要変動を操る第3層。風・支援・アビリティの順序が勝敗を分けます。',
   },
@@ -230,12 +229,37 @@ export const SAVAGE_RAID_DEFINITIONS: readonly SavageRaidDefinition[] = [
     battlePropertyId: 'prop_abyss_mine',
     memberPropertyIds: ['prop_abyss_heavy', 'prop_abyss_mine'],
     communities: ['トライヨラ', 'ソリューション・ナイン'],
-    rewardSynergyIds: [],
-    marketPrice: 2_880_000_000,
+    rewardSynergyIds: ['GRAND_COMPANY_EORZEA'],
+    marketPrice: 4_200_000_000,
     description:
       '資源調達から販売網までを束ねた最終層。無敵防衛を含む全システムの総力戦です。',
   },
 ] as const;
+
+/**
+ * Presentation-only disclosure policy shared by the web UI and a future
+ * native client: open only the series containing the next playable chapter.
+ */
+export const getDefaultOpenSavageSeries = ({
+  clearedIds,
+  unlockedIds,
+}: {
+  clearedIds: readonly string[];
+  unlockedIds: readonly string[];
+}): SavageSeries | null => {
+  const cleared = new Set(clearedIds);
+  if (SAVAGE_RAID_DEFINITIONS.every((raid) => cleared.has(raid.id))) {
+    return null;
+  }
+  const unlocked = new Set(unlockedIds);
+  return (
+    SAVAGE_RAID_DEFINITIONS.find(
+      (raid) => unlocked.has(raid.id) && !cleared.has(raid.id)
+    )?.series ??
+    SAVAGE_RAID_DEFINITIONS.find((raid) => !cleared.has(raid.id))?.series ??
+    null
+  );
+};
 
 export const ULTIMATE_RAID_ID = 'ultimate_starwide_trade';
 
@@ -255,11 +279,26 @@ export const ULTIMATE_RAID_DEFINITION = {
     'トライヨラ',
     'ソリューション・ナイン',
   ] as CommunityType[],
-  marketPrice: 3_000_000_000,
+  marketPrice: 6_000_000_000,
   industry: '娯楽・商業' as IndustryType,
   community: 'ソリューション・ナイン' as CommunityType,
   description:
-    '商戦 零式3編・全12章を踏破した商会だけが挑める、本作独自の単独・最終高難度交易戦。通常の所有権と収益からは独立した名誉記録です。',
+    '商戦 零式3編・全12章を踏破した商会だけが挑める、本作独自の単独・最終高難度交易戦。ボス自体は取得せず、初回踏破では攻略報酬と人脈清算が発生します。',
+} as const;
+
+export const CRUEL_RAID_ID = 'cruel_another_trade';
+
+export const CRUEL_RAID_DEFINITION = {
+  id: CRUEL_RAID_ID,
+  name: '酷商戦',
+  subtitle: '酷-もう1人のわたし',
+  coalitionName: '闇タタルの大繁盛商店',
+  communities: ['ソリューション・ナイン'] as CommunityType[],
+  marketPrice: Math.round(ULTIMATE_RAID_DEFINITION.marketPrice * 1.25),
+  industry: '娯楽・商業' as IndustryType,
+  community: 'ソリューション・ナイン' as CommunityType,
+  description:
+    '絶商戦の踏破後に現れる、本作独自の超高難度・単独記録戦。闇タタルが既存の商戦術を容赦なく組み合わせます。敗北・撤退・再戦では通常人脈を保護し、初回踏破では称号・記録・攻略報酬と人脈清算が発生します。',
 } as const;
 
 const propertyById = (properties: Property[], id: string) =>
@@ -400,7 +439,7 @@ export const buildSavageProperties = (
       countsTowardCityConquest: false,
       groupKeys: raid.rewardSynergyIds,
       description:
-        `第${raid.series}編「${getSavageSeriesDefinition(raid.series).name}」。${raid.description} 通常物件の所有権・毎秒収益・独立危険度は変化しません。`,
+        `第${raid.series}編「${getSavageSeriesDefinition(raid.series).name}」。${raid.description} 敗北・撤退・再戦では通常人脈を保護し、初回踏破では攻略報酬と人脈清算が発生します。`,
     }];
   });
 
@@ -422,6 +461,26 @@ export const buildUltimateProperty = (
   countsTowardCityConquest: false,
   groupKeys: [],
   description: ULTIMATE_RAID_DEFINITION.description,
+});
+
+export const buildCruelProperty = (
+  cleared: boolean,
+  companyName: string
+): Property => ({
+  id: CRUEL_RAID_DEFINITION.id,
+  name: CRUEL_RAID_DEFINITION.name,
+  industry: CRUEL_RAID_DEFINITION.industry,
+  community: CRUEL_RAID_DEFINITION.community,
+  marketPrice: CRUEL_RAID_DEFINITION.marketPrice,
+  annualRevenue: 0,
+  owner: cleared ? 'player' : 'independent',
+  ownerName: cleared
+    ? `${companyName}・酷踏破`
+    : CRUEL_RAID_DEFINITION.coalitionName,
+  loyaltyRisk: 0,
+  countsTowardCityConquest: false,
+  groupKeys: [],
+  description: CRUEL_RAID_DEFINITION.description,
 });
 
 export const getUnlockedSavageRaidIds = (
@@ -467,6 +526,24 @@ export const applySavageSynergyUpgrades = (
   const ranks = getSavageSynergyRanks(clearedPropertyIds);
   return synergies.map((synergy) => {
     const savageRank = ranks.get(synergy.id) ?? 0;
+    if (synergy.battleOnly) {
+      return {
+        ...synergy,
+        savageRank,
+        bonusYieldMultiplier: 1,
+        battleEffect: synergy.battleEffect
+          ? {
+              ...synergy.battleEffect,
+              capitalPressureMultiplier: Number(
+                (
+                  synergy.battleEffect.capitalPressureMultiplier +
+                  savageRank * SAVAGE_BATTLE_ONLY_CAPITAL_BONUS_PER_RANK
+                ).toFixed(2)
+              ),
+            }
+          : undefined,
+      };
+    }
     return {
       ...synergy,
       savageRank,

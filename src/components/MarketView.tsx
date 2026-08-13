@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Property, IndustryType, CommunityType } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER, TRADE_COMMUNITIES } from '../data/worldData';
-import { formatCurrency, formatNumber } from '../utils/formatter';
+import { formatCurrency } from '../utils/formatter';
+import { INITIAL_GROUP_SYNERGIES } from '../data/initialData';
 import { soundFx } from '../utils/audio';
-import { ArrowRight, ShieldAlert, CheckCircle2, Crown, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole, Dumbbell, Gauge, WalletCards } from 'lucide-react';
+import { ArrowRight, ShieldAlert, CheckCircle2, Crown, MapPinned, ListFilter, CircleHelp, ChevronRight, LockKeyhole } from 'lucide-react';
 import { BeginnerGuide } from './BeginnerGuide';
 import { HelpTip } from './HelpTip';
 import { StrengthComparison } from './StrengthComparison';
@@ -13,9 +14,12 @@ import type { BattleReadinessResult } from '../utils/battleReadiness';
 import {
   countsTowardCityConquest,
   getCampaignProperties,
+  getReacquisitionLevel,
+  isExtremeReacquisition,
   isNormalCityBoss,
 } from '../utils/gameBalance';
 import '../market-strength.css';
+import { getCommunityNetworkProgress } from '../utils/campaignProgress';
 
 interface MarketViewProps {
   properties: Property[];
@@ -26,7 +30,6 @@ interface MarketViewProps {
   campaignMode?: 'normal' | 'savage';
   getStrengthComparison: (property: Property) => BattleReadinessResult;
   onStartBuyout: (property: Property) => void;
-  onOpenTraining?: () => void;
 }
 
 const getPropertyPresentation = (description: string) => {
@@ -77,7 +80,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
   campaignMode = 'normal',
   getStrengthComparison,
   onStartBuyout,
-  onOpenTraining,
 }) => {
   const hasStartedCampaign = campaignMode === 'savage' || properties.some((property) => property.owner === 'player');
   const [selectedIndustry, setSelectedIndustry] = useState<string>('ALL');
@@ -109,10 +111,13 @@ export const MarketView: React.FC<MarketViewProps> = ({
     () =>
       COMMUNITY_CAMPAIGN_ORDER.map((communityId) => TRADE_COMMUNITIES.find((community) => community.id === communityId)!).map((community) => {
         const targets = getCampaignProperties(properties, community.id);
-        const owned = targets.filter((property) => property.owner === 'player').length;
+        const network = getCommunityNetworkProgress(properties, community.id);
+        const owned =
+          campaignMode === 'savage' ? network.available : network.connected;
         return {
           ...community,
           owned,
+          available: network.available,
           total: targets.length,
           currentlyControlled:
             targets.length > 0 && owned === targets.length,
@@ -149,7 +154,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
   const showOwnedCards = showOwnedProperties || selectedOwnerFilter === 'PLAYER';
   const visibleProperties = filteredProperties.filter((property) => showOwnedCards || property.owner !== 'player');
   const activeTargetCount = filteredProperties.length - ownedFilteredCount;
-  const ownedProperties = properties.filter((property) => property.owner === 'player');
   const readinessSource =
     viewMode === 'targets'
       ? filteredProperties
@@ -170,28 +174,9 @@ export const MarketView: React.FC<MarketViewProps> = ({
     { advantage: 0, even: 0, challenge: 0, danger: 0 }
   );
   const companyStrengthSummary = (
-    <section
-      className="market-readiness-overview"
-      aria-label={`${viewMode === 'targets' ? '表示中' : '挑戦可能'}の相手。余力あり${readinessCounts.advantage}件、接戦${readinessCounts.even}件、要工夫${readinessCounts.challenge}件、準備不足${readinessCounts.danger}件`}
-    >
-      <header>
-        <span><Gauge />{viewMode === 'targets' ? '表示中の挑戦目安' : '挑戦可能な相手'}</span>
-        <small>自社動員と競合防衛を比較</small>
-      </header>
-      <dl className="market-readiness-overview__grades">
-        {(Object.keys(READINESS_PRESENTATION) as BattleReadinessResult['grade'][]).map((grade) => (
-          <div key={grade} data-grade={grade}>
-            <dt>{READINESS_PRESENTATION[grade].label}</dt>
-            <dd>{readinessCounts[grade]}<small>件</small></dd>
-          </div>
-        ))}
-      </dl>
-      <footer>
-        <span><WalletCards />自社資金 <b>{formatCurrency(totalFunds)}</b></span>
-        <span>支援元 <b>{ownedProperties.length}件</b></span>
-        <small>勝率ではなく、商戦へ持ち込める資本の準備目安です。</small>
-      </footer>
-    </section>
+    <p className="sr-only">
+      {`${viewMode === 'targets' ? '表示中' : '挑戦可能'}の相手。余力あり${readinessCounts.advantage}件、接戦${readinessCounts.even}件、要工夫${readinessCounts.challenge}件、準備不足${readinessCounts.danger}件。`}
+    </p>
   );
 
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
@@ -225,7 +210,12 @@ export const MarketView: React.FC<MarketViewProps> = ({
     return (
       <div className="market-screen-enter space-y-3 font-sans">
         <section className="relative flex min-h-44 flex-col overflow-hidden rounded-2xl border border-amber-400/40 shadow-2xl sm:min-h-36">
-          <img src={campaignMode === 'savage' ? FANKIT_ART.battleBackdrop : FANKIT_ART.marketBackdrop} alt="FFXIVファンキットによる交易世界の背景" className="absolute inset-0 h-full w-full object-cover object-center" />
+          <img
+            src={campaignMode === 'savage' ? FANKIT_ART.battleBackdrop : FANKIT_ART.marketBackdrop}
+            alt="FFXIVファンキットによる交易世界の背景"
+            decoding="async"
+            className="absolute inset-0 h-full w-full object-cover object-center"
+          />
           <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/85 to-slate-950/25" />
           <div className="relative z-10 flex min-h-0 max-w-2xl flex-1 flex-col justify-center px-5 pb-2 pt-5 sm:min-h-36 sm:py-5">
             <p className={`text-[10px] font-black tracking-[0.28em] ${campaignMode === 'savage' ? 'text-rose-300' : 'text-amber-300'}`}>{campaignMode === 'savage' ? 'SAVAGE TRADE RAID' : 'GRAND TRADE CAMPAIGN'}</p>
@@ -233,11 +223,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
             <p className="mt-1 text-xs text-slate-200">{campaignMode === 'savage' ? '各都市の通常商戦を再構成した3編×1～4層、全12章の高難度交易レイドです。' : '都市を選ぶと、交渉できる事業・契約だけを表示します。'}</p>
           </div>
           <div className="relative z-20 flex items-center justify-end gap-2 px-5 pb-4 sm:absolute sm:bottom-3 sm:right-3 sm:p-0">
-            {campaignMode === 'normal' && onOpenTraining && (
-              <button type="button" onClick={onOpenTraining} className="flex min-h-11 items-center gap-1 rounded-lg border border-amber-400/40 bg-slate-950/85 px-3 py-2 text-xs font-black text-amber-200">
-                <Dumbbell className="h-4 w-4" /> 木人練習
-              </button>
-            )}
             <button type="button" aria-expanded={showGuide} onClick={() => setShowGuide((open) => !open)} className="flex min-h-11 items-center gap-1 rounded-lg border border-cyan-400/30 bg-slate-950/80 px-3 py-2 text-xs font-bold text-cyan-200">
               <CircleHelp className="h-3.5 w-3.5" /> 遊び方
             </button>
@@ -251,8 +236,8 @@ export const MarketView: React.FC<MarketViewProps> = ({
         <section className="rounded-2xl border border-cyan-500/20 bg-slate-900/85 p-3 shadow-xl">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <h3 className="flex items-center gap-2 text-sm font-black text-cyan-100"><MapPinned className="h-4 w-4 text-cyan-400" /> {campaignMode === 'savage' ? '商戦 零式レイドマップ' : '都市戦略マップ'}</h3>
-              <p className="mt-0.5 text-[10px] text-slate-500">{campaignMode === 'savage' ? '踏破都市' : '制覇数'} {communityProgress.filter((city) => city.conquered).length}/{communityProgress.length}</p>
+              <h3 className="flex items-center gap-2 text-sm font-black text-cyan-100"><MapPinned className="h-4 w-4 text-cyan-400" /> {campaignMode === 'savage' ? '商戦 零式レイドマップ' : '都市人脈マップ'}</h3>
+              <p className="mt-0.5 text-[10px] text-slate-500">{campaignMode === 'savage' ? '踏破都市' : '人脈開通'} {communityProgress.filter((city) => city.conquered).length}/{communityProgress.length}</p>
             </div>
             <button type="button" onClick={() => { setSelectedCommunity('ALL'); setViewMode('targets'); }} className="flex min-h-11 items-center gap-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-300">
               {campaignMode === 'savage' ? '全層から探す' : '全対象から探す'} <ChevronRight className="h-3.5 w-3.5" />
@@ -301,19 +286,18 @@ export const MarketView: React.FC<MarketViewProps> = ({
                     ? campaignMode === 'savage'
                       ? '零式踏破済み'
                       : community.currentlyControlled
-                        ? '制覇済み'
-                        : `制覇済み・現在 ${community.owned}/${community.total}`
+                        ? '人脈開通済み'
+                        : `人脈開通済み・現在 ${community.available}/${community.total}`
                     : unlocked
-                      ? `${community.owned}/${community.total} ${campaignMode === 'savage' ? '層踏破' : '取得'}`
-                      : `${prerequisite}制覇で解放`}
+                      ? `${community.owned}/${community.total} ${campaignMode === 'savage' ? '層踏破' : '人脈'}`
+                      : `${prerequisite}の人脈開通で解放`}
                 </span>
                 {!community.currentlyControlled && easiestTarget && (
                   <span className="campaign-city-card__readiness">
                     <small>次の相手</small>
                     <b>{READINESS_PRESENTATION[easiestTarget.result.grade].label}</b>
-                    <em aria-label={`自社${formatCurrency(easiestTarget.result.playerExpectedCapital)}、競合${formatCurrency(easiestTarget.result.enemyBudget)}`}>
-                      <span><small>自社</small><b>{formatNumber(easiestTarget.result.playerExpectedCapital)}</b></span>
-                      <span><small>競合</small><b>{formatNumber(easiestTarget.result.enemyBudget)}</b></span>
+                    <em>
+                      <span><small>勝利後</small><b>{campaignMode === 'savage' ? '事業・連携強化' : '人脈・収益増加'}</b></span>
                     </em>
                   </span>
                 )}
@@ -327,7 +311,9 @@ export const MarketView: React.FC<MarketViewProps> = ({
   }
   return (
     <div className="market-screen-enter space-y-3 font-sans">
-      {campaignMode === 'normal' && <BeginnerGuide defaultOpen={!hasStartedCampaign} />}
+      {campaignMode === 'normal' && !hasStartedCampaign && (
+        <BeginnerGuide defaultOpen />
+      )}
       <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-500/20 bg-slate-900/90 p-3">
         <div>
           <button type="button" onClick={() => setViewMode('map')} className="mb-1 flex min-h-11 items-center gap-1 text-xs font-bold text-cyan-300 hover:text-cyan-200">
@@ -343,11 +329,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
         </div>
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-2 text-xs text-slate-400"><ListFilter className="h-4 w-4 text-amber-400" />交渉対象 {activeTargetCount}件</span>
-          {campaignMode === 'normal' && onOpenTraining && (
-            <button type="button" onClick={onOpenTraining} className="flex min-h-11 items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-950/25 px-3 py-2 text-xs font-black text-amber-200">
-              <Dumbbell className="h-4 w-4" /> 木人練習
-            </button>
-          )}
         </div>
       </section>
 
@@ -434,6 +415,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {visibleProperties.map((prop) => {
           const isPlayerOwned = prop.owner === 'player';
+          const isExtreme = isExtremeReacquisition(prop);
           const activePrice = prop.marketPrice;
           const fee = Math.round(activePrice * 0.03);
           const canAffordFee = totalFunds >= fee;
@@ -444,6 +426,9 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 marketPrice: activePrice,
               });
           const propertyPresentation = getPropertyPresentation(prop.description);
+          const linkedSynergies = INITIAL_GROUP_SYNERGIES.filter((synergy) =>
+            prop.groupKeys.includes(synergy.id)
+          ).slice(0, 2);
           const isBoss =
             campaignMode === 'savage' ||
             isNormalCityBoss(properties, prop);
@@ -501,6 +486,11 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       初心者向け
                     </span>
                   )}
+                  {isExtreme && (
+                    <span className="trade-target-card__badge trade-target-card__badge--hq">
+                      極・再買収
+                    </span>
+                  )}
                   {prop.isCartelHQ && (
                     <span className="trade-target-card__badge trade-target-card__badge--hq">
                       企業連合本部
@@ -515,6 +505,23 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
                 {strengthComparison && (
                   <StrengthComparison result={strengthComparison} compact summaryOnly />
+                )}
+
+                {!isPlayerOwned && (
+                  <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-950/25 px-3 py-2 text-[11px] text-emerald-100">
+                    <b className="block text-emerald-300">勝利すると強くなること</b>
+                    <span>この企業が人脈に加わり、毎秒収益が増える</span>
+                    {linkedSynergies.length > 0 && (
+                      <small className="mt-1 block text-cyan-200">有効な事業連携：{linkedSynergies.map((synergy) => synergy.name).join('／')}</small>
+                    )}
+                  </div>
+                )}
+
+                {prop.community === 'ソリューション・ナイン' && !isPlayerOwned && (
+                  <aside className="trade-target-card__strategy-note" role="note">
+                    <b>先端市場の交渉注意</b>
+                    <span>「未投入資金ドレイン」の予告中に直接出資して退避。競合の予備資金を使わせてから、人脈・LBを重ねましょう。</span>
+                  </aside>
                 )}
 
                 <div className="trade-target-card__action">
@@ -536,7 +543,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       {canAffordFee ? (
                         <>
                           <span className="trade-target-card__challenge-copy">
-                            <b>{campaignMode === 'savage' ? '零式へ挑戦' : '商戦へ挑戦'}</b>
+                            <b>{campaignMode === 'savage' ? '零式へ挑戦' : isExtreme ? '再買収・極へ挑戦' : '商戦へ挑戦'}</b>
                             <small>開始手数料 {formatCurrency(fee)}</small>
                           </span>
                           <ArrowRight className="w-4 h-4" />
@@ -566,7 +573,13 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       </p>
                     )}
                     <p>{propertyPresentation.text}</p>
+                    {isExtreme && (
+                      <small>
+                        復帰強化{getReacquisitionLevel(prop)}。現在の商店戦力を持ち込み、相手企業規模に対して資本を積み上げます。
+                      </small>
+                    )}
                     {!isPlayerOwned && <small>基準となる交渉規模：{formatCurrency(activePrice)}</small>}
+                    {!isPlayerOwned && <small>勝利後の毎秒収益：+{formatCurrency(prop.annualRevenue)}</small>}
                   </div>
                 </details>
               </div>

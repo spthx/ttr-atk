@@ -23,6 +23,9 @@ const JOB_ART_BY_JOB = {
   paladin: JOB_ART[0],
   warrior: JOB_ART[1],
   darkKnight: JOB_ART[2],
+  // The same lightweight fan-kit asset can serve both semantic lookups. Keep
+  // the alias explicit so authored battle data never depends on array order.
+  blackMage: JOB_ART[2],
   gunbreaker: JOB_ART[3],
   monk: JOB_ART[4],
   samurai: JOB_ART[5],
@@ -55,6 +58,16 @@ const hashText = (value: string) =>
   Array.from(value).reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7);
 
 export const getFankitJobArt = (seed: string) => JOB_ART[hashText(seed) % JOB_ART.length];
+export const getFankitJobPartyArt = (seed: string, requestedCount: number) => {
+  const count = Math.max(1, Math.min(3, Math.floor(requestedCount)));
+  const firstIndex = hashText(seed) % JOB_ART.length;
+  // Five is coprime to the twelve-art set, so the first three entries are
+  // always distinct without retries, random state or extra runtime work.
+  return Array.from(
+    { length: count },
+    (_, index) => JOB_ART[(firstIndex + index * 5) % JOB_ART.length]
+  );
+};
 export const getFankitCommerceIcon = (seed: string) => COMMERCE_ICONS[hashText(seed) % COMMERCE_ICONS.length];
 export const getFankitTrainingDummyArt = (level: number) =>
   TRAINING_DUMMY_ART[
@@ -62,10 +75,10 @@ export const getFankitTrainingDummyArt = (level: number) =>
   ];
 
 export const FANKIT_ART = {
-  titleHero: publicAsset('title-hero-v1.png'),
-  marketBackdrop: publicAsset('ff14-fankit/dawntrail-fankit.jpg'),
-  launchWallpaperMobile: publicAsset('ff14-fankit/launch-wallpaper-mobile.jpg'),
-  battleBackdrop: publicAsset('ff14-fankit/stormblood-fankit.jpg'),
+  titleHero: publicAsset('title-hero-v1.webp'),
+  marketBackdrop: publicAsset('ff14-fankit/dawntrail-fankit.webp'),
+  launchWallpaperMobile: publicAsset('ff14-fankit/launch-wallpaper-mobile.webp'),
+  battleBackdrop: publicAsset('ff14-fankit/stormblood-fankit.webp'),
   jobs: JOB_ART,
   jobsByJob: JOB_ART_BY_JOB,
   commerceIcons: COMMERCE_ICONS,
@@ -82,4 +95,8 @@ export const FANKIT_AUDIO = {
   limitBreak: publicAsset('ff14-fankit/audio/FFXIV_Limit_Break_Activated.mp3'),
   victory: publicAsset('ff14-fankit/audio/FFXIV_FATE01_Complete.mp3'),
   defeat: publicAsset('ff14-fankit/audio/FFXIV_Instance_Failed.mp3'),
+} as const;
+
+export const GAME_AUDIO = {
+  capitalRapidFire: publicAsset('game-audio/capital-rapid-fire.mp3'),
 } as const;

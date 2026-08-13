@@ -26,7 +26,7 @@ export const TRAINING_DUMMY_DEFINITIONS = [
     name: '基礎',
     marketPrice: 60_000,
     requiredConqueredCommunityCount: 1,
-    description: '資金を残しながら複数回投入する、買収戦の基礎を試します。',
+    description: '資金を残しながら複数回投入する、商戦の基礎を試します。',
   },
   {
     id: 'training_dummy_level_3',
@@ -34,7 +34,7 @@ export const TRAINING_DUMMY_DEFINITIONS = [
     name: '上級',
     marketPrice: 800_000,
     requiredConqueredCommunityCount: 3,
-    description: '支援元、有効なアビリティ、LIMIT BREAKを組み合わせる練習向けです。',
+    description: '人脈、有効なアビリティ、LIMIT BREAKを組み合わせる練習向けです。',
   },
   {
     id: 'training_dummy_level_4',

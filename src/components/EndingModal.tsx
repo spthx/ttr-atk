@@ -78,6 +78,7 @@ export const EndingModal: React.FC<EndingModalProps> = ({
         src={finalRoute ? FANKIT_ART.battleBackdrop : FANKIT_ART.marketBackdrop}
         alt=""
         aria-hidden="true"
+        decoding="async"
         className="ending-modal__backdrop"
       />
       <div className="ending-modal__shade" />
@@ -107,7 +108,7 @@ export const EndingModal: React.FC<EndingModalProps> = ({
         <div className="ending-card__copy">
           <small>{trueEnding ? 'ULTIMATE TRADE DUTY CLEARED' : savageEnding ? 'TWELVE SAVAGE CHAPTERS CLEARED' : 'TEN CITIES UNITED BY TRADE'}</small>
           <h1 id="ending-title">
-            {trueEnding ? '真・全商戦制覇！' : savageEnding ? '商戦 零式3編・全12章 踏破！' : '十都市交易網 全制覇！'}
+            {trueEnding ? '真・全商戦制覇！' : savageEnding ? '商戦 零式3編・全12章 踏破！' : '十都市人脈 全開通！'}
           </h1>
           <p>
             {trueEnding
@@ -125,7 +126,7 @@ export const EndingModal: React.FC<EndingModalProps> = ({
               <b>{savageEnding ? '「絶商戦」挑戦資格 解放' : '「商戦 零式」タブ解放'}</b>
               {savageEnding
                 ? '3編・全12章踏破で解放された、別枠の単独最終高難度交易戦へ挑戦できます。'
-                : '通常制覇時の仲間・アビリティ・LBを持ち込み、本作独自の3編×1～4層へ挑戦できます。'}
+                : '通常編で結んだ人脈・アビリティ・LBを持ち込み、本作独自の3編×1～4層へ挑戦できます。'}
             </span>
           </section>
         )}

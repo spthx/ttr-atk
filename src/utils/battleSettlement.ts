@@ -1,7 +1,11 @@
 import type { Property } from '../types';
 import {
   BATTLE_LOYALTY_BALANCE,
+  calculateProfitAllocationCost,
   getReacquisitionLevel,
+  PROFIT_ALLOCATION_OPTIONS,
+  type ProfitAllocationOptionId,
+  type ProfitAllocationRate,
 } from './gameBalance';
 import { calculateRebellionProbability } from './formatter';
 
@@ -15,6 +19,12 @@ interface ApplyNormalBattlePropertyUpdatesArgs {
   winner: 'player' | 'opponent';
   targetPropertyId: string;
   companyName: string;
+  rebelledProperties: Property[];
+  survivingRiskUpdates: PropertyRiskUpdate[];
+}
+
+interface ApplyLoyaltySettlementPropertyUpdatesArgs {
+  properties: Property[];
   rebelledProperties: Property[];
   survivingRiskUpdates: PropertyRiskUpdate[];
 }
@@ -48,18 +58,22 @@ export const calculateBattleSettlementSummary = ({
   settlementCost,
   celebrationGiftCost,
   liquidationCashback,
+  battleCashDelta = 0,
 }: {
   victoryReward: number;
   brokerageFee: number;
   settlementCost: number;
   celebrationGiftCost: number;
   liquidationCashback: number;
+  /** Battle-time cash movements such as Drain. Negative values are losses. */
+  battleCashDelta?: number;
 }): BattleSettlementSummary => {
   const transactionDelta =
     victoryReward -
     brokerageFee -
     settlementCost -
-    celebrationGiftCost;
+    celebrationGiftCost +
+    battleCashDelta;
   const fundsDelta = transactionDelta + liquidationCashback;
 
   return {
@@ -79,28 +93,103 @@ export interface PostVictoryLoyaltySettlement {
   leaving: Property[];
 }
 
-export const resolvePostVictoryLoyalty = (
+export type DepartureProbabilityMultiplier = number | boolean;
+
+/**
+ * The boolean branch keeps older callers compatible with the original
+ * two-choice settlement contract. `true` continues to mean the 50% share.
+ */
+export const normalizeDepartureProbabilityMultiplier = (
+  multiplier: DepartureProbabilityMultiplier
+) => {
+  if (typeof multiplier === 'boolean') {
+    return multiplier
+      ? PROFIT_ALLOCATION_OPTIONS[1].departureProbabilityMultiplier
+      : PROFIT_ALLOCATION_OPTIONS[0].departureProbabilityMultiplier;
+  }
+  return Number.isFinite(multiplier)
+    ? Math.max(0, Math.min(1, multiplier))
+    : 1;
+};
+
+export const calculateAtLeastOneDepartureProbability = (
   subsidiaries: Property[],
-  distributeGift: boolean,
-  random: () => number = Math.random
-): PostVictoryLoyaltySettlement => {
-  const adjustedSubsidiaries = subsidiaries.map((property) => ({
-    ...property,
-    loyaltyRisk: distributeGift
-      ? Math.max(
-          0,
-          property.loyaltyRisk -
-            BATTLE_LOYALTY_BALANCE.celebrationRiskReduction
-        )
-      : property.loyaltyRisk,
+  probabilityMultiplier: DepartureProbabilityMultiplier = 1
+) => {
+  const normalizedMultiplier =
+    normalizeDepartureProbabilityMultiplier(probabilityMultiplier);
+  const noDepartureProbability = subsidiaries.reduce(
+    (probability, property) =>
+      probability *
+      (
+        1 -
+        calculateRebellionProbability(property.loyaltyRisk) *
+          normalizedMultiplier
+      ),
+    1
+  );
+  return Math.max(0, Math.min(1, 1 - noDepartureProbability));
+};
+
+export interface VictoryProfitAllocationChoice {
+  id: ProfitAllocationOptionId;
+  label: string;
+  rate: ProfitAllocationRate;
+  departureProbabilityMultiplier: number;
+  loyaltyRiskReduction: number;
+  cost: number;
+  departureProbability: number;
+}
+
+/**
+ * Pure settlement projection shared by the web presentation and a future
+ * Unity client. The UI only renders these choices; it does not recreate any
+ * rates, costs or loyalty modifiers.
+ */
+export const getVictoryProfitAllocationChoices = (
+  subsidiaries: Property[],
+  victoryReward: number
+): VictoryProfitAllocationChoice[] =>
+  PROFIT_ALLOCATION_OPTIONS.map((option) => ({
+    ...option,
+    cost: calculateProfitAllocationCost(
+      subsidiaries,
+      victoryReward,
+      option.rate
+    ),
+    departureProbability: calculateAtLeastOneDepartureProbability(
+      subsidiaries,
+      option.departureProbabilityMultiplier
+    ),
   }));
 
-  return adjustedSubsidiaries.reduce<PostVictoryLoyaltySettlement>(
+export const resolvePostVictoryLoyalty = (
+  subsidiaries: Property[],
+  probabilityMultiplier: DepartureProbabilityMultiplier = 1,
+  random: () => number = Math.random,
+  loyaltyRiskReduction = 0
+): PostVictoryLoyaltySettlement => {
+  const normalizedMultiplier =
+    normalizeDepartureProbabilityMultiplier(probabilityMultiplier);
+  const normalizedRiskReduction = Number.isFinite(loyaltyRiskReduction)
+    ? Math.max(0, loyaltyRiskReduction)
+    : 0;
+
+  return subsidiaries.reduce<PostVictoryLoyaltySettlement>(
     (result, property) => {
-      if (random() < calculateRebellionProbability(property.loyaltyRisk)) {
-        result.leaving.push({ ...property, loyaltyRisk: 100 });
+      const departureProbability =
+        calculateRebellionProbability(property.loyaltyRisk) *
+        normalizedMultiplier;
+      if (random() < departureProbability) {
+        result.leaving.push({ ...property });
       } else {
-        result.survivors.push(property);
+        result.survivors.push({
+          ...property,
+          loyaltyRisk: Math.max(
+            0,
+            Math.min(100, property.loyaltyRisk - normalizedRiskReduction)
+          ),
+        });
       }
       return result;
     },
@@ -108,14 +197,15 @@ export const resolvePostVictoryLoyalty = (
   );
 };
 
-export const applyNormalBattlePropertyUpdates = ({
+/**
+ * Applies only the persistent network consequences of a victory settlement.
+ * High-difficulty synthetic targets must never be acquired through this path.
+ */
+export const applyLoyaltySettlementPropertyUpdates = ({
   properties,
-  winner,
-  targetPropertyId,
-  companyName,
   rebelledProperties,
   survivingRiskUpdates,
-}: ApplyNormalBattlePropertyUpdatesArgs): Property[] => {
+}: ApplyLoyaltySettlementPropertyUpdatesArgs): Property[] => {
   const rebelIds = new Set(rebelledProperties.map((property) => property.id));
   const survivingRisks = new Map(
     survivingRiskUpdates.map(({ id, loyaltyRisk }) => [
@@ -138,6 +228,26 @@ export const applyNormalBattlePropertyUpdates = ({
       };
     }
 
+    const updatedRisk = survivingRisks.get(property.id);
+    return updatedRisk === undefined
+      ? property
+      : { ...property, loyaltyRisk: updatedRisk };
+  });
+};
+
+export const applyNormalBattlePropertyUpdates = ({
+  properties,
+  winner,
+  targetPropertyId,
+  companyName,
+  rebelledProperties,
+  survivingRiskUpdates,
+}: ApplyNormalBattlePropertyUpdatesArgs): Property[] => {
+  return applyLoyaltySettlementPropertyUpdates({
+    properties,
+    rebelledProperties,
+    survivingRiskUpdates,
+  }).map((property) => {
     if (winner === 'player' && property.id === targetPropertyId) {
       return {
         ...property,
@@ -147,9 +257,6 @@ export const applyNormalBattlePropertyUpdates = ({
       };
     }
 
-    const updatedRisk = survivingRisks.get(property.id);
-    return updatedRisk === undefined
-      ? property
-      : { ...property, loyaltyRisk: updatedRisk };
+    return property;
   });
 };

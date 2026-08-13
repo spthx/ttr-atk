@@ -7,6 +7,9 @@
 .integrated-battlefield {
   --field-player: rgba(8, 116, 156, .74);
   --field-enemy: rgba(159, 18, 57, .76);
+  /* Logical battle values commit at 100ms intervals. Interpolate very slightly
+   * beyond that cadence so each segment hands off to the next without a pause. */
+  --battle-gauge-interpolation: 110ms;
   position: relative;
   isolation: isolate;
   display: block !important;
@@ -38,19 +41,33 @@
     0 0 1.15rem rgba(250, 204, 21, .28);
 }
 
-.integrated-battlefield::before {
+.battlefield-territory {
   position: absolute;
   z-index: 0;
   inset: 0;
-  content: "";
+  overflow: hidden;
   pointer-events: none;
-  background:
-    linear-gradient(
-      90deg,
-      var(--field-player) 0 var(--battle-frontline),
-      var(--field-enemy) var(--battle-frontline) 100%
-    );
-  opacity: .42;
+  opacity: .58;
+  filter: saturate(1.16);
+}
+
+.battlefield-territory > i {
+  position: absolute;
+  inset: 0;
+  transition: transform var(--battle-gauge-interpolation) linear;
+  will-change: transform;
+}
+
+.battlefield-territory__player {
+  background: var(--field-player);
+  transform: scaleX(var(--battle-frontline-ratio));
+  transform-origin: left center;
+}
+
+.battlefield-territory__enemy {
+  background: var(--field-enemy);
+  transform: scaleX(calc(1 - var(--battle-frontline-ratio)));
+  transform-origin: right center;
 }
 
 .integrated-battlefield::after {
@@ -64,6 +81,8 @@
   border-radius: 999px;
   content: "";
   pointer-events: none;
+  transition: left var(--battle-gauge-interpolation) linear;
+  will-change: left;
   background: #fff8d1;
   box-shadow:
     0 0 .3rem #fff,
@@ -181,6 +200,19 @@
   color: #fff7ae;
   background: linear-gradient(90deg, rgba(64, 14, 90, .94), rgba(92, 54, 5, .94));
   box-shadow: 0 0 1rem rgba(250, 204, 21, .38), inset 0 0 .8rem rgba(192, 132, 252, .18);
+}
+
+.battlefield-raid-marker--cruel {
+  border-color: rgba(240, 171, 252, .82);
+  color: #fff7ae;
+  background: linear-gradient(90deg, rgba(17, 2, 29, .97), rgba(74, 10, 94, .96));
+  box-shadow:
+    0 0 1rem rgba(217, 70, 239, .42),
+    inset 0 0 .8rem rgba(253, 224, 71, .12);
+}
+
+.battlefield-raid-marker--cruel > span {
+  color: #f5d0fe;
 }
 
 .integrated-battlefield--savage .ownership-board__labels > span,
@@ -359,7 +391,7 @@
   inset: auto .12rem .05rem;
   display: grid;
   min-height: 2rem;
-  grid-template-columns: auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-content: center;
   justify-content: space-between;
   gap: .08rem .28rem;
@@ -371,11 +403,15 @@
 
 .integrated-battlefield .player-budget-overlay small,
 .integrated-battlefield .enemy-budget-overlay small {
+  min-width: 0;
   align-self: center;
   padding: 0;
+  overflow: hidden;
   border: 0;
   background: transparent;
   font-size: .75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .integrated-battlefield .player-budget-overlay strong,
@@ -568,6 +604,12 @@
   background: linear-gradient(135deg, rgba(6, 78, 59, .9), rgba(3, 31, 28, .98));
 }
 .battle-action-strip__action--synergy > svg { color: #6ee7b7; }
+.battle-action-strip__action--alliance {
+  border-color: rgba(251, 191, 36, .5);
+  color: #fef3c7;
+  background: linear-gradient(135deg, rgba(120, 53, 15, .9), rgba(35, 22, 8, .98));
+}
+.battle-action-strip__action--alliance > svg { color: #fbbf24; }
 .battle-action-strip__action--skill.is-living-dead {
   border-color: rgba(216, 180, 254, .58);
   background: linear-gradient(135deg, rgba(65, 22, 99, .92), rgba(23, 10, 37, .98));
@@ -1365,11 +1407,6 @@
   .command-deck--compact .command-panel--capital > p {
     display: none;
   }
-}
-
-.integrated-battlefield::before {
-  opacity: .58;
-  filter: saturate(1.16);
 }
 
 .integrated-battlefield--push-player .capital-arena__side:first-child,
@@ -2254,22 +2291,6 @@
 }
 
 /*
- * Lightweight mode only suspends ambient loops while a choice or staged
- * presentation owns the screen. The currently showcased skill, wind, LB and
- * character motion remain live, so the pause reads as deliberate staging.
- */
-.buyout-screen--lightweight.buyout-screen--ambient-paused .battle-commerce-flow > i,
-.buyout-screen--lightweight.buyout-screen--ambient-paused .battlefield-pressure-lane__player,
-.buyout-screen--lightweight.buyout-screen--ambient-paused .battlefield-pressure-lane__enemy,
-.buyout-screen--lightweight.buyout-screen--ambient-paused .battlefield-pressure-lane__front i,
-.buyout-screen--lightweight.buyout-screen--ambient-paused .ownership-track__enemy-flow::after,
-.buyout-screen--lightweight.buyout-screen--ambient-paused .capital-visual-row::before,
-.buyout-screen--lightweight.buyout-screen--ambient-paused .capital-visual-row::after,
-.buyout-screen--lightweight.buyout-screen--ambient-paused .gil-tower__overflow > i {
-  animation-play-state: paused !important;
-}
-
-/*
  * Cinematics own the eye and the animation budget. Keep only the finite
  * foreground action moving; background currents resume from the same frame.
  */
@@ -2463,6 +2484,24 @@
   animation-play-state: paused !important;
 }
 
+.buyout-screen--ambient-paused :is(
+  .player-budget-overlay--danger,
+  .player-budget-overlay--critical,
+  .player-budget-overlay--short,
+  .enemy-budget-overlay--critical,
+  .enemy-budget-overlay--short,
+  .battle-action-strip__action--lb.is-overflowing,
+  .investment-execute-button:not(:disabled),
+  .battle-living-dead--recovery
+),
+.buyout-screen--ambient-paused :is(
+  .ownership-board--wind-player,
+  .ownership-board--wind-enemy,
+  .ownership-board--wind-cross
+)::before {
+  animation-play-state: paused !important;
+}
+
 .integrated-battlefield--finisher-enemy {
   --enemy-finisher-travel: clamp(-39rem, -52vw, -13rem);
 }
@@ -2592,28 +2631,6 @@
     transform: translateX(-3.2rem) translateY(1rem) scaleX(-1) rotate(-72deg) scale(.78);
     opacity: .58;
   }
-}
-
-.buyout-screen--lightweight
-  .integrated-battlefield--terminal-anticipation.integrated-battlefield--finisher-player
-  .ownership-avatar--player,
-.buyout-screen--lightweight
-  .integrated-battlefield--terminal-anticipation.integrated-battlefield--finisher-enemy
-  .ownership-avatar--enemy {
-  animation-duration: .14s;
-}
-
-.buyout-screen--lightweight
-  .integrated-battlefield--terminal-impact
-  .ownership-avatar,
-.buyout-screen--lightweight
-  .integrated-battlefield--terminal-impact
-  .capital-clash {
-  animation-duration: .12s;
-}
-
-.buyout-screen--lightweight .battle-terminal-resolution {
-  animation-duration: .28s;
 }
 
 @media (max-width: 639px) {
@@ -2940,7 +2957,6 @@
   display: inline-block;
   min-width: max-content;
   white-space: nowrap;
-  will-change: transform;
 }
 
 .battle-marquee--active {
@@ -2950,6 +2966,7 @@
 
 .battle-marquee--active > span {
   animation: battle-marquee-scroll var(--marquee-duration) ease-in-out var(--marquee-delay) infinite;
+  will-change: transform;
 }
 
 .buyout-header .battle-title-ticker {
@@ -3022,6 +3039,7 @@
   display: flex;
   min-height: 1.5rem;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: flex-start;
   gap: .18rem;
   pointer-events: none;
@@ -3464,7 +3482,20 @@
   }
 
   .battle-action-strip__action em {
-    display: none;
+    position: absolute;
+    top: .1rem;
+    right: .1rem;
+    display: block;
+    max-width: calc(100% - .3rem);
+    padding: .05rem .16rem;
+    overflow: hidden;
+    border-radius: .2rem;
+    color: #dcfce7;
+    background: rgba(2, 6, 23, .88);
+    font-size: .48rem;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .battle-action-strip__action--lb {
@@ -3638,7 +3669,7 @@
 
 .integrated-battlefield .ownership-capital-readout {
   position: absolute;
-  z-index: 20;
+  z-index: 30;
   top: 2.18rem;
   right: -30.65%;
   left: -30.65%;
@@ -3732,12 +3763,11 @@
 
 .integrated-battlefield .player-capital-stack,
 .integrated-battlefield .enemy-capital-stack {
-  --capital-info-height: 3.25rem;
   position: relative;
   display: grid;
   min-height: 0;
   flex: 1 1 auto;
-  grid-template-rows: minmax(0, 1fr) var(--capital-info-height);
+  grid-template-rows: minmax(0, 1fr);
   overflow: visible;
 }
 
@@ -3961,13 +3991,8 @@
     padding-top: 4.2rem !important;
   }
 
-  .integrated-battlefield .player-capital-stack,
-  .integrated-battlefield .enemy-capital-stack {
-    --capital-info-height: 2.9rem;
-  }
-
   .integrated-battlefield .capital-visual-row {
-    min-height: 6.35rem;
+    min-height: 8rem;
   }
 
   .integrated-battlefield .capital-visual-row .ownership-fighter {
@@ -4215,7 +4240,8 @@
   border-radius: inherit;
   background: linear-gradient(90deg, #075985, #38bdf8 72%, #e0f2fe);
   box-shadow: 0 0 .45rem rgba(56, 189, 248, .66);
-  transition: width .05s linear;
+  transition: width var(--battle-gauge-interpolation) linear;
+  will-change: width;
 }
 
 .integrated-battlefield .recast-meter--enemy > i > u {
@@ -4349,7 +4375,8 @@
     linear-gradient(90deg, rgba(14, 165, 233, .12), rgba(103, 232, 249, .48)),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, .08) 0 .4rem, transparent .4rem .8rem);
   box-shadow: .15rem 0 .65rem rgba(103, 232, 249, .46);
-  transition: width .05s linear;
+  transition: width var(--battle-gauge-interpolation) linear;
+  will-change: width;
 }
 
 .investment-execute-button > :not(.investment-execute-button__charge) {
@@ -4565,6 +4592,17 @@
   .integrated-battlefield .battlefield-pressure-lane__front {
     transition-duration: 0s !important;
   }
+
+  .battlefield-territory > i,
+  .integrated-battlefield::after,
+  .integrated-battlefield .ownership-track__player,
+  .integrated-battlefield .ownership-track__enemy-flow,
+  .integrated-battlefield .ownership-track__tension,
+  .integrated-battlefield .ownership-track__marker,
+  .integrated-battlefield .recast-meter > i > u,
+  .investment-execute-button__charge {
+    transition-duration: 1ms !important;
+  }
 }
 
 /*
@@ -4696,551 +4734,211 @@
 }
 
 /*
- * Lightweight premium field.
- *
- * A single compressed texture supplies the lacquer and gold trim. Ownership
- * remains a live CSS tint so the blue/red territory and golden frontier keep
- * matching the actual gauge instead of being baked at 50%.
+ * Boss formations are decorative only. Two or three tiny fan-kit job images
+ * share the existing enemy actor layer; there is no extra AI, timer, physics
+ * or idle animation. The leader remains full-size while the rear line reads
+ * as a compact party without covering the capital total.
  */
-.buyout-screen--lightweight .integrated-battlefield {
-  background:
-    #03100c
-    url("./assets/battle/battlefield-casino-wide.webp")
-    center / cover no-repeat;
+.integrated-battlefield
+  .capital-visual-row
+  .ownership-fighter--enemy.ownership-fighter--boss-party {
+  right: -.35rem;
+  width: min(9.4rem, 46vw) !important;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane {
-  background: transparent;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__player,
-.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__enemy {
-  animation: none;
-  will-change: auto;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__player {
-  background: rgba(20, 96, 148, .2);
-}
-
-.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__enemy {
-  background: rgba(137, 34, 62, .22);
-}
-
-.buyout-screen--lightweight .integrated-battlefield .ownership-track,
-.buyout-screen--lightweight .integrated-battlefield .ownership-track__player {
-  animation: none;
-  will-change: auto;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .ownership-track {
-  background:
-    linear-gradient(180deg, #8a2944, #561324 64%, #260811);
-}
-
-.buyout-screen--lightweight .integrated-battlefield .ownership-track__player {
-  background:
-    linear-gradient(180deg, #236f9b, #0b3b60 64%, #061b30);
-}
-
-.buyout-screen--lightweight .integrated-battlefield .battle-commerce-flow > i:nth-child(n + 5),
-.buyout-screen--lightweight .integrated-battlefield .ownership-track__marker > i:nth-child(n + 2) {
-  display: none;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .battle-commerce-flow {
-  filter: none;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__front i,
-.buyout-screen--lightweight .integrated-battlefield .ownership-track__marker,
-.buyout-screen--lightweight .integrated-battlefield .ownership-track__marker > i,
-.buyout-screen--lightweight .integrated-battlefield .capital-clash i {
-  animation: none !important;
-}
-
-.buyout-screen--lightweight .battle-action-strip__overflow i:nth-child(n + 3) {
-  display: none;
-}
-
-@media (max-width: 639px) {
-  .buyout-screen--lightweight .integrated-battlefield {
-    background-image:
-      url("./assets/battle/battlefield-casino-mobile.webp");
-  }
-}
-
-/*
- * Depth arena + capital clash.
- *
- * The raster is deliberately neutral: live ownership still drives every
- * blue/red surface, the floor frontier, the raised rail and the impact core
- * through the single --battle-frontline value.
- */
-.buyout-screen--lightweight .integrated-battlefield::before {
-  opacity: .22;
-  background:
-    linear-gradient(
-      90deg,
-      rgba(7, 74, 126, .66) 0 var(--battle-frontline),
-      rgba(109, 22, 48, .7) var(--battle-frontline) 100%
-    );
-}
-
-.buyout-screen--lightweight .integrated-battlefield::after {
-  top: 3.35rem;
-  bottom: 1.1rem;
-  width: .72rem;
-  translate: -50% 0;
-  clip-path: polygon(43% 0, 57% 0, 76% 100%, 24% 100%);
-  background:
-    linear-gradient(
-      90deg,
-      transparent 0 29%,
-      rgba(255, 247, 188, .82) 40%,
-      #fffdf0 50%,
-      rgba(255, 224, 118, .84) 60%,
-      transparent 71%
-    );
-  box-shadow:
-    0 0 .34rem rgba(255, 255, 255, .72),
-    0 0 1.15rem rgba(250, 204, 21, .62),
-    -.7rem 0 1.4rem rgba(56, 189, 248, .24),
-    .7rem 0 1.4rem rgba(244, 63, 94, .26);
-  opacity: .82;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane {
-  inset: 3.1rem 0 1rem;
-  background:
-    linear-gradient(180deg, rgba(2, 6, 23, .03), rgba(2, 6, 23, .28));
-  perspective: 32rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__player,
-.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__enemy {
-  opacity: .46;
-  transition: left .12s linear, right .12s linear, opacity .18s ease, filter .18s ease;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__player {
-  background:
-    linear-gradient(90deg, rgba(3, 48, 82, .06), rgba(20, 96, 148, .3)),
-    repeating-linear-gradient(
-      118deg,
-      transparent 0 3.6rem,
-      rgba(186, 230, 253, .055) 3.6rem 3.67rem,
-      transparent 3.67rem 7.2rem
-    );
-}
-
-.buyout-screen--lightweight .integrated-battlefield .battlefield-pressure-lane__enemy {
-  background:
-    linear-gradient(270deg, rgba(76, 5, 25, .06), rgba(137, 34, 62, .32)),
-    repeating-linear-gradient(
-      -118deg,
-      transparent 0 3.6rem,
-      rgba(255, 228, 230, .052) 3.6rem 3.67rem,
-      transparent 3.67rem 7.2rem
-    );
-}
-
-.buyout-screen--lightweight .integrated-battlefield--push-player .battlefield-pressure-lane__player,
-.buyout-screen--lightweight .integrated-battlefield--push-enemy .battlefield-pressure-lane__enemy {
-  opacity: .82;
-  filter: brightness(1.2) saturate(1.08);
-}
-
-.buyout-screen--lightweight .integrated-battlefield .ownership-duel .ownership-track {
-  height: 1.62rem;
-  overflow: visible;
-  border: .12rem solid #02040a;
-  border-radius: .58rem;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, .28) 0 8%, transparent 19% 57%, rgba(0, 0, 0, .62) 100%),
-    linear-gradient(180deg, #8d2a47, #591326 58%, #270811),
-    repeating-linear-gradient(-55deg, transparent 0 17px, rgba(255, 226, 231, .035) 17px 18px);
-  box-shadow:
-    0 .2rem .05rem rgba(1, 3, 8, .92),
-    0 .42rem .72rem rgba(0, 0, 0, .54),
-    0 0 0 1px rgba(226, 232, 240, .34),
-    inset 0 .16rem .26rem rgba(255, 255, 255, .16),
-    inset 0 -.28rem .38rem rgba(0, 0, 0, .58);
-}
-
-.buyout-screen--lightweight .integrated-battlefield .ownership-duel {
-  right: -.4rem;
-  left: -.4rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .ownership-duel .ownership-track::before {
-  position: absolute;
-  z-index: 5;
-  inset: -.18rem -.14rem auto;
-  height: .24rem;
-  border: 1px solid rgba(253, 230, 138, .32);
-  border-radius: 999px 999px .2rem .2rem;
-  content: "";
-  pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, .36), rgba(71, 85, 105, .12) 48%, rgba(0, 0, 0, .72));
-  box-shadow: 0 -.08rem .2rem rgba(255, 255, 255, .14);
-}
-
-.buyout-screen--lightweight .integrated-battlefield .ownership-duel .ownership-track::after {
-  position: absolute;
-  z-index: -1;
-  right: .14rem;
-  bottom: -.54rem;
-  left: .14rem;
-  height: .55rem;
-  border-radius: 0 0 .55rem .55rem;
-  content: "";
-  pointer-events: none;
-  background: linear-gradient(180deg, #1b2230, #05070d 72%);
-  box-shadow: 0 .16rem .34rem rgba(0, 0, 0, .72);
-  transform: perspective(4rem) rotateX(-48deg);
-  transform-origin: top;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .ownership-track__player,
-.buyout-screen--lightweight .integrated-battlefield .ownership-track__enemy-flow {
-  top: 0;
-  bottom: 0;
+.integrated-battlefield
+  .ownership-fighter--boss-party
+  .ownership-avatar--enemy {
+  z-index: 2;
+  left: 50%;
+  width: 70%;
   height: 100%;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .ownership-track__player {
-  clip-path: polygon(0 0, calc(100% - .34rem) 0, 100% 50%, calc(100% - .34rem) 100%, 0 100%);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, .34) 0 8%, transparent 19% 57%, rgba(0, 0, 0, .58) 100%),
-    linear-gradient(180deg, #287aa5, #0b426b 58%, #051e34),
-    repeating-linear-gradient(55deg, transparent 0 17px, rgba(224, 242, 254, .04) 17px 18px);
-  box-shadow:
-    inset 0 .15rem .24rem rgba(224, 242, 254, .22),
-    inset 0 -.24rem .34rem rgba(1, 24, 40, .68);
+/* Enemy source art has much less transparent padding than Tataru's portrait.
+ * Size the visible art, not merely the shared outer box, so a single rival no
+ * longer hides its own capital columns on a portrait phone. */
+.integrated-battlefield
+  .capital-visual-row
+  .ownership-fighter--enemy:not(.ownership-fighter--boss-party)
+  .ownership-avatar--enemy {
+  width: 68%;
+  height: 72%;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .ownership-track__enemy-flow {
-  clip-path: polygon(.34rem 0, 100% 0, 100% 100%, .34rem 100%, 0 50%);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, .3) 0 8%, transparent 19% 57%, rgba(0, 0, 0, .6) 100%),
-    linear-gradient(180deg, #922d4a, #5c1429 58%, #290812),
-    repeating-linear-gradient(-55deg, transparent 0 17px, rgba(255, 228, 230, .038) 17px 18px);
-  box-shadow:
-    inset 0 .15rem .24rem rgba(255, 228, 230, .18),
-    inset 0 -.24rem .34rem rgba(46, 3, 18, .68);
+.boss-enemy-party__member {
+  position: absolute;
+  z-index: 1;
+  bottom: .16rem;
+  width: 58%;
+  height: 82%;
+  pointer-events: none;
+  object-fit: contain;
+  object-position: center bottom;
+  opacity: .78;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .ownership-track__tension {
-  z-index: 6;
-  width: 4.8rem;
-  height: 2.9rem;
-  background:
-    radial-gradient(
-      ellipse,
-      rgba(255, 255, 255, .9) 0 3%,
-      rgba(255, 224, 118, .66) 12%,
-      rgba(245, 158, 11, .22) 32%,
-      transparent 72%
-    );
-  filter: none;
+.ownership-fighter--boss-party[data-party-size="2"]
+  .boss-enemy-party__member--1 {
+  left: -.02rem;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .ownership-track__marker {
-  top: -.34rem;
-  width: .72rem;
-  height: 2.2rem;
-  clip-path: polygon(30% 0, 70% 0, 100% 17%, 76% 50%, 100% 83%, 70% 100%, 30% 100%, 0 83%, 24% 50%, 0 17%);
-  border: 1px solid rgba(255, 251, 235, .76);
-  background:
-    linear-gradient(90deg, #6e3d04, #f8cf57 24%, #fffce2 48%, #e8b735 72%, #673704);
-  box-shadow:
-    0 0 .28rem #fff,
-    0 0 .85rem rgba(250, 204, 21, .88),
-    -.38rem 0 .8rem rgba(56, 189, 248, .34),
-    .38rem 0 .8rem rgba(244, 63, 94, .36);
+.ownership-fighter--boss-party[data-party-size="2"]
+  .ownership-avatar--enemy {
+  left: 64%;
 }
 
-.buyout-screen--lightweight .integrated-battlefield--push-player .ownership-track__marker {
-  transform: skewX(4deg);
+.ownership-fighter--boss-party[data-party-size="3"]
+  .boss-enemy-party__member--1 {
+  left: -.28rem;
 }
 
-.buyout-screen--lightweight .integrated-battlefield--push-enemy .ownership-track__marker {
-  transform: skewX(-4deg);
-}
-
-.buyout-screen--lightweight .integrated-battlefield .battle-commerce-flow {
-  inset: 3.4rem 0 1rem;
-  opacity: .24;
-  perspective: 34rem;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .battle-commerce-flow > i {
-  height: 1px;
-  background:
-    linear-gradient(
-      90deg,
-      transparent,
-      rgba(var(--commerce-flow-color), .18) 15%,
-      rgba(var(--commerce-flow-color), .84) 76%,
-      #fff
-    );
-  transform: skewX(-24deg) rotate(-3deg);
-  box-shadow:
-    0 0 .12rem rgba(255, 255, 255, .54),
-    0 0 .34rem rgba(var(--commerce-flow-color), .2);
-}
-
-.buyout-screen--lightweight .integrated-battlefield--push-enemy .battle-commerce-flow > i,
-.buyout-screen--lightweight .integrated-battlefield[data-flow-direction="enemy"] .battle-commerce-flow > i {
-  transform: skewX(24deg) rotate(3deg);
-}
-
-.buyout-screen--lightweight .integrated-battlefield--push-even .battle-commerce-flow > i:nth-child(even),
-.buyout-screen--lightweight .integrated-battlefield[data-flow-direction="even"] .battle-commerce-flow > i:nth-child(even) {
-  transform: skewX(24deg) rotate(3deg);
-}
-
-.buyout-screen--lightweight .integrated-battlefield[data-flow-intensity="fast"] .battle-commerce-flow,
-.buyout-screen--lightweight .integrated-battlefield[data-flow-intensity="surge"] .battle-commerce-flow,
-.buyout-screen--lightweight .integrated-battlefield.ownership-board--wind-player .battle-commerce-flow,
-.buyout-screen--lightweight .integrated-battlefield.ownership-board--wind-enemy .battle-commerce-flow,
-.buyout-screen--lightweight .integrated-battlefield.ownership-board--wind-cross .battle-commerce-flow {
-  opacity: .62;
+.ownership-fighter--boss-party[data-party-size="3"]
+  .boss-enemy-party__member--2 {
+  right: -.28rem;
 }
 
 @media (max-width: 639px) {
-  .buyout-screen--lightweight .integrated-battlefield {
-    background-position: center 46%;
+  .integrated-battlefield
+    .capital-visual-row
+    .ownership-fighter--enemy.ownership-fighter--boss-party {
+    width: min(7.2rem, 38vw) !important;
   }
 
-  .buyout-screen--lightweight .integrated-battlefield .ownership-duel .ownership-track {
-    height: 1.72rem;
+  .integrated-battlefield
+    .ownership-fighter--boss-party
+    .ownership-avatar--enemy {
+    width: 60%;
+    height: 82%;
   }
 
-  .buyout-screen--lightweight .integrated-battlefield .battle-commerce-flow {
-    inset-block-start: 3.7rem;
+  .integrated-battlefield
+    .ownership-fighter--boss-party
+    .boss-enemy-party__member {
+    width: 48%;
+    height: 70%;
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .buyout-screen--lightweight .integrated-battlefield .ownership-track__marker {
-    transform: none !important;
+@media (max-height: 700px) {
+  .integrated-battlefield
+    .capital-visual-row
+    .ownership-fighter--enemy.ownership-fighter--boss-party {
+    width: min(7.4rem, 45vw) !important;
+  }
+}
+
+@media (min-width: 900px) {
+  .integrated-battlefield
+    .capital-visual-row
+    .ownership-fighter--enemy.ownership-fighter--boss-party {
+    width: 8.4rem !important;
   }
 }
 
 /*
- * Casino-table composition.
- *
- * Capital and actors now share the felt instead of sitting inside two glass
- * cards. The large readout above the table is the only duplicated currency
- * label; the small badge attached to each pile is intentionally removed.
+ * One compact reading lane answers whether the player can act now. Longer
+ * event prose stays in the log; Cruel reuses this lane for its live checks.
  */
-.buyout-screen--lightweight .integrated-battlefield .capital-arena__side,
-.buyout-screen--lightweight .integrated-battlefield .capital-arena__side:last-of-type {
-  overflow: visible;
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
+.integrated-battlefield {
+  --battlefield-timing-height: 2.65rem;
 }
 
-.buyout-screen--lightweight .integrated-battlefield--push-player .capital-arena__side:first-child,
-.buyout-screen--lightweight .integrated-battlefield--push-enemy .capital-arena__side:last-child {
-  border-color: transparent;
-  box-shadow: none;
+.integrated-battlefield > .battlefield-capital {
+  bottom: var(--battlefield-timing-height);
 }
 
-.buyout-screen--lightweight .integrated-battlefield .player-capital-stack,
-.buyout-screen--lightweight .integrated-battlefield .enemy-capital-stack,
-.buyout-screen--lightweight .integrated-battlefield .capital-visual-row,
-.buyout-screen--lightweight .integrated-battlefield .gil-tower,
-.buyout-screen--lightweight .integrated-battlefield .gil-tower__chips {
-  overflow: visible;
+.integrated-battlefield > .battlefield-timing {
+  height: var(--battlefield-timing-height);
+  min-height: var(--battlefield-timing-height);
+  grid-template-rows: minmax(1.15rem, auto) .4rem;
+  gap: .18rem .35rem;
+  padding: .25rem .42rem .3rem !important;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .capital-visual-row {
-  isolation: isolate;
+.integrated-battlefield .battle-command-state {
+  display: flex;
+  min-width: 0;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  justify-content: center;
+  gap: .38rem;
+  overflow: hidden;
+  color: #cbd5e1;
+  font-style: normal;
+  line-height: 1.15;
+  text-align: center;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .capital-visual-row::before {
-  inset: 22% -9% -2%;
-  border-radius: 50%;
-  opacity: .36;
-  background:
-    radial-gradient(
-      ellipse at 50% 82%,
-      rgba(var(--battle-side-rgb), .3),
-      rgba(var(--battle-side-rgb), .08) 48%,
-      transparent 74%
-    );
-  filter: blur(.42rem);
+.integrated-battlefield .battle-command-state b,
+.integrated-battlefield .battle-command-state em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .capital-visual-row::after {
-  opacity: .1;
+.integrated-battlefield .battle-command-state b {
+  flex: 0 0 auto;
+  color: #f8fafc;
+  font-size: .72rem;
+  font-weight: 1000;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .capital-visual-row .gil-tower__chips {
-  top: -2rem;
-  right: -1.05rem;
-  bottom: .15rem;
-  left: -1.05rem;
+.integrated-battlefield .battle-command-state em {
+  min-width: 0;
+  color: #cbd5e1;
+  font-size: .66rem;
+  font-weight: 850;
 }
 
-.buyout-screen--lightweight .integrated-battlefield .capital-visual-row .gil-tower > strong {
-  display: none;
+.integrated-battlefield .battle-command-state--ready b,
+.integrated-battlefield .battle-command-state--ready em {
+  color: #86efac;
 }
 
-.buyout-screen .integrated-battlefield .investment-stake-preview {
-  position: absolute;
-  z-index: 5;
-  right: .3rem;
-  bottom: .42rem;
-  width: min(6.8rem, 43%);
-  height: 4.4rem;
-  pointer-events: none;
-  filter:
-    drop-shadow(0 .28rem .26rem rgba(0, 0, 0, .66))
-    drop-shadow(0 0 .32rem rgba(250, 204, 21, .22));
-  transform-origin: 65% 86%;
+.integrated-battlefield .battle-command-state--locked b {
+  color: #fde68a;
 }
 
-.buyout-screen .integrated-battlefield .investment-stake-preview::after {
-  position: absolute;
-  z-index: -1;
-  right: 2%;
-  bottom: -.14rem;
-  width: 74%;
-  height: .66rem;
-  border: 1px solid rgba(250, 204, 21, .2);
-  border-radius: 50%;
-  content: "";
-  background: radial-gradient(ellipse, rgba(250, 204, 21, .16), transparent 72%);
-  box-shadow: 0 .2rem .42rem rgba(0, 0, 0, .54);
+.integrated-battlefield .battle-command-state--cruel {
+  justify-content: space-between;
 }
 
-.buyout-screen .integrated-battlefield .investment-stake-preview > img {
-  position: absolute;
-  right: .2rem;
-  bottom: 0;
-  display: block;
-  width: auto;
-  height: 3.1rem;
-  object-fit: contain;
-  object-position: center bottom;
-  transform-origin: center bottom;
+.integrated-battlefield .battle-command-state--cruel b {
+  color: #f0abfc;
 }
 
-.buyout-screen .integrated-battlefield .investment-stake-preview--cargo-coin > img {
-  right: .4rem;
-  height: 1.42rem;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview--cargo-bundle > img {
-  right: .25rem;
-  height: 2.35rem;
-  rotate: -3deg;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview--cargo-bag > img {
-  right: .35rem;
-  height: 3.15rem;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview--level-4 > img {
-  right: .2rem;
-  height: 3.62rem;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview--level-5 {
-  right: .08rem;
-  bottom: .24rem;
-  width: min(7rem, 44%);
-  height: 4.95rem;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview--level-5 > img {
-  right: 0;
-  bottom: 0;
-  height: 4.58rem;
-  opacity: 1;
-}
-
-.buyout-screen .integrated-battlefield .investment-stake-preview--level-5::after {
-  right: 0;
-  bottom: -.12rem;
-  width: 82%;
-  height: .82rem;
-  border-color: rgba(252, 211, 77, .42);
-  background:
-    linear-gradient(180deg, rgba(30, 41, 59, .42), rgba(2, 6, 23, .88)),
-    radial-gradient(ellipse, rgba(250, 204, 21, .34), transparent 68%);
-  box-shadow:
-    inset 0 .12rem .12rem rgba(255, 255, 255, .14),
-    0 .24rem .5rem rgba(0, 0, 0, .72),
-    0 0 .58rem rgba(250, 204, 21, .24);
-}
-
-.buyout-screen--lightweight .integrated-battlefield .gil-tower--enemy .gil-chip-image,
-.buyout-screen--lightweight .integrated-battlefield .gil-tower--enemy .gil-tower__formation > img {
-  filter:
-    saturate(.96)
-    brightness(.92)
-    drop-shadow(0 0 .34rem rgba(244, 63, 94, .46));
-}
-
-.buyout-screen--lightweight .integrated-battlefield .ownership-capital-readout > strong {
-  color: #fff9dd;
-  text-shadow:
-    0 1px 0 #020617,
-    0 0 .35rem rgba(250, 204, 21, .34),
-    0 .15rem .28rem rgba(0, 0, 0, .92);
-}
-
-.buyout-screen--lightweight .integrated-battlefield .ownership-capital-readout {
-  right: 0;
-  left: 0;
-}
-
-.buyout-screen--lightweight .integrated-battlefield .ownership-capital-readout > strong:last-child {
-  color: #ffe4e8;
+.integrated-battlefield .battle-command-state--cruel em {
+  color: #fef08a;
+  text-align: right;
 }
 
 @media (max-width: 639px) {
-  .buyout-screen--lightweight .integrated-battlefield {
-    background-position: center 52%;
+  .integrated-battlefield {
+    --battlefield-timing-height: 2.9rem;
   }
 
-  .buyout-screen--lightweight .integrated-battlefield .capital-visual-row .gil-tower__chips {
-    right: -.85rem;
-    left: -.85rem;
+  .integrated-battlefield > .battlefield-capital {
+    bottom: var(--battlefield-timing-height);
   }
 
-  .buyout-screen .integrated-battlefield .investment-stake-preview {
-    right: .12rem;
-    bottom: .34rem;
-    width: min(5.7rem, 44%);
-    height: 3.75rem;
+  .integrated-battlefield > .battlefield-timing {
+    height: var(--battlefield-timing-height);
+    min-height: var(--battlefield-timing-height);
+    grid-template-rows: minmax(1.35rem, auto) .4rem;
   }
 
-  .buyout-screen .integrated-battlefield .investment-stake-preview--level-5 > img {
-    right: .05rem;
-    height: 3.95rem;
+  .integrated-battlefield .battle-command-state {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: .08rem .35rem;
   }
 
-  .buyout-screen .integrated-battlefield .investment-stake-preview--level-5 {
-    right: .04rem;
-    bottom: .2rem;
-    width: min(5.8rem, 44%);
-    height: 4.25rem;
-    transform-origin: right bottom;
+  .integrated-battlefield .battle-command-state b {
+    font-size: .74rem;
   }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .buyout-screen .integrated-battlefield .investment-stake-preview.is-committing {
-    animation: none;
+  .integrated-battlefield .battle-command-state em {
+    font-size: .68rem;
   }
 }

@@ -76,7 +76,7 @@
 .strength-comparison__values b {
   overflow-wrap: anywhere;
   color: #f8fafc;
-  font-size: 1rem;
+  font-size: 1.35rem;
   font-variant-numeric: tabular-nums;
   letter-spacing: .015em;
 }
@@ -92,7 +92,62 @@
   color: #fde68a;
   background: rgba(69, 26, 3, .55);
   box-shadow: 0 0 .8rem rgba(251, 191, 36, .13);
-  font: 900 .625rem/1 monospace;
+  font: 900 .7rem/1 sans-serif;
+}
+
+.strength-comparison__equation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: .28rem;
+  min-width: 0;
+  padding: .38rem;
+  border: 1px solid rgba(103, 232, 249, .14);
+  border-radius: .65rem;
+  background: rgba(2, 6, 23, .64);
+}
+
+.strength-comparison__equation > span {
+  display: grid;
+  flex: 1 0 auto;
+  min-width: 3.25rem;
+  padding: .24rem .32rem;
+  border-radius: .45rem;
+  background: rgba(30, 41, 59, .72);
+  text-align: center;
+}
+
+.strength-comparison__equation small {
+  color: #94a3b8;
+  font-size: .6rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.strength-comparison__equation b,
+.strength-comparison__equation > strong {
+  color: #d1fae5;
+  font-size: .9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.strength-comparison__equation > i,
+.strength-comparison__equation > strong {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+}
+
+.strength-comparison__equation > i {
+  color: #64748b;
+  font-size: .7rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.strength-comparison__equation > strong {
+  min-width: 2rem;
+  color: #f8fafc;
 }
 
 .strength-comparison__duel-bar {
@@ -144,6 +199,7 @@
 }
 
 .strength-comparison__verdict {
+  justify-content: flex-end;
   color: #e2e8f0;
   font-size: .75rem;
   font-weight: 900;
@@ -173,6 +229,32 @@
 .strength-comparison__risk { color: #fda4af; }
 .strength-comparison > p { margin: 0; color: #e2e8f0; font-size: .68rem; line-height: 1.45; }
 .strength-comparison__note { color: #94a3b8; font-size: .625rem; line-height: 1.45; }
+
+.strength-comparison__details {
+  border-top: 1px solid rgba(148, 163, 184, .14);
+  padding-top: .4rem;
+  color: #94a3b8;
+  font-size: .625rem;
+}
+
+.strength-comparison__details > summary {
+  min-height: 2.75rem;
+  align-content: center;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.strength-comparison__details > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .2rem .35rem;
+  align-items: center;
+}
+
+.strength-comparison__details i { color: #64748b; font-style: normal; }
+.strength-comparison__details strong { color: #e2e8f0; }
+.strength-comparison__details small { flex-basis: 100%; }
+.strength-comparison__details p { margin: .35rem 0 0; line-height: 1.45; }
 
 .strength-comparison__components {
   display: grid;
@@ -219,7 +301,7 @@
 .strength-comparison--compact > header > span { font-size: .75rem; }
 .strength-comparison--compact > header strong { font-size: .76rem; }
 .strength-comparison--compact .strength-comparison__values small { font-size: .75rem; }
-.strength-comparison--compact .strength-comparison__values b { font-size: .95rem; }
+.strength-comparison--compact .strength-comparison__values b { font-size: 1.2rem; }
 .strength-comparison--compact .strength-comparison__meta { font-size: .625rem; }
 .strength-comparison--compact .strength-comparison__components em {
   font-size: .625rem;
@@ -234,7 +316,9 @@
   .strength-comparison { padding: .7rem; }
   .strength-comparison__values { gap: .42rem; }
   .strength-comparison__values small { font-size: .75rem; }
-  .strength-comparison__values b { font-size: .95rem; }
+  .strength-comparison__values b { font-size: 1.15rem; }
+  .strength-comparison__equation { gap: .22rem; padding: .32rem; }
+  .strength-comparison__equation > span { min-width: 3rem; padding: .2rem .26rem; }
   .strength-comparison__meta { font-size: .625rem; }
   .strength-comparison__verdict { font-size: .75rem; }
   .strength-comparison__assumptions { font-size: .7rem; }

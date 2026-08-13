@@ -230,7 +230,18 @@ body {
   animation: launch-panel .48s cubic-bezier(.2,.8,.2,1);
 }
 
+@media (max-width: 639px) {
+  .launch-intro__panel {
+    width: 100%;
+    max-width: 100%;
+    animation-name: launch-panel-mobile;
+  }
+}
+
 .city-unlock {
+  align-items: safe center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding:
     calc(1rem + var(--game-safe-top))
     calc(1rem + var(--game-safe-right))
@@ -240,6 +251,10 @@ body {
 }
 
 .city-unlock__card {
+  max-height: calc(100dvh - 2rem - var(--game-safe-top) - var(--game-safe-bottom));
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scrollbar-gutter: stable;
   animation: city-unlock-card .65s cubic-bezier(.16,.9,.22,1);
 }
 
@@ -282,6 +297,11 @@ body {
 
 @keyframes launch-panel {
   from { opacity:0; transform:translateX(-34px); }
+  to { opacity:1; transform:none; }
+}
+
+@keyframes launch-panel-mobile {
+  from { opacity:0; transform:translateY(12px); }
   to { opacity:1; transform:none; }
 }
 
@@ -931,6 +951,9 @@ body {
 
 .launch-intro__copyright a,
 .game-legal-notice a {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
   color: #f5cf67;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -940,6 +963,13 @@ body {
   display: inline-block;
   margin-top: .18rem;
   color: #e2e8f0;
+  white-space: nowrap;
+}
+
+.launch-intro__next {
+  flex: 0 0 auto;
+  min-width: 5.75rem;
+  line-height: 1;
   white-space: nowrap;
 }
 

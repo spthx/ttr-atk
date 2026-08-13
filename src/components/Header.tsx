@@ -16,6 +16,7 @@ interface HeaderProps {
   activeTab: AppTab;
   setActiveTab: (tab: AppTab) => void;
   onOpenMap: () => void;
+  marketReturnAttention?: boolean;
   activeAllianceName: string | null;
   activeSynergiesCount: number;
   tradeAllianceUnlocked: boolean;
@@ -26,8 +27,6 @@ interface HeaderProps {
   ultimateCleared: boolean;
   soundEnabled: boolean;
   setSoundEnabled: (enabled: boolean) => void;
-  onAddFunds?: (amount: number) => void;
-  onResetFunds?: () => void;
   onNewGame: () => void;
 }
 
@@ -42,6 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   onOpenMap,
+  marketReturnAttention = false,
   activeAllianceName,
   activeSynergiesCount,
   tradeAllianceUnlocked,
@@ -52,14 +52,8 @@ export const Header: React.FC<HeaderProps> = ({
   ultimateCleared,
   soundEnabled,
   setSoundEnabled,
-  onAddFunds,
-  onResetFunds,
   onNewGame,
 }) => {
-  const showDebugControls =
-    typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).has('debug');
-
   const toggleSound = () => {
     soundFx.enabled = !soundEnabled;
     setSoundEnabled(!soundEnabled);
@@ -95,30 +89,6 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden sm:inline">{formatCurrency(totalFunds)}</span>
             </span>
           </div>
-
-          {/* Test controls are available only with ?debug in the URL. */}
-          {showDebugControls && (
-            <div className="flex items-center gap-1">
-              {onAddFunds && (
-              <button
-                onClick={() => onAddFunds(100_000_000)}
-                className="px-2 py-1 rounded bg-amber-950 hover:bg-amber-900 border border-amber-500/50 text-amber-300 text-[10px] font-extrabold cursor-pointer transition-all active:scale-95 shadow"
-                title="テスト用：資金に +1億ギル補充"
-              >
-                🧪 +1億
-              </button>
-            )}
-            {onResetFunds && (
-              <button
-                onClick={onResetFunds}
-                className="px-1.5 py-1 rounded bg-slate-800 hover:bg-rose-950/80 border border-slate-700 hover:border-rose-500/60 text-slate-300 hover:text-rose-300 text-[10px] font-bold cursor-pointer transition-all active:scale-95"
-                title="テスト用：資金を初期値（5万ギル）にリセット"
-              >
-                🔄 リセット
-              </button>
-              )}
-            </div>
-          )}
 
           {/* Passive Yield */}
           <div
@@ -177,15 +147,19 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Desktop Main Tab Navigation */}
       <div className="hidden md:flex max-w-7xl mx-auto px-4 sm:px-6 space-x-1 border-t border-slate-800/80 overflow-x-auto scrollbar-none">
         <button
-          onClick={() => setActiveTab('market')}
+          onClick={() =>
+            marketReturnAttention ? onOpenMap() : setActiveTab('market')
+          }
           className={`py-2 px-3 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
             activeTab === 'market'
               ? 'border-amber-400 text-amber-400 bg-amber-500/5'
+              : marketReturnAttention
+                ? 'border-emerald-300 text-emerald-200 bg-emerald-500/10 font-black'
               : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
           }`}
         >
           <Building2 className="w-4 h-4" />
-          交易市場
+          {marketReturnAttention ? '次の交渉対象へ' : '交易市場'}
         </button>
 
         <button
@@ -224,7 +198,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <ShieldCheck className="w-4 h-4" />
-            企業連合・協力
+            協力・企業連合
           </button>
         )}
 
@@ -248,19 +222,33 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Mobile Sticky Bottom Command Navigation Bar */}
-      <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 grid ${savageUnlocked ? 'grid-cols-5' : tradeAllianceUnlocked ? 'grid-cols-4' : 'grid-cols-3'} h-14 px-1 shadow-2xl touch-manipulation select-none pb-safe`}>
+      <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900 border-t border-slate-800 grid ${savageUnlocked ? 'grid-cols-5' : tradeAllianceUnlocked ? 'grid-cols-4' : 'grid-cols-3'} h-14 px-1 shadow-lg touch-manipulation select-none pb-safe`}>
         <button
           onClick={onOpenMap}
-          className={`flex flex-col items-center justify-center py-1 transition-colors ${
-            activeTab === 'market' ? 'text-amber-400 font-extrabold' : 'text-slate-400'
+          aria-label={marketReturnAttention ? '次の交渉対象へ戻る' : '都市地図を開く'}
+          aria-current={activeTab === 'market' ? 'page' : undefined}
+          className={`relative flex flex-col items-center justify-center py-1 transition-colors ${
+            activeTab === 'market'
+              ? 'text-amber-400 font-extrabold'
+              : marketReturnAttention
+                ? 'my-1 rounded-lg border border-emerald-300/70 bg-emerald-500/15 text-emerald-200 font-extrabold shadow-[0_0_16px_rgba(52,211,153,.3)]'
+                : 'text-slate-400'
           }`}
         >
           <MapPin className="w-5 h-5 mb-0.5" />
-          <span className="text-[11px] leading-none">地図</span>
+          <span className="text-[11px] leading-none">
+            {marketReturnAttention ? '次の商戦' : '地図'}
+          </span>
+          {marketReturnAttention && (
+            <span className="absolute -top-1 right-0 rounded-full bg-emerald-300 px-1.5 py-0.5 text-[8px] font-black leading-none text-slate-950">
+              次へ
+            </span>
+          )}
         </button>
 
         <button
           onClick={() => setActiveTab('portfolio')}
+          aria-current={activeTab === 'portfolio' ? 'page' : undefined}
           className={`flex flex-col items-center justify-center py-1 transition-colors relative ${
             activeTab === 'portfolio' ? 'text-amber-400 font-extrabold' : 'text-slate-400'
           }`}
@@ -276,6 +264,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={() => setActiveTab('skills')}
+          aria-current={activeTab === 'skills' ? 'page' : undefined}
           className={`flex flex-col items-center justify-center py-1 transition-colors ${
             activeTab === 'skills' ? 'text-amber-400 font-extrabold' : 'text-slate-400'
           }`}
@@ -287,18 +276,20 @@ export const Header: React.FC<HeaderProps> = ({
         {tradeAllianceUnlocked && (
           <button
             onClick={() => setActiveTab('cartels')}
+            aria-current={activeTab === 'cartels' ? 'page' : undefined}
             className={`flex flex-col items-center justify-center py-1 transition-colors ${
               activeTab === 'cartels' ? 'text-amber-400 font-extrabold' : 'text-slate-400'
             }`}
           >
             <ShieldCheck className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px] leading-none">連合・協力</span>
+            <span className="text-[11px] leading-none">連合攻略</span>
           </button>
         )}
 
         {savageUnlocked && (
           <button
             onClick={() => setActiveTab('savage')}
+            aria-current={activeTab === 'savage' ? 'page' : undefined}
             className={`relative flex flex-col items-center justify-center py-1 transition-colors ${
               activeTab === 'savage' ? 'text-rose-300 font-extrabold' : 'text-rose-300/70'
             }`}

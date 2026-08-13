@@ -1,9 +1,9 @@
 export const metadata = {
-  title: "タタルの大繁盛店",
+  title: "タタルの大繁盛商店",
   description: "タタルの大繁盛商店を旗揚げし、FF14の主要都市を順番に制覇する金融ゲーム。",
 };
 
-const EMBEDDED_GAME_VERSION = "finisher-session-v3";
+const EMBEDDED_GAME_VERSION = "casino-field-hotfix-v6";
 
 export default function Home() {
   return (

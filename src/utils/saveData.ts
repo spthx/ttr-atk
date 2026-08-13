@@ -1,8 +1,11 @@
-import { INITIAL_PROPERTIES } from '../data/initialData';
+import { INITIAL_PROPERTIES, INITIAL_SKILLS } from '../data/initialData';
 import type { AllianceState, CommunityType, Property } from '../types';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../data/worldData';
 import { LIMIT_BREAK_MAX_CHARGE } from './gameBalance';
 import type { SavageProgressVersion } from './savage';
+import { normalizeAbilityLoadout } from './abilityLoadout';
+import { ERA_WIND_SYNERGY_ID } from './synergy';
+import { normalizePhantomWinStreak } from './phantomBattle';
 
 export const SAVE_SCHEMA_VERSION = 3;
 export const SAVE_STORAGE_KEY = 'tataru-world-trade-save-v3';
@@ -23,6 +26,11 @@ export interface GameSaveData {
   totalFunds: number;
   properties: SavedPropertyState[];
   equippedSkillIds: string[];
+  /** Optional schema-v3 additions. AUTO skills consume the five active slots. */
+  openingAutoSkillId?: string | null;
+  criticalAutoSkillId?: string | null;
+  /** Legacy only. Reserve/waiting slots were removed; normalized to null. */
+  reserveSkillId?: string | null;
   alliance: AllianceState;
   /** Optional so schema v3 saves created before staged unlocks stay compatible. */
   seenUnlockIds?: string[];
@@ -38,9 +46,17 @@ export interface GameSaveData {
   /** Optional schema-v3 additions for the post-Savage Ultimate route. */
   savageEndingSeen?: boolean;
   ultimateCleared?: boolean;
+  /** Optional post-Ultimate challenge record. Missing values remain uncleared. */
+  cruelCleared?: boolean;
+  /** Current Phantom Trade win streak. No best score or encounter history is saved. */
+  phantomWinStreak?: number;
+  /** Optional honor record for the post-Cruel Karma duty. Attempt ledgers are never saved. */
+  karmaCleared?: boolean;
   trueEndingSeen?: boolean;
   /** One manual battle-synergy slot. Missing/unknown values fall back in App. */
   selectedBattleSynergyId?: string | null;
+  /** Permanent reward for having held all normal businesses at once. */
+  grandCompanyEorzeaIntegrated?: boolean;
   /**
    * Legacy schema-v3 field. Training no longer pauses passive income.
    * Kept optional so older saves load, then normalized to false.
@@ -48,6 +64,64 @@ export interface GameSaveData {
   passiveIncomePaused?: boolean;
   lastSavedAt: number;
 }
+
+const knownSkillIds = new Set(INITIAL_SKILLS.map((skill) => skill.id));
+const LEGACY_ERA_WIND_SKILL_ID = 'skill_era_wind';
+const ERA_WIND_UNLOCK_RAID_ID = 'savage_raid_2_layer_2';
+
+export const normalizeAutoSkillLoadout = ({
+  equippedSkillIds,
+  openingAutoSkillId,
+  criticalAutoSkillId,
+  validSkillIds = knownSkillIds,
+}: {
+  equippedSkillIds: readonly string[];
+  openingAutoSkillId: unknown;
+  criticalAutoSkillId: unknown;
+  validSkillIds?: ReadonlySet<string>;
+}) => {
+  const equippedIds = new Set(equippedSkillIds);
+  const isValidEquippedSkill = (value: unknown): value is string =>
+    typeof value === 'string' &&
+    equippedIds.has(value) &&
+    validSkillIds.has(value);
+  const normalizedOpeningAutoSkillId = isValidEquippedSkill(
+    openingAutoSkillId
+  )
+    ? openingAutoSkillId
+    : null;
+  const normalizedCriticalAutoSkillId =
+    isValidEquippedSkill(criticalAutoSkillId) &&
+    criticalAutoSkillId !== normalizedOpeningAutoSkillId
+      ? criticalAutoSkillId
+      : null;
+
+  return {
+    openingAutoSkillId: normalizedOpeningAutoSkillId,
+    criticalAutoSkillId: normalizedCriticalAutoSkillId,
+  };
+};
+
+export const normalizeSavedAbilityLoadout = ({
+  equippedSkillIds,
+  openingAutoSkillId,
+  criticalAutoSkillId,
+  reserveSkillId,
+  validSkillIds = knownSkillIds,
+}: {
+  equippedSkillIds: readonly string[];
+  openingAutoSkillId: unknown;
+  criticalAutoSkillId: unknown;
+  reserveSkillId: unknown;
+  validSkillIds?: ReadonlySet<string>;
+}) =>
+  normalizeAbilityLoadout({
+    equippedSkillIds,
+    openingAutoSkillId,
+    criticalAutoSkillId,
+    reserveSkillId,
+    validSkillIds,
+  });
 
 export const normalizeLimitBreakCharge = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value)
@@ -105,7 +179,7 @@ export const loadGameSave = (): GameSaveData | null => {
     const parsed: unknown = JSON.parse(raw);
 
     if (!isRecord(parsed) || parsed.schemaVersion !== SAVE_SCHEMA_VERSION) {
-      console.warn('[タタルの大繁盛店] 対応していないセーブデータのため初期状態で開始します。');
+      console.warn('[タタルの大繁盛商店] 対応していないセーブデータのため初期状態で開始します。');
       return null;
     }
 
@@ -120,16 +194,34 @@ export const loadGameSave = (): GameSaveData | null => {
       !isAllianceState(parsed.alliance) ||
       typeof parsed.lastSavedAt !== 'number'
     ) {
-      console.warn('[タタルの大繁盛店] セーブデータが壊れているため初期状態で開始します。');
+      console.warn('[タタルの大繁盛商店] セーブデータが壊れているため初期状態で開始します。');
       return null;
     }
+
+    const abilityLoadout = normalizeSavedAbilityLoadout({
+      equippedSkillIds: parsed.equippedSkillIds,
+      openingAutoSkillId: parsed.openingAutoSkillId,
+      criticalAutoSkillId: parsed.criticalAutoSkillId,
+      reserveSkillId: parsed.reserveSkillId,
+    });
+    const migratedSelectedBattleSynergyId =
+      parsed.equippedSkillIds.includes(LEGACY_ERA_WIND_SKILL_ID) &&
+      Array.isArray(parsed.savageClearedPropertyIds) &&
+      parsed.savageClearedPropertyIds.includes(ERA_WIND_UNLOCK_RAID_ID)
+        ? ERA_WIND_SYNERGY_ID
+        : typeof parsed.selectedBattleSynergyId === 'string'
+          ? parsed.selectedBattleSynergyId
+          : null;
 
     return {
       schemaVersion: SAVE_SCHEMA_VERSION,
       companyName: parsed.companyName.trim(),
       totalFunds: Math.max(0, parsed.totalFunds),
       properties: parsed.properties,
-      equippedSkillIds: parsed.equippedSkillIds,
+      equippedSkillIds: abilityLoadout.equippedSkillIds,
+      openingAutoSkillId: abilityLoadout.openingAutoSkillId,
+      criticalAutoSkillId: abilityLoadout.criticalAutoSkillId,
+      reserveSkillId: abilityLoadout.reserveSkillId,
       alliance: normalizeAllianceState(parsed.alliance),
       seenUnlockIds: Array.isArray(parsed.seenUnlockIds)
         ? parsed.seenUnlockIds.filter((id): id is string => typeof id === 'string')
@@ -155,17 +247,19 @@ export const loadGameSave = (): GameSaveData | null => {
         parsed.savageEndingSeen === true ||
         (parsed.ultimateCleared === undefined && parsed.trueEndingSeen === true),
       ultimateCleared: parsed.ultimateCleared === true,
+      cruelCleared: parsed.cruelCleared === true,
+      phantomWinStreak: normalizePhantomWinStreak(parsed.phantomWinStreak),
+      karmaCleared: parsed.karmaCleared === true,
       trueEndingSeen:
         parsed.ultimateCleared === true && parsed.trueEndingSeen === true,
-      selectedBattleSynergyId:
-        typeof parsed.selectedBattleSynergyId === 'string'
-          ? parsed.selectedBattleSynergyId
-          : null,
+      selectedBattleSynergyId: migratedSelectedBattleSynergyId,
+      grandCompanyEorzeaIntegrated:
+        parsed.grandCompanyEorzeaIntegrated === true,
       passiveIncomePaused: false,
       lastSavedAt: parsed.lastSavedAt,
     };
   } catch (error) {
-    console.warn('[タタルの大繁盛店] セーブデータを読み込めませんでした。', error);
+    console.warn('[タタルの大繁盛商店] セーブデータを読み込めませんでした。', error);
     return null;
   }
 };

@@ -15,7 +15,10 @@
     "start": "vinext start",
     "lint": "tsc --noEmit",
     "check:balance": "tsx scripts/check-balance.ts",
-    "check:simulations": "tsx scripts/check-battle-simulations.ts"
+    "check:progression": "tsx scripts/check-progression-navigation.ts",
+    "check:readiness": "tsx scripts/check-readiness-mechanics.ts",
+    "check:simulations": "tsx scripts/check-battle-simulations.ts",
+    "check:visuals": "tsx scripts/check-visual-regressions.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

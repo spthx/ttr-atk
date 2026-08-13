@@ -23,7 +23,14 @@ export type OwnerType = 'player' | 'independent' | 'dofor' | 'abyss';
 export type MarketTrendType = 'BULL' | 'BEAR' | 'VOLATILE' | 'STABLE';
 
 export type AppTab = 'market' | 'portfolio' | 'skills' | 'cartels' | 'savage';
-export type BattleMode = 'normal' | 'savage' | 'ultimate' | 'training';
+export type BattleMode =
+  | 'normal'
+  | 'savage'
+  | 'ultimate'
+  | 'cruel'
+  | 'phantom'
+  | 'karma'
+  | 'training';
 
 export interface MarketCondition {
   trend: MarketTrendType;
@@ -64,20 +71,26 @@ export interface TacticalSkill {
   cooldownMs: number;
   description: string;
   effectType:
-    | 'COOLDOWN_REDUCTION' // 疾風怒濤の計
-    | 'NEMAWASHI' // 守りのサンバ (reduces L_risk)
-    | 'INDEPENDENCE_SABOTAGE' // 連環計 (disrupts enemy funding)
-    | 'COVER' // かばう（旧skill_demoralize IDを維持）
-    | 'CAPITAL_BOOST' // 意気衝天
+    | 'COOLDOWN_REDUCTION' // 疾風怒濤
+    | 'NEMAWASHI' // Legacy effect type retained for older saves/content.
+    | 'FEINT' // 牽制（旧skill_sabotage IDを維持）
+    | 'INDEPENDENCE_SABOTAGE' // Legacy STUN effect kept only for older saved/content values.
+    | 'COVER' // パッセ（旧skill_demoralize IDを維持）
+    | 'BARRIER' // ブラックナイト（旧skill_synergy_push IDを維持）
+    | 'CAPITAL_BOOST' // ぶんどる（旧skill_capital_boost IDを維持）
     | 'LIVING_DEAD' // リビングデッド（旧skill_sns_blitz IDを維持）
-    | 'SYNERGY_PUSH' // バトルリタニー
-    | 'ERA_WIND'; // 時代の風（本作の持続逆転アビリティ）
+    | 'SYNERGY_PUSH' // Legacy presentation value kept for older saved content.
+    | 'ERA_WIND'; // Legacy presentation value kept for older saved content.
   unlockRequirements: string; // Text description
   requiredIndustries?: IndustryType[];
   requiredPropertyIds?: string[];
   requiredAllPropertyIds?: string[];
   requiredAssetValue?: number;
   requiresActiveSynergy?: boolean;
+  /** Permanent normal-route milestone; avoids order-dependent asset unlocks. */
+  unlockAfterCommunity?: CommunityType;
+  /** Permanent high-end clear milestone. */
+  unlockAfterSavageRaidId?: string;
   oncePerBattle?: boolean;
 }
 
@@ -95,6 +108,32 @@ export interface GroupSynergy {
   /** Effective group-support multiplier used by the single battle synergy slot. */
   battleGroupMultiplier?: number;
   skillId?: string;
+  /**
+   * Progression synergies are manual battle buffs. They never contribute to
+   * passive revenue and unlock from permanent city-clear progress instead of
+   * current subsidiary ownership.
+   */
+  battleOnly?: boolean;
+  unlockAfterCommunity?: CommunityType;
+  /** Unlocks after every authored alliance/cartel HQ in requiredPropertyIds is owned. */
+  unlockAfterAllCartelHqs?: boolean;
+  /** Optional high-end milestone; derived from the existing Savage clear IDs. */
+  unlockAfterSavageRaidId?: string;
+  selectionPriority?: number;
+  battleEffect?: {
+    kind: 'timed_capital_buff';
+    durationMs: number;
+    capitalPressureMultiplier: number;
+    /** Immediate ownership rally when the manual order lands. */
+    ownershipPush?: number;
+    /** Multiplies only LB charge gain while this battle-only buff is active. */
+    limitBreakChargeMultiplier?: number;
+    /** Adds a bounded continuous push without changing invested capital. */
+    continuousGaugePushPerSecond?: number;
+    /** Clears enemy market manipulation and suspends random wind while active. */
+    countersMarketWind?: boolean;
+    oncePerBattle: boolean;
+  };
 }
 
 export interface Cartel {
@@ -173,7 +212,10 @@ export interface BattleResult {
   settlementCost: number;
   battleCashDelta: number;
   victoryReward: number;
+  /** 勝利利益から人脈全体へ均等に分配した総額。 */
   celebrationGiftCost: number;
+  /** 利益独占は0、五分の祝儀は50%、大盤振る舞いは100%。 */
+  celebrationGiftRate: 0 | 0.5 | 1;
   rebelledProperties: Property[];
   survivingRiskUpdates: Array<{
     id: string;
