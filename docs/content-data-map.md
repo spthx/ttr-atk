@@ -82,7 +82,7 @@ ui.battle.commit
 
 ### 3.2 コイン画像
 
-コインは`BattleCapitalCanvas`のCanvas2Dへ決定論的に描き、左右それぞれ24列の再利用可能なactive page、完了分を画面下に保持するbanked page、18～22列の短いincoming waveに分ける。投入額はpage workとwave数へ連続的に変換するが、DOM nodeやCanvasの同時描画資源は金額に比例して増やさない。将来texture atlasへ差し替える際は、同じ論理キーで次を用意する。
+コインは`BattleCapitalCanvas`のCanvas2Dへ決定論的に描き、左右それぞれ24列の再利用可能なactive page、完了分を画面下に一部clipしつつ量感を見せるbanked page、24列すべてへ各列3束×9層を66msで落とすincoming waveに分ける。相場35%の全力投入を満杯1pageとし、通常設定では1pageを9waveで満たし、モーション低減時だけ1wave・1束へ圧縮する。投入額はpage workとwave数へ連続的に変換するが、DOM nodeやCanvasの同時描画資源は金額に比例して増やさない。将来texture atlasへ差し替える際は、同じ論理キーで次を用意する。
 
 ```text
 coin_player_unit
@@ -93,7 +93,7 @@ coin_player_overflow
 coin_enemy_overflow
 ```
 
-画像側に大量のコインを描き込んだ段階スプライトを採用する場合も、24列active/banked pageと最大22列incoming waveの固定Canvas上限は変更しない。
+画像側に大量のコインを描き込んだ段階スプライトを採用する場合も、24列active/banked pageと24列×3束×9層incoming waveの固定Canvas上限は変更しない。page transfer後に二度目のsinkを加えてbanked pageを全隠ししない。
 
 ## 4. 音声
 
@@ -167,7 +167,7 @@ npm run build
 - 開幕・窮地オートと通常枠が重複していない。
 - 敵アクションの割込区分が定義されている。
 - 無敵後の有限防御とナイト退場が検証されている。
-- active/banked各24列とincoming wave最大22列の同時描画上限が固定されている。
+- active/banked各24列とincoming wave 24列×3束×9層の同時描画上限が固定され、banked pageの可視clip帯が残る。
 - 1戦2分、30出資の上限をシミュレーションで確認した。
 - リザルトの黒字・赤字、タタル分析、ご祝儀、戦闘記録の順が保たれている。
 - セーブと中断復帰が二重精算を起こさない。

@@ -55,7 +55,7 @@ rendererはこれらを変更せず、コールバックで再計算も要求し
 - `CapitalStackTimelineFrame`
 - `buildCapitalStackTimeline(event)`
 
-rendererは`activeColumnIndices`、`columnHeights`、`bankedColumnHeights`、`bankedPileCount`、`bankTransferPages`、`incomingBundleLayers`、`packetSeed`、`atMs`、`durationMs`をそのまま消費する。金額に応じたwave数、page完了時の一括transfer、18～22列の走査順をrenderer側で乱数生成し直してはならない。
+rendererは`activeColumnIndices`、`columnHeights`、`bankedColumnHeights`、`bankedPileCount`、`bankTransferPages`、`incomingBundleCopies`、`incomingBundleLayers`、`packetSeed`、`atMs`、`durationMs`をそのまま消費する。相場35%の全力投入を満杯1pageとするpage work、金額に応じたwave数、page完了時の一括transfer、24列全面×3束×9層の走査順をrenderer側で乱数生成し直してはならない。通常設定は66msのwaveを使い、モーション低減時だけ1wave・1束へ圧縮する。
 
 30fps／60fpsはtimelineを読む回数だけを変え、scene、seed、page work、wave数、開始・着地・transfer時刻、最終active/banked状態を変えない。
 
@@ -119,14 +119,15 @@ scripts/coin-renderer-benchmark/
 
 - 24列active/banked pageの見た目と固定上限を比較契約として維持する。
 - 金額比例DOMを作らない。
-- incoming waveも同時最大22列の固定上限を維持する。
+- incoming waveも同時24列×3束×9層の固定上限を維持する。
 - 現行版の見た目と操作を比較基準にする。
 - 製品画面でCanvas2Dと同時にlive mountしない。
 
 ### 5.2 Canvas2D
 
 - 現行製品は両陣営共通1枚のcanvasを使う。
-- 背景、所有率前線、圧力、左右24列のactive/banked page、最大22列のincoming wave、風、VSを同じsceneで描く。
+- 背景、所有率前線、圧力、左右24列のactive/banked page、24列×3束×9層のincoming wave、風、VSを同じsceneで描く。
+- banked pageは画面下で一部をclipしても量感を読める帯を残し、page transfer後に別のsinkを重ねて全体を隠さない。
 - idle時は`requestAnimationFrame`を回さない。active packet中だけ30/60fpsで更新し、`document.hidden`ではrendererの更新だけを止める。
 - CSS寸法は統合商戦フィールドへ一致させたまま、内部解像度だけを30fps時DPR 1.5、60fps時DPR 2までに制限する。高密度iPhoneで描画画素が過剰に増えるのを防ぎ、勝敗・入力・演出時間には触れない。
 - 固定台帳、テロップ、人物、semantic progressbar、操作UIはDOMのまま残す。
@@ -135,7 +136,7 @@ scripts/coin-renderer-benchmark/
 
 - 2D直交投影だけを使い、3Dカメラ、ライト、物理演算を入れない。
 - コインは固定上限のinstance bufferへ事前確保する。投入額に応じてbufferやオブジェクトを増やさない。
-- 上限の出発点は、陣営ごと24列×36層のactive、24列×36層のbanked、7層の短い束を最大22列同時に落とすincomingを、両陣営分同時表示できる固定instance bufferとする。
+- 上限の出発点は、陣営ごと24列×36層のactive、24列×36層のbanked、9層の短い束を24列×3束同時に落とすincomingを、両陣営分同時表示できる固定instance bufferとする。
 - 1枚のtexture atlasと少数のdraw callを基本とする。
 - alphaはpremultipliedの有無をtexture、shader、blend設定で統一する。
 - `packetSeed`は位置、奥行き、微小な明暗差の決定論的参照にだけ使う。
@@ -151,8 +152,8 @@ scripts/coin-renderer-benchmark/
 2. `ResizeObserver`でCSS寸法を受け、viewportとprojection matrixだけを更新する。
 3. timelineの絶対経過時間から現在frameを選ぶ。
 4. `columnHeights`と`bankedColumnHeights`をそれぞれの24列固定instance領域へ反映する。
-5. `activeColumnIndices`の18～22列へ7層の短いincoming bundleを同時に落とす。
-6. `bankTransferPages`が示す完了page数の下げ幅を先に計算し、active pageと受け皿を一度で画面下のbankへ移動する。
+5. `activeColumnIndices`の24列すべてへ、各列3束×9層の短いincoming bundleを66msで同時に落とす。
+6. `bankTransferPages`が示す完了page数の下げ幅を先に計算し、active pageと受け皿を一度で画面下のbankへ移動する。transfer後の二次sinkは加えず、banked pageの可視clip帯を残す。
 7. incoming wave着地と同じframeでactive pageの列高を確定する。
 8. 最終frameを保持し、Reactから完了通知を受けるまで独自に消去しない。
 

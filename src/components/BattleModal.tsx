@@ -1281,7 +1281,6 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     player: false,
     enemy: false,
   });
-  const playerStrongSupportPresentationCountRef = useRef(0);
   const terminalCapitalHandoffRef = useRef<(() => void) | null>(null);
   const terminalCapitalRefreshRecoveryRef = useRef<(() => void) | null>(null);
   const impactStopTimerRef = useRef<number | null>(null);
@@ -1709,15 +1708,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const serial = capitalPilePreviewSerialRef.current[side];
       capitalPilePreviewActiveRef.current[side] = true;
       simulationPausedRef.current = true;
-      const strongPresentation =
-        heavy &&
-        (
-          side !== 'player' ||
-          playerStrongSupportPresentationCountRef.current < 3
-        );
-      if (side === 'player' && strongPresentation) {
-        playerStrongSupportPresentationCountRef.current += 1;
-      }
+      // Every material support call keeps its full weight. The renderer and
+      // timeline are already bounded, so weakening later player/alliance waves
+      // only makes equal funding look smaller without reducing runtime work.
+      const strongPresentation = heavy;
       const reducedMotion =
         window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ??
         false;
@@ -2096,16 +2090,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     () => sortSubsidiariesBySupport(battleSubs),
     [battleSubs]
   );
-  const quickNetworkSupportProperty = useMemo(
-    () =>
-      sortedBattleSubs.reduce<Property | null>((best, candidate) => {
-        if (!best) return candidate;
-        const bestUses = subRequestCounts[best.id] ?? 0;
-        const candidateUses = subRequestCounts[candidate.id] ?? 0;
-        return candidateUses < bestUses ? candidate : best;
-      }, null),
-    [sortedBattleSubs, subRequestCounts]
-  );
+  // The finite post-Savage counter already supplies the strategic limit and
+  // the shared request count applies diminishing returns. Keep one-tap calls
+  // on the strongest eligible relationship instead of rotating through tiny
+  // early properties whose capital would collapse into a token one-wave pour.
+  const strongestNetworkSupportProperty = sortedBattleSubs[0] ?? null;
   const selectedCost = getInvestmentCost(targetProperty.marketPrice, selectedLevel);
   const activeProgressionSynergyEffect =
     progressionSynergyRemaining > 0
@@ -2575,7 +2564,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ? limitedNetworkSupportExhausted
       ? `人脈 残り0回`
       : limitedNetworkSupportRemaining !== null
-        ? `人脈 残り${limitedNetworkSupportRemaining}回・自動配分`
+        ? `人脈 残り${limitedNetworkSupportRemaining}回・最有力先`
         : `仲間${battleSubs.length}件から選択`
     : '利用できる人脈なし';
   const readinessMechanics: string[] = [];
@@ -9645,8 +9634,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               className={`battle-action-strip__action battle-action-strip__action--drawer ${!oneTapNetworkSupportEnabled && panel === 'funds' ? 'active' : ''}`}
               onClick={() => {
                 if (oneTapNetworkSupportEnabled) {
-                  if (quickNetworkSupportProperty && canUseNetworkSupport) {
-                    demandFromProperty(quickNetworkSupportProperty);
+                  if (strongestNetworkSupportProperty && canUseNetworkSupport) {
+                    demandFromProperty(strongestNetworkSupportProperty);
                   }
                 } else {
                   setPanel('funds');
@@ -9662,7 +9651,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                   ? '今回使える人脈はありません'
                   : commandReady
                     ? oneTapNetworkSupportEnabled
-                      ? '使用回数の少ない有力先へ即時要請可能'
+                      ? '最大支援額の有力先へ即時要請可能'
                       : '仲間を選んで支援要請可能'
                     : '自社コマンドの準備中'
               }`}
@@ -9982,7 +9971,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <p>{isTraining ? '参加費・報酬・精算・清算はすべて0。通常事業・契約の保有状態、独立危険度、零式・絶の進行は変化せず、同じLEVELへ何度でも再挑戦できます。' : isKarma ? '所有率55／70／85／95%の節目ごとに、その時の一手を1件だけ記憶してものまねします。各回は6秒予告され、指定の二系統なら完全取消、別系統なら50%軽減、同系統・無行動なら100%着弾します。対処後は記憶を消すため、見るのは常に現在の1件だけです。参加費・報酬・精算・離反はなく、勝利時の踏破記録だけを保存します。' : isPhantom ? `零式${savageSeries}編・第${savageLayer}層のギミックをそのまま使い、競合の基礎資金力と判断速度だけを絶相当へ引き上げた連勝戦です。参加費・報酬・精算・離反はなく、現在の連勝数だけを記録します。敗北・撤退で連勝は0へ戻ります。` : isCruel ? '絶踏破後の単独記録戦です。敗北・撤退・報酬0の再戦では通常事業・人脈・独立危険度を保護します。初回勝利時だけ攻略報酬を配分し、離反と危険度を通常進行へ反映します。' : '通常編の地域・業界・交易網補正は無効。敗北・撤退・報酬0の再戦では通常事業・契約と独立危険度を保護します。初回勝利時だけ攻略報酬を配分し、離反と危険度を通常進行へ反映します。'}</p>
                 {!isTraining && <p>人脈・通常グループSYNERGYの支援額は高難度補正で×{HIGH_DIFFICULTY_SUPPORT_MULTIPLIER.toFixed(2)}。外部アライアンスとLIMIT BREAKの威力は変わりません。</p>}
                 {isUltimate && <p>絶のLIMIT BREAKは1戦1回。防御を崩すか、強制清算後の反撃へ残すかを選びます。</p>}
-                {isUltimate && <p>絶は108秒の終極査定。敵予告・着弾演出中は商戦と査定が停止し、準備済みのコマンドで対策を選べます。期限までに所有率100%へ届かなければ攻略失敗です。人脈はボタン1回で使用回数の少ない有力先へ自動配分されます。8回を重要予告へ割り当て、回復待ちになる前に決着させます。</p>}
+                {isUltimate && <p>絶は108秒の終極査定。敵予告・着弾演出中は商戦と査定が停止し、準備済みのコマンドで対策を選べます。期限までに所有率100%へ届かなければ攻略失敗です。人脈はボタン1回で最大支援額の有力先へ自動要請されます。8回を重要予告へ割り当て、回復待ちになる前に決着させます。</p>}
                 {isUltimate && <p className="briefing-ultimate-loadout"><b>今回の準備：</b>開幕AUTO「{openingAutoSkill?.name ?? '未設定'}」／瀕死AUTO「{criticalAutoSkill?.name ?? '未設定'}」／ぶんどる{equippedCapitalBoostSkill ? 'あり' : 'なし'}／短時間防御「{manualDefenseNames.join('・') || 'なし'}」／LB {limitBreakTier || 0}（{Math.floor(visibleLimitBreakCharge)}/{limitBreakChargeCapacity}）。安定案は開幕AUTOパッセ、瀕死AUTOリビングデッド、手動ぶんどると短時間防御、LB IIIです。</p>}
                 {isUltimate && ultimateEnemyPattern && <p className="briefing-ultimate-pattern"><b>今回の敵手順：</b>開幕「{ultimateOpeningActionName}」→瀕死「{ultimateCriticalActionName}」。{ultimateEnemyPattern.counterPlan} 短時間防御は開始直後に空撃ちせず、表示された危険予告へ合わせます。</p>}
                 {isCruel && <p>開始約15秒後の第一宣告は所有率を10%へ下げますが、投入資本・資金・LBは残ります。復帰中だけ自社へ進む継続速度を50%に抑え、10秒以内に50%へ戻すか、未到達でも15秒の第二査定を強制開始します。終了時に所有率75%以上かつ査定中の自社直接出資{formatCurrency(calculateCruelSignatureRequirement(targetProperty.marketPrice))}（相場10%）が必要です。人脈・LB・SYNERGY・外部アライアンスは署名に含みません。</p>}

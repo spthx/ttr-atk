@@ -35,6 +35,8 @@ import {
 import {
   BATTLE_CINEMATIC_TIMING,
   BATTLE_GAUGE_VISUAL_COMMIT_MS,
+  BATTLE_CAPITAL_COLUMN_COUNT,
+  BATTLE_CAPITAL_FULL_PAGE_MARKET_RATIO,
   BATTLE_CAPITAL_VISUAL_STAGE_COUNT,
   MAX_BATTLE_CAPITAL_COLUMN_LAYERS,
   BATTLE_STATE_UPDATE_INTERVAL_MS,
@@ -104,6 +106,7 @@ import {
 } from '../src/utils/battlePresentation';
 import {
   BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS,
+  resolveBattleCapitalBankGeometry,
   resolveBattleCapitalOverflowLayers,
 } from '../src/utils/battleCapitalCanvasLayout';
 import {
@@ -2049,10 +2052,15 @@ assert.equal(
 assert.equal(heavyCapitalTimeline.frames[0].phase, 'preload');
 assert.equal(heavyCapitalTimeline.frames[0].rackCompressed, true);
 assert.ok(
-  heavyCapitalTimeline.frames.every(
-    (frame) => frame.incomingBundleCopies === 1
-  ),
-  'each broad wave stays one bounded bundle per active column instead of multiplying copies in place'
+  heavyCapitalTimeline.frames
+    .filter((frame) => frame.activeColumnIndices.length > 0)
+    .every(
+      (frame) =>
+        frame.activeColumnIndices.length === BATTLE_CAPITAL_COLUMN_COUNT &&
+        frame.incomingBundleCopies === 3 &&
+        frame.incomingBundleLayers === CAPITAL_COIN_WAVE_BUNDLE_LAYERS
+    ),
+  'each normal broad wave restores one bounded three-roll curtain across all fixed columns'
 );
 assert.deepEqual(
   heavyCapitalTimeline.frames.at(-1)?.columnHeights,
@@ -2097,7 +2105,7 @@ assert.ok(
         frame.phase === 'pour' && frame.activeColumnIndices.length > 0
     )
     .every((frame) => frame.durationMs === CAPITAL_COIN_WAVE_MS),
-  'a bounded reload must stack at the measured 198ms broad-wave cadence'
+  'a bounded reload must stack at the rapid metallic broad-wave cadence'
 );
 assert.ok(
   heavyCapitalTimeline.frames.every((frame) => frame.rackShift !== true),
@@ -2113,11 +2121,25 @@ const firstOverflowTimeline = buildCapitalStackTimeline({
   intensity: 'standard',
   seed: 43,
 });
+const firstOverflowPreviousPage = getBattleCapitalPageState(
+  firstOverflowTimeline.event.previousCapital,
+  firstOverflowTimeline.event.marketPrice
+);
+const firstOverflowTargetPage = getBattleCapitalPageState(
+  firstOverflowTimeline.event.nextCapital,
+  firstOverflowTimeline.event.marketPrice
+);
+const firstOverflowTransfers = firstOverflowTimeline.frames.filter(
+  (frame) => frame.bankTransfer === true
+);
 assert.ok(
-  firstOverflowTimeline.frames.every(
-    (frame) => frame.bankTransfer !== true && frame.bankedPileCount === 0
-  ),
-  'an initial large pile fills the reusable upper field without pre-banking it'
+  firstOverflowTransfers.length === 1 &&
+    firstOverflowTransfers[0].bankTransferPages ===
+      firstOverflowTargetPage.bankedPileCount -
+        firstOverflowPreviousPage.bankedPileCount &&
+    firstOverflowTimeline.frames.at(-1)?.bankedPileCount ===
+      firstOverflowTargetPage.bankedPileCount,
+  'an above-page investment must move every newly completed page in one precomputed bank transfer'
 );
 const multiTierOverflowTimeline = buildCapitalStackTimeline({
   id: 'balance-multi-tier-overflow',
@@ -2200,14 +2222,14 @@ assert.ok(
   multiTierActiveFrames.length > 0 &&
     multiTierActiveFrames.every(
       (frame) =>
-        frame.bankedPileCount === multiTierTargetPage.bankedPileCount &&
+        (frame.bankedPileCount === multiTierPreviousPage.bankedPileCount ||
+          frame.bankedPileCount === multiTierTargetPage.bankedPileCount) &&
         frame.durationMs === CAPITAL_COIN_WAVE_MS &&
-        frame.activeColumnIndices.length >= CAPITAL_COIN_WAVE_MIN_COLUMNS &&
-        frame.activeColumnIndices.length <= CAPITAL_COIN_WAVE_MAX_COLUMNS &&
-        frame.incomingBundleCopies === 1 &&
+        frame.activeColumnIndices.length === BATTLE_CAPITAL_COLUMN_COUNT &&
+        frame.incomingBundleCopies === 3 &&
         frame.incomingBundleLayers === CAPITAL_COIN_WAVE_BUNDLE_LAYERS
     ),
-  'treasury growth lands as broad bounded waves on its amount-continuous active page'
+  'treasury growth lands as broad bounded waves before and after its one amount-derived page transfer'
 );
 assert.equal(
   multiTierOverflowTimeline.frames.filter((frame) => frame.bankTransfer).length,
@@ -2231,11 +2253,21 @@ const emptyToOverflowTimeline = buildCapitalStackTimeline({
   intensity: 'heavy',
   seed: 48,
 });
+const emptyToOverflowTargetPage = getBattleCapitalPageState(
+  emptyToOverflowTimeline.event.nextCapital,
+  emptyToOverflowTimeline.event.marketPrice
+);
+const emptyToOverflowTransfers = emptyToOverflowTimeline.frames.filter(
+  (frame) => frame.bankTransfer === true
+);
 assert.ok(
-  emptyToOverflowTimeline.frames.every(
-    (frame) => frame.bankTransfer !== true && frame.bankedPileCount === 0
-  ),
-  'even a maximum opening commitment fills the empty active page before any later bank transfer'
+  emptyToOverflowTransfers.length === 1 &&
+    emptyToOverflowTransfers[0].bankTransferPages ===
+      emptyToOverflowTargetPage.bankedPileCount &&
+    emptyToOverflowTimeline.frames.filter(
+      (frame) => frame.activeColumnIndices.length > 0
+    ).length === CAPITAL_COIN_WAVE_MAX_COUNT,
+  'an opening fortune above one page fills the first page, banks all completed pages once and keeps the bounded sixty-four-wave cap'
 );
 assert.deepEqual(
   buildCapitalStackTimeline(heavyCapitalTimeline.event),
@@ -2280,7 +2312,25 @@ assert.equal(
   8_160_000,
   'the saturated reload ends at the exact committed capital'
 );
-const repeatedFundingMarketPrice = 48_420_000;
+const repeatedFundingMarketPrice =
+  300_000_000 / BATTLE_CAPITAL_FULL_PAGE_MARKET_RATIO;
+const directInvestmentPageFractions = [0.02, 0.05, 0.1, 0.2, 0.35].map(
+  (investmentRate) =>
+    getBattleCapitalPageState(
+      repeatedFundingMarketPrice * investmentRate,
+      repeatedFundingMarketPrice
+    ).pageEquivalent
+);
+assert.equal(BATTLE_CAPITAL_FULL_PAGE_MARKET_RATIO, 0.35);
+assert.ok(
+  directInvestmentPageFractions.every(
+    (pageEquivalent, index) =>
+      Math.abs(
+        pageEquivalent - [2 / 35, 5 / 35, 10 / 35, 20 / 35, 1][index]
+      ) < 1e-9
+  ),
+  'the five direct-investment levels must map to 2/35, 5/35, 10/35, 20/35 and one complete page'
+);
 const repeatedFundingPreviousPage = getBattleCapitalPageState(
   300_000_000,
   repeatedFundingMarketPrice
@@ -2494,12 +2544,11 @@ assert.ok(
   repeatedFundingCurtain.every(
     (frame) =>
       frame.durationMs === CAPITAL_COIN_WAVE_MS &&
-      frame.activeColumnIndices.length >= CAPITAL_COIN_WAVE_MIN_COLUMNS &&
-      frame.activeColumnIndices.length <= CAPITAL_COIN_WAVE_MAX_COLUMNS &&
-      frame.incomingBundleCopies === 1 &&
+      frame.activeColumnIndices.length === BATTLE_CAPITAL_COLUMN_COUNT &&
+      frame.incomingBundleCopies === 3 &&
       frame.incomingBundleLayers === CAPITAL_COIN_WAVE_BUNDLE_LAYERS
   ),
-  'a treasury-sized second commitment falls as repeated eighteen-to-twenty-two-column seven-layer waves'
+  'a treasury-sized second commitment falls as repeated full-width three-roll nine-layer curtains'
 );
 assert.deepEqual(
   repeatedFundingCurtain.map((frame) => Math.max(...frame.columnHeights)),
@@ -2530,6 +2579,30 @@ assert.equal(
   fallingMassProxy(initialFundingTimeline),
   'equal 300M commitments retain equal falling mass instead of shrinking after the first page'
 );
+const previousDenseCurtainMassProxy = 6 * 22 * 3 * 9;
+assert.ok(
+  fallingMassProxy(repeatedFundingTimeline) >= previousDenseCurtainMassProxy,
+  'the current fixed-column page must retain at least the approved d0 dense-curtain mass'
+);
+for (const [fieldHeight, landscape, fullPageExtent] of [
+  [368, false, 280],
+  [129, true, 105],
+] as const) {
+  const bankGeometry = resolveBattleCapitalBankGeometry({
+    height: fieldHeight,
+    landscape,
+    tallestActiveExtent: fullPageExtent,
+    bankedPileCount: 1,
+  });
+  const visibleBankTop =
+    bankGeometry.activeBaseY +
+    bankGeometry.pageTravelPx -
+    fullPageExtent;
+  assert.ok(
+    fieldHeight - visibleBankTop >= fieldHeight * 0.14 - 1e-9,
+    `a completed lower bank must retain at least fourteen percent of the ${fieldHeight}px field after sinking`
+  );
+}
 const repeatedFundingSettled = repeatedFundingTimeline.frames.at(-1);
 const firstTreasuryLayers = Math.max(
   ...getCapitalColumnHeights(
@@ -2652,12 +2725,11 @@ assert.ok(
   [...initialHugeWaves, ...singleHugeWaves].every(
     (frame) =>
       frame.durationMs === CAPITAL_COIN_WAVE_MS &&
-      frame.activeColumnIndices.length >= CAPITAL_COIN_WAVE_MIN_COLUMNS &&
-      frame.activeColumnIndices.length <= CAPITAL_COIN_WAVE_MAX_COLUMNS &&
-      frame.incomingBundleCopies === 1 &&
+      frame.activeColumnIndices.length === BATTLE_CAPITAL_COLUMN_COUNT &&
+      frame.incomingBundleCopies === 3 &&
       frame.incomingBundleLayers === CAPITAL_COIN_WAVE_BUNDLE_LAYERS
   ),
-  'the single combined drop hands off to sustained broad seven-layer waves'
+  'the single combined drop hands off to sustained full-width three-roll nine-layer curtains'
 );
 const compactHugeFundingTimeline = buildCapitalStackTimeline({
   ...singleHugeFundingTimeline.event,

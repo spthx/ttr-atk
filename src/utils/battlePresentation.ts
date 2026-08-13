@@ -811,6 +811,9 @@ export const MAX_BATTLE_CAPITAL_COLUMN_LAYERS = 36;
 export const MAX_BATTLE_CAPITAL_VISIBLE_UNITS =
   BATTLE_CAPITAL_COLUMN_COUNT * MAX_BATTLE_CAPITAL_COLUMN_LAYERS;
 
+/** One maximum direct-investment command fills one complete treasury page. */
+export const BATTLE_CAPITAL_FULL_PAGE_MARKET_RATIO = 0.35;
+
 const CAPITAL_SHOWCASE_FILL_ORDER = [
   // Spread each new layer across the whole display before raising any stack
   // again. The result follows Romancing SaGa 3's tray of separate coin rolls
@@ -881,11 +884,13 @@ export const getBattleCapitalPageState = (
 ): BattleCapitalPageState => {
   const normalizedAmount = Math.max(0, amount);
   const normalizedPrice = Math.max(1_000, marketPrice);
-  // The reviewed 48.42M market reaches one dense page at roughly 300M. Using
-  // the same 6.2x market multiple keeps that physical capacity stable across
-  // eras instead of allowing the old logarithmic artwork scale to redefine a
-  // page after every commitment.
-  const fullPageCapital = normalizedPrice * 6.2;
+  // A page is a unit of visible action, not a lifetime-balance bucket. The
+  // largest direct investment is 35% of the asking price, so one such command
+  // must build one complete 24x36 page at every campaign scale. The five
+  // investment levels then occupy stable fractions of that same page and an
+  // equal follow-up command can bank the old page and refill an equal one.
+  const fullPageCapital =
+    normalizedPrice * BATTLE_CAPITAL_FULL_PAGE_MARKET_RATIO;
   if (normalizedAmount <= 0) {
     return {
       pageEquivalent: 0,
@@ -1043,14 +1048,14 @@ export const CAPITAL_OVERFLOW_RESTACK_BEATS = {
 // but the already-full treasury receives them at the measured metallic tick
 // cadence instead of repeating a slow normal-investment beat per tier.
 export const CAPITAL_OVERFLOW_RAPID_BEAT_MS = 66;
-/** Fresh frame analysis: one broad bundle group lands about every 0.20s. */
-export const CAPITAL_COIN_WAVE_MS = 198;
+/** Dense treasury pages land on the established rapid metallic tick. */
+export const CAPITAL_COIN_WAVE_MS = CAPITAL_OVERFLOW_RAPID_BEAT_MS;
 export const CAPITAL_COIN_WAVES_PER_PAGE = 9;
-export const CAPITAL_COIN_WAVE_MIN_COLUMNS = 18;
-export const CAPITAL_COIN_WAVE_MAX_COLUMNS = 22;
+export const CAPITAL_COIN_WAVE_MIN_COLUMNS = BATTLE_CAPITAL_COLUMN_COUNT;
+export const CAPITAL_COIN_WAVE_MAX_COLUMNS = BATTLE_CAPITAL_COLUMN_COUNT;
 export const CAPITAL_COIN_WAVE_MAX_COUNT = 64;
-/** Reference bundles read as short, weighty rolls of roughly six to eight coins. */
-export const CAPITAL_COIN_WAVE_BUNDLE_LAYERS = 7;
+/** Restore the approved nine-layer treasury rolls from the dense curtain. */
+export const CAPITAL_COIN_WAVE_BUNDLE_LAYERS = 9;
 /** Sub-pixel page remainder that does not need a dedicated prefill wave. */
 const CAPITAL_PAGE_PREFILL_EPSILON = 0.005;
 /** Legacy logical-clock constants retained for command recharge equivalence. */
@@ -1873,7 +1878,7 @@ export const buildCapitalStackTimeline = (
       activeColumnIndices: isTransfer
         ? []
         : getCapitalWaveColumnIndices(seed, beat.waveOrdinal),
-      incomingBundleCopies: 1,
+      incomingBundleCopies: compact ? 1 : 3,
       incomingBundleLayers: CAPITAL_COIN_WAVE_BUNDLE_LAYERS,
       rackCompressed: heavy || bankTransferPages > 0,
       overflowPass: bankTransferPages > 0 ? 1 : undefined,
