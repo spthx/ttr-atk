@@ -138,20 +138,20 @@ Leave / Complete
 現行の表示上限:
 
 - active pageは24本の固定列、1列最大36層（最大864表示単位/陣営）
-- 完了pageは`bankedPileCount`で論理保持し、24列の固定banked pageを画面下でclipして表現
-- 1waveの同時落下は24列中18～22列、1列あたり7層の短い束
-- 両陣営共通1枚のCanvas2D上でactive・banked・最大22列incomingの同時描画上限を固定（投入額によるDOMやpoolの増減なし）
-- 投入額はpage workへ連続的に変換し、1pageあたり9wave、1投入最大64waveで上限を持つ
+- 完了pageは`bankedPileCount`で論理保持し、24列の固定banked pageを画面下で一部clipしながら量感を読める帯を残して表現
+- 通常設定の1waveは24列すべてへ、1列あたり3束×9層を同時落下
+- 両陣営共通1枚のCanvas2D上でactive・banked・24列×3束のincoming同時描画上限を固定（投入額によるDOMやpoolの増減なし）
+- 相場35%の全力投入を満杯1pageとして投入額をpage workへ連続的に変換し、1pageあたり9wave、1投入最大64waveで上限を持つ
 
-Unityではactive 24列、banked 24列、incoming最大22列の固定プールをあらかじめ生成し、各列の表示層またはスプライト状態だけを更新する。金額が増えてもpoolは増やさず、timelineのwaveを順に再利用する。
+Unityではactive 24列、banked 24列、incoming 24列×3束×9層の固定プールをあらかじめ生成し、各列の表示層またはスプライト状態だけを更新する。金額が増えてもpoolは増やさず、timelineのwaveを順に再利用する。
 
 ### 5.2 見た目の要件
 
 - 少額でも列の足並みをそろえ、中央が尖る単一山にしない。
-- incoming waveは24列中18～22列を面で覆い198msの短いビートとし、投入額に応じた回数を途切れず積む。
+- incoming waveは24列全面へ各列3束×9層を落とす66msの短いビートとし、投入額に応じた回数を途切れず積む。モーション低減時だけ1wave・1束へ圧縮する。
 - 拡縮で金額を誤魔化さない。
 - 小さめのコインが密集し、中間段階を細かく刻む。
-- active pageが埋まったら受け皿ごと170msでbanked pageへ下げ、上段を空にしてから再度積み込む。列高は無限に伸ばさない。
+- active pageが埋まったら受け皿ごと170msでbanked pageへ下げ、上段を空にしてから再度積み込む。transfer後に別のsinkを重ねず、下段の量感を読めるclip帯を残す。列高は無限に伸ばさない。
 - 一度の投入で複数pageをまたぐ場合も、必要な下げ幅を先に計算し、分割せずひと息に送る。
 - 数値はFF4～6風のフレームなしフローティング表示で、コイン中央より少し下へ出す。
 - タブレット横持ちは列の配置幅を広げ、スマホ縦持ちの密度は維持する。
@@ -187,7 +187,7 @@ SaveEnvelope
 4. `gameBalance`、`enemyAi`、`cruelBattle`を副作用なしで移植する。
 5. 同一シード・同一入力列でWeb/C#結果を比較する。
 6. Canvas UIで最小バトルを作る。
-7. 24列active＋24列banked＋最大22列incomingの固定プール描画とpage transferを追加する。
+7. 24列active＋24列banked＋24列×3束×9層incomingの固定プール描画とpage transferを追加する。
 8. 演出シーケンサー、音声、保存、進行を順に接続する。
 9. PC、iOS相当、Android相当でProfiler比較を行う。
 10. 画像・文章を論理キーのままオリジナル素材へ差し替える。

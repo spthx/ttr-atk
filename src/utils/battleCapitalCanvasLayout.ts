@@ -11,8 +11,8 @@ export const BATTLE_CAPITAL_CONTINUOUS_DEPTH_DEADBAND = 0.15;
 /**
  * Keeps the already-approved three-grade pile unchanged, then exposes every
  * later funding wave as additional physical depth. The small deadband absorbs
- * the fractional tail of the first full 300M-class fill, so that first scene
- * does not shift merely because the structural model became continuous.
+ * the fractional tail of the first full-page fill, so that first scene does
+ * not shift merely because the structural model became continuous.
  */
 export const resolveBattleCapitalEffectiveDepth = (depth: number) => {
   const normalized = Math.max(0, Number.isFinite(depth) ? depth : 0);
@@ -148,24 +148,6 @@ export interface BattleCapitalBankGeometry {
   /** The single tray below every completed page; it may be outside the Canvas. */
   trayBaseY: number;
 }
-
-/**
- * Retains the one-way reservoir drop after the first page is banked. The
- * maximum matches the roughly 85px / 360px standing-surface movement measured
- * in the reference. Consumers interpolate the previous and target values
- * during the single decisive transfer, so an empty refill can never jump up.
- */
-export const resolveBattleCapitalReservoirSink = ({
-  height,
-  bankedPileCount,
-}: {
-  height: number;
-  bankedPileCount: number;
-}) => {
-  if (bankedPileCount <= 0) return 0;
-  const safeHeight = Math.max(1, Number.isFinite(height) ? height : 1);
-  return safeHeight * 0.235 * smoothstep(0, 1, bankedPileCount);
-};
 
 /** Keeps every incoming roll on a strictly downward screen-space path. */
 export const resolveBattleCapitalPacketStartBaseY = ({
@@ -397,8 +379,8 @@ export const resolveBattleCapitalStackGeometry = (
     0,
     safeHeight - floorY - rackHeight * 1.16 - 1
   );
-  // Keep the already-approved first 300M-class treasury and its silver rim at
-  // the old visible cap. Only mass beyond that three-grade scene is allowed to
+  // Keep the first full-command treasury and its silver rim at the visible
+  // cap. Only mass beyond that three-grade scene is allowed to
   // carry the same physical tray farther behind the lower information band.
   const legacyScroll = Math.min(
     legacyContentSafetyScroll + legacyRackScroll,

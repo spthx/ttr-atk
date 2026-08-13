@@ -19,7 +19,6 @@ import {
   resolveBattleCapitalCanvasLayout,
   resolveBattleCapitalHoardVerticalGeometry,
   resolveBattleCapitalPacketStartBaseY,
-  resolveBattleCapitalReservoirSink,
   resolveBattleCapitalStackGeometry,
   resolveBattleCapitalVisualLayers,
 } from '../utils/battleCapitalCanvasLayout';
@@ -802,24 +801,18 @@ const drawCapitalSide = (
     bankedPileCount: previousBankedPileCount,
     transferProgress,
   });
-  const previousReservoirSinkPx = resolveBattleCapitalReservoirSink({
-    height,
-    bankedPileCount: previousBankedPileCount,
-  });
-  const targetReservoirSinkPx = resolveBattleCapitalReservoirSink({
-    height,
-    bankedPileCount,
-  });
-  const reservoirSinkPx = side.frame.bankTransfer
-    ? previousReservoirSinkPx +
-      (targetReservoirSinkPx - previousReservoirSinkPx) * transferProgress
-    : targetReservoirSinkPx;
-  const upperFloorY = bankGeometry.activeBaseY + reservoirSinkPx;
+  // The full-page transfer already moves the old treasury by its complete
+  // painted height. Adding the former terminal reservoir sink here moved the
+  // promoted page below the Canvas a second time, so the banked mass vanished
+  // and only the newly refilled upper page remained visible. Keep the reusable
+  // upper baseline fixed and let pageTravelPx provide the single decisive drop.
+  const upperFloorY = bankGeometry.activeBaseY;
   // The completed upper page is the unit of motion. Translating the whole
   // treasury by its real painted height makes the former page finish below the
   // fixed field divider, instead of stretching one ever-taller column.
   const transferOffset = side.frame.bankTransfer
-    ? transferGeometry.promotedPageBaseY - transferGeometry.activeBaseY
+    ? (transferGeometry.promotedPageBaseY - transferGeometry.activeBaseY) *
+      bankTransferPages
     : 0;
   const drawnBankedPileCount = side.frame.bankTransfer
     ? previousBankedPileCount
@@ -829,7 +822,7 @@ const drawCapitalSide = (
       ? upperFloorY +
         drawnBankedPileCount * bankGeometry.pageTravelPx +
         transferOffset
-      : bankGeometry.trayBaseY + reservoirSinkPx;
+      : bankGeometry.trayBaseY;
 
   const auraStrength = clamp(Math.log2(side.capitalRatio + 1) / 5, 0, 1);
   const hoardGeometry = resolveBattleCapitalHoardVerticalGeometry({
