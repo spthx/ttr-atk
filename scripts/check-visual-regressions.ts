@@ -7,6 +7,7 @@ import {
   CAPITAL_OVERFLOW_RESTACK_BEATS,
   CAPITAL_STACK_BEAT_MS,
   buildCapitalStackTimeline,
+  getCapitalIncomingBundleCopies,
   getCapitalOverflowPassCount,
   getCapitalPresentationRecoveryAction,
   getMechanicalCapitalColumnFrames,
@@ -415,7 +416,17 @@ assert.match(
 assert.match(
   battleCapitalCanvas,
   /const frontX = width \* \(scene\.ownershipPercent \/ 100\);[\s\S]{0,900}const frontlineWidth = clamp\(width \* 0\.026, 7, 18\);[\s\S]{0,900}context\.fillRect\(frontX - frontlineWidth, 0, frontlineWidth \* 2, height\);[\s\S]{0,300}context\.lineTo\(frontX, height \* 0\.91\);/,
-  'the static canvas backdrop must turn ownership into strong territory colour and a full-height frontline'
+  'the static canvas backdrop must retain a full-height ownership frontline over the casino image'
+);
+assert.match(
+  battleCapitalCanvas,
+  /playerTerritory\.addColorStop\(0, 'rgba\(14, 165, 233, \.18\)'\);[\s\S]{0,160}playerTerritory\.addColorStop\(1, 'rgba\(125, 225, 255, \.08\)'\);[\s\S]{0,300}enemyTerritory\.addColorStop\(0, 'rgba\(255, 162, 179, \.08\)'\);[\s\S]{0,160}enemyTerritory\.addColorStop\(1, 'rgba\(225, 29, 72, \.18\)'\);/,
+  'territory pressure must stay restrained enough for the approved casino artwork to remain visible'
+);
+assert.doesNotMatch(
+  battleCapitalCanvas,
+  /const horizonY =|rgba\(0, 0, 0, \.12\)|index <= 5[\s\S]{0,180}height - horizonY/,
+  'the Canvas backdrop must not cover the casino artwork with the retired synthetic horizon, veil or perspective grid'
 );
 assert.match(
   battleCapitalCanvas,
@@ -621,8 +632,23 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const packetLayers =\s*3 \+ Math\.abs\(side\.frame\.packetSeed \+ index \* 3\) % 3;[\s\S]{0,220}side\.frame\.packetProgress - Math\.max\(0, packetOrder\) \* 0\.025[\s\S]{0,900}const startBaseY = safeTopY \+ packetHeight;/,
-  'each active Canvas2D column must receive one short deterministic three-to-five-layer bundle below the gauge without bounce physics'
+  /copyIndex < side\.frame\.incomingBundleCopies;[\s\S]{0,220}packetSeed \+ index \* 3 \+ copyIndex \* 17[\s\S]{0,420}\(side\.frame\.packetProgress - delay\) \/ Math\.max\(0\.01, 1 - delay\)[\s\S]{0,900}const startBaseY = safeTopY \+ packetHeight;/,
+  'each active Canvas2D column must receive one to three deterministic short bundles below the gauge without bounce physics'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const copyOffset =[\s\S]{0,180}column\.coinWidth \*[\s\S]{0,40}0\.16;[\s\S]{0,120}const unmergedWave = 1 - Math\.pow\(staggeredProgress, 4\);[\s\S]{0,260}const copyTrail =[\s\S]{0,220}unmergedWave;[\s\S]{0,180}x \+ copyOffset,[\s\S]{0,80}packetBaseY \+ copyTrail/,
+  'mass copies must form a readable compact wave in flight and converge into the same settled column at landing'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const activeCoinEdge = side === 'player' \? '#f5bd46' : '#ff7780';[\s\S]{0,320}context\.shadowColor = active[\s\S]{0,80}\? activeCoinEdge/,
+  'active and falling coins must keep warm gold or red-metal rims instead of flashing the battlefield cyan edge colour'
+);
+assert.match(
+  battleCapitalCanvas,
+  /context\.strokeStyle = active \? activeCoinEdge : colors\.coinLight;/,
+  'active coin top rims must use the same warm metal edge instead of the battlefield cyan edge colour'
 );
 assert.match(
   battleCapitalCanvas,
@@ -1196,8 +1222,20 @@ assert.doesNotMatch(
 );
 assert.match(
   battleCapitalCanvas,
-  /const packetLayers =\s*3 \+ Math\.abs\(side\.frame\.packetSeed \+ index \* 3\) % 3/,
-  'each fixed active column must receive one short three-to-five-layer bundle'
+  /incomingBundleCopies:\s*Math\.round\([\s\S]{0,100}clamp\(preview\?\.incomingBundleCopies \?\? 1, 1, 3\)[\s\S]*copyIndex < side\.frame\.incomingBundleCopies/,
+  'each fixed active column must receive a bounded one-to-three bundle mass from the renderer-neutral frame'
+);
+assert.deepEqual(
+  [0.02, 0.05, 0.1, 0.2, 0.35].map((ratio) =>
+    getCapitalIncomingBundleCopies(0, ratio * 1_000_000, 1_000_000)
+  ),
+  [1, 1, 2, 2, 3],
+  'the live direct-investment levels must map to one, one, two, two and three incoming bundle copies'
+);
+assert.equal(
+  getCapitalIncomingBundleCopies(0, 350_000, 1_000_000),
+  getCapitalIncomingBundleCopies(8_000_000, 8_350_000, 1_000_000),
+  'incoming mass must depend on this commitment rather than shrink against an established pile'
 );
 assert.match(
   integratedCss,
@@ -1735,8 +1773,8 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const packetOrder = side\.frame\.activeColumnIndices\.indexOf\(index\);[\s\S]{0,120}side\.frame\.packetProgress - Math\.max\(0, packetOrder\) \* 0\.025/,
-  'the four-to-five fixed packet columns must arrive as a short cascade rather than one flat flash'
+  /Math\.max\(0, packetOrder\) \* 0\.025 \+ copyIndex \* 0\.065[\s\S]{0,300}\(side\.frame\.packetProgress - delay\) \/ Math\.max\(0\.01, 1 - delay\)/,
+  'the fixed packet columns and their extra mass copies must cascade while every bundle still reaches its landing point at progress one'
 );
 assert.match(
   battleCapitalCanvas,

@@ -49,6 +49,7 @@ import {
   getBattleCapitalVisualBundleCount,
   getBattleCapitalOverflowTier,
   getBattleCapitalVisibleUnits,
+  getCapitalIncomingBundleCopies,
   getCapitalColumnHeights,
   getCapitalOverflowPassCount,
   getCapitalVisibleUnitSequence,
@@ -1914,6 +1915,23 @@ assert.ok(
   lateColumnUnits > earlyColumnUnits,
   'the same relative offer becomes a taller treasury in later chapters'
 );
+assert.deepEqual(
+  [0.02, 0.05, 0.1, 0.2, 0.35].map((ratio) =>
+    getCapitalIncomingBundleCopies(0, ratio * 1_000_000, 1_000_000)
+  ),
+  [1, 1, 2, 2, 3],
+  'larger commitments must bring one to three bounded incoming bundles per active column'
+);
+assert.equal(
+  getCapitalIncomingBundleCopies(0, 350_000, 1_000_000),
+  getCapitalIncomingBundleCopies(4_000_000, 4_350_000, 1_000_000),
+  'the same new commitment must retain the same incoming mass even on an established pile'
+);
+assert.equal(
+  getCapitalIncomingBundleCopies(4_350_000, 4_000_000, 1_000_000),
+  1,
+  'a non-growing presentation must retain one bounded fallback bundle without inventing mass'
+);
 assert.equal(
   MAX_BATTLE_CAPITAL_VISIBLE_UNITS,
   792,
@@ -1994,6 +2012,33 @@ const heavyCapitalTimeline = buildCapitalStackTimeline({
 });
 assert.equal(heavyCapitalTimeline.frames[0].phase, 'preload');
 assert.equal(heavyCapitalTimeline.frames[0].rackCompressed, true);
+assert.ok(
+  heavyCapitalTimeline.frames.every(
+    (frame) => frame.incomingBundleCopies === 3
+  ),
+  'a 35% heavy commitment must preserve three incoming bundle copies through its whole deterministic timeline'
+);
+assert.deepEqual(
+  heavyCapitalTimeline.frames.at(-1)?.columnHeights,
+  getCapitalColumnHeights(
+    getBattleCapitalVisibleUnits(350_000, 1_000_000)
+  ),
+  'incoming mass must not alter the settled twenty-two-column capital total'
+);
+const compactMassTimeline = buildCapitalStackTimeline({
+  ...heavyCapitalTimeline.event,
+  id: 'balance-compact-mass-bound',
+  intensity: 'compact',
+});
+assert.ok(
+  compactMassTimeline.frames.every(
+    (frame) =>
+      frame.activeColumnIndices.length *
+        (frame.incomingBundleCopies ?? 1) <=
+      18
+  ),
+  'even the compact six-column cadence must stay bounded to eighteen incoming bundles per side'
+);
 assert.equal(heavyCapitalTimeline.frames.at(-1)?.phase, 'settle');
 assert.equal(
   heavyCapitalTimeline.frames.at(-1)?.presentedCapital,

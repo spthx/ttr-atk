@@ -77,6 +77,7 @@ interface NormalizedCapitalFrame {
   visibleUnits: number;
   columnHeights: number[];
   activeColumnIndices: number[];
+  incomingBundleCopies: number;
   overflowTier: number;
   presentationSerial: number;
   packetSeed: number;
@@ -249,6 +250,9 @@ const normalizeSide = (
       visibleUnits,
       columnHeights,
       activeColumnIndices,
+      incomingBundleCopies: Math.round(
+        clamp(preview?.incomingBundleCopies ?? 1, 1, 3)
+      ),
       overflowTier,
       presentationSerial: Math.round(
         finiteNonNegative(preview?.presentationSerial ?? 0)
@@ -304,7 +308,7 @@ export const getBattleCapitalCanvasSceneKey = (
 
 const getCapitalPacketAnimationKey = (side: NormalizedCapitalSide) =>
   side.frame.activeColumnIndices.length > 0
-    ? `${side.frame.presentationSerial}:${side.frame.packetSeed}:${side.frame.activeColumnIndices.join(',')}`
+    ? `${side.frame.presentationSerial}:${side.frame.packetSeed}:${side.frame.incomingBundleCopies}:${side.frame.activeColumnIndices.join(',')}`
     : '';
 
 const roundedRect = (
@@ -389,15 +393,13 @@ const drawBackdrop = (
 
   const frontX = width * (scene.ownershipPercent / 100);
   const playerTerritory = context.createLinearGradient(0, 0, frontX, 0);
-  playerTerritory.addColorStop(0, 'rgba(14, 165, 233, .31)');
-  playerTerritory.addColorStop(0.72, 'rgba(56, 189, 248, .18)');
-  playerTerritory.addColorStop(1, 'rgba(125, 225, 255, .09)');
+  playerTerritory.addColorStop(0, 'rgba(14, 165, 233, .18)');
+  playerTerritory.addColorStop(1, 'rgba(125, 225, 255, .08)');
   context.fillStyle = playerTerritory;
   context.fillRect(0, 0, frontX, height);
   const enemyTerritory = context.createLinearGradient(frontX, 0, width, 0);
-  enemyTerritory.addColorStop(0, 'rgba(255, 162, 179, .09)');
-  enemyTerritory.addColorStop(0.28, 'rgba(251, 113, 133, .18)');
-  enemyTerritory.addColorStop(1, 'rgba(225, 29, 72, .31)');
+  enemyTerritory.addColorStop(0, 'rgba(255, 162, 179, .08)');
+  enemyTerritory.addColorStop(1, 'rgba(225, 29, 72, .18)');
   context.fillStyle = enemyTerritory;
   context.fillRect(frontX, 0, width - frontX, height);
 
@@ -446,36 +448,6 @@ const drawBackdrop = (
       }
     }
     context.lineCap = 'butt';
-  }
-
-  const horizonY = height * (scene.compact ? 0.48 : 0.43);
-  const horizon = context.createLinearGradient(0, horizonY, width, horizonY);
-  horizon.addColorStop(0, 'rgba(64, 200, 255, .04)');
-  horizon.addColorStop(0.5, colors.accent);
-  horizon.addColorStop(1, 'rgba(255, 76, 115, .04)');
-  context.globalAlpha = 0.55;
-  context.fillStyle = horizon;
-  context.fillRect(0, horizonY, width, Math.max(1, height * 0.012));
-  context.globalAlpha = 1;
-
-  context.fillStyle = 'rgba(0, 0, 0, .12)';
-  context.fillRect(0, 0, width, height);
-
-  context.strokeStyle = 'rgba(174, 218, 232, .08)';
-  context.lineWidth = 1;
-  for (let index = 1; index <= 5; index += 1) {
-    const t = index / 6;
-    const y = horizonY + (height - horizonY) * t * t;
-    context.beginPath();
-    context.moveTo(width * (0.26 - 0.18 * t), y);
-    context.lineTo(width * (0.74 + 0.18 * t), y);
-    context.stroke();
-  }
-  for (let index = -3; index <= 3; index += 1) {
-    context.beginPath();
-    context.moveTo(width * (0.5 + index * 0.08), horizonY);
-    context.lineTo(width * (0.5 + index * 0.14), height);
-    context.stroke();
   }
 
   if (scene.windSide !== 'even') {
@@ -594,10 +566,13 @@ const drawCoinColumn = (
   const colors = SIDE_COLORS[side];
   const bandShadow = side === 'player' ? '#4b2d0b' : '#430b17';
   const bandGlint = side === 'player' ? '#f5bd46' : '#ff7780';
+  const activeCoinEdge = side === 'player' ? '#f5bd46' : '#ff7780';
   const bodyHeight = coinHeight + Math.max(0, layers - 1) * layerStep;
   const topY = baseY - bodyHeight;
   context.save();
-  context.shadowColor = active ? colors.edge : 'rgba(255, 192, 64, .38)';
+  context.shadowColor = active
+    ? activeCoinEdge
+    : 'rgba(255, 192, 64, .38)';
   context.shadowBlur = active ? width * 0.72 : width * 0.28;
   context.shadowOffsetY = Math.max(1, coinHeight * 0.3);
   const gradient = context.createLinearGradient(
@@ -654,7 +629,7 @@ const drawCoinColumn = (
   context.beginPath();
   context.ellipse(x, topY, width / 2, coinHeight / 2, 0, 0, Math.PI * 2);
   context.fill();
-  context.strokeStyle = active ? colors.edge : colors.coinLight;
+  context.strokeStyle = active ? activeCoinEdge : colors.coinLight;
   context.lineWidth = active ? 1.65 : 1;
   context.stroke();
   context.strokeStyle = side === 'player'
@@ -848,38 +823,58 @@ const drawCapitalSide = (
     );
 
     if (activeColumns.has(index)) {
-      const packetLayers =
-        3 + Math.abs(side.frame.packetSeed + index * 3) % 3;
       const packetOrder = side.frame.activeColumnIndices.indexOf(index);
-      const staggeredProgress = clamp(
-        side.frame.packetProgress - Math.max(0, packetOrder) * 0.025,
-        0,
-        1
-      );
-      const easedProgress = 1 - Math.pow(1 - staggeredProgress, 2.4);
-      const packetHeight =
-        column.coinHeight +
-        Math.max(0, packetLayers - 1) * column.layerStep;
-      const landingBaseY =
-        columnBaseY -
-        Math.max(column.coinHeight, visualLayers * column.layerStep) -
-        column.coinHeight;
-      // Start below the semantic gauge/readout band instead of dropping coins
-      // behind it. The pile still has the full remaining field to gather speed.
-      const startBaseY = safeTopY + packetHeight;
-      const packetBaseY =
-        startBaseY + (landingBaseY - startBaseY) * easedProgress;
-      drawCoinColumn(
-        context,
-        x,
-        packetBaseY,
-        column.coinWidth,
-        column.coinHeight,
-        column.layerStep,
-        packetLayers,
-        side.side,
-        true
-      );
+      for (
+        let copyIndex = 0;
+        copyIndex < side.frame.incomingBundleCopies;
+        copyIndex += 1
+      ) {
+        const packetLayers =
+          3 +
+          Math.abs(side.frame.packetSeed + index * 3 + copyIndex * 17) % 3;
+        const delay = Math.min(
+          0.22,
+          Math.max(0, packetOrder) * 0.025 + copyIndex * 0.065
+        );
+        const staggeredProgress = clamp(
+          (side.frame.packetProgress - delay) / Math.max(0.01, 1 - delay),
+          0,
+          1
+        );
+        const easedProgress = 1 - Math.pow(1 - staggeredProgress, 2.4);
+        const packetHeight =
+          column.coinHeight +
+          Math.max(0, packetLayers - 1) * column.layerStep;
+        const landingBaseY =
+          columnBaseY -
+          Math.max(column.coinHeight, visualLayers * column.layerStep) -
+          column.coinHeight;
+        // Start below the semantic gauge/readout band instead of dropping coins
+        // behind it. The pile still has the full remaining field to gather speed.
+        const startBaseY = safeTopY + packetHeight;
+        const packetBaseY =
+          startBaseY + (landingBaseY - startBaseY) * easedProgress;
+        const copyOffset =
+          (copyIndex - (side.frame.incomingBundleCopies - 1) / 2) *
+          column.coinWidth *
+          0.16;
+        const unmergedWave = 1 - Math.pow(staggeredProgress, 4);
+        const copyTrail =
+          copyIndex *
+          (packetHeight + column.coinHeight * 0.5) *
+          unmergedWave;
+        drawCoinColumn(
+          context,
+          x + copyOffset,
+          packetBaseY + copyTrail,
+          column.coinWidth,
+          column.coinHeight,
+          column.layerStep,
+          packetLayers,
+          side.side,
+          true
+        );
+      }
     }
   }
 

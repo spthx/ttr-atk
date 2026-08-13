@@ -858,6 +858,27 @@ export const getBattleCapitalVisibleUnits = (
   );
 };
 
+/**
+ * Keeps the visible incoming mass tied to this commitment instead of the
+ * square-root-compressed size of the pile that was already on the table.
+ * The result is deliberately bounded so a large bid reads as a dense wave
+ * without turning the Canvas renderer into an amount-proportional particle
+ * system.
+ */
+export const getCapitalIncomingBundleCopies = (
+  previousCapital: number,
+  nextCapital: number,
+  marketPrice: number
+) => {
+  const deltaRatio =
+    Math.max(0, nextCapital - previousCapital) / Math.max(1, marketPrice);
+  if (deltaRatio <= 0) return 1;
+  return Math.min(
+    3,
+    Math.max(1, Math.ceil(Math.sqrt(deltaRatio / 0.05) - Number.EPSILON))
+  );
+};
+
 /** Same amount always produces the same monotonic twenty-two-stack showcase. */
 export const getCapitalColumnHeights = (visibleUnits: number) => {
   const normalizedUnits = Math.max(
@@ -877,6 +898,8 @@ export interface MechanicalCapitalColumnFrame {
   visibleUnits: number;
   columnHeights: number[];
   activeColumnIndices: number[];
+  /** Number of short incoming bundles drawn per active column (one to three). */
+  incomingBundleCopies?: number;
   /** Heavy/reload anticipation marker; renderers must not pre-lower an empty rack. */
   rackCompressed?: boolean;
   /** One-based overflow reload pass, used only to retrigger the bounded stamp. */
@@ -1263,6 +1286,11 @@ export const buildCapitalStackTimeline = (
   );
   const seed = Number.isFinite(event.seed) ? Math.trunc(event.seed) : 0;
   const capitalDistance = event.nextCapital - event.previousCapital;
+  const incomingBundleCopies = getCapitalIncomingBundleCopies(
+    event.previousCapital,
+    event.nextCapital,
+    event.marketPrice
+  );
   const stageDistance = targetStage - previousStage;
   const presentedCapitalFor = (
     visibleUnits: number,
@@ -1289,6 +1317,7 @@ export const buildCapitalStackTimeline = (
     visibleUnits: previousStage,
     columnHeights: getCapitalColumnHeights(previousStage),
     activeColumnIndices: [],
+    incomingBundleCopies,
     rackCompressed: willCompress,
     rackDepth: previousOverflowTier,
     stackDepth: previousOverflowTier,
@@ -1318,6 +1347,7 @@ export const buildCapitalStackTimeline = (
         // Use a timeline-global beat so persistent fixed DOM nodes can alternate
         // their CSS animation name and visibly relaunch every packet.
         stackBeat: index + 1,
+        incomingBundleCopies,
         phase: 'pour',
         atMs: pourAtMs,
         durationMs,
@@ -1344,6 +1374,7 @@ export const buildCapitalStackTimeline = (
     visibleUnits: targetStage,
     columnHeights: getCapitalColumnHeights(targetStage),
     activeColumnIndices: [],
+    incomingBundleCopies,
     rackCompressed: heavy,
     rackDepth: targetOverflowTier,
     stackDepth: targetOverflowTier,
