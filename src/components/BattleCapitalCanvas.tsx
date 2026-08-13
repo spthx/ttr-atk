@@ -15,11 +15,10 @@ import {
 } from '../utils/battlePresentation';
 import { resolveBattleCanvasDpr } from '../utils/battleCanvasQuality';
 import {
-  BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER,
   easeBattleCapitalRackDepth,
   resolveBattleCapitalCanvasLayout,
-  resolveBattleCapitalEffectiveDepth,
   resolveBattleCapitalHoardVerticalGeometry,
+  resolveBattleCapitalOverflowLayers,
   resolveBattleCapitalStackGeometry,
   resolveBattleCapitalVisualLayers,
 } from '../utils/battleCapitalCanvasLayout';
@@ -81,6 +80,7 @@ interface NormalizedCapitalFrame {
   columnHeights: number[];
   activeColumnIndices: number[];
   incomingBundleCopies: number;
+  incomingBundleLayers?: number;
   overflowTier: number;
   presentationSerial: number;
   packetSeed: number;
@@ -260,6 +260,10 @@ const normalizeSide = (
       incomingBundleCopies: Math.round(
         clamp(preview?.incomingBundleCopies ?? 1, 1, 3)
       ),
+      incomingBundleLayers:
+        preview?.incomingBundleLayers === undefined
+          ? undefined
+          : Math.round(clamp(preview.incomingBundleLayers, 3, 9)),
       overflowTier,
       presentationSerial: Math.round(
         finiteNonNegative(preview?.presentationSerial ?? 0)
@@ -313,7 +317,7 @@ export const getBattleCapitalCanvasSceneKey = (
 
 const getCapitalPacketAnimationKey = (side: NormalizedCapitalSide) =>
   side.frame.activeColumnIndices.length > 0
-    ? `${side.frame.presentationSerial}:${side.frame.packetSeed}:${side.frame.incomingBundleCopies}:${side.frame.activeColumnIndices.join(',')}`
+    ? `${side.frame.presentationSerial}:${side.frame.packetSeed}:${side.frame.incomingBundleCopies}:${side.frame.incomingBundleLayers ?? 0}:${side.frame.activeColumnIndices.join(',')}`
     : '';
 
 const roundedRect = (
@@ -682,9 +686,9 @@ const drawCapitalSide = (
   const coinHeight = representativeColumn.coinHeight;
   const activeColumns = new Set(side.frame.activeColumnIndices);
   const maxRawLayers = Math.max(0, ...side.frame.columnHeights);
-  const overflowLayers =
-    resolveBattleCapitalEffectiveDepth(side.frame.stackDepth) *
-    BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;
+  const overflowLayers = resolveBattleCapitalOverflowLayers(
+    side.frame.stackDepth
+  );
   const renderedColumns = layout.columns.map((column, index) => {
     const layers = side.frame.columnHeights[index] ?? 0;
     const stackVariation = 0.98 + deterministicNoise(index * 37 + 11) * 0.04;
@@ -846,9 +850,9 @@ const drawCapitalSide = (
         copyIndex < side.frame.incomingBundleCopies;
         copyIndex += 1
       ) {
-        const packetLayers =
+        const packetLayers = side.frame.incomingBundleLayers ??
           3 +
-          Math.abs(side.frame.packetSeed + index * 3 + copyIndex * 17) % 3;
+            Math.abs(side.frame.packetSeed + index * 3 + copyIndex * 17) % 3;
         const delay = Math.min(
           0.22,
           Math.max(0, packetOrder) * 0.025 + copyIndex * 0.065

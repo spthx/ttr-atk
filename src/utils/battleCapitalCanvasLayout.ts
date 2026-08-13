@@ -21,6 +21,24 @@ export const resolveBattleCapitalEffectiveDepth = (depth: number) => {
   );
 };
 
+/** Physical overflow layers carried by a structural rack depth. */
+export const resolveBattleCapitalOverflowLayers = (depth: number) =>
+  resolveBattleCapitalEffectiveDepth(depth) *
+  BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;
+
+/**
+ * Inverse of resolveBattleCapitalOverflowLayers. Presentation timelines use
+ * this to preserve the visual mass already banked below the field and add a
+ * proportional amount on the next large commitment.
+ */
+export const resolveBattleCapitalDepthForOverflowLayers = (layers: number) => {
+  const effectiveDepth = Math.max(0, Number.isFinite(layers) ? layers : 0) /
+    BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;
+  return effectiveDepth > 3
+    ? effectiveDepth + BATTLE_CAPITAL_CONTINUOUS_DEPTH_DEADBAND
+    : effectiveDepth;
+};
+
 export interface BattleCapitalHoardVerticalGeometry {
   tier: number;
   pileGlowCenterY: number;
@@ -222,13 +240,15 @@ export const resolveBattleCapitalStackGeometry = (
   const legacyRackScroll =
     rackStops[lowerStop] +
     (rackStops[upperStop] - rackStops[lowerStop]) * stopProgress;
-  const overflowLayerStep = landscape
-    ? clamp(safeHeight * 0.011, 1.8, 2.6)
-    : clamp(safeHeight * 0.013, 4.4, 6.2);
+  // A second treasury-sized commitment must read as one violent bank drop,
+  // not as eight tiny layer corrections. The visual-mass timeline can add
+  // several depth units at once; bound the screen-space stride per unit so a
+  // phone shows the plate moving before it continues behind the account lane.
+  const continuousDepthStride = landscape
+    ? clamp(safeHeight * 0.027, 3.5, 7.2)
+    : clamp(safeHeight * 0.029, 8, 12);
   const continuousRackScroll =
-    Math.max(0, effectiveRackDepth - 3) *
-    BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER *
-    overflowLayerStep;
+    Math.max(0, effectiveRackDepth - 3) * continuousDepthStride;
   const legacyColumnExtent = Math.max(
     0,
     (Number.isFinite(tallestColumnExtent) ? tallestColumnExtent : 0) -

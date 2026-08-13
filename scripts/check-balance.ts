@@ -35,12 +35,15 @@ import {
 import {
   BATTLE_CINEMATIC_TIMING,
   BATTLE_GAUGE_VISUAL_COMMIT_MS,
+  BATTLE_CAPITAL_COLUMN_COUNT,
   BATTLE_CAPITAL_VISUAL_STAGE_COUNT,
   MAX_BATTLE_CAPITAL_COLUMN_LAYERS,
   BATTLE_STATE_UPDATE_INTERVAL_MS,
   BATTLE_HIT_STOP_TIMING,
   BATTLE_STATUS_MESSAGE_DURATION_MS,
   CAPITAL_OVERFLOW_RAPID_BEAT_MS,
+  CAPITAL_MASS_CURTAIN_BEATS,
+  CAPITAL_MASS_CURTAIN_BUNDLE_LAYERS,
   CAPITAL_OVERFLOW_RESTACK_BEATS,
   CAPITAL_STACK_BEAT_MS,
   advanceEnemySupportTelegraphClock,
@@ -96,7 +99,10 @@ import {
   shouldInertBattleFooter,
   TERMINAL_CINEMATIC_TIMING,
 } from '../src/utils/battlePresentation';
-import { BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS } from '../src/utils/battleCapitalCanvasLayout';
+import {
+  BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS,
+  resolveBattleCapitalOverflowLayers,
+} from '../src/utils/battleCapitalCanvasLayout';
 import {
   isPendingBattleTargetAvailable,
   parsePendingBattleSession,
@@ -2148,25 +2154,26 @@ assert.deepEqual(
   multiTierOverflowTimeline.frames
     .filter((frame) => frame.rackShift)
     .map((frame) => [frame.rackDepth, frame.stackDepth]),
-  [[2, 0]],
+  [[multiTierOverflowTimeline.frames.at(-1)?.rackDepth, 0]],
   'the single descent must target the final footing before any new tier is absorbed'
 );
 const multiTierActiveFrames = multiTierOverflowTimeline.frames.filter(
   (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
 );
+const multiTierFinalDepth = multiTierOverflowTimeline.frames.at(-1)?.rackDepth ?? 0;
 assert.ok(
   multiTierActiveFrames.length > 0 &&
     multiTierActiveFrames.every(
       (frame) =>
-        frame.rackDepth === 2 &&
-        (frame.stackDepth ?? 0) < 2 &&
+        frame.rackDepth === multiTierFinalDepth &&
+        (frame.stackDepth ?? 0) < multiTierFinalDepth &&
         frame.durationMs === CAPITAL_OVERFLOW_RAPID_BEAT_MS
     ),
   'all post-drop mass must use the final rack position and remain airborne until its rapid beat lands'
 );
 assert.equal(
   multiTierOverflowTimeline.frames.at(-1)?.stackDepth,
-  2,
+  multiTierFinalDepth,
   'only the final settled frame may absorb the complete multi-tier mass'
 );
 assert.ok(
@@ -2191,6 +2198,8 @@ for (const [previousCapital, nextCapital, previousTier, targetTier] of [
     seed: 45 + previousTier,
   });
   const shifts = timeline.frames.filter((frame) => frame.rackShift === true);
+  const previousDepth = timeline.frames[0].stackDepth;
+  const finalDepth = timeline.frames.at(-1)?.rackDepth;
   const firstPostShiftPacket = timeline.frames.find(
     (frame) =>
       frame.phase === 'pour' &&
@@ -2199,18 +2208,18 @@ for (const [previousCapital, nextCapital, previousTier, targetTier] of [
   );
   assert.deepEqual(
     shifts.map((frame) => [frame.rackDepth, frame.stackDepth]),
-    [[targetTier, previousTier]],
+    [[finalDepth, previousDepth]],
     'every real multi-tier transition must calculate one final rack destination up front'
   );
   assert.ok(
     shifts[0].activeColumnIndices.length === 0 &&
       shifts[0].presentedCapital === previousCapital &&
-      firstPostShiftPacket?.rackDepth === targetTier &&
-      firstPostShiftPacket.stackDepth === previousTier,
+      firstPostShiftPacket?.rackDepth === finalDepth &&
+      firstPostShiftPacket.stackDepth === previousDepth,
     'the total descent must contain no new coins and must finish before rapid stacking starts'
   );
   assert.equal(timeline.frames.at(-1)?.presentedCapital, nextCapital);
-  assert.equal(timeline.frames.at(-1)?.stackDepth, targetTier);
+  assert.equal(timeline.frames.at(-1)?.stackDepth, finalDepth);
 }
 const emptyToOverflowTimeline = buildCapitalStackTimeline({
   id: 'balance-empty-to-overflow',
@@ -2298,7 +2307,10 @@ const repeatedFundingTimeline = buildCapitalStackTimeline({
   marketPrice: repeatedFundingMarketPrice,
   intensity: 'heavy',
   seed: 300,
+  previousRackDepth: repeatedFundingPreviousDepth,
 });
+const repeatedFundingFinalDepth =
+  repeatedFundingTimeline.frames.at(-1)?.stackDepth ?? 0;
 const repeatedFundingShift = repeatedFundingTimeline.frames.filter(
   (frame) => frame.rackShift === true
 );
@@ -2314,7 +2326,7 @@ assert.equal(
 );
 assert.deepEqual(
   [repeatedFundingShift[0].rackDepth, repeatedFundingShift[0].stackDepth],
-  [repeatedFundingTargetDepth, repeatedFundingPreviousDepth],
+  [repeatedFundingFinalDepth, repeatedFundingPreviousDepth],
   'the old 300M pile must descend intact before the next 300M is absorbed'
 );
 const repeatedFundingFirstPacket = repeatedFundingTimeline.frames.find(
@@ -2324,14 +2336,67 @@ assert.ok(
   repeatedFundingFirstPacket &&
     repeatedFundingFirstPacket.atMs >=
       repeatedFundingShift[0].atMs + repeatedFundingShift[0].durationMs &&
-    repeatedFundingFirstPacket.rackDepth === repeatedFundingTargetDepth &&
+    repeatedFundingFirstPacket.rackDepth === repeatedFundingFinalDepth &&
     repeatedFundingFirstPacket.stackDepth === repeatedFundingPreviousDepth,
   'rapid packets may begin only after the completed treasury reaches its new depth'
 );
 assert.equal(
   repeatedFundingTimeline.frames.at(-1)?.stackDepth,
-  repeatedFundingTargetDepth,
+  repeatedFundingFinalDepth,
   'the repeated event must retain its new physical mass after the preview ends'
+);
+const repeatedFundingCurtain = repeatedFundingTimeline.frames.filter(
+  (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+);
+assert.equal(repeatedFundingCurtain.length, CAPITAL_MASS_CURTAIN_BEATS);
+assert.ok(
+  repeatedFundingCurtain.every(
+    (frame) =>
+      frame.activeColumnIndices.length === BATTLE_CAPITAL_COLUMN_COUNT &&
+      frame.incomingBundleCopies === 3 &&
+      frame.incomingBundleLayers === CAPITAL_MASS_CURTAIN_BUNDLE_LAYERS
+  ),
+  'a treasury-sized second commitment must fall as repeated full-width nine-layer coin curtains'
+);
+const initialFundingTimeline = buildCapitalStackTimeline({
+  id: 'balance-initial-300m-overflow',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 0,
+  nextCapital: 300_000_000,
+  marketPrice: repeatedFundingMarketPrice,
+  intensity: 'heavy',
+  seed: 300,
+});
+const fallingMassProxy = (timeline: ReturnType<typeof buildCapitalStackTimeline>) =>
+  timeline.frames.reduce(
+    (total, frame) =>
+      total +
+      frame.activeColumnIndices.length *
+        frame.incomingBundleCopies *
+        (frame.incomingBundleLayers ?? 4),
+    0
+  );
+assert.ok(
+  fallingMassProxy(repeatedFundingTimeline) >=
+    fallingMassProxy(initialFundingTimeline) * 1.15,
+  'the second equal 300M must show at least as much falling mass as the first treasury, with an exaggerated margin'
+);
+const firstTreasuryLayers =
+  getBattleCapitalVisibleUnits(300_000_000, repeatedFundingMarketPrice) /
+    BATTLE_CAPITAL_COLUMN_COUNT +
+  resolveBattleCapitalOverflowLayers(repeatedFundingPreviousDepth);
+const doubledTreasuryLayers =
+  getBattleCapitalVisibleUnits(600_000_000, repeatedFundingMarketPrice) /
+    BATTLE_CAPITAL_COLUMN_COUNT +
+  resolveBattleCapitalOverflowLayers(repeatedFundingFinalDepth);
+assert.ok(
+  doubledTreasuryLayers >= firstTreasuryLayers * 1.95,
+  'doubling the committed capital must leave a completed wall that is visually almost twice as massive'
+);
+assert.ok(
+  repeatedFundingFinalDepth > repeatedFundingTargetDepth + 5,
+  'the visual bank must exaggerate repeated equal funding instead of returning to square-root compression'
 );
 const cruelOpeningFrames = getMechanicalCapitalColumnFrames(
   0,

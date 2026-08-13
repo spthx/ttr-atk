@@ -1126,6 +1126,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     useState(0);
   const [enemyCapitalRackFloorDepth, setEnemyCapitalRackFloorDepth] =
     useState(0);
+  const playerCapitalRackFloorDepthRef = useRef(0);
+  const enemyCapitalRackFloorDepthRef = useRef(0);
   const [terminalCapitalSnapshot, setTerminalCapitalSnapshot] =
     useState<CapitalCommitSnapshot | null>(null);
   const [impactStop, setImpactStop] = useState<ImpactStop | null>(null);
@@ -1747,6 +1749,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         marketPrice: targetProperty.marketPrice,
         intensity,
         seed: serial,
+        previousRackDepth:
+          side === 'player'
+            ? playerCapitalRackFloorDepthRef.current
+            : enemyCapitalRackFloorDepthRef.current,
       });
       const setPreviewStage =
         side === 'player'
@@ -1786,13 +1792,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         const overflowReloading = (frame.overflowPass ?? 0) > 0;
         if (isFinalFrame) {
           if (side === 'player') {
-            setPlayerCapitalRackFloorDepth((current) =>
-              Math.max(current, frame.rackDepth ?? overflowDepth)
+            const nextDepth = Math.max(
+              playerCapitalRackFloorDepthRef.current,
+              frame.rackDepth ?? overflowDepth
             );
+            playerCapitalRackFloorDepthRef.current = nextDepth;
+            setPlayerCapitalRackFloorDepth(nextDepth);
           } else {
-            setEnemyCapitalRackFloorDepth((current) =>
-              Math.max(current, frame.rackDepth ?? overflowDepth)
+            const nextDepth = Math.max(
+              enemyCapitalRackFloorDepthRef.current,
+              frame.rackDepth ?? overflowDepth
             );
+            enemyCapitalRackFloorDepthRef.current = nextDepth;
+            setEnemyCapitalRackFloorDepth(nextDepth);
           }
         }
         setPreviewStage({
@@ -3543,6 +3555,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       marketPrice: targetProperty.marketPrice,
       intensity: openingUsesCompactPresentation ? 'compact' : 'heavy',
       seed: capitalPilePreviewSerialRef.current.enemy,
+      previousRackDepth: enemyCapitalRackFloorDepthRef.current,
     });
     const openingFrame = openingTimeline.frames[0];
     setEnemyOpeningCapitalPending(initialEnemyCommitment > 0);
@@ -6731,6 +6744,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       marketPrice: targetProperty.marketPrice,
       intensity,
       seed: serial,
+      previousRackDepth: playerCapitalRackFloorDepthRef.current,
     });
     const firstTimelineFrame = timeline.frames[0];
     const finalTimelineFrame = timeline.frames.at(-1) ?? firstTimelineFrame;
@@ -6812,9 +6826,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const isFinalFrame = index === timeline.frames.length - 1;
       const overflowReloading = (frame.overflowPass ?? 0) > 0;
       if (isFinalFrame) {
-        setPlayerCapitalRackFloorDepth((current) =>
-          Math.max(current, frame.rackDepth ?? overflowDepth)
+        const nextDepth = Math.max(
+          playerCapitalRackFloorDepthRef.current,
+          frame.rackDepth ?? overflowDepth
         );
+        playerCapitalRackFloorDepthRef.current = nextDepth;
+        setPlayerCapitalRackFloorDepth(nextDepth);
       }
       setCapitalPreviewStage({
         ...frame,

@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import {
   BATTLE_CAPITAL_COLUMN_COUNT,
   CAPITAL_OVERFLOW_RAPID_BEAT_MS,
+  CAPITAL_MASS_CURTAIN_BEATS,
+  CAPITAL_MASS_CURTAIN_BUNDLE_LAYERS,
   CAPITAL_OVERFLOW_RESTACK_BEATS,
   CAPITAL_STACK_BEAT_MS,
   buildCapitalStackTimeline,
@@ -715,7 +717,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /resolveBattleCapitalEffectiveDepth\(side\.frame\.stackDepth\) \*[\s\S]{0,80}BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER[\s\S]{0,1600}resolveBattleCapitalStackGeometry\([\s\S]{0,140}side\.frame\.rackDepth/,
+  /resolveBattleCapitalOverflowLayers\([\s\S]{0,80}side\.frame\.stackDepth[\s\S]{0,1600}resolveBattleCapitalStackGeometry\([\s\S]{0,140}side\.frame\.rackDepth/,
   'completed-pile descent and newly absorbed coin layers must remain separate visual inputs'
 );
 assert.match(
@@ -1414,7 +1416,10 @@ const repeatedFundingTimeline = buildCapitalStackTimeline({
   marketPrice: repeatedFundingMarketPrice,
   intensity: 'heavy',
   seed: 300,
+  previousRackDepth: repeatedFundingDepths[0],
 });
+const repeatedFundingFinalDepth =
+  repeatedFundingTimeline.frames.at(-1)?.stackDepth ?? 0;
 const repeatedFundingShift = repeatedFundingTimeline.frames.filter(
   (frame) => frame.rackShift === true
 );
@@ -1423,8 +1428,8 @@ const repeatedFundingFirstPacket = repeatedFundingTimeline.frames.find(
 );
 assert.equal(repeatedFundingShift.length, 1);
 assert.ok(
-  repeatedFundingShift[0].activeColumnIndices.length === 0 &&
-    repeatedFundingShift[0].rackDepth === repeatedFundingDepths[1] &&
+    repeatedFundingShift[0].activeColumnIndices.length === 0 &&
+    repeatedFundingShift[0].rackDepth === repeatedFundingFinalDepth &&
     repeatedFundingShift[0].stackDepth === repeatedFundingDepths[0] &&
     repeatedFundingFirstPacket &&
     repeatedFundingFirstPacket.atMs >=
@@ -1439,7 +1444,20 @@ assert.ok(
 );
 assert.equal(
   repeatedFundingTimeline.frames.at(-1)?.stackDepth,
-  repeatedFundingDepths[1]
+  repeatedFundingFinalDepth
+);
+const repeatedFundingCurtain = repeatedFundingTimeline.frames.filter(
+  (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+);
+assert.equal(repeatedFundingCurtain.length, CAPITAL_MASS_CURTAIN_BEATS);
+assert.ok(
+  repeatedFundingCurtain.every(
+    (frame) =>
+      frame.activeColumnIndices.length === BATTLE_CAPITAL_COLUMN_COUNT &&
+      frame.incomingBundleCopies === 3 &&
+      frame.incomingBundleLayers === CAPITAL_MASS_CURTAIN_BUNDLE_LAYERS
+  ),
+  'the second treasury-sized commitment must cover the entire tray with repeated nine-layer curtains'
 );
 const repeatedPortraitBefore = resolveBattleCapitalStackGeometry(
   368,
@@ -1451,7 +1469,7 @@ const repeatedPortraitAfter = resolveBattleCapitalStackGeometry(
   368,
   false,
   190,
-  repeatedFundingDepths[1]
+  repeatedFundingFinalDepth
 );
 const repeatedLandscapeBefore = resolveBattleCapitalStackGeometry(
   129,
@@ -1463,11 +1481,11 @@ const repeatedLandscapeAfter = resolveBattleCapitalStackGeometry(
   129,
   true,
   80,
-  repeatedFundingDepths[1]
+  repeatedFundingFinalDepth
 );
 assert.ok(
-  repeatedPortraitAfter.baseY - repeatedPortraitBefore.baseY >= 36 &&
-    repeatedLandscapeAfter.baseY - repeatedLandscapeBefore.baseY >= 13,
+  repeatedPortraitAfter.baseY - repeatedPortraitBefore.baseY >= 72 &&
+    repeatedLandscapeAfter.baseY - repeatedLandscapeBefore.baseY >= 26,
   'the second 300M must visibly lower the rigid tray and old mountain in both portrait and landscape layouts'
 );
 assert.ok(
@@ -1985,7 +2003,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const overflowLayers =[\s\S]{0,160}resolveBattleCapitalEffectiveDepth\(side\.frame\.stackDepth\)[\s\S]{0,100}BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;[\s\S]*const stackGeometry = resolveBattleCapitalStackGeometry\([\s\S]{0,120}tallestColumnExtent,[\s\S]{0,60}side\.frame\.rackDepth[\s\S]{0,80}const \{ baseY, safeTopY \} = stackGeometry;/,
+  /const overflowLayers = resolveBattleCapitalOverflowLayers\([\s\S]{0,80}side\.frame\.stackDepth[\s\S]*const stackGeometry = resolveBattleCapitalStackGeometry\([\s\S]{0,120}tallestColumnExtent,[\s\S]{0,60}side\.frame\.rackDepth[\s\S]{0,80}const \{ baseY, safeTopY \} = stackGeometry;/,
   'the Canvas2D rack must lower the completed pile independently while incoming overflow bundles keep stacking'
 );
 assert.match(
@@ -2030,7 +2048,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /if \(isFinalFrame\) \{[\s\S]{0,180}setPlayerCapitalRackFloorDepth\(\(current\) =>[\s\S]{0,100}Math\.max\(current, frame\.rackDepth \?\? overflowDepth\)[\s\S]{0,220}setEnemyCapitalRackFloorDepth\(\(current\) =>[\s\S]{0,100}Math\.max\(current, frame\.rackDepth \?\? overflowDepth\)/,
+  /if \(isFinalFrame\) \{[\s\S]{0,260}playerCapitalRackFloorDepthRef\.current[\s\S]{0,120}frame\.rackDepth \?\? overflowDepth[\s\S]{0,180}setPlayerCapitalRackFloorDepth\(nextDepth\)[\s\S]{0,260}enemyCapitalRackFloorDepthRef\.current[\s\S]{0,120}frame\.rackDepth \?\? overflowDepth[\s\S]{0,180}setEnemyCapitalRackFloorDepth\(nextDepth\)/,
   'only the final actual continuous depth may be latched monotonically after its visible pile arrives'
 );
 assert.doesNotMatch(
