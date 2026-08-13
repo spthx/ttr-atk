@@ -187,6 +187,20 @@ assert.deepEqual(
   'Phantom victories must return to the high-end list for the next random opponent.'
 );
 
+assert.deepEqual(
+  getBattleResultCta({
+    battleMode: 'karma',
+    winner: 'player',
+  }),
+  {
+    destination: 'high-end-list',
+    intent: 'continue',
+    label: '攻略結果を確定して高難度一覧へ',
+    departureLabel: '離脱報告を確認して高難度一覧へ',
+  },
+  'Karma victories must return to the high-end list without entering normal progression.'
+);
+
 assert.equal(
   getBattleResultCta({
     battleMode: 'training',

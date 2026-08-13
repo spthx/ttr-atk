@@ -202,6 +202,7 @@ const isHighDifficultyBattleMode = (
   battleMode === 'savage' ||
   battleMode === 'ultimate' ||
   battleMode === 'cruel' ||
+  battleMode === 'karma' ||
   battleMode === 'phantom';
 
 const expectedSupport = (
@@ -576,6 +577,8 @@ export const calculateBattleReadiness = ({
       ? '絶は開幕・瀕死アビリティを決着前に必ず解決します。短時間防御は開始直後に空撃ちせず、ドリルや敵LB3の危険予告へ合わせてください。戦力が足りても、構えへの対応を誤ると敗北します。'
       : battleMode === 'phantom'
         ? '幻は抽選された零式層の開幕・瀕死・防御ギミックをそのまま使い、競合の基礎資金力と判断速度だけが絶相当です。戦力比が足りても、層の予告と対策を誤ると敗北します。'
+      : battleMode === 'karma'
+        ? '業は開幕50%から所有率55／70／85／95%へ進めた四つの一手を記帳し、修正仕訳の後に決め手から逆順でものまねします。同じ系統を重ねず、別系統の資金源を後半まで残してください。'
       : battleMode === 'savage'
         ? '零式は層ごとの開幕・瀕死・防御ギミックを含みます。戦力比だけでは勝利を保証しません。'
         : null;
@@ -587,6 +590,7 @@ export const calculateBattleReadiness = ({
     requestedMechanicSeverity ??
     (battleMode === 'ultimate' ||
       battleMode === 'cruel' ||
+      battleMode === 'karma' ||
       battleMode === 'phantom'
       ? 'severe'
       : battleMode === 'savage' || initialMechanicWarning

@@ -85,6 +85,17 @@ import {
   shouldTriggerCruelFirstPhase,
   shouldTriggerCruelSecondPhase,
 } from '../src/utils/cruelBattle';
+import {
+  buildKarmaCounterQueue,
+  buildKarmaProperty,
+  createKarmaBattleState,
+  getKarmaCounterPlan,
+  recordKarmaAction,
+  resolveKarmaCounterOwnership,
+  resolveNextKarmaCounter,
+  shouldHoldKarmaVictory,
+  skipKarmaCorrection,
+} from '../src/utils/karmaBattle';
 import type { PlayerBattleAction } from '../src/utils/enemyAi';
 import type { Property } from '../src/types';
 import { ALLIANCE_SUPPORT_MARKET_RATIO } from '../src/utils/alliance';
@@ -4296,12 +4307,168 @@ assert.deepEqual(cruelCriticalPhaseProbes.secondAlmostPrepared, {
   signatureRequired: 750_000_000,
 }, 'a failed second assessment deterministically loses after its presentation');
 
+// Karma is deliberately kept outside the historical 500-run sample. These
+// probes lock the authored ledger contract without sampling a second combat AI.
+const karmaSimulationTarget = buildKarmaProperty(false, '決定論監査商会');
+const karmaEnemyBudget = calculateEnemyBudget({
+  targetProperty: karmaSimulationTarget,
+  industryInfluence: NO_INFLUENCE,
+  regionalInfluence: NO_INFLUENCE,
+  isTutorial: false,
+  isKarma: true,
+  isCityBoss: false,
+});
+const karmaOpeningCommitment = Math.round(
+  karmaEnemyBudget * ENEMY_INITIAL_COMMITMENT_RATIO
+);
+const karmaEscrow = Math.round(karmaEnemyBudget * 0.24);
+const karmaOpeningReserve = Math.max(
+  0,
+  karmaEnemyBudget - karmaOpeningCommitment - karmaEscrow
+);
+assert.equal(
+  karmaEscrow,
+  Math.round(karmaEnemyBudget * 0.24),
+  'Karma removes exactly 24% of the enemy budget into the four-copy escrow'
+);
+assert.equal(
+  karmaOpeningCommitment,
+  Math.round(karmaEnemyBudget * ENEMY_INITIAL_COMMITMENT_RATIO),
+  'Karma retains the ordinary opening 25% enemy capital pile'
+);
+assert.equal(
+  karmaOpeningCommitment + karmaEscrow + karmaOpeningReserve,
+  karmaEnemyBudget,
+  'the ordinary reserve, opening pile, and imitation escrow reconcile exactly'
+);
+
+const karmaAction = (
+  serial: number,
+  kind: 'direct' | 'network' | 'synergy' | 'alliance' | 'limit_break' | 'ability'
+) => ({
+  serial,
+  kind,
+  strengthBand: serial % 2 === 0 ? ('medium' as const) : ('large' as const),
+  ownershipAfter: 100,
+});
+
+const onePageOnlyKarma = recordKarmaAction(
+  createKarmaBattleState(),
+  karmaAction(1, 'direct')
+);
+assert.deepEqual(
+  onePageOnlyKarma.entries.map((entry) => [entry.page, entry.threshold]),
+  [[1, 55]],
+  'one action crossing every threshold writes only the first ledger page'
+);
+
+let fourPageKarma = onePageOnlyKarma;
+for (const [serial, kind] of [
+  [2, 'network'],
+  [3, 'synergy'],
+  [4, 'alliance'],
+] as const) {
+  fourPageKarma = recordKarmaAction(fourPageKarma, karmaAction(serial, kind));
+}
+assert.equal(fourPageKarma.phase, 'correction_select');
+assert.deepEqual(
+  fourPageKarma.entries.map((entry) => entry.threshold),
+  [55, 70, 85, 95],
+  'Karma records four real advances above the ordinary 50% opening line'
+);
+assert.deepEqual(
+  buildKarmaCounterQueue(fourPageKarma.entries).map((entry) => entry.page),
+  [4, 3, 2, 1],
+  'the copied actions return in reverse ledger order'
+);
+
+const activeKarmaCounters = skipKarmaCorrection(fourPageKarma);
+const copiedLargeLimitBreak = getKarmaCounterPlan({
+  ...activeKarmaCounters.counterQueue[0],
+  kind: 'limit_break',
+  strengthBand: 'large',
+});
+assert.equal(copiedLargeLimitBreak.instantDefeat, false);
+assert.ok(copiedLargeLimitBreak.ownershipPush <= 24);
+assert.equal(
+  resolveKarmaCounterOwnership(6, copiedLargeLimitBreak),
+  1,
+  'even the strongest same-kind copy leaves a real response window instead of instant defeat'
+);
+
+const answerKarmaCounter = (
+  state: typeof activeKarmaCounters,
+  answerKind: (typeof activeKarmaCounters.entries)[number]['kind']
+) => {
+  const copied = state.counterQueue[0];
+  if (!copied || copied.kind === answerKind) return state;
+  return resolveNextKarmaCounter(state, copied.serial);
+};
+
+let variedKarmaCounters = activeKarmaCounters;
+while (variedKarmaCounters.counterQueue.length > 0) {
+  const copied = variedKarmaCounters.counterQueue[0];
+  const differentKind = copied.kind === 'direct' ? 'network' : 'direct';
+  variedKarmaCounters = answerKarmaCounter(variedKarmaCounters, differentKind);
+}
+assert.equal(variedKarmaCounters.phase, 'resolved');
+assert.equal(
+  shouldHoldKarmaVictory(true, variedKarmaCounters),
+  false,
+  'four deliberately different answers can resolve every copied page and win'
+);
+
+let singleRouteKarma = createKarmaBattleState();
+for (let serial = 1; serial <= 4; serial += 1) {
+  singleRouteKarma = recordKarmaAction(
+    singleRouteKarma,
+    karmaAction(serial, 'direct')
+  );
+}
+singleRouteKarma = skipKarmaCorrection(singleRouteKarma);
+const repeatedDirectKarma = answerKarmaCounter(singleRouteKarma, 'direct');
+assert.equal(
+  repeatedDirectKarma.counterQueue.length,
+  4,
+  'a single repeated route leaves its first copied page active'
+);
+assert.equal(
+  shouldHoldKarmaVictory(true, repeatedDirectKarma),
+  true,
+  'a single repeated route cannot claim victory while the mimic remains active'
+);
+
+assert.equal(totalBattles, 500, 'Karma probes never alter the fixed 500-battle sample');
+assert.equal(
+  ultimateReports.length,
+  ULTIMATE_ENEMY_AUTO_PATTERNS.length * 2 + 1,
+  'Karma probes leave the authored Ultimate report set intact'
+);
+assert.equal(
+  cruelReports.length,
+  4,
+  'Karma probes leave the authored Cruel report set intact'
+);
+assert.equal(
+  phantomReports.length,
+  SAVAGE_RAID_DEFINITIONS.length,
+  'Karma probes leave the twelve-layer Phantom audit intact'
+);
+
 console.log(
   JSON.stringify(
     {
       additionalDeterministicProbes: {
         extremeReacquisition: extremeReacquisitionReports,
         cruelCriticalPhase: cruelCriticalPhaseProbes,
+        karmaLedger: {
+          enemyBudget: karmaEnemyBudget,
+          openingCommitment: karmaOpeningCommitment,
+          escrow: karmaEscrow,
+          openingReserve: karmaOpeningReserve,
+          entries: fourPageKarma.entries,
+          resolvedCounterSerials: variedKarmaCounters.resolvedCounterSerials,
+        },
       },
     },
     null,

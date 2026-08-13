@@ -167,6 +167,7 @@ export interface EnemySupportDifficultyContext {
   isSavage?: boolean;
   isUltimate?: boolean;
   isCruel?: boolean;
+  isKarma?: boolean;
 }
 
 export type BattleCashRecoveryWindType =
@@ -609,6 +610,7 @@ export const calculateBattleVictoryReward = (
     !isPlayerVictory ||
     mode === 'training' ||
     mode === 'phantom' ||
+    mode === 'karma' ||
     (mode !== 'normal' && alreadyCleared)
   ) {
     return 0;
@@ -1202,6 +1204,7 @@ interface EnemyBudgetContext {
   isSavage?: boolean;
   isUltimate?: boolean;
   isCruel?: boolean;
+  isKarma?: boolean;
   isCityBoss?: boolean;
 }
 
@@ -1258,13 +1261,18 @@ export const getBossAbilityTier = ({
   isSavage = false,
   isUltimate = false,
   isCruel = false,
+  isKarma = false,
 }: {
   targetProperty: Property;
   isCityBoss: boolean;
   isSavage?: boolean;
   isUltimate?: boolean;
   isCruel?: boolean;
+  isKarma?: boolean;
 }): BossAbilityTier => {
+  // The four-page imitation ledger is Karma's authored mechanic. Do not stack
+  // a legacy Cover/Invincible script on top of it.
+  if (isKarma) return 'none';
   if (isUltimate) return 'invincible';
   if (isCruel) return 'enhanced_cover';
   if (isSavage) {
@@ -1459,7 +1467,9 @@ export const getEnemySupportSkillProfile = ({
   isSavage = false,
   isUltimate = false,
   isCruel = false,
+  isKarma = false,
 }: EnemySupportProfileContext): readonly EnemySupportSkillId[] => {
+  if (isKarma) return NO_ENEMY_SUPPORT_SKILLS;
   if (isCruel) return CRUEL_ENEMY_SUPPORT_SKILLS;
   if (isUltimate) return ALL_ENEMY_SUPPORT_SKILLS;
   if (isSavage) {
@@ -1504,10 +1514,12 @@ export const getEnemySupportAutoProfile = ({
   isSavage = false,
   isUltimate = false,
   isCruel = false,
+  isKarma = false,
   ultimatePatternIndex = 0,
 }: EnemySupportProfileContext & {
   ultimatePatternIndex?: number;
 }): EnemySupportAutoProfile => {
+  if (isKarma) return { opening: null, critical: null };
   if (isCruel) {
     return { opening: 'divination', critical: null };
   }
@@ -1563,8 +1575,10 @@ export const getEnemyDifficultyLevel = (
   isSavage = false,
   isUltimate = false,
   isCityBoss = false,
-  isCruel = false
+  isCruel = false,
+  isKarma = false
 ) => {
+  if (isKarma) return 6;
   if (isCruel) return 6;
   if (isUltimate) return 6;
   if (isSavage) {
@@ -1621,6 +1635,7 @@ export const calculateEnemyBudget = ({
   isSavage = false,
   isUltimate = false,
   isCruel = false,
+  isKarma = false,
   isCityBoss = false,
 }: EnemyBudgetContext) => {
   const price = targetProperty.marketPrice;
@@ -1645,12 +1660,13 @@ export const calculateEnemyBudget = ({
         targetProperty.isCartelHQ &&
         !isSavage &&
         !isUltimate &&
-        !isCruel
+        !isCruel &&
+        !isKarma
           ? 0.3
           : 0
       )) *
     (1 - defenseDiscount);
-  const balanceFactor = isSavage || isUltimate || isCruel
+  const balanceFactor = isSavage || isUltimate || isCruel || isKarma
     ? ENEMY_BALANCE_FACTOR.advanced
     : isTutorial && !isExtreme
     ? ENEMY_BALANCE_FACTOR.tutorial
@@ -1672,7 +1688,7 @@ export const calculateEnemyBudget = ({
     targetProperty.community
   );
   const authoredNormalBudgetMultiplier =
-    !isSavage && !isUltimate && !isCruel
+    !isSavage && !isUltimate && !isCruel && !isKarma
       ? getCampaignEncounterDefinition(targetProperty.id)
           ?.enemyBudgetMultiplier ?? 1
       : 1;
@@ -1690,7 +1706,7 @@ export const calculateEnemyBudget = ({
   const calculatedBudget = Math.round(
     baseBudget * balanceFactor * cityBossBudgetMultiplier *
     authoredNormalBudgetMultiplier *
-    (isUltimate || isCruel
+    (isUltimate || isCruel || isKarma
       ? ULTIMATE_ENEMY_BUDGET_MULTIPLIER
       : isSavage
         ? SAVAGE_ENEMY_BUDGET_MULTIPLIER *
@@ -1701,7 +1717,7 @@ export const calculateEnemyBudget = ({
             targetProperty,
             isTutorial && !isExtreme
           )) *
-      (isSavage || isUltimate || isCruel
+      (isSavage || isUltimate || isCruel || isKarma
         ? 1
         : getExtremeReacquisitionBudgetMultiplier(targetProperty))
   );

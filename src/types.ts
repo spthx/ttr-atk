@@ -29,6 +29,7 @@ export type BattleMode =
   | 'ultimate'
   | 'cruel'
   | 'phantom'
+  | 'karma'
   | 'training';
 
 export interface MarketCondition {

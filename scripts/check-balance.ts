@@ -167,6 +167,27 @@ import {
   pickRandomPhantomRaid,
 } from '../src/utils/phantomBattle';
 import {
+  buildKarmaCounterQueue,
+  buildKarmaProperty,
+  classifyKarmaAction,
+  createKarmaBattleState,
+  getKarmaCounterEffectiveness,
+  getKarmaCounterPlan,
+  getKarmaStrengthBand,
+  KARMA_LEDGER_THRESHOLDS,
+  KARMA_RAID_DEFINITION,
+  recordKarmaAction,
+  reduceKarmaBattle,
+  resolveKarmaCounterOwnership,
+  resolveNextKarmaCounter,
+  selectKarmaCorrectionPage,
+  shouldHoldKarmaVictory,
+  skipKarmaCorrection,
+  type KarmaActionKind,
+  type KarmaBattleState,
+  type KarmaEntry,
+} from '../src/utils/karmaBattle';
+import {
   BLACKEST_NIGHT_BALANCE,
   BATTLE_CONTENT_MANIFEST,
   BATTLE_CONTENT_SCHEMA_VERSION,
@@ -1038,6 +1059,342 @@ assert.deepEqual(
   new Set(SAVAGE_RAID_DEFINITIONS.map((raid) => raid.id)),
   'deterministic bucket samples cover all twelve Phantom candidates exactly once'
 );
+
+const karmaProperty = buildKarmaProperty(false, '検証商会');
+assert.equal(karmaProperty.id, KARMA_RAID_DEFINITION.id);
+assert.equal(karmaProperty.name, '業商戦：値札のない一株');
+assert.equal(
+  KARMA_RAID_DEFINITION.subtitle,
+  '業-その商い、そっくりお返しします'
+);
+assert.equal(karmaProperty.marketPrice, 7_500_000_000);
+assert.equal(karmaProperty.annualRevenue, 0);
+assert.equal(karmaProperty.countsTowardCityConquest, false);
+assert.equal(karmaProperty.owner, 'independent');
+assert.equal(
+  buildKarmaProperty(true, '検証商会').ownerName,
+  '検証商会・業踏破',
+  'the Karma property records an honor clear without entering normal commerce'
+);
+assert.deepEqual(KARMA_LEDGER_THRESHOLDS, [55, 70, 85, 95]);
+assert.equal(getKarmaStrengthBand(49_999, 1_000_000), 'small');
+assert.equal(getKarmaStrengthBand(50_000, 1_000_000), 'medium');
+assert.equal(getKarmaStrengthBand(149_999, 1_000_000), 'medium');
+assert.equal(getKarmaStrengthBand(150_000, 1_000_000), 'large');
+assert.equal(getKarmaStrengthBand(Number.NaN, 0), 'small');
+assert.deepEqual(
+  classifyKarmaAction({
+    serial: 4.9,
+    kind: 'ability',
+    committedCapital: 200_000,
+    marketPrice: 1_000_000,
+    ownershipAfter: 120,
+    abilityClass: 'defense',
+  }),
+  {
+    serial: 4,
+    kind: 'ability',
+    strengthBand: 'large',
+    abilityClass: 'defense',
+    ownershipAfter: 100,
+  },
+  'Karma action classification stores only a bounded qualitative signature'
+);
+
+const karmaAction = (
+  serial: number,
+  ownershipAfter: number,
+  kind: KarmaActionKind = 'direct',
+  strengthBand: 'small' | 'medium' | 'large' = 'medium'
+) => ({ serial, ownershipAfter, kind, strengthBand });
+
+const emptyKarmaState = createKarmaBattleState();
+assert.deepEqual(emptyKarmaState, {
+  phase: 'recording',
+  entries: [],
+  counterQueue: [],
+  resolvedCounterSerials: [],
+  seenActionSerials: [],
+  correctionPage: null,
+  correctionUsed: false,
+});
+assert.equal(shouldHoldKarmaVictory(false, emptyKarmaState), false);
+assert.equal(shouldHoldKarmaVictory(true, emptyKarmaState), true);
+
+const belowFirstThreshold = recordKarmaAction(
+  emptyKarmaState,
+  karmaAction(1, 54.999, 'direct', 'small')
+);
+assert.equal(belowFirstThreshold.entries.length, 0);
+assert.deepEqual(belowFirstThreshold.seenActionSerials, [1]);
+const duplicatedActionAfterPassiveMovement = recordKarmaAction(
+  belowFirstThreshold,
+  karmaAction(1, 100, 'limit_break', 'large')
+);
+assert.strictEqual(
+  duplicatedActionAfterPassiveMovement,
+  belowFirstThreshold,
+  'one committed action serial cannot be re-recorded after passive ownership movement'
+);
+
+const firstKarmaPage = recordKarmaAction(
+  belowFirstThreshold,
+  karmaAction(2, 55, 'direct', 'small')
+);
+assert.deepEqual(firstKarmaPage.entries.map((entry) => entry.page), [1]);
+assert.equal(firstKarmaPage.entries[0].threshold, 55);
+const oneActionCrossingSeveralThresholds = recordKarmaAction(
+  firstKarmaPage,
+  karmaAction(3, 100, 'limit_break', 'large')
+);
+assert.deepEqual(
+  oneActionCrossingSeveralThresholds.entries.map((entry) => entry.page),
+  [1, 2],
+  'one large action fills at most one ledger page even when it crosses several thresholds'
+);
+assert.equal(oneActionCrossingSeveralThresholds.entries[1].threshold, 70);
+
+let karmaBoundaryState = createKarmaBattleState();
+const karmaBoundaryProbes = [
+  { below: 54.999, exact: 55 },
+  { below: 69.999, exact: 70 },
+  { below: 84.999, exact: 85 },
+  { below: 94.999, exact: 95 },
+] as const;
+karmaBoundaryProbes.forEach((probe, index) => {
+  const beforeCount = karmaBoundaryState.entries.length;
+  karmaBoundaryState = recordKarmaAction(
+    karmaBoundaryState,
+    karmaAction(100 + index * 2, probe.below)
+  );
+  assert.equal(
+    karmaBoundaryState.entries.length,
+    beforeCount,
+    `Karma ledger page ${index + 1} stays empty immediately below its threshold`
+  );
+  karmaBoundaryState = recordKarmaAction(
+    karmaBoundaryState,
+    karmaAction(101 + index * 2, probe.exact)
+  );
+  assert.equal(
+    karmaBoundaryState.entries.length,
+    beforeCount + 1,
+    `Karma ledger page ${index + 1} records exactly at its threshold`
+  );
+});
+assert.equal(karmaBoundaryState.phase, 'correction_select');
+
+const thirdKarmaPage = recordKarmaAction(
+  oneActionCrossingSeveralThresholds,
+  karmaAction(4, 95, 'network', 'medium')
+);
+const sealedKarmaLedger = recordKarmaAction(
+  thirdKarmaPage,
+  karmaAction(5, 95, 'synergy', 'large')
+);
+assert.equal(sealedKarmaLedger.phase, 'correction_select');
+assert.deepEqual(
+  sealedKarmaLedger.entries.map((entry) => [entry.page, entry.threshold]),
+  [[1, 55], [2, 70], [3, 85], [4, 95]]
+);
+assert.deepEqual(sealedKarmaLedger.counterQueue, []);
+assert.strictEqual(
+  recordKarmaAction(
+    sealedKarmaLedger,
+    karmaAction(6, 100, 'alliance', 'large')
+  ),
+  sealedKarmaLedger,
+  'the ledger cannot accept an unselected correction action'
+);
+
+const invalidCorrectionSelection = selectKarmaCorrectionPage(
+  emptyKarmaState,
+  1
+);
+assert.strictEqual(invalidCorrectionSelection, emptyKarmaState);
+const selectedKarmaCorrection = selectKarmaCorrectionPage(
+  sealedKarmaLedger,
+  2
+);
+assert.equal(selectedKarmaCorrection.phase, 'correction_action');
+assert.equal(selectedKarmaCorrection.correctionPage, 2);
+const correctedKarmaLedger = recordKarmaAction(
+  selectedKarmaCorrection,
+  {
+    ...karmaAction(6, 88, 'ability', 'small'),
+    abilityClass: 'defense',
+  }
+);
+assert.equal(correctedKarmaLedger.phase, 'countering');
+assert.equal(correctedKarmaLedger.correctionUsed, true);
+assert.deepEqual(
+  correctedKarmaLedger.entries.find((entry) => entry.page === 2),
+  {
+    serial: 6,
+    page: 2,
+    threshold: 70,
+    kind: 'ability',
+    strengthBand: 'small',
+    abilityClass: 'defense',
+  }
+);
+assert.deepEqual(
+  correctedKarmaLedger.counterQueue.map((entry) => entry.page),
+  [4, 3, 2, 1],
+  'the corrected ledger is counter-booked from the fourth page back to the first'
+);
+assert.deepEqual(
+  sealedKarmaLedger.entries.map((entry) => entry.serial),
+  [2, 3, 4, 5],
+  'correction never mutates the previously sealed ledger'
+);
+
+const skippedKarmaCorrection = skipKarmaCorrection(sealedKarmaLedger);
+assert.equal(skippedKarmaCorrection.phase, 'countering');
+assert.equal(skippedKarmaCorrection.correctionUsed, false);
+assert.deepEqual(
+  skippedKarmaCorrection.counterQueue,
+  buildKarmaCounterQueue(sealedKarmaLedger.entries)
+);
+assert.deepEqual(
+  skippedKarmaCorrection.counterQueue.map((entry) => entry.page),
+  [4, 3, 2, 1]
+);
+
+const representativeKarmaEntries: KarmaEntry[] = [
+  { serial: 10, page: 1, threshold: 55, kind: 'direct', strengthBand: 'small' },
+  { serial: 11, page: 2, threshold: 70, kind: 'network', strengthBand: 'medium' },
+  { serial: 12, page: 3, threshold: 85, kind: 'synergy', strengthBand: 'large' },
+  { serial: 13, page: 4, threshold: 95, kind: 'alliance', strengthBand: 'large' },
+  { serial: 14, page: 1, threshold: 55, kind: 'limit_break', strengthBand: 'large' },
+  ...(['offense', 'defense', 'tempo', 'survival'] as const).map(
+    (abilityClass, index): KarmaEntry => ({
+      serial: 20 + index,
+      page: 1,
+      threshold: 55,
+      kind: 'ability',
+      strengthBand: 'medium',
+      abilityClass,
+    })
+  ),
+];
+const karmaCounterPlans = representativeKarmaEntries.map(
+  getKarmaCounterPlan
+);
+assert.deepEqual(
+  karmaCounterPlans.map((plan) => plan.effect),
+  [
+    'direct_commitment',
+    'network_commitment',
+    'synergy_burst',
+    'alliance_guard',
+    'limit_break',
+    'ability_offense',
+    'ability_defense',
+    'ability_tempo',
+    'ability_survival',
+  ]
+);
+karmaCounterPlans.forEach((plan) => {
+  assert.equal(plan.instantDefeat, false);
+  assert.ok(plan.enemyCapitalMarketRatio <= 0.2);
+  assert.ok(plan.ownershipPush <= 24);
+  assert.equal(plan.telegraphMs, 6_000);
+  assert.equal(plan.counterHints.length, 2);
+  assert.equal(plan.perfectCounterKinds.length, 2);
+  assert.equal(new Set(plan.perfectCounterKinds).size, 2);
+  assert.equal(
+    plan.perfectCounterKinds.includes(plan.entry.kind),
+    false,
+    'a copied family can never cancel itself'
+  );
+  assert.equal(
+    getKarmaCounterEffectiveness(plan, plan.perfectCounterKinds[0]),
+    0,
+    'each copied page exposes two named families that cancel it'
+  );
+  const improvisedKind = (
+    ['direct', 'network', 'synergy', 'alliance', 'limit_break', 'ability'] as const
+  ).find(
+    (kind) =>
+      kind !== plan.entry.kind && !plan.perfectCounterKinds.includes(kind)
+  );
+  if (improvisedKind) {
+    assert.equal(
+      getKarmaCounterEffectiveness(plan, improvisedKind),
+      0.5,
+      'an unlisted but different family halves the finite copy'
+    );
+  }
+  assert.equal(
+    getKarmaCounterEffectiveness(plan, plan.entry.kind),
+    1,
+    'repeating the copied family accepts its full finite effect'
+  );
+  assert.equal(
+    getKarmaCounterEffectiveness(plan, null),
+    1,
+    'taking no action accepts its full finite effect'
+  );
+});
+const perfectKarmaPlan = getKarmaCounterPlan(representativeKarmaEntries[0]);
+assert.equal(
+  resolveKarmaCounterOwnership(0.4, perfectKarmaPlan, 0),
+  0.4,
+  'a perfect answer never heals or changes an already-critical ownership value'
+);
+assert.equal(
+  resolveKarmaCounterOwnership(10, perfectKarmaPlan, 0.5),
+  7.5,
+  'an improvised answer applies exactly half of a small five-point copy'
+);
+assert.equal(
+  resolveKarmaCounterOwnership(
+    3,
+    getKarmaCounterPlan(representativeKarmaEntries[4])
+  ),
+  1,
+  'a copied LIMIT BREAK leaves one ownership point for the promised response window'
+);
+assert.equal(
+  resolveKarmaCounterOwnership(
+    0,
+    getKarmaCounterPlan(representativeKarmaEntries[0])
+  ),
+  0,
+  'the safety floor never resurrects a battle that was already lost'
+);
+
+assert.strictEqual(
+  resolveNextKarmaCounter(
+    correctedKarmaLedger,
+    correctedKarmaLedger.counterQueue[1].serial
+  ),
+  correctedKarmaLedger,
+  'Karma counters cannot resolve out of reverse-ledger order'
+);
+let resolvingKarmaState: KarmaBattleState = correctedKarmaLedger;
+const expectedKarmaResolutionOrder = correctedKarmaLedger.counterQueue.map(
+  (entry) => entry.serial
+);
+for (const serial of expectedKarmaResolutionOrder) {
+  resolvingKarmaState = resolveNextKarmaCounter(
+    resolvingKarmaState,
+    serial
+  );
+}
+assert.equal(resolvingKarmaState.phase, 'resolved');
+assert.deepEqual(
+  resolvingKarmaState.resolvedCounterSerials,
+  expectedKarmaResolutionOrder
+);
+assert.equal(shouldHoldKarmaVictory(true, resolvingKarmaState), false);
+assert.deepEqual(
+  reduceKarmaBattle(resolvingKarmaState, { type: 'RESET' }),
+  createKarmaBattleState(),
+  'the reducer resets all attempt-local Karma records without a save migration'
+);
+
 const pendingBattleSession = parsePendingBattleSession(
   JSON.stringify({
     version: 1,
@@ -1083,6 +1440,34 @@ assert.equal(
   pendingPhantomBattleSession?.normalOrigin,
   undefined,
   'a restored Phantom attempt never acquires normal-market return context'
+);
+const pendingKarmaBattleSession = parsePendingBattleSession(
+  JSON.stringify({
+    version: 1,
+    mode: 'karma',
+    targetProperty: pendingBattleProperty,
+    startedAt: pendingBattleNow - 5_000,
+  }),
+  pendingBattleNow
+);
+assert.equal(pendingKarmaBattleSession?.mode, 'karma');
+assert.equal(
+  pendingKarmaBattleSession?.normalOrigin,
+  undefined,
+  'a restored Karma attempt never acquires normal-market return context'
+);
+assert.equal(
+  parsePendingBattleSession(
+    JSON.stringify({
+      version: 1,
+      mode: 'unknown_high_end_mode',
+      targetProperty: pendingBattleProperty,
+      startedAt: pendingBattleNow - 5_000,
+    }),
+    pendingBattleNow
+  ),
+  null,
+  'unknown pending battle modes remain rejected after Karma is added'
 );
 assert.equal(
   parsePendingBattleSession(
@@ -6000,6 +6385,11 @@ assert.equal(
   0,
   'saves made before Phantom default to a zero current streak'
 );
+assert.equal(
+  restoredLegacySave.karmaCleared,
+  false,
+  'saves made before Karma default to an uncleared optional honor record'
+);
 assert.equal(restoredLegacySave.savageEndingSeen, false);
 assert.equal(restoredLegacySave.ultimateCleared, false);
 assert.equal(restoredLegacySave.trueEndingSeen, false);
@@ -6101,6 +6491,25 @@ assert.equal(
   true,
   'the all-business integration milestone survives a save round trip'
 );
+assert.equal(
+  saveGame({
+    ...durableTestSave,
+    karmaCleared: true,
+  }),
+  true
+);
+assert.equal(
+  loadGameSave()?.karmaCleared,
+  true,
+  'the Karma honor clear survives a save round trip without attempt-ledger fields'
+);
+assert.equal(
+  Object.keys(JSON.parse(savedPayload) as Record<string, unknown>).some(
+    (key) => /karma.*(entry|ledger|queue|correction|streak)/i.test(key)
+  ),
+  false,
+  'Karma persists no action ledger, correction choice, queue or win streak'
+);
 failLegacyWrite = true;
 assert.equal(
   saveGame({ ...durableTestSave, totalFunds: 98_766 }),
@@ -6186,6 +6595,11 @@ assert.equal(
   0,
   'schema-v3 saves made before Phantom do not fabricate a streak'
 );
+assert.equal(
+  restoredUltimateSave?.karmaCleared,
+  false,
+  'schema-v3 Ultimate saves made before Karma do not fabricate its honor clear'
+);
 savedPayload = JSON.stringify({
   ...legacySchemaThreePayload,
   equippedSkillIds: ['skill_fast_horse', 'skill_era_wind'],
@@ -6208,9 +6622,11 @@ savedPayload = JSON.stringify({
   trueEndingSeen: true,
   cruelCleared: true,
   phantomWinStreak: 7.9,
+  karmaCleared: true,
 });
 const restoredCruelSave = loadGameSave();
 assert.equal(restoredCruelSave?.cruelCleared, true);
+assert.equal(restoredCruelSave?.karmaCleared, true);
 assert.equal(restoredCruelSave?.ultimateCleared, true);
 assert.equal(
   restoredCruelSave?.phantomWinStreak,
@@ -6231,6 +6647,15 @@ assert.equal(
   loadGameSave()?.phantomWinStreak,
   0,
   'invalid negative Phantom records are safely reset instead of leaking into the UI'
+);
+savedPayload = JSON.stringify({
+  ...legacySchemaThreePayload,
+  karmaCleared: 'true',
+});
+assert.equal(
+  loadGameSave()?.karmaCleared,
+  false,
+  'malformed Karma clear values never unlock the optional duty record'
 );
 Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
 

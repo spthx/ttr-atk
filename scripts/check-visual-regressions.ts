@@ -73,6 +73,8 @@ const indexCss = readSource('src/index.css');
 const saveData = readSource('src/utils/saveData.ts');
 const battleSession = readSource('src/utils/battleSession.ts');
 const phantomBattle = readSource('src/utils/phantomBattle.ts');
+const karmaBattle = readSource('src/utils/karmaBattle.ts');
+const karmaBattleCss = readSource('src/karma-battle.css');
 const cartel = readSource('src/utils/cartel.ts');
 const audio = readSource('src/utils/audio.ts');
 const fankitAssets = readSource('src/data/fankitAssets.ts');
@@ -813,12 +815,12 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /className=\{`investment-execute-button[\s\S]{0,600}aria-label=\{`投資実行。[\s\S]{0,180}現在の手元資金\$\{formatCurrency\(cash\)\}`\}/,
+  /className=\{`investment-execute-button[\s\S]{0,600}aria-label=\{karmaDirectCorrectionBlocked[\s\S]{0,260}: `投資実行。[\s\S]{0,180}現在の手元資金\$\{formatCurrency\(cash\)\}`\}/,
   'the investment execute button must announce both the selected investment and current cash'
 );
 assert.match(
   battleModal,
-  /<small>\{!maxAffordableConfig[\s\S]{0,180}`手元\$\{formatCurrency\(cash\)\.replace\(' ギル', ''\)\}｜資金不足`[\s\S]{0,120}: `投入\$\{formatCurrency\(selectedCost\)\.replace\(' ギル', ''\)\}｜手元\$\{formatCurrency\(cash\)\.replace\(' ギル', ''\)\}`\}<\/small>/,
+  /<small>\{karmaDirectCorrectionBlocked[\s\S]{0,180}: !maxAffordableConfig[\s\S]{0,180}`手元\$\{formatCurrency\(cash\)\.replace\(' ギル', ''\)\}｜資金不足`[\s\S]{0,120}: `投入\$\{formatCurrency\(selectedCost\)\.replace\(' ギル', ''\)\}｜手元\$\{formatCurrency\(cash\)\.replace\(' ギル', ''\)\}`\}<\/small>/,
   'the visible investment execute button must carry the selected amount and uninvested cash even while recharging'
 );
 assert.match(
@@ -828,37 +830,37 @@ assert.match(
 );
 assert.match(
   limitBreakAction,
-  /^\{limitBreakCapacityTier > 0 && \([\s\S]*aria-label=\{actionsLocked[\s\S]{0,180}演出中のため発動できません[\s\S]{0,180}: limitedLimitBreakSpent[\s\S]{0,180}使用済み[\s\S]{0,240}発動可能/,
+  /^\{limitBreakCapacityTier > 0 && \([\s\S]*aria-label=\{karmaLimitBreakCorrectionBlocked[\s\S]{0,260}: actionsLocked[\s\S]{0,180}演出中のため発動できません[\s\S]{0,180}: limitedLimitBreakSpent[\s\S]{0,180}使用済み[\s\S]{0,240}発動可能/,
   'LIMIT BREAK must stay visible and announce the cut-in lock before spent or available state'
 );
 assert.match(
   limitBreakAction,
-  /<b>\{actionsLocked \? 'LB 演出中' : limitedLimitBreakSpent[\s\S]{0,120}<small>\{actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent[\s\S]*<em>\{actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent/,
+  /<b>\{actionsLocked \? 'LB 演出中' : limitedLimitBreakSpent[\s\S]{0,140}<small>\{karmaLimitBreakCorrectionBlocked[\s\S]{0,180}: actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent[\s\S]*<em>\{karmaLimitBreakCorrectionBlocked[\s\S]{0,160}: actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent/,
   'the visible LIMIT BREAK title, detail and badge must all prioritize the cut-in lock'
 );
 assert.match(
   synergyAction,
-  /^\{selectedBattleSynergy && \([\s\S]*disabled=\{[\s\S]{0,180}actionsLocked[\s\S]{0,180}aria-label=\{`\$\{selectedBattleSynergy\.name\}（SYNERGY）[\s\S]{0,240}\$\{actionsLocked \? '演出中のため発動できません'/,
+  /^\{selectedBattleSynergy && \([\s\S]*disabled=\{[\s\S]{0,220}actionsLocked[\s\S]{0,220}aria-label=\{`\$\{selectedBattleSynergy\.name\}（SYNERGY）[\s\S]{0,360}\$\{karmaSynergyCorrectionBlocked[\s\S]{0,260}: actionsLocked \? '演出中のため発動できません'/,
   'SYNERGY must stay visible, disabled and labelled as presentation-locked during the cut-in'
 );
 assert.match(
   networkAction,
-  /^\{hasNetworkSupport && \([\s\S]*disabled=\{[\s\S]{0,140}actionsLocked[\s\S]{0,240}aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'/,
+  /^\{hasNetworkSupport && \([\s\S]*disabled=\{[\s\S]{0,140}actionsLocked[\s\S]{0,240}aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'[\s\S]{0,220}: karmaSupportCorrectionBlocked/,
   'network support must stay visible, disabled and labelled as presentation-locked during the cut-in'
 );
 assert.match(
   battleModal,
-  /aria-label=\{actionsLocked[\s\S]{0,160}演出中のため発動できません[\s\S]{0,180}: limitedLimitBreakSpent[\s\S]{0,180}: `LIMIT BREAK \$\{limitBreakTier > 0 \? `\$\{limitBreakTier\}発動可能`/,
+  /aria-label=\{karmaLimitBreakCorrectionBlocked[\s\S]{0,260}: actionsLocked[\s\S]{0,160}演出中のため発動できません[\s\S]{0,180}: limitedLimitBreakSpent[\s\S]{0,180}: `LIMIT BREAK \$\{limitBreakTier > 0 \? `\$\{limitBreakTier\}発動可能`/,
   'LIMIT BREAK accessibility text must announce the presentation lock before spent or available-state messages'
 );
 assert.match(
   battleModal,
-  /aria-label=\{`\$\{selectedBattleSynergy\.name\}（SYNERGY）[\s\S]{0,180}\$\{actionsLocked \? '演出中のため発動できません' : battleSynergyReady \? '選択中の事業連携を発動'/,
+  /aria-label=\{`\$\{selectedBattleSynergy\.name\}（SYNERGY）[\s\S]{0,360}\$\{karmaSynergyCorrectionBlocked[\s\S]{0,260}: actionsLocked \? '演出中のため発動できません' : battleSynergyReady \? '選択中の事業連携を発動'/,
   'SYNERGY accessibility text must announce the presentation lock before an available-state message'
 );
 assert.match(
   battleModal,
-  /aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'[\s\S]{0,160}: commandReady[\s\S]{0,180}'利用可能な支援へ即時要請可能'/,
+  /aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'[\s\S]{0,280}: karmaSupportCorrectionBlocked[\s\S]{0,280}: commandReady[\s\S]{0,220}'利用可能な支援へ即時要請可能'/,
   'network accessibility text must announce the presentation lock before an available-state message'
 );
 assert.match(
@@ -888,7 +890,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /disabled=\{!commandReady \|\| actionsLocked \|\| limitedNetworkSupportExhausted\}/,
+  /disabled=\{!commandReady \|\| actionsLocked \|\| limitedNetworkSupportExhausted \|\| karmaNetworkCorrectionBlocked\}/,
   'limited high-difficulty relationship companies must stop accepting requests after the visible budget is spent'
 );
 assert.match(
@@ -903,7 +905,7 @@ assert.doesNotMatch(
 );
 assert.match(
   battleModal,
-  /<em>\{actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent[\s\S]{0,120}\? '使用済み'[\s\S]{0,220}\? '発動可'/,
+  /<em>\{karmaLimitBreakCorrectionBlocked[\s\S]{0,160}: actionsLocked[\s\S]{0,120}: limitedLimitBreakSpent[\s\S]{0,120}\? '使用済み'[\s\S]{0,220}\? '発動可'/,
   'the Limit Break badge must prioritize the active presentation lock, then report a spent high-difficulty use'
 );
 assert.match(
@@ -913,7 +915,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /disabled=\{!commandReady \|\| limitBreakTier === 0 \|\| actionsLocked \|\| limitedLimitBreakSpent\}/,
+  /disabled=\{!commandReady \|\| limitBreakTier === 0 \|\| actionsLocked \|\| limitedLimitBreakSpent \|\| karmaLimitBreakCorrectionBlocked\}/,
   'a spent high-difficulty Limit Break must not become actionable again after recharging'
 );
 assert.match(
@@ -1434,7 +1436,7 @@ assert.match(
 );
 assert.match(
   synergyAction,
-  /disabled=\{[\s\S]*!battleSynergyReady[\s\S]*battleSynergyUsed[\s\S]*<em>\{actionsLocked[\s\S]{0,120}: battleSynergyUsed[\s\S]{0,80}\? '使用済み'/,
+  /disabled=\{[\s\S]*!battleSynergyReady[\s\S]*battleSynergyUsed[\s\S]*<em>\{karmaSynergyCorrectionBlocked[\s\S]{0,140}: actionsLocked[\s\S]{0,120}: battleSynergyUsed[\s\S]{0,80}\? '使用済み'/,
   'the SYNERGY action must disable every used synergy and report it whenever a cut-in is not the higher-priority state'
 );
 assert.match(
@@ -2051,7 +2053,7 @@ assert.doesNotMatch(
 );
 assert.match(
   battleModal,
-  /resolveForcedLiquidationContinuousVelocity\(\{[\s\S]*velocity: limitAdjustedVelocity,[\s\S]*recoveryRemaining: forcedLiquidationRecoveryRemainingRef\.current,[\s\S]*awaitingManualCounter:[\s\S]*forcedLiquidationAwaitingManualCounterRef\.current/,
+  /resolveKarmaPostImpactContinuousVelocity\([\s\S]{0,180}limitAdjustedVelocity,[\s\S]{0,180}karmaPostImpactResponsePendingRef\.current[\s\S]{0,220}resolveForcedLiquidationContinuousVelocity\(\{[\s\S]*velocity: postImpactAdjustedVelocity,[\s\S]*recoveryRemaining: forcedLiquidationRecoveryRemainingRef\.current,[\s\S]*awaitingManualCounter:[\s\S]*forcedLiquidationAwaitingManualCounterRef\.current/,
   'the live gauge loop must resolve both sides through the 強制清算 continuous-pressure gate'
 );
 assert.match(
@@ -2271,8 +2273,8 @@ assert.match(
 );
 assert.equal(
   (highEndRaidView.match(/<summary>攻略のヒント<\/summary>/g) ?? []).length,
-  2,
-  'Ultimate and Cruel must expose exactly two consistent strategy disclosures'
+  3,
+  'Ultimate, Cruel and Karma must expose one consistent collapsed strategy disclosure each'
 );
 assert.doesNotMatch(
   highEndRaidView,
@@ -2356,8 +2358,8 @@ assert.doesNotMatch(
 );
 assert.match(
   battleModal,
-  /const isHighEndRaid = isSavage \|\| isUltimate \|\| isCruel \|\| isPhantom;[\s\S]*const isProtectedBattle = isHighEndRaid \|\| isTraining/,
-  'Cruel and Phantom inherit the high-end protected briefing path'
+  /const isHighEndRaid = isSavage \|\| isUltimate \|\| isCruel \|\| isPhantom \|\| isKarma;[\s\S]*const isProtectedBattle = isHighEndRaid \|\| isTraining/,
+  'Cruel, Karma and Phantom inherit the high-end protected briefing path'
 );
 assert.match(
   saveData,
@@ -2431,8 +2433,8 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /isPhantom\?: boolean;[\s\S]*isPhantom = false[\s\S]*const usesSavageMechanics = isSavage \|\| isPhantom;[\s\S]*const usesUltimateBasePower = isUltimate \|\| isPhantom;[\s\S]*const isRecordOnlyBattle = isTraining \|\| isPhantom;[\s\S]*const isHighEndRaid = isSavage \|\| isUltimate \|\| isCruel \|\| isPhantom;/,
-  'Phantom is an explicit orthogonal battle mode, Savage-mechanics host and record-only settlement'
+  /isKarma\?: boolean;[\s\S]*isKarma = false[\s\S]*isPhantom = false[\s\S]*const usesSavageMechanics = isSavage \|\| isPhantom;[\s\S]*const usesUltimateBasePower = isUltimate \|\| isPhantom;[\s\S]*const isRecordOnlyBattle = isTraining \|\| isPhantom \|\| isKarma;[\s\S]*const isHighEndRaid = isSavage \|\| isUltimate \|\| isCruel \|\| isPhantom \|\| isKarma;/,
+  'Phantom and Karma must remain explicit orthogonal record-only modes without changing Phantom\'s Savage host'
 );
 assert.match(
   battleModal,
@@ -2502,5 +2504,258 @@ const assertCompactWebp = (path: string, maximumBytes: number) => {
 assertCompactWebp('src/assets/battle/battlefield-casino-wide.webp', 100_000);
 assertCompactWebp('src/assets/battle/battlefield-casino-mobile.webp', 100_000);
 assertCompactWebp('src/assets/battle/gil-chip-player.webp', 180_000);
+
+assert.match(
+  karmaBattle,
+  /KARMA_LEDGER_THRESHOLDS = \[55, 70, 85, 95\]/,
+  'Karma must record four actual advances after the fifty-percent opening line.'
+);
+assert.match(
+  karmaBattle,
+  /buildKarmaCounterQueue[\s\S]{0,220}right\.page - left\.page/,
+  'Karma must replay recorded actions from page four back to page one.'
+);
+assert.match(
+  karmaBattle,
+  /selectKarmaCorrectionPage[\s\S]{0,360}state\.phase !== 'correction_select'[\s\S]{0,360}phase: 'correction_action'/,
+  'all four Karma pages must create one explicit correction choice before mimicry begins.'
+);
+assert.match(
+  battleModal,
+  /const karmaCorrectionSelectActive =[\s\S]{0,160}phase === 'correction_select'[\s\S]{0,420}const actionsLocked =[\s\S]{0,640}karmaCorrectionSelectActive/,
+  'Karma correction selection must lock battle inputs.'
+);
+assert.match(
+  battleModal,
+  /const presentationPauseActive =[\s\S]{0,900}karmaCorrectionSelectActive[\s\S]{0,260}simulationPausedRef\.current = presentationPauseActive/,
+  'Karma correction selection must pause battle simulation.'
+);
+assert.match(
+  battleModal,
+  /const plan = getKarmaCounterPlan\(copiedEntry\);[\s\S]{0,300}karmaCounterResponseRef\.current = \{[\s\S]{0,120}entrySerial: copiedEntry\.serial,[\s\S]{0,120}kind,[\s\S]{0,120}label,[\s\S]{0,220}getKarmaCounterEffectiveness\(plan, kind\)/,
+  'Karma must reserve the player response against the current copy through its authored effectiveness table.'
+);
+assert.match(
+  karmaBattle,
+  /perfectCounterKinds: readonly \[KarmaActionKind, KarmaActionKind\];/,
+  'Karma counter plans must name two perfect counter families.'
+);
+assert.match(
+  karmaBattle,
+  /getKarmaCounterEffectiveness[\s\S]{0,600}plan\.perfectCounterKinds\.includes\(responseKind\)[\s\S]{0,220}return 0;[\s\S]{0,220}return 0\.5;[\s\S]{0,120}return 1;/,
+  'Karma counter effectiveness must expose two perfect answers and deterministic 0/50/100 outcomes.'
+);
+assert.match(
+  karmaBattle,
+  /telegraphMs:\s*6_000/,
+  'every Karma copied page must announce a full six-second counter window.'
+);
+assert.match(
+  battleModal,
+  /const karmaCounterSeconds =[\s\S]{0,300}activeKarmaCounter[\s\S]{0,220}karmaCounterClockSerialRef\.current !== activeKarmaCounter\.serial[\s\S]{0,180}activeKarmaCounterPlan\?\.telegraphMs \?\? 0[\s\S]{0,180}karmaCounterRemainingMs[\s\S]{0,520}const activeKarmaReservedResponse =[\s\S]{0,360}entrySerial === activeKarmaCounter\.serial/,
+  'the live command lane must retain the new-page six-second fallback, identify a reserved response, and otherwise show the 0/50/100 contract.'
+);
+assert.match(
+  battleModal,
+  /activeKarmaCounter[\s\S]{0,500}detail: activeKarmaReservedResponse[\s\S]{0,220}対抗予約：\$\{activeKarmaReservedResponse\.label\}｜通常効果も解決中[\s\S]{0,260}完全取消 \$\{activeKarmaCounterAnswer\}｜別系統50%・同系統／無行動100%/,
+  'the active copied page must show both its reserved response and the unreserved 0/50/100 answer contract.'
+);
+assert.match(
+  battleModal,
+  /window\.setInterval\(\(\) => \{[\s\S]{0,420}simulationPausedRef\.current[\s\S]{0,100}\) return;[\s\S]{0,320}karmaCounterRemainingMsRef\.current - BATTLE_STATE_UPDATE_INTERVAL_MS[\s\S]{0,360}next <= 0[\s\S]{0,160}resolveActiveKarmaCounter\(copiedEntry\.serial\)/,
+  'the six-second Karma window must advance on the pause-aware battle-state ticker and resolve at its deadline.'
+);
+assert.match(
+  battleModal,
+  /karmaCounterEvaluatedSerialsRef\.current\.has\(copiedEntry\.serial\)[\s\S]{0,240}karmaCounterEvaluatedSerialsRef\.current\.add\(copiedEntry\.serial\)[\s\S]{0,3400}resolveNextKarmaCounter\(state, copiedEntry\.serial\)/,
+  'each copied page must atomically claim its serial before applying its one finite result and advancing.'
+);
+assert.match(
+  karmaBattle,
+  /instantDefeat: false as const/,
+  'Karma counter plans must explicitly rule out instant death.'
+);
+assert.match(
+  karmaBattle,
+  /resolveKarmaCounterOwnership[\s\S]{0,420}effectiveness === 0[\s\S]{0,220}Math\.max\(\s*1,\s*ownership - Math\.max\(0, plan\.ownershipPush\) \* effectiveness\s*\)/,
+  'Karma copied counterpressure must preserve a perfect cancellation and leave at least one ownership point for a response.'
+);
+assert.match(
+  battleModal,
+  /const resolveKarmaPostImpactContinuousVelocity =[\s\S]{0,180}responsePending: boolean[\s\S]{0,120}responsePending \? 0 : velocity/,
+  'Karma post-impact response protection must have a pure deterministic continuous-velocity gate.'
+);
+assert.match(
+  battleModal,
+  /if \(escrowCommit > 0\) \{[\s\S]{0,140}updateKarmaPostImpactResponsePending\(true\);[\s\S]{0,120}simulationPausedRef\.current = true;[\s\S]{0,120}enemySupportCastBlockedRef\.current = true;[\s\S]{0,100}setGaugeSpeed\(0\);[\s\S]{0,100}setCommandProgress\(100\);[\s\S]{0,260}commitEnemyCapital\(escrowCommit\)/,
+  'every non-zero copied impact must synchronously stop simulation and enemy casting while exposing one ready manual response.'
+);
+assert.match(
+  battleModal,
+  /const presentationPauseActive =[\s\S]{0,1000}karmaPostImpactResponsePending[\s\S]{0,220}simulationPausedRef\.current = presentationPauseActive/,
+  'the durable Karma response gate must pause battle simulation and enemy support through the rendered state mirror.'
+);
+assert.match(
+  battleModal,
+  /const enemySupportCastBlocked =[\s\S]{0,900}karmaPostImpactResponsePending/,
+  'the durable Karma response gate must block enemy support casting through the rendered state mirror.'
+);
+const karmaConsumeCommandBlock = battleModal.slice(
+  battleModal.indexOf('const consumeCommand = () => {'),
+  battleModal.indexOf('const rejectKarmaCorrectionAction =')
+);
+assert.ok(
+  karmaConsumeCommandBlock.indexOf(
+    'if (karmaPostImpactResponsePendingRef.current)'
+  ) >= 0 &&
+    karmaConsumeCommandBlock.indexOf(
+      'updateKarmaPostImpactResponsePending(false)'
+    ) >
+      karmaConsumeCommandBlock.indexOf(
+        'if (karmaPostImpactResponsePendingRef.current)'
+      ) &&
+    karmaConsumeCommandBlock.indexOf('setCommandProgress(0)') >
+      karmaConsumeCommandBlock.indexOf(
+        'updateKarmaPostImpactResponsePending(false)'
+      ) &&
+    karmaConsumeCommandBlock.indexOf('return true') >
+      karmaConsumeCommandBlock.indexOf('setCommandProgress(0)'),
+  'only a successfully consumed manual command may release the post-impact response gate and restart simulation.'
+);
+assert.match(
+  battleModal,
+  /simulationPausedRef\.current \|\|[\s\S]{0,100}karmaPostImpactResponsePendingRef\.current[\s\S]{0,1200}const postImpactAdjustedVelocity =[\s\S]{0,220}resolveKarmaPostImpactContinuousVelocity\([\s\S]{0,160}karmaPostImpactResponsePendingRef\.current/,
+  'enemy AI progress, enemy resolution, and continuous gauge pressure must all consult the synchronous post-impact ref.'
+);
+assert.match(
+  battleModal,
+  /const getKarmaEscrowRemainingPages =[\s\S]{0,140}4 - state\.resolvedCounterSerials\.length[\s\S]*無銘口座 残\{karmaEscrowPagesRemaining\}\/4頁（競合予算\{karmaEscrowPagesRemaining \* 6\}%）/,
+  'the anonymous account must expose remaining copied pages and their exact six-percent-per-page rival budget.'
+);
+
+const assertKarmaCorrectionPreflight = (
+  startMarker: string,
+  endMarker: string,
+  kind: string,
+  firstMutation: string
+) => {
+  const start = battleModal.indexOf(startMarker);
+  const end = battleModal.indexOf(endMarker, start + startMarker.length);
+  assert.ok(start >= 0 && end > start, `${startMarker} must remain discoverable`);
+  const block = battleModal.slice(start, end);
+  const guard = block.indexOf(`rejectKarmaCorrectionAction('${kind}')`);
+  const mutation = block.indexOf(firstMutation);
+  assert.ok(
+    guard >= 0 && mutation > guard,
+    `${startMarker} must reject a same-kind correction before ${firstMutation}`
+  );
+};
+
+assertKarmaCorrectionPreflight(
+  'const investCompanyFunds = () => {',
+  'const canConfirmInvestment =',
+  'direct',
+  'consumeCommand()'
+);
+assertKarmaCorrectionPreflight(
+  'const demandFromProperty = (property: Property) => {',
+  'const demandFromAllies = () => {',
+  'network',
+  'consumeCommand()'
+);
+assertKarmaCorrectionPreflight(
+  'const demandFromAllies = () => {',
+  'const demandFromGroup = (',
+  'limit_break',
+  'consumeCommand()'
+);
+assertKarmaCorrectionPreflight(
+  'const demandFromGroup = (',
+  'const activateProgressionBattleSynergy =',
+  'synergy',
+  'consumeCommand()'
+);
+assertKarmaCorrectionPreflight(
+  'const activateProgressionBattleSynergy =',
+  'const requestAlliance = () => {',
+  'synergy',
+  'consumeCommand()'
+);
+assertKarmaCorrectionPreflight(
+  'const requestAlliance = () => {',
+  'const selectSkill =',
+  'alliance',
+  'consumeCommand()'
+);
+assertKarmaCorrectionPreflight(
+  'const useSkill = (',
+  '  useEffect(() => {',
+  'ability',
+  'consumeCommand()'
+);
+assert.match(
+  battleModal,
+  /const registerKarmaPlayerAction =[\s\S]{0,500}rejectKarmaCorrectionAction\(kind\)[\s\S]{0,100}const serial = \+\+karmaActionSerialRef\.current/,
+  'the shared Karma action hook must retain a final pre-serial correction guard for any future caller.'
+);
+assert.match(
+  battleModal,
+  /const primarySkillExecutionBlocked =[\s\S]{0,260}karmaAbilityCorrectionBlocked[\s\S]*const canConfirmInvestment =[\s\S]{0,220}karmaDirectCorrectionBlocked[\s\S]*disabled=\{!commandReady \|\| limitBreakTier === 0 \|\| actionsLocked \|\| limitedLimitBreakSpent \|\| karmaLimitBreakCorrectionBlocked\}[\s\S]*battleSynergyUsed \|\|[\s\S]{0,80}karmaSynergyCorrectionBlocked/,
+  'all immediately visible command buttons must disable their same-kind correction before a click can spend resources.'
+);
+assert.match(
+  battleModal,
+  /shouldHoldKarmaVictory\(isKarma, karmaBattleStateRef\.current\)[\s\S]{0,140}updateGauge\(-98, commitVisual\)/,
+  'Karma must hold a player victory at 99% until every copied page is broken.'
+);
+assert.match(
+  battleModal,
+  /const isRecordOnlyBattle = isTraining \|\| isPhantom \|\| isKarma;/,
+  'Karma must be included in the presenter-level record-only settlement guard.'
+);
+assert.match(
+  battleModal,
+  /brokerageFee: isRecordOnlyBattle \? 0 : brokerageFee[\s\S]{0,420}battleCashDelta: isRecordOnlyBattle \? 0 : -enemyDrainStolen/,
+  'record-only battles must emit neither brokerage fees nor cash loss before App-level settlement protection.'
+);
+assert.match(
+  app,
+  /if \(activeBattleMode === 'karma'\)[\s\S]{0,1800}karmaCleared: projectedKarmaCleared[\s\S]{0,1800}setKarmaBattleLimitBreakCharge\(limitBreakCharge\)[\s\S]{0,1200}return true/,
+  'Karma settlement must persist only its clear flag and restore the global LB state.'
+);
+const cruelCardIndex = highEndRaidView.indexOf('{cruelUnlocked && (');
+const karmaCardIndex = highEndRaidView.indexOf('{karmaUnlocked && (');
+const phantomCardIndex = highEndRaidView.indexOf('{phantomUnlocked && (');
+assert.ok(
+  cruelCardIndex >= 0 &&
+    karmaCardIndex > cruelCardIndex &&
+    phantomCardIndex > karmaCardIndex,
+  'the high-end card order must remain 酷 → 業 → 幻.'
+);
+assert.match(
+  highEndRaidView,
+  /KARMA TRADE DUTY \/ 酷商戦踏破後[\s\S]{0,1200}<details className="karma-raid-card__warning high-end-raid-hint">[\s\S]{0,160}<summary>攻略のヒント<\/summary>/,
+  'Karma must unlock after Cruel with its strategy text collapsed under 攻略のヒント.'
+);
+assert.match(
+  battleSession,
+  /'cruel',[\s\S]*'phantom',[\s\S]*'karma',[\s\S]*'training'/,
+  'an interrupted Karma attempt must remain recoverable as its own battle mode.'
+);
+assert.match(
+  liveBattlefield,
+  /data-capital-renderer="canvas2d"[\s\S]{0,2800}<BattleCapitalCanvas/,
+  'the existing Canvas2D coin field must remain mounted in the live battle field.'
+);
+assert.match(
+  battleModal,
+  /\{isKarma && \([\s\S]{0,180}className="karma-ledger-strip"/,
+  'the Karma ledger must be an additive overlay, not a replacement for coins or the gauge.'
+);
+assert.match(
+  karmaBattleCss,
+  /@media \(max-width: 430px\)[\s\S]{0,1200}\.karma-correction-dialog__pages[\s\S]{0,220}grid-template-columns:\s*1fr/,
+  'Karma correction choices must collapse to one readable column on a 402px phone.'
+);
 
 console.log('Visual regression checks passed.');

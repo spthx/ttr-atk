@@ -50,6 +50,8 @@ export interface GameSaveData {
   cruelCleared?: boolean;
   /** Current Phantom Trade win streak. No best score or encounter history is saved. */
   phantomWinStreak?: number;
+  /** Optional honor record for the post-Cruel Karma duty. Attempt ledgers are never saved. */
+  karmaCleared?: boolean;
   trueEndingSeen?: boolean;
   /** One manual battle-synergy slot. Missing/unknown values fall back in App. */
   selectedBattleSynergyId?: string | null;
@@ -247,6 +249,7 @@ export const loadGameSave = (): GameSaveData | null => {
       ultimateCleared: parsed.ultimateCleared === true,
       cruelCleared: parsed.cruelCleared === true,
       phantomWinStreak: normalizePhantomWinStreak(parsed.phantomWinStreak),
+      karmaCleared: parsed.karmaCleared === true,
       trueEndingSeen:
         parsed.ultimateCleared === true && parsed.trueEndingSeen === true,
       selectedBattleSynergyId: migratedSelectedBattleSynergyId,

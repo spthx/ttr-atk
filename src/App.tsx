@@ -128,6 +128,10 @@ import {
   normalizePhantomWinStreak,
   pickRandomPhantomRaid,
 } from './utils/phantomBattle';
+import {
+  buildKarmaProperty,
+  KARMA_RAID_DEFINITION,
+} from './utils/karmaBattle';
 
 export { PASSIVE_REVENUE_MULTIPLIER };
 
@@ -295,6 +299,8 @@ export default function App() {
   );
   const [phantomBattleLimitBreakCharge, setPhantomBattleLimitBreakCharge] =
     useState<number>(initialSave?.limitBreakCharge ?? 0);
+  const [karmaBattleLimitBreakCharge, setKarmaBattleLimitBreakCharge] =
+    useState<number>(initialSave?.limitBreakCharge ?? 0);
   const [properties, setProperties] = useState<Property[]>(() => restoreProperties(initialSave));
   const [conqueredCommunityIds, setConqueredCommunityIds] = useState<
     CommunityType[]
@@ -345,6 +351,8 @@ export default function App() {
     initialSave?.ultimateCleared === true && initialSavageComplete;
   const initialCruelCleared =
     initialSave?.cruelCleared === true && initialUltimateCleared;
+  const initialKarmaCleared =
+    initialSave?.karmaCleared === true && initialCruelCleared;
   const [savageClearedPropertyIds, setSavageClearedPropertyIds] =
     useState<string[]>(normalizedInitialSavageClears);
   const [normalEndingSeen, setNormalEndingSeen] = useState(initialSave?.normalEndingSeen === true);
@@ -353,6 +361,7 @@ export default function App() {
   );
   const [ultimateCleared, setUltimateCleared] = useState(initialUltimateCleared);
   const [cruelCleared, setCruelCleared] = useState(initialCruelCleared);
+  const [karmaCleared, setKarmaCleared] = useState(initialKarmaCleared);
   const [phantomWinStreak, setPhantomWinStreak] = useState(() =>
     initialCruelCleared
       ? normalizePhantomWinStreak(initialSave?.phantomWinStreak)
@@ -382,6 +391,7 @@ export default function App() {
     pendingBattleSession?.mode === 'savage' ||
       pendingBattleSession?.mode === 'ultimate' ||
       pendingBattleSession?.mode === 'cruel' ||
+      pendingBattleSession?.mode === 'karma' ||
       pendingBattleSession?.mode === 'phantom'
       ? 'savage'
       : pendingBattleSession?.mode === 'normal' &&
@@ -599,6 +609,11 @@ export default function App() {
   const cruelProperty = useMemo(
     () => buildCruelProperty(cruelCleared, companyName),
     [companyName, cruelCleared]
+  );
+  const karmaUnlocked = cruelCleared;
+  const karmaProperty = useMemo(
+    () => buildKarmaProperty(karmaCleared, companyName),
+    [companyName, karmaCleared]
   );
   const phantomUnlocked = cruelCleared;
   const phantomProperty = useMemo(
@@ -1116,6 +1131,7 @@ export default function App() {
       savageEndingSeen,
       ultimateCleared,
       cruelCleared,
+      karmaCleared,
       phantomWinStreak,
       trueEndingSeen,
       selectedBattleSynergyId,
@@ -1198,6 +1214,7 @@ export default function App() {
     trueEndingSeen,
     ultimateCleared,
     cruelCleared,
+    karmaCleared,
     phantomWinStreak,
   ]);
 
@@ -1290,6 +1307,22 @@ export default function App() {
     setActiveBattleProperty(property);
   };
 
+  const handleStartKarmaBuyout = (property: Property) => {
+    if (!karmaUnlocked || property.id !== KARMA_RAID_DEFINITION.id) return;
+    soundFx.playWarning();
+    setSkillsStoryReturn(null);
+    highEndBattlePlaceholderHeightRef.current =
+      highEndViewRef.current?.getBoundingClientRect().height ?? 0;
+    // Karma is a record-only duty. LB gained or spent in the imitation ledger
+    // is battle-local and discarded when the attempt closes.
+    setKarmaBattleLimitBreakCharge(limitBreakCharge);
+    persistGameState();
+    persistPendingBattleSession('karma', property);
+    setBattleTimeScale(0);
+    setActiveBattleMode('karma');
+    setActiveBattleProperty(property);
+  };
+
   const handleStartPhantomBuyout = (property: Property) => {
     if (!phantomUnlocked || property.id !== phantomRaidId) return;
     soundFx.playWarning();
@@ -1327,6 +1360,43 @@ export default function App() {
     ) {
       return false;
     }
+    if (activeBattleMode === 'karma') {
+      const projectedKarmaCleared = karmaCleared || winner === 'player';
+      const protectedTotalFunds = Math.max(
+        0,
+        totalFunds + deferredBattleIncomeRef.current
+      );
+      if (!persistGameState({
+        totalFunds: protectedTotalFunds,
+        properties,
+        alliance,
+        limitBreakCharge,
+        savageClearedPropertyIds,
+        ultimateCleared,
+        cruelCleared,
+        karmaCleared: projectedKarmaCleared,
+        phantomWinStreak,
+      })) {
+        return false;
+      }
+      clearPendingBattleSession();
+      deferredBattleIncomeRef.current = 0;
+      setTotalFunds(protectedTotalFunds);
+      setKarmaCleared(projectedKarmaCleared);
+      setKarmaBattleLimitBreakCharge(limitBreakCharge);
+      addGameLog(
+        winner === 'player'
+          ? `【業商戦踏破】${targetProperty.name}の四頁をすべて破りました。通常資金・所有権・人脈・LB・幻の連勝記録は変化しません。`
+          : `【業商戦ワイプ】${targetProperty.name}のものまねを崩し切れませんでした。通常資金・所有権・人脈・LB・幻の連勝記録は保護されています。`,
+        winner === 'player' ? 'success' : 'warning'
+      );
+      setSkillsStoryReturn(null);
+      setActiveTab('savage');
+      setActiveBattleProperty(null);
+      setActiveBattleMode('normal');
+      setBattleTimeScale(1);
+      return true;
+    }
     if (activeBattleMode === 'phantom') {
       const projectedPhantomWinStreak =
         winner === 'player'
@@ -1347,6 +1417,7 @@ export default function App() {
         savageClearedPropertyIds,
         ultimateCleared,
         cruelCleared,
+        karmaCleared,
         phantomWinStreak: projectedPhantomWinStreak,
       })) {
         return false;
@@ -1974,6 +2045,7 @@ export default function App() {
       mode === 'savage' ||
       mode === 'ultimate' ||
       mode === 'cruel' ||
+      mode === 'karma' ||
       mode === 'phantom';
     const usesSavageMechanics = mode === 'savage' || mode === 'phantom';
     const usesUltimateBasePower =
@@ -2012,6 +2084,7 @@ export default function App() {
           isSavage: mode === 'savage',
           isUltimate: usesUltimateBasePower,
           isCruel: mode === 'cruel',
+          isKarma: mode === 'karma',
           isCityBoss: isTargetCityBoss,
         });
     const enemyDifficultyLevel = getEnemyDifficultyLevel(
@@ -2020,7 +2093,8 @@ export default function App() {
       mode === 'savage',
       usesUltimateBasePower,
       isTargetCityBoss,
-      mode === 'cruel'
+      mode === 'cruel',
+      mode === 'karma'
     );
     const bossAbilityTier = getBossAbilityTier({
       targetProperty,
@@ -2028,6 +2102,7 @@ export default function App() {
       isSavage: usesSavageMechanics,
       isUltimate: mode === 'ultimate',
       isCruel: mode === 'cruel',
+      isKarma: mode === 'karma',
     });
     const enemySupportProfile = getEnemySupportSkillProfile({
       targetProperty,
@@ -2035,6 +2110,7 @@ export default function App() {
       isSavage: usesSavageMechanics,
       isUltimate: mode === 'ultimate',
       isCruel: mode === 'cruel',
+      isKarma: mode === 'karma',
     });
     const enemyAutoProfile = getEnemySupportAutoProfile({
       targetProperty,
@@ -2042,6 +2118,7 @@ export default function App() {
       isSavage: usesSavageMechanics,
       isUltimate: mode === 'ultimate',
       isCruel: mode === 'cruel',
+      isKarma: mode === 'karma',
     });
     const normalGuardLabel =
       bossAbilityTier === 'invincible'
@@ -2076,7 +2153,7 @@ export default function App() {
           ? 'severe' as const
           : 'warning' as const
         : undefined;
-    const brokerageFee = isTraining || mode === 'phantom'
+    const brokerageFee = isTraining || mode === 'phantom' || mode === 'karma'
       ? 0
       : Math.round(targetProperty.marketPrice * 0.03);
 
@@ -2215,6 +2292,7 @@ export default function App() {
           (activeBattleMode === 'savage' ||
             activeBattleMode === 'ultimate' ||
             activeBattleMode === 'cruel' ||
+            activeBattleMode === 'karma' ||
             activeBattleMode === 'phantom') ? (
             <div
               aria-hidden="true"
@@ -2241,6 +2319,9 @@ export default function App() {
                 cruelProperty={cruelProperty}
                 cruelUnlocked={cruelUnlocked}
                 cruelCleared={cruelCleared}
+                karmaProperty={karmaProperty}
+                karmaUnlocked={karmaUnlocked}
+                karmaCleared={karmaCleared}
                 phantomProperty={phantomProperty}
                 phantomUnlocked={phantomUnlocked}
                 phantomWinStreak={phantomWinStreak}
@@ -2248,6 +2329,7 @@ export default function App() {
                 onStartSavage={handleStartSavageBuyout}
                 onStartUltimate={handleStartUltimateBuyout}
                 onStartCruel={handleStartCruelBuyout}
+                onStartKarma={handleStartKarmaBuyout}
                 onStartPhantom={handleStartPhantomBuyout}
                 onReplayEnding={() => {
                   setEndingNotice('true');
@@ -2559,8 +2641,10 @@ export default function App() {
                 ? getSavageRaidDefinition(activeBattleProperty.id)?.coalitionName
               : activeBattleMode === 'ultimate'
                 ? ULTIMATE_RAID_DEFINITION.coalitionName
-                : activeBattleMode === 'cruel'
+              : activeBattleMode === 'cruel'
                   ? CRUEL_RAID_DEFINITION.coalitionName
+                : activeBattleMode === 'karma'
+                  ? KARMA_RAID_DEFINITION.coalitionName
                 : activeBattleMode === 'training'
                   ? '商戦訓練所'
                   : undefined
@@ -2574,6 +2658,8 @@ export default function App() {
                 ? `全${ULTIMATE_RAID_DEFINITION.communities.length}地域`
                 : activeBattleMode === 'cruel'
                   ? '絶商戦踏破後・単独記録戦'
+                : activeBattleMode === 'karma'
+                  ? '酷商戦踏破後・値札のない記録戦'
                 : activeBattleMode === 'training'
                   ? 'グリダニア訓練区画'
                   : undefined
@@ -2582,11 +2668,15 @@ export default function App() {
           limitBreakCharge={
             activeBattleMode === 'phantom'
               ? phantomBattleLimitBreakCharge
+              : activeBattleMode === 'karma'
+                ? karmaBattleLimitBreakCharge
               : limitBreakCharge
           }
           onLimitBreakChargeChange={
             activeBattleMode === 'phantom'
               ? setPhantomBattleLimitBreakCharge
+              : activeBattleMode === 'karma'
+                ? setKarmaBattleLimitBreakCharge
               : setLimitBreakCharge
           }
           onTimeScaleChange={setBattleTimeScale}
@@ -2617,6 +2707,7 @@ export default function App() {
           isSavage={activeBattleMode === 'savage'}
           isUltimate={activeBattleMode === 'ultimate'}
           isCruel={activeBattleMode === 'cruel'}
+          isKarma={activeBattleMode === 'karma'}
           isPhantom={activeBattleMode === 'phantom'}
           isTraining={false}
           isCityBoss={

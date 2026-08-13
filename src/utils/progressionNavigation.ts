@@ -64,6 +64,7 @@ export const getBattleResultCta = ({
     battleMode === 'savage' ||
     battleMode === 'ultimate' ||
     battleMode === 'cruel' ||
+    battleMode === 'karma' ||
     battleMode === 'phantom'
   ) {
     return {

@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   CheckCircle2,
+  Copy,
   Crown,
   Lock,
   ShieldAlert,
@@ -20,6 +21,7 @@ import {
 } from '../utils/cruelBattle';
 import { StrengthComparison } from './StrengthComparison';
 import { PHANTOM_TRADE_DUTY } from '../utils/phantomBattle';
+import { KARMA_RAID_DEFINITION } from '../utils/karmaBattle';
 import {
   getChargedLimitBreakTier,
   getLimitBreakChargeCapacity,
@@ -54,6 +56,9 @@ interface HighEndRaidViewProps {
   cruelProperty: Property;
   cruelUnlocked: boolean;
   cruelCleared: boolean;
+  karmaProperty: Property;
+  karmaUnlocked: boolean;
+  karmaCleared: boolean;
   phantomProperty: Property | null;
   phantomUnlocked: boolean;
   phantomWinStreak: number;
@@ -64,6 +69,7 @@ interface HighEndRaidViewProps {
   onStartSavage: (property: Property) => void;
   onStartUltimate: (property: Property) => void;
   onStartCruel: (property: Property) => void;
+  onStartKarma: (property: Property) => void;
   onStartPhantom: (property: Property) => void;
   onReplayEnding: () => void;
   onOpenCartels: () => void;
@@ -84,6 +90,9 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
   cruelProperty,
   cruelUnlocked,
   cruelCleared,
+  karmaProperty,
+  karmaUnlocked,
+  karmaCleared,
   phantomProperty,
   phantomUnlocked,
   phantomWinStreak,
@@ -91,6 +100,7 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
   onStartSavage,
   onStartUltimate,
   onStartCruel,
+  onStartKarma,
   onStartPhantom,
   onReplayEnding,
   onOpenCartels,
@@ -108,6 +118,10 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
   const cruelStrengthComparison = getStrengthComparison(
     cruelProperty,
     'cruel'
+  );
+  const karmaStrengthComparison = getStrengthComparison(
+    karmaProperty,
+    'karma'
   );
   const phantomStrengthComparison = phantomProperty
     ? getStrengthComparison(phantomProperty, 'phantom')
@@ -522,6 +536,91 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
               {cruelCleared && (
                 <span className="cruel-raid-card__record">
                   <CheckCircle2 /> 称号・踏破記録 獲得済み
+                </span>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {karmaUnlocked && (
+        <section
+          className={`karma-raid-card ${
+            karmaCleared
+              ? 'karma-raid-card--cleared'
+              : 'karma-raid-card--open'
+          }`}
+        >
+          <div className="karma-raid-card__art" aria-hidden="true">
+            <span />
+            <div className="karma-raid-card__ledger">
+              {['初手', '二の手', '勝負手', '決め手'].map((label, index) => (
+                <i key={label}>
+                  <small>PAGE {index + 1}</small>
+                  <b>{label}</b>
+                  <em>COPY</em>
+                </i>
+              ))}
+            </div>
+          </div>
+          <div className="karma-raid-card__copy">
+            <small>
+              <span className="karma-raid-card__boss-mark">
+                <Copy /> MIMIC
+              </span>
+              KARMA TRADE DUTY / 酷商戦踏破後
+            </small>
+            <h2>{karmaProperty.name}</h2>
+            <p className="karma-raid-card__subtitle">
+              {KARMA_RAID_DEFINITION.subtitle}
+            </p>
+            <p>
+              積んだ一手が、業となって返る。黄金頭巾のものまね士は、所有率の節目を越えた四つの手を記帳し、後半に逆順で再演します。
+            </p>
+            <span>
+              <Copy />
+              {KARMA_RAID_DEFINITION.coalitionName}
+            </span>
+            <span>
+              <Sparkles />
+              参加費0・攻略報酬0
+            </span>
+            <span>
+              <ShieldAlert />
+              勝敗後も通常資金・所有権・人脈・独立危険度・LBを変えません
+            </span>
+            <details className="karma-raid-card__warning high-end-raid-hint">
+              <summary>攻略のヒント</summary>
+              <div className="high-end-raid-hint__body" role="note">
+                <b>見せた手が、逆順で返る</b>
+                <p>
+                  開幕50%から所有率55／70／85／95%へ進めた一手を「初手・二の手・勝負手・決め手」へ記帳。後半は決め手から逆順に模倣するため、同じ系統ではない一手を残してください。
+                </p>
+                <b>修正仕訳は一度だけ</b>
+                <p>
+                  最も返されたくない一頁を、別系統の次の一手で書き直せます。四頁がそろう前に、最後まで残す資金源を決めておくのが要です。
+                </p>
+              </div>
+            </details>
+            <StrengthComparison
+              result={karmaStrengthComparison}
+              compact
+              summaryOnly
+            />
+            <div className="karma-raid-card__actions">
+              <button
+                type="button"
+                disabled={!karmaUnlocked}
+                onClick={() => onStartKarma(karmaProperty)}
+              >
+                <Copy />
+                {karmaCleared
+                  ? '業へ再挑戦'
+                  : '値札のない一株へ挑戦'}
+              </button>
+              {karmaCleared && (
+                <span className="karma-raid-card__record">
+                  <CheckCircle2 /> 業商戦 踏破済み
                 </span>
               )}
             </div>
