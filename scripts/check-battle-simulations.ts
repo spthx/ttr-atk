@@ -92,8 +92,10 @@ import {
   getKarmaCounterPlan,
   recordKarmaAction,
   resolveKarmaCounterOwnership,
+  resolveKarmaEscrowCommitment,
   resolveNextKarmaCounter,
   shouldHoldKarmaVictory,
+  shouldPauseKarmaOrdinaryEconomy,
   skipKarmaCorrection,
 } from '../src/utils/karmaBattle';
 import type { PlayerBattleAction } from '../src/utils/enemyAi';
@@ -4406,16 +4408,71 @@ const answerKarmaCounter = (
 };
 
 let variedKarmaCounters = activeKarmaCounters;
+let preparedKarmaOwnership = 99;
+let preparedKarmaEnemyInvested = karmaOpeningCommitment;
+let preparedKarmaEscrowRemaining = karmaEscrow;
 while (variedKarmaCounters.counterQueue.length > 0) {
   const copied = variedKarmaCounters.counterQueue[0];
-  const differentKind = copied.kind === 'direct' ? 'network' : 'direct';
-  variedKarmaCounters = answerKarmaCounter(variedKarmaCounters, differentKind);
+  const plan = getKarmaCounterPlan(copied);
+  const answerKind = plan.perfectCounterKinds[0];
+  const escrow = resolveKarmaEscrowCommitment({
+    remainingEscrow: preparedKarmaEscrowRemaining,
+    enemyBudget: karmaEnemyBudget,
+    marketPrice: karmaSimulationTarget.marketPrice,
+    plan,
+    effectiveness: 0,
+  });
+  preparedKarmaEscrowRemaining = escrow.remainingEscrow;
+  preparedKarmaEnemyInvested += escrow.committedCapital;
+  preparedKarmaOwnership = resolveKarmaCounterOwnership(
+    preparedKarmaOwnership,
+    plan,
+    0
+  );
+  variedKarmaCounters = answerKarmaCounter(variedKarmaCounters, answerKind);
 }
 assert.equal(variedKarmaCounters.phase, 'resolved');
+assert.equal(preparedKarmaOwnership, 99);
+assert.equal(preparedKarmaEnemyInvested, karmaOpeningCommitment);
+assert.equal(preparedKarmaEscrowRemaining, 0);
 assert.equal(
   shouldHoldKarmaVictory(true, variedKarmaCounters),
   false,
   'four deliberately different answers can resolve every copied page and win'
+);
+assert.equal(
+  shouldPauseKarmaOrdinaryEconomy(true, activeKarmaCounters),
+  true,
+  'the prepared four-counter route cannot be erased by background AI, recovery, or continuous pressure'
+);
+
+let unpreparedKarmaOwnership = 99;
+let unpreparedKarmaEnemyInvested = karmaOpeningCommitment;
+let unpreparedKarmaEscrowRemaining = karmaEscrow;
+for (const copied of activeKarmaCounters.counterQueue) {
+  const plan = getKarmaCounterPlan(copied);
+  const escrow = resolveKarmaEscrowCommitment({
+    remainingEscrow: unpreparedKarmaEscrowRemaining,
+    enemyBudget: karmaEnemyBudget,
+    marketPrice: karmaSimulationTarget.marketPrice,
+    plan,
+    effectiveness: 1,
+  });
+  unpreparedKarmaEscrowRemaining = escrow.remainingEscrow;
+  unpreparedKarmaEnemyInvested += escrow.committedCapital;
+  unpreparedKarmaOwnership = resolveKarmaCounterOwnership(
+    unpreparedKarmaOwnership,
+    plan,
+    1
+  );
+}
+assert.ok(
+  unpreparedKarmaOwnership <= 70,
+  'taking every copied page without a counter still destroys the held 99% position'
+);
+assert.ok(
+  unpreparedKarmaEnemyInvested <= karmaEnemyBudget,
+  'even an unprepared route cannot materialize enemy capital beyond the disclosed budget'
 );
 
 let singleRouteKarma = createKarmaBattleState();
@@ -4468,6 +4525,14 @@ console.log(
           openingReserve: karmaOpeningReserve,
           entries: fourPageKarma.entries,
           resolvedCounterSerials: variedKarmaCounters.resolvedCounterSerials,
+          preparedRoute: {
+            ownership: preparedKarmaOwnership,
+            enemyInvested: preparedKarmaEnemyInvested,
+          },
+          unpreparedRoute: {
+            ownership: unpreparedKarmaOwnership,
+            enemyInvested: unpreparedKarmaEnemyInvested,
+          },
         },
       },
     },

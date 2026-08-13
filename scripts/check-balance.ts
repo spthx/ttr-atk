@@ -167,21 +167,27 @@ import {
   pickRandomPhantomRaid,
 } from '../src/utils/phantomBattle';
 import {
+  advanceKarmaCounterClock,
   buildKarmaCounterQueue,
   buildKarmaProperty,
   classifyKarmaAction,
   createKarmaBattleState,
+  getKarmaDefeatStage,
   getKarmaCounterEffectiveness,
   getKarmaCounterPlan,
   getKarmaStrengthBand,
+  KARMA_ESCROW_BUDGET_RATIO,
+  KARMA_ESCROW_PAGE_BUDGET_RATIO,
   KARMA_LEDGER_THRESHOLDS,
   KARMA_RAID_DEFINITION,
   recordKarmaAction,
   reduceKarmaBattle,
   resolveKarmaCounterOwnership,
+  resolveKarmaEscrowCommitment,
   resolveNextKarmaCounter,
   selectKarmaCorrectionPage,
   shouldHoldKarmaVictory,
+  shouldPauseKarmaOrdinaryEconomy,
   skipKarmaCorrection,
   type KarmaActionKind,
   type KarmaBattleState,
@@ -1260,6 +1266,59 @@ assert.deepEqual(
   skippedKarmaCorrection.counterQueue.map((entry) => entry.page),
   [4, 3, 2, 1]
 );
+assert.equal(KARMA_ESCROW_BUDGET_RATIO, 0.24);
+assert.equal(KARMA_ESCROW_PAGE_BUDGET_RATIO, 0.06);
+assert.equal(
+  shouldPauseKarmaOrdinaryEconomy(true, skippedKarmaCorrection),
+  true,
+  'ordinary enemy pressure and recovery pause while the finite Karma ledger owns the encounter'
+);
+assert.equal(
+  shouldPauseKarmaOrdinaryEconomy(true, sealedKarmaLedger),
+  false,
+  'the opening recording and correction decision retain the Cruel-level duel pressure'
+);
+assert.equal(
+  shouldPauseKarmaOrdinaryEconomy(false, skippedKarmaCorrection),
+  false,
+  'the Karma economy gate cannot change other battle modes'
+);
+
+let karmaCounterClock = { remainingMs: 6_000, resolutionDue: false };
+for (let tick = 0; tick < 48; tick += 1) {
+  karmaCounterClock = advanceKarmaCounterClock({
+    remainingMs: karmaCounterClock.remainingMs,
+    elapsedMs: BATTLE_STATE_UPDATE_INTERVAL_MS,
+    responseWindowOpen: false,
+  });
+}
+assert.deepEqual(
+  karmaCounterClock,
+  { remainingMs: 6_000, resolutionDue: false },
+  'Karma preserves the full first warning while correction-action or skip presentations lock every response'
+);
+for (let tick = 0; tick < 59; tick += 1) {
+  karmaCounterClock = advanceKarmaCounterClock({
+    remainingMs: karmaCounterClock.remainingMs,
+    elapsedMs: 100,
+    responseWindowOpen: true,
+  });
+}
+assert.deepEqual(
+  karmaCounterClock,
+  { remainingMs: 100, resolutionDue: false },
+  'Karma cannot resolve before six seconds of actionable response time'
+);
+karmaCounterClock = advanceKarmaCounterClock({
+  remainingMs: karmaCounterClock.remainingMs,
+  elapsedMs: 100,
+  responseWindowOpen: true,
+});
+assert.deepEqual(
+  karmaCounterClock,
+  { remainingMs: 0, resolutionDue: true },
+  'Karma resolves exactly after the sixth actionable second'
+);
 
 const representativeKarmaEntries: KarmaEntry[] = [
   { serial: 10, page: 1, threshold: 55, kind: 'direct', strengthBand: 'small' },
@@ -1338,6 +1397,37 @@ karmaCounterPlans.forEach((plan) => {
   );
 });
 const perfectKarmaPlan = getKarmaCounterPlan(representativeKarmaEntries[0]);
+const nonDefaultMarketKarmaEscrow = resolveKarmaEscrowCommitment({
+  remainingEscrow: 480_000,
+  enemyBudget: 2_000_000,
+  marketPrice: 1_000_000,
+  plan: perfectKarmaPlan,
+  effectiveness: 1,
+});
+assert.deepEqual(
+  nonDefaultMarketKarmaEscrow,
+  {
+    reservedCapital: 120_000,
+    committedCapital: 40_000,
+    remainingEscrow: 360_000,
+  },
+  'a non-500 deterministic probe consumes six percent of budget but caps the visible copy at its authored market ratio'
+);
+assert.deepEqual(
+  resolveKarmaEscrowCommitment({
+    remainingEscrow: 360_000,
+    enemyBudget: 2_000_000,
+    marketPrice: 1_000_000,
+    plan: perfectKarmaPlan,
+    effectiveness: 0,
+  }),
+  {
+    reservedCapital: 120_000,
+    committedCapital: 0,
+    remainingEscrow: 240_000,
+  },
+  'a perfect answer burns its reserved page without adding hidden enemy capital'
+);
 assert.equal(
   resolveKarmaCounterOwnership(0.4, perfectKarmaPlan, 0),
   0.4,
@@ -1389,6 +1479,13 @@ assert.deepEqual(
   expectedKarmaResolutionOrder
 );
 assert.equal(shouldHoldKarmaVictory(true, resolvingKarmaState), false);
+assert.equal(
+  getKarmaDefeatStage(resolvingKarmaState),
+  'resolved',
+  'a loss after all four reverse pages is analyzed as post-ledger recovery, never as a nonexistent fifth page'
+);
+assert.equal(getKarmaDefeatStage(sealedKarmaLedger), 'correction');
+assert.equal(getKarmaDefeatStage(firstKarmaPage), 'recording');
 assert.deepEqual(
   reduceKarmaBattle(resolvingKarmaState, { type: 'RESET' }),
   createKarmaBattleState(),

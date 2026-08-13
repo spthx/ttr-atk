@@ -111,16 +111,21 @@ import { getTrainingDummyDefinition } from '../utils/trainingDummy';
 import { getSavageRaidDefinition } from '../utils/savage';
 import { getBattleResultCta } from '../utils/progressionNavigation';
 import {
+  advanceKarmaCounterClock,
   classifyKarmaAction,
   createKarmaBattleState,
+  getKarmaDefeatStage,
   getKarmaCounterEffectiveness,
   getKarmaCounterPlan,
+  KARMA_ESCROW_BUDGET_RATIO,
   KARMA_LEDGER_THRESHOLDS,
   recordKarmaAction,
   resolveKarmaCounterOwnership,
+  resolveKarmaEscrowCommitment,
   resolveNextKarmaCounter,
   selectKarmaCorrectionPage,
   shouldHoldKarmaVictory,
+  shouldPauseKarmaOrdinaryEconomy,
   skipKarmaCorrection,
   type KarmaAbilityClass,
   type KarmaActionKind,
@@ -978,7 +983,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const initialEnemyCommitment = isTraining
     ? enemyBudget
     : Math.round(enemyBudget * ENEMY_INITIAL_COMMITMENT_RATIO);
-  const initialKarmaEscrow = isKarma ? Math.round(enemyBudget * 0.24) : 0;
+  const initialKarmaEscrow = isKarma
+    ? Math.round(enemyBudget * KARMA_ESCROW_BUDGET_RATIO)
+    : 0;
   const [battlePhase, setBattlePhase] = useState<BattlePhase>('briefing');
   const battlePhaseRef = useRef<BattlePhase>('briefing');
   const changeBattlePhase = useCallback((next: BattlePhase) => {
@@ -1182,6 +1189,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const [karmaCounterRemainingMs, setKarmaCounterRemainingMs] = useState(0);
   const karmaCounterRemainingMsRef = useRef(0);
   const karmaCounterClockSerialRef = useRef<number | null>(null);
+  const karmaCounterResponseWindowOpenRef = useRef(false);
+  const karmaPostImpactRecoveryActionRef = useRef(false);
   const karmaCounterResponseRef = useRef<{
     entrySerial: number;
     kind: KarmaActionKind;
@@ -2798,6 +2807,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     karmaCounterResponseRef.current?.entrySerial === activeKarmaCounter.serial
       ? karmaCounterResponseRef.current
       : null;
+  const karmaCounterResponseWindowOpen =
+    !!activeKarmaCounter &&
+    !karmaPostImpactResponsePending &&
+    !actionsLocked &&
+    (!!activeKarmaReservedResponse || commandReady);
+  useLayoutEffect(() => {
+    karmaCounterResponseWindowOpenRef.current =
+      karmaCounterResponseWindowOpen;
+  }, [karmaCounterResponseWindowOpen]);
   const battleCommandState = karmaCorrectionSelectActive
     ? {
         tone: 'locked',
@@ -3541,6 +3559,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     setCruelOmnicapitalizationPending(null);
     openingDecisionPendingRef.current = false;
     setOpeningDecisionPending(false);
+    karmaPostImpactRecoveryActionRef.current = false;
     updateKarmaPostImpactResponsePending(false);
     const openingLog = {
       id: `open-${Date.now()}`,
@@ -3776,6 +3795,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       forcedLiquidationAwaitingManualCounterRef.current = false;
     }
     if (karmaPostImpactResponsePendingRef.current) {
+      karmaPostImpactRecoveryActionRef.current = true;
       updateKarmaPostImpactResponsePending(false);
     }
     setCommandProgress(0);
@@ -4140,6 +4160,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     );
     openingDecisionPendingRef.current = false;
     setOpeningDecisionPending(false);
+    karmaPostImpactRecoveryActionRef.current = false;
     updateKarmaPostImpactResponsePending(false);
     criticalAutoPendingRef.current = null;
     setCriticalAutoPending(null);
@@ -5034,6 +5055,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   }) => {
     if (!isKarma || endedRef.current || terminalRef.current) return;
     if (rejectKarmaCorrectionAction(kind)) return;
+    if (karmaPostImpactRecoveryActionRef.current) {
+      karmaPostImpactRecoveryActionRef.current = false;
+      setStatusText(
+        `${label}で立て直し――次のものまね予告は、この演出後から6秒を確保`
+      );
+      return;
+    }
     const serial = ++karmaActionSerialRef.current;
     const classified = classifyKarmaAction({
       serial,
@@ -5158,12 +5186,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       response?.kind ?? null
     );
     const copiedLabel = KARMA_ACTION_LABELS[copiedEntry.kind];
-    const fullEscrowCommit = Math.min(
-      karmaEscrowRemainingRef.current,
-      Math.round(enemyBudget * 0.06)
-    );
-    const escrowCommit = Math.round(fullEscrowCommit * effectiveness);
-    karmaEscrowRemainingRef.current -= fullEscrowCommit;
+    const escrow = resolveKarmaEscrowCommitment({
+      remainingEscrow: karmaEscrowRemainingRef.current,
+      enemyBudget,
+      marketPrice: targetProperty.marketPrice,
+      plan,
+      effectiveness,
+    });
+    const fullEscrowCommit = escrow.reservedCapital;
+    const escrowCommit = escrow.committedCapital;
+    karmaEscrowRemainingRef.current = escrow.remainingEscrow;
     setKarmaEscrowRemaining(karmaEscrowRemainingRef.current);
     if (escrowCommit > 0) {
       updateKarmaPostImpactResponsePending(true);
@@ -5257,14 +5289,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const timer = window.setInterval(() => {
       if (
         battlePhaseRef.current !== 'active' ||
-        simulationPausedRef.current ||
         endedRef.current ||
         terminalRef.current
       ) return;
-      const next = Math.max(
-        0,
-        karmaCounterRemainingMsRef.current - BATTLE_STATE_UPDATE_INTERVAL_MS
-      );
+      const clock = advanceKarmaCounterClock({
+        remainingMs: karmaCounterRemainingMsRef.current,
+        elapsedMs: BATTLE_STATE_UPDATE_INTERVAL_MS,
+        responseWindowOpen: karmaCounterResponseWindowOpenRef.current,
+      });
+      const next = clock.remainingMs;
       const previousSecond = Math.ceil(
         karmaCounterRemainingMsRef.current / 1000
       );
@@ -5273,7 +5306,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       if (nextSecond !== previousSecond || next === 0) {
         setKarmaCounterRemainingMs(next);
       }
-      if (next <= 0) {
+      if (clock.resolutionDue) {
         window.clearInterval(timer);
         resolveActiveKarmaCounter(copiedEntry.serial);
       }
@@ -6526,6 +6559,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         updateCash(playerRecovery.availableFunds);
       }
 
+      if (
+        shouldPauseKarmaOrdinaryEconomy(
+          isKarma,
+          karmaBattleStateRef.current
+        )
+      ) {
+        return;
+      }
+
       const enemyRecovery = advanceBattleCashRecovery({
         baselineFunds: enemyBudget,
         availableFunds: enemyReserveRef.current,
@@ -6551,6 +6593,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   }, [
     battlePhase,
     enemyBudget,
+    isKarma,
     recoveryWindMultipliers.enemy,
     recoveryWindMultipliers.player,
     timeScale,
@@ -6583,7 +6626,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       if (
         terminalRef.current ||
         simulationPausedRef.current ||
-        karmaPostImpactResponsePendingRef.current
+        karmaPostImpactResponsePendingRef.current ||
+        shouldPauseKarmaOrdinaryEconomy(
+          isKarma,
+          karmaBattleStateRef.current
+        )
       ) return;
       setAiProgress((value) => Math.min(100, value + step));
     }, 100);
@@ -6594,6 +6641,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     enemyCanCommit,
     enemyRapidAssaultRemaining,
     forcedLiquidationRecoveryRemaining,
+    isKarma,
     isTraining,
     timeScale,
     winner,
@@ -6619,6 +6667,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (
       simulationPausedRef.current ||
       karmaPostImpactResponsePendingRef.current ||
+      shouldPauseKarmaOrdinaryEconomy(
+        isKarma,
+        karmaBattleStateRef.current
+      ) ||
       timeScale <= 0 ||
       winner ||
       battlePhase !== 'active' ||
@@ -6666,6 +6718,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     aiProgress,
     battlePhase,
     enemyDecision,
+    isKarma,
     isTraining,
     enemyMinimumCommitment,
     targetProperty.marketPrice,
@@ -6683,7 +6736,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       if (
         terminalRef.current ||
         simulationPausedRef.current ||
-        karmaPostImpactResponsePendingRef.current
+        karmaPostImpactResponsePendingRef.current ||
+        shouldPauseKarmaOrdinaryEconomy(
+          isKarma,
+          karmaBattleStateRef.current
+        )
       ) {
         setGaugeSpeed(0);
         lastTickRef.current = now;
@@ -6754,7 +6811,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [battleFrameRate, criticalAutoReadyForTrigger, enemyLimitBreakHoldRemaining, enemyMinimumCommitment, eraWindActive, isCruel, isExtremeBattle, isHighEndRaid, isTraining, liveRawGaugeVelocity, timeScale, updateGauge, winner]);
+  }, [battleFrameRate, criticalAutoReadyForTrigger, enemyLimitBreakHoldRemaining, enemyMinimumCommitment, eraWindActive, isCruel, isExtremeBattle, isHighEndRaid, isKarma, isTraining, liveRawGaugeVelocity, timeScale, updateGauge, winner]);
 
   const startCompanyCapitalPresentation = (
     snapshot: CapitalCommitSnapshot,
@@ -8592,14 +8649,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           ? `${ultimatePatternPrefix}${ultimateRemainingRecoveryRoutes.join('・')}が決着時に残っていたでっす。所有率30%を割る前の危険予告直後に、どれか1回を投入するでっす。`
           : `${ultimatePatternPrefix}${ultimateEnemyPattern?.counterPlan ?? '敵予告ごとに短時間防御と再建資源を割り当てる'}でっす。開始直後から順番に押さず、危険予告へ必要な一手を残すでっす。`;
   const unresolvedKarmaEntry = karmaBattleState.counterQueue[0] ?? null;
+  const karmaDefeatStage = getKarmaDefeatStage(karmaBattleState);
   const karmaResultAnalysis = winner === 'player'
     ? `初手から決め手まで四頁を意図して書き、逆順のものまねを別系統の一手で全部崩したでっす！ 同じ資金源を連打せず、最後まで勝ち筋を残したのが勝因でっす。`
     : unresolvedKarmaEntry
       ? `第${unresolvedKarmaEntry.page}頁「${KARMA_PAGE_LABELS[unresolvedKarmaEntry.page - 1]}」の${KARMA_ACTION_LABELS[unresolvedKarmaEntry.kind]}が未解決だったでっす。次は${getKarmaCounterPlan(unresolvedKarmaEntry).counterHints.join('、または')}で写しを崩すでっす。`
-      : karmaBattleState.phase === 'correction_select' ||
-          karmaBattleState.phase === 'correction_action'
+      : karmaDefeatStage === 'correction'
         ? '四頁はそろったものの、修正仕訳を決着へつなげられなかったでっす。最も返されたくない決め手を、後半まで残せる別系統へ書き換えるでっす。'
-        : `第${karmaBattleState.entries.length + 1}頁まで戦術を記帳できなかったでっす。自社資金・人脈・SYNERGY・アビリティ・LBから、少なくとも三系統を準備して再挑戦するでっす。`;
+        : karmaDefeatStage === 'recording'
+          ? `第${karmaBattleState.entries.length + 1}頁まで戦術を記帳できなかったでっす。自社資金・人脈・SYNERGY・アビリティ・LBから、少なくとも三系統を準備して再挑戦するでっす。`
+          : '四頁の逆仕訳はすべて解決済みだったでっす。最後の応答後も所有率を守れるよう、自社資金・人脈・SYNERGY・アビリティ・LBの残りを立て直しへ回すでっす。';
   const resultAnalysis = isKarma
     ? karmaResultAnalysis
     : isTraining

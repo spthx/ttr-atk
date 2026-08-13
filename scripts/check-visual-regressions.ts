@@ -2562,8 +2562,13 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /window\.setInterval\(\(\) => \{[\s\S]{0,420}simulationPausedRef\.current[\s\S]{0,100}\) return;[\s\S]{0,320}karmaCounterRemainingMsRef\.current - BATTLE_STATE_UPDATE_INTERVAL_MS[\s\S]{0,360}next <= 0[\s\S]{0,160}resolveActiveKarmaCounter\(copiedEntry\.serial\)/,
-  'the six-second Karma window must advance on the pause-aware battle-state ticker and resolve at its deadline.'
+  /const karmaCounterResponseWindowOpen =[\s\S]{0,220}!karmaPostImpactResponsePending[\s\S]{0,120}!actionsLocked[\s\S]{0,160}activeKarmaReservedResponse \|\| commandReady[\s\S]{0,260}karmaCounterResponseWindowOpenRef\.current =[\s\S]{0,100}karmaCounterResponseWindowOpen/,
+  'the Karma clock must open only when a response is actionable or already reserved, never behind a presentation or post-impact recovery gate.'
+);
+assert.match(
+  battleModal,
+  /window\.setInterval\(\(\) => \{[\s\S]{0,500}advanceKarmaCounterClock\(\{[\s\S]{0,180}remainingMs: karmaCounterRemainingMsRef\.current[\s\S]{0,180}responseWindowOpen: karmaCounterResponseWindowOpenRef\.current[\s\S]{0,500}clock\.resolutionDue[\s\S]{0,180}resolveActiveKarmaCounter\(copiedEntry\.serial\)/,
+  'the six-second Karma window must advance through the actionable-time clock and resolve only at its deadline.'
 );
 assert.match(
   battleModal,
@@ -2597,6 +2602,16 @@ assert.match(
 );
 assert.match(
   battleModal,
+  /if \(karmaPostImpactResponsePendingRef\.current\) \{[\s\S]{0,100}karmaPostImpactRecoveryActionRef\.current = true;[\s\S]{0,100}updateKarmaPostImpactResponsePending\(false\)/,
+  'consuming the guaranteed post-impact recovery command must mark it as recovery before releasing the gate.'
+);
+assert.match(
+  battleModal,
+  /const registerKarmaPlayerAction =[\s\S]{0,520}karmaPostImpactRecoveryActionRef\.current[\s\S]{0,120}karmaPostImpactRecoveryActionRef\.current = false;[\s\S]{0,220}return;[\s\S]{0,100}const serial = \+\+karmaActionSerialRef\.current/,
+  'the post-impact recovery command must be consumed before the next copied page can reserve an answer.'
+);
+assert.match(
+  battleModal,
   /const enemySupportCastBlocked =[\s\S]{0,900}karmaPostImpactResponsePending/,
   'the durable Karma response gate must block enemy support casting through the rendered state mirror.'
 );
@@ -2622,10 +2637,11 @@ assert.ok(
       karmaConsumeCommandBlock.indexOf('setCommandProgress(0)'),
   'only a successfully consumed manual command may release the post-impact response gate and restart simulation.'
 );
-assert.match(
-  battleModal,
-  /simulationPausedRef\.current \|\|[\s\S]{0,100}karmaPostImpactResponsePendingRef\.current[\s\S]{0,1200}const postImpactAdjustedVelocity =[\s\S]{0,220}resolveKarmaPostImpactContinuousVelocity\([\s\S]{0,160}karmaPostImpactResponsePendingRef\.current/,
-  'enemy AI progress, enemy resolution, and continuous gauge pressure must all consult the synchronous post-impact ref.'
+assert.ok(
+  (battleModal.match(
+    /shouldPauseKarmaOrdinaryEconomy\(\s*isKarma,\s*karmaBattleStateRef\.current\s*\)/g
+  ) ?? []).length >= 4,
+  'Karma countering must stop enemy recovery, AI progress, AI resolution, and continuous gauge pressure through one phase gate.'
 );
 assert.match(
   battleModal,
@@ -2695,7 +2711,7 @@ assertKarmaCorrectionPreflight(
 );
 assert.match(
   battleModal,
-  /const registerKarmaPlayerAction =[\s\S]{0,500}rejectKarmaCorrectionAction\(kind\)[\s\S]{0,100}const serial = \+\+karmaActionSerialRef\.current/,
+  /const registerKarmaPlayerAction =[\s\S]{0,500}rejectKarmaCorrectionAction\(kind\)[\s\S]{0,500}const serial = \+\+karmaActionSerialRef\.current/,
   'the shared Karma action hook must retain a final pre-serial correction guard for any future caller.'
 );
 assert.match(
@@ -2707,6 +2723,11 @@ assert.match(
   battleModal,
   /shouldHoldKarmaVictory\(isKarma, karmaBattleStateRef\.current\)[\s\S]{0,140}updateGauge\(-98, commitVisual\)/,
   'Karma must hold a player victory at 99% until every copied page is broken.'
+);
+assert.match(
+  battleModal,
+  /const karmaDefeatStage = getKarmaDefeatStage\(karmaBattleState\)[\s\S]{0,900}karmaDefeatStage === 'recording'[\s\S]{0,180}karmaBattleState\.entries\.length \+ 1[\s\S]{0,500}四頁の逆仕訳はすべて解決済みだった/,
+  'Karma loss advice must mention a next ledger page only while recording and use post-ledger recovery advice after all four pages resolve.'
 );
 assert.match(
   battleModal,

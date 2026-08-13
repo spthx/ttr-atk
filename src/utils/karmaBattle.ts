@@ -42,6 +42,9 @@ export const buildKarmaProperty = (
 // A normal duel opens at 50% ownership. These checkpoints therefore begin
 // above the opening line and record four actual advances, not two free pages.
 export const KARMA_LEDGER_THRESHOLDS = [55, 70, 85, 95] as const;
+export const KARMA_ESCROW_BUDGET_RATIO = 0.24;
+export const KARMA_ESCROW_PAGE_BUDGET_RATIO =
+  KARMA_ESCROW_BUDGET_RATIO / KARMA_LEDGER_THRESHOLDS.length;
 
 export type KarmaLedgerPage = 1 | 2 | 3 | 4;
 export type KarmaActionKind =
@@ -141,11 +144,81 @@ export interface KarmaCounterPlan {
 
 export type KarmaCounterEffectiveness = 0 | 0.5 | 1;
 
+export type KarmaDefeatStage =
+  | 'recording'
+  | 'correction'
+  | 'countering'
+  | 'resolved';
+
+export interface KarmaCounterClockResult {
+  remainingMs: number;
+  resolutionDue: boolean;
+}
+
+export interface KarmaEscrowCommitment {
+  reservedCapital: number;
+  committedCapital: number;
+  remainingEscrow: number;
+}
+
 const finiteOwnership = (value: number) =>
   Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
 
 const normalizeSerial = (value: number) =>
   Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+
+/**
+ * Karma's warning is player decision time, not wall-clock time. Presentations
+ * and command recharge can make every response unavailable, so those frames
+ * must preserve the full warning instead of silently consuming it.
+ */
+export const advanceKarmaCounterClock = ({
+  remainingMs,
+  elapsedMs,
+  responseWindowOpen,
+}: {
+  remainingMs: number;
+  elapsedMs: number;
+  responseWindowOpen: boolean;
+}): KarmaCounterClockResult => {
+  const current = Number.isFinite(remainingMs)
+    ? Math.max(0, remainingMs)
+    : 0;
+  if (!responseWindowOpen) {
+    return { remainingMs: current, resolutionDue: false };
+  }
+  const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+  const next = Math.max(0, current - elapsed);
+  return {
+    remainingMs: next,
+    resolutionDue: next <= 0,
+  };
+};
+
+export const getKarmaDefeatStage = (
+  state: KarmaBattleState
+): KarmaDefeatStage => {
+  if (state.counterQueue.length > 0) return 'countering';
+  if (
+    state.phase === 'correction_select' ||
+    state.phase === 'correction_action'
+  ) {
+    return 'correction';
+  }
+  return state.entries.length < KARMA_LEDGER_THRESHOLDS.length
+    ? 'recording'
+    : 'resolved';
+};
+
+/**
+ * Once the sealed ledger starts replaying, its four finite copies own the
+ * enemy side of the encounter. Ordinary AI investment, passive recovery and
+ * continuous capital pressure resume only after every page is resolved.
+ */
+export const shouldPauseKarmaOrdinaryEconomy = (
+  isKarma: boolean,
+  state: KarmaBattleState
+) => isKarma && state.phase === 'countering';
 
 export const getKarmaStrengthBand = (
   committedCapital: number,
@@ -493,6 +566,51 @@ export const getKarmaCounterEffectiveness = (
   }
   if (responseKind !== null && responseKind !== plan.entry.kind) return 0.5;
   return 1;
+};
+
+/**
+ * Every copied page consumes its fixed six-percent reservation, but a copy
+ * may only materialize the smaller capital pile authored for that action and
+ * strength band. This keeps the 24% account inside the original enemy budget
+ * without turning a qualitative copy into four hidden full-strength raises.
+ */
+export const resolveKarmaEscrowCommitment = ({
+  remainingEscrow,
+  enemyBudget,
+  marketPrice,
+  plan,
+  effectiveness,
+}: {
+  remainingEscrow: number;
+  enemyBudget: number;
+  marketPrice: number;
+  plan: KarmaCounterPlan;
+  effectiveness: KarmaCounterEffectiveness;
+}): KarmaEscrowCommitment => {
+  const availableEscrow = Number.isFinite(remainingEscrow)
+    ? Math.max(0, Math.round(remainingEscrow))
+    : 0;
+  const safeEnemyBudget = Number.isFinite(enemyBudget)
+    ? Math.max(0, enemyBudget)
+    : 0;
+  const safeMarketPrice = Number.isFinite(marketPrice)
+    ? Math.max(0, marketPrice)
+    : 0;
+  const reservedCapital = Math.min(
+    availableEscrow,
+    Math.round(safeEnemyBudget * KARMA_ESCROW_PAGE_BUDGET_RATIO)
+  );
+  const authoredCapital = Math.min(
+    reservedCapital,
+    Math.round(
+      safeMarketPrice * Math.max(0, plan.enemyCapitalMarketRatio)
+    )
+  );
+  return {
+    reservedCapital,
+    committedCapital: Math.round(authoredCapital * effectiveness),
+    remainingEscrow: availableEscrow - reservedCapital,
+  };
 };
 
 /**
