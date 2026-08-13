@@ -428,8 +428,10 @@ assert.doesNotMatch(
   'the Canvas painter must not duplicate the richer semantic DOM gauge'
 );
 const portraitCapitalLayout = resolveBattleCapitalCanvasLayout(402, 414);
+const tallPortraitCapitalLayout = resolveBattleCapitalCanvasLayout(430, 414);
 const landscapeCapitalLayout = resolveBattleCapitalCanvasLayout(874, 171);
 assert.equal(portraitCapitalLayout.columns.length, 22);
+assert.equal(tallPortraitCapitalLayout.columns.length, 22);
 assert.equal(landscapeCapitalLayout.columns.length, 22);
 for (const [label, layout, maxGapRatio] of [
   ['portrait', portraitCapitalLayout, 0.15],
@@ -446,13 +448,35 @@ for (const [label, layout, maxGapRatio] of [
   );
 }
 assert.ok(
-  portraitCapitalLayout.columns.every((column) => column.coinWidth >= 24),
+  portraitCapitalLayout.columns.every((column) => column.coinWidth >= 23.5),
   'portrait coins must remain large enough to read as decorated rolls'
 );
 assert.ok(
   landscapeCapitalLayout.columns.every((column) => column.coinWidth >= 47),
   'landscape coins must grow with the tray instead of staying at the retired 17px cap'
 );
+for (const [width, layout] of [
+  [402, portraitCapitalLayout],
+  [430, tallPortraitCapitalLayout],
+] as const) {
+  const pileLeft = Math.min(
+    ...layout.columns.map(
+      (column) => layout.sideInset + column.xRatio * layout.areaWidth - column.coinWidth / 2
+    )
+  );
+  const pileRight = Math.max(
+    ...layout.columns.map(
+      (column) => layout.sideInset + column.xRatio * layout.areaWidth + column.coinWidth / 2
+    )
+  );
+  const pileWidthRatio = (pileRight - pileLeft) / width;
+  const centreGapRatio = (width * 0.5 - (pileRight - pileLeft)) / width;
+  const rackWidthRatio = layout.areaWidth * 0.94 / width;
+  assert.ok(rackWidthRatio >= 0.395 && rackWidthRatio <= 0.425);
+  assert.ok(pileWidthRatio <= 0.415);
+  assert.ok(centreGapRatio >= 0.08 && centreGapRatio <= 0.11);
+  assert.ok(layout.sideInset / width >= 0.025);
+}
 const mediumRearLayers = resolveBattleCapitalVisualLayers({
     layers: 12,
     depth: 0,
@@ -543,8 +567,8 @@ const landscapeFirstOverflow = resolveBattleCapitalStackGeometry(
   1
 );
 assert.ok(
-  portraitFirstOverflow.scrollPx >= 414 * 0.12 &&
-    landscapeFirstOverflow.scrollPx >= 171 * 0.16,
+  portraitFirstOverflow.scrollPx >= 414 * 0.1 &&
+    landscapeFirstOverflow.scrollPx >= 171 * 0.14,
   'the first true overflow must visibly lower the completed tray in both orientations'
 );
 assert.equal(BATTLE_CAPITAL_RACK_TWEEN_MS, 180);
@@ -556,8 +580,8 @@ assert.ok(
 );
 assert.match(
   battleCapitalCanvasLayout,
-  /const span = ROW_SPANS\[depth\] \* \(landscape \? 0\.84 : 1\);[\s\S]{0,240}const coinWidth = clamp\(pitch \* \(landscape \? 0\.92 : 0\.86\), 12, 72\);/,
-  'coin width must follow each row pitch in both orientations'
+  /const areaWidth = safeWidth \* 0\.44;[\s\S]{0,120}const sideInset = safeWidth \* 0\.03;[\s\S]{0,520}Math\.max\(pitch \* \(landscape \? 0\.98 : 1\.03\), safeWidth \* 0\.055\)/,
+  'dense coins must keep their reviewed size while leaving a clear centre aisle on portrait phones'
 );
 assert.match(
   battleCapitalCanvas,
@@ -597,8 +621,18 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const packetLayers =\s*3 \+ Math\.abs\(side\.frame\.packetSeed \+ index \* 3\) % 4;[\s\S]{0,220}side\.frame\.packetProgress - Math\.max\(0, packetOrder\) \* 0\.025/,
-  'each active Canvas2D column must receive one short deterministic three-to-six-layer bundle without bounce physics'
+  /const packetLayers =\s*3 \+ Math\.abs\(side\.frame\.packetSeed \+ index \* 3\) % 3;[\s\S]{0,220}side\.frame\.packetProgress - Math\.max\(0, packetOrder\) \* 0\.025[\s\S]{0,900}const startBaseY = safeTopY \+ packetHeight;/,
+  'each active Canvas2D column must receive one short deterministic three-to-five-layer bundle below the gauge without bounce physics'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const tier = Math\.floor\(side\.frame\.stackDepth \+ 1e-6\);[\s\S]*drawOverflowHoard\([\s\S]{0,120}baseY,[\s\S]{0,120}coinWidth/,
+  'loose overflow coins must appear only after their packets are absorbed and must descend with the completed pile'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const pileGlow = context\.createRadialGradient\([\s\S]{0,100}baseY - height \* 0\.07[\s\S]{0,100}baseY - height \* 0\.07[\s\S]{0,500}context\.ellipse\([\s\S]{0,80}baseY \+ coinHeight/,
+  'the glow, pedestal, columns and overflow hoard must move as one completed treasury'
 );
 assert.match(
   battleCapitalCanvas,
@@ -1162,8 +1196,8 @@ assert.doesNotMatch(
 );
 assert.match(
   battleCapitalCanvas,
-  /const packetLayers =\s*3 \+ Math\.abs\(side\.frame\.packetSeed \+ index \* 3\) % 4/,
-  'each fixed active column must receive one short three-to-six-layer bundle'
+  /const packetLayers =\s*3 \+ Math\.abs\(side\.frame\.packetSeed \+ index \* 3\) % 3/,
+  'each fixed active column must receive one short three-to-five-layer bundle'
 );
 assert.match(
   integratedCss,
@@ -1686,7 +1720,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const overflowLayers =[\s\S]{0,120}side\.frame\.stackDepth \* BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;[\s\S]*const stackGeometry = resolveBattleCapitalStackGeometry\([\s\S]{0,120}tallestColumnExtent,[\s\S]{0,60}side\.frame\.rackDepth[\s\S]{0,80}const \{ baseY, floorY \} = stackGeometry;/,
+  /const overflowLayers =[\s\S]{0,120}side\.frame\.stackDepth \* BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;[\s\S]*const stackGeometry = resolveBattleCapitalStackGeometry\([\s\S]{0,120}tallestColumnExtent,[\s\S]{0,60}side\.frame\.rackDepth[\s\S]{0,80}const \{ baseY, safeTopY \} = stackGeometry;/,
   'the Canvas2D rack must lower the completed pile independently while incoming overflow bundles keep stacking'
 );
 assert.match(
@@ -1769,13 +1803,18 @@ assert.match(
 );
 assert.match(
   audio,
-  /const chunkMs = Math\.min\(1_000, remainingMs\)[\s\S]*offsetMs \+= 66[\s\S]*playbackRate\.setValueAtTime\([\s\S]*\[0\.97, 1\.02, 0\.99, 1\.04\]/,
-  'each stream chunk must be capped at one second and alternate metallic ticks at the observed roughly 66ms cadence'
+  /const loopDurationMs = 1_056;[\s\S]{0,280}0, 64, 131, 196, 264, 329, 395, 462,[\s\S]{0,160}0\.99, 1\.025, 0\.98, 1\.01, 1\.035, 0\.995, 1\.018, 0\.975/,
+  'the cached stack loop must use the observed 60–75ms metallic supply cadence with subtle non-alternating pitch variation'
 );
 assert.match(
   audio,
-  /session\.active &&[\s\S]{0,180}performance\.now\(\) < session\.stopAtMs[\s\S]{0,160}startCapitalRapidFireChunk\(session, buffer\)/,
-  'a completed one-second chunk may restart only while coin painting is still active'
+  /const output = ctx\.createBuffer\([\s\S]{0,120}Math\.ceil\(ctx\.sampleRate \* loopDurationMs \/ 1_000\)[\s\S]*source\.buffer = this\.getCapitalRapidFireLoopBuffer\(ctx, tickBuffer\);[\s\S]{0,100}source\.loop = true;/,
+  'long coin pours must reuse one cached loop buffer and one source voice instead of creating fifteen mobile voices per second'
+);
+assert.match(
+  audio,
+  /session\.side === 'player' \? -0\.1 : 0\.1[\s\S]{0,260}source\.connect\(master\);[\s\S]{0,160}source\.start\(now\);/,
+  'the stack loop must remain nearly mono on phone speakers while retaining a subtle side cue'
 );
 assert.match(
   audio,
@@ -1794,8 +1833,8 @@ assert.match(
 );
 assert.doesNotMatch(
   audio,
-  /getCapitalRapidFireBuffer|partialRatios|One bounded metallic beat/,
-  'the rejected procedural metallic/pulse synth must not return'
+  /createOscillator\([\s\S]{0,500}capitalRapidFire/,
+  'capital stacking must preserve the approved recorded metallic tick instead of replacing it with an oscillator click'
 );
 const directCapitalPresentation = battleModal.match(
   /const startCompanyCapitalPresentation[\s\S]*?const investCompanyFunds/

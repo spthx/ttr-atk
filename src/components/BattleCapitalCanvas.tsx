@@ -537,7 +537,10 @@ const drawOverflowHoard = (
   coinWidth: number,
   coinHeight: number
 ) => {
-  const tier = side.frame.overflowTier;
+  // Only coins that have actually completed their reload may spill around the
+  // pedestal. The target tier is known before its packets arrive, so using it
+  // here made loose coins appear on the old floor ahead of the descending pile.
+  const tier = Math.floor(side.frame.stackDepth + 1e-6);
   if (tier <= 0) return;
 
   const colors = SIDE_COLORS[side.side];
@@ -691,9 +694,9 @@ const drawCapitalSide = (
   side: NormalizedCapitalSide
 ) => {
   const playerSide = side.side === 'player';
-  const areaLeft = playerSide ? width * 0.012 : width * 0.512;
   const layout = resolveBattleCapitalCanvasLayout(width, height);
-  const { areaWidth } = layout;
+  const { areaWidth, sideInset } = layout;
+  const areaLeft = playerSide ? sideInset : width * 0.5 + sideInset;
   const centerX = areaLeft + areaWidth / 2;
   const representativeColumn = layout.columns.at(-1) ?? layout.columns[0];
   const coinWidth = representativeColumn.coinWidth;
@@ -744,15 +747,15 @@ const drawCapitalSide = (
     tallestColumnExtent,
     side.frame.rackDepth
   );
-  const { baseY, floorY } = stackGeometry;
+  const { baseY, safeTopY } = stackGeometry;
 
   const auraStrength = clamp(Math.log2(side.capitalRatio + 1) / 5, 0, 1);
   const pileGlow = context.createRadialGradient(
     centerX,
-    floorY - height * 0.07,
+    baseY - height * 0.07,
     0,
     centerX,
-    floorY - height * 0.07,
+    baseY - height * 0.07,
     areaWidth * 0.54
   );
   pileGlow.addColorStop(0, side.side === 'player'
@@ -765,7 +768,7 @@ const drawCapitalSide = (
   context.beginPath();
   context.ellipse(
     centerX,
-    floorY + coinHeight,
+    baseY + coinHeight,
     areaWidth * (0.43 + auraStrength * 0.11),
     height * (0.06 + auraStrength * 0.026),
     0,
@@ -778,14 +781,14 @@ const drawCapitalSide = (
   drawOverflowHoard(
     context,
     centerX,
-    floorY,
+    baseY,
     areaWidth,
     side,
     coinWidth,
     coinHeight
   );
 
-  const rackWidth = areaWidth * 0.97;
+  const rackWidth = areaWidth * 0.94;
   const rackHeight = clamp(height * 0.04, 7, 14);
   const rackGradient = context.createLinearGradient(0, baseY, 0, baseY + rackHeight);
   rackGradient.addColorStop(0, '#d7dee2');
@@ -846,7 +849,7 @@ const drawCapitalSide = (
 
     if (activeColumns.has(index)) {
       const packetLayers =
-        3 + Math.abs(side.frame.packetSeed + index * 3) % 4;
+        3 + Math.abs(side.frame.packetSeed + index * 3) % 3;
       const packetOrder = side.frame.activeColumnIndices.indexOf(index);
       const staggeredProgress = clamp(
         side.frame.packetProgress - Math.max(0, packetOrder) * 0.025,
@@ -861,14 +864,16 @@ const drawCapitalSide = (
         columnBaseY -
         Math.max(column.coinHeight, visualLayers * column.layerStep) -
         column.coinHeight;
-      const startBaseY = height * 0.1 + packetHeight;
+      // Start below the semantic gauge/readout band instead of dropping coins
+      // behind it. The pile still has the full remaining field to gather speed.
+      const startBaseY = safeTopY + packetHeight;
       const packetBaseY =
         startBaseY + (landingBaseY - startBaseY) * easedProgress;
       drawCoinColumn(
         context,
         x,
         packetBaseY,
-        column.coinWidth * 1.08,
+        column.coinWidth,
         column.coinHeight,
         column.layerStep,
         packetLayers,

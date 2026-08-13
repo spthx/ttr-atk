@@ -12,9 +12,8 @@ type CapitalRapidFireSession = {
   side: CapitalRapidFireSide;
   active: boolean;
   stopAtMs: number | null;
-  chunkTimer: number | null;
   stopTimer: number | null;
-  sources: Set<AudioBufferSourceNode>;
+  source: AudioBufferSourceNode | null;
   master: GainNode | null;
   panner: StereoPannerNode | null;
 };
@@ -28,6 +27,7 @@ class SoundEffects {
   private cinematicGain: GainNode | null = null;
   private limitImpactTimer: number | null = null;
   private capitalRapidFireGeneration = 0;
+  private capitalRapidFireLoopBuffers = new Map<string, AudioBuffer>();
   private capitalRapidFireSessions: Partial<
     Record<CapitalRapidFireSide, CapitalRapidFireSession>
   > = {};
@@ -86,6 +86,7 @@ class SoundEffects {
       this.ctx = null;
       this.bufferCache.clear();
       this.synthesizedNoiseBufferCache.clear();
+      this.capitalRapidFireLoopBuffers.clear();
       if (staleCtx && state !== 'closed') {
         try {
           void staleCtx.close().catch(() => {});
@@ -359,44 +360,38 @@ class SoundEffects {
     }
   }
 
-  private releaseCapitalRapidFireChunk(session: CapitalRapidFireSession) {
-    if (session.chunkTimer !== null && typeof window !== 'undefined') {
-      window.clearTimeout(session.chunkTimer);
-      session.chunkTimer = null;
-    }
-    const sources = [...session.sources];
+  private releaseCapitalRapidFireLoop(
+    session: CapitalRapidFireSession,
+    fadeMs = 24
+  ) {
+    const source = session.source;
     const master = session.master;
     const panner = session.panner;
-    session.sources.clear();
+    session.source = null;
     session.master = null;
     session.panner = null;
     const ctx = this.ctx;
     const now = ctx?.currentTime ?? 0;
+    const fadeSeconds = Math.max(0, fadeMs) / 1_000;
     if (master && ctx) {
       try {
         master.gain.cancelScheduledValues(now);
         master.gain.setValueAtTime(Math.max(master.gain.value, 0.0001), now);
-        master.gain.linearRampToValueAtTime(0.0001, now + 0.006);
+        master.gain.linearRampToValueAtTime(0.0001, now + fadeSeconds);
       } catch {
         // The context may have been interrupted between visual frames.
       }
     }
-    sources.forEach((source) => {
+    if (source) {
       try {
-        source.stop(ctx ? now + 0.008 : undefined);
+        source.stop(ctx ? now + fadeSeconds + 0.008 : undefined);
       } catch {
-        // A completed click needs no second stop.
+        // A completed loop needs no second stop.
       }
-    });
+    }
     const disconnect = () => {
-      sources.forEach((source) => {
-        try {
-          source.disconnect();
-        } catch {
-          // The source may already have released itself.
-        }
-      });
       try {
+        source?.disconnect();
         master?.disconnect();
         panner?.disconnect();
       } catch {
@@ -406,13 +401,95 @@ class SoundEffects {
     if (typeof window === 'undefined') {
       disconnect();
     } else {
-      window.setTimeout(disconnect, 12);
+      window.setTimeout(disconnect, fadeMs + 24);
     }
   }
 
-  private startCapitalRapidFireChunk(
+  private getCapitalRapidFireLoopBuffer(
+    ctx: AudioContext,
+    tickBuffer: AudioBuffer
+  ) {
+    const cacheKey = `${ctx.sampleRate}:${tickBuffer.sampleRate}:${tickBuffer.length}`;
+    const cached = this.capitalRapidFireLoopBuffers.get(cacheKey);
+    if (cached) return cached;
+
+    // Direct measurements of the reference put the metallic supply clock at
+    // roughly 60–75ms. Build one reusable mono loop from the approved local
+    // tick so long investments keep a single AudioBufferSource voice on iOS.
+    const loopDurationMs = 1_056;
+    const tickOffsetsMs = [
+      0, 64, 131, 196, 264, 329, 395, 462,
+      527, 594, 659, 725, 792, 858, 923, 990,
+    ] as const;
+    const playbackRates = [
+      0.99, 1.025, 0.98, 1.01, 1.035, 0.995, 1.018, 0.975,
+    ] as const;
+    const gains = [1, 0.94, 0.98, 1.03, 0.96, 1.01, 0.92, 0.99] as const;
+    const output = ctx.createBuffer(
+      1,
+      Math.ceil(ctx.sampleRate * loopDurationMs / 1_000),
+      ctx.sampleRate
+    );
+    const outputData = output.getChannelData(0);
+    const inputChannels = Array.from(
+      { length: tickBuffer.numberOfChannels },
+      (_, channel) => tickBuffer.getChannelData(channel)
+    );
+    let firstAudibleFrame = 0;
+    while (firstAudibleFrame < tickBuffer.length) {
+      const magnitude = inputChannels.reduce(
+        (sum, channel) => sum + Math.abs(channel[firstAudibleFrame] ?? 0),
+        0
+      ) / Math.max(1, inputChannels.length);
+      if (magnitude >= 0.003) break;
+      firstAudibleFrame += 1;
+    }
+    const tickWindowFrames = Math.min(
+      tickBuffer.length - firstAudibleFrame,
+      Math.ceil(tickBuffer.sampleRate * 0.058)
+    );
+
+    tickOffsetsMs.forEach((offsetMs, tickIndex) => {
+      const destinationStart = Math.round(ctx.sampleRate * offsetMs / 1_000);
+      const rate = playbackRates[tickIndex % playbackRates.length];
+      const gain = gains[tickIndex % gains.length];
+      const destinationFrames = Math.ceil(
+        tickWindowFrames * ctx.sampleRate / tickBuffer.sampleRate / rate
+      );
+      for (let frame = 0; frame < destinationFrames; frame += 1) {
+        const destination = destinationStart + frame;
+        if (destination >= outputData.length) break;
+        const sourceFrame = firstAudibleFrame + Math.floor(
+          frame * tickBuffer.sampleRate * rate / ctx.sampleRate
+        );
+        if (sourceFrame >= firstAudibleFrame + tickWindowFrames) break;
+        const progress = frame / Math.max(1, destinationFrames - 1);
+        const attack = Math.min(1, frame / Math.max(1, ctx.sampleRate * 0.005));
+        const release = progress < 0.78 ? 1 : (1 - progress) / 0.22;
+        const sample = inputChannels.reduce(
+          (sum, channel) => sum + (channel[sourceFrame] ?? 0),
+          0
+        ) / Math.max(1, inputChannels.length);
+        outputData[destination] += sample * gain * attack * Math.max(0, release);
+      }
+    });
+    const peak = outputData.reduce(
+      (maximum, sample) => Math.max(maximum, Math.abs(sample)),
+      0
+    );
+    if (peak > 0.94) {
+      const scale = 0.94 / peak;
+      for (let frame = 0; frame < outputData.length; frame += 1) {
+        outputData[frame] *= scale;
+      }
+    }
+    this.capitalRapidFireLoopBuffers.set(cacheKey, output);
+    return output;
+  }
+
+  private startCapitalRapidFireLoop(
     session: CapitalRapidFireSession,
-    buffer: AudioBuffer
+    tickBuffer: AudioBuffer
   ) {
     const ctx = this.ctx;
     if (
@@ -423,28 +500,22 @@ class SoundEffects {
     ) {
       return;
     }
-    const remainingMs =
-      session.stopAtMs === null
-        ? 1_000
-        : Math.max(0, session.stopAtMs - performance.now());
-    if (remainingMs <= 0) {
-      this.stopCapitalStackStream(session.side);
-      return;
-    }
-    const chunkMs = Math.min(1_000, remainingMs);
     const now = ctx.currentTime;
-    const chunkEnd = now + chunkMs / 1_000;
+    const source = ctx.createBufferSource();
     const master = ctx.createGain();
     const panner =
       typeof ctx.createStereoPanner === 'function'
         ? ctx.createStereoPanner()
         : null;
-    master.gain.setValueAtTime(0.16, now);
-    master.gain.setValueAtTime(0.16, Math.max(now, chunkEnd - 0.006));
-    master.gain.linearRampToValueAtTime(0.0001, chunkEnd);
+    source.buffer = this.getCapitalRapidFireLoopBuffer(ctx, tickBuffer);
+    source.loop = true;
+    source.loopStart = 0;
+    source.loopEnd = source.buffer.duration;
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.linearRampToValueAtTime(0.14, now + 0.012);
     if (panner) {
       panner.pan.setValueAtTime(
-        session.side === 'player' ? -0.24 : 0.24,
+        session.side === 'player' ? -0.1 : 0.1,
         now
       );
       master.connect(panner);
@@ -452,46 +523,11 @@ class SoundEffects {
     } else {
       master.connect(ctx.destination);
     }
+    source.connect(master);
+    session.source = source;
     session.master = master;
     session.panner = panner;
-
-    // Romancing SaGa 3 deals short metallic ticks at roughly 15 hits/second.
-    // Keep the stream continuous while the completed tray descends and the
-    // incoming bundles continue falling; a small deterministic pitch alternation
-    // prevents the repeated asset from turning into one flat buzz.
-    for (let offsetMs = 0; offsetMs < chunkMs; offsetMs += 66) {
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      const tickIndex = Math.floor(offsetMs / 66);
-      source.playbackRate.setValueAtTime(
-        [0.97, 1.02, 0.99, 1.04][tickIndex % 4],
-        now + offsetMs / 1_000
-      );
-      source.connect(master);
-      session.sources.add(source);
-      source.onended = () => {
-        session.sources.delete(source);
-        try {
-          source.disconnect();
-        } catch {
-          // Safari can release a source before its onended callback.
-        }
-      };
-      source.start(now + offsetMs / 1_000);
-      source.stop(chunkEnd);
-    }
-    session.chunkTimer = window.setTimeout(() => {
-      session.chunkTimer = null;
-      this.releaseCapitalRapidFireChunk(session);
-      if (
-        session.active &&
-        (session.stopAtMs === null || performance.now() < session.stopAtMs)
-      ) {
-        this.startCapitalRapidFireChunk(session, buffer);
-      } else {
-        this.stopCapitalStackStream(session.side);
-      }
-    }, chunkMs);
+    source.start(now);
   }
 
   private beginCapitalRapidFire(side: CapitalRapidFireSide) {
@@ -503,9 +539,8 @@ class SoundEffects {
       side,
       active: true,
       stopAtMs: null,
-      chunkTimer: null,
       stopTimer: null,
-      sources: new Set(),
+      source: null,
       master: null,
       panner: null,
     };
@@ -522,7 +557,7 @@ class SoundEffects {
           this.capitalRapidFireSessions[side]?.generation ===
             session.generation
         ) {
-          this.startCapitalRapidFireChunk(session, buffer);
+          this.startCapitalRapidFireLoop(session, buffer);
         }
       })
       .catch(() => {
@@ -542,7 +577,7 @@ class SoundEffects {
       window.clearTimeout(session.stopTimer);
       session.stopTimer = null;
     }
-    this.releaseCapitalRapidFireChunk(session);
+    this.releaseCapitalRapidFireLoop(session);
     if (
       this.capitalRapidFireSessions[side]?.generation === session.generation
     ) {

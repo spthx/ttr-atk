@@ -1,45 +1,46 @@
-# Coin overflow design QA
+# Coin overflow and stack-sound design QA
 
 - Source visual truth: `D:\Desktop\trade.png` and the observed coin sequences in `xdusHCc07dY` / `t062klBNc4k`.
 - Implementation screenshots:
-  - `D:\CodexHome\visualizations\2026\08\08\019fe2fd-49a1-7ea1-90c6-70bec3ee5db1\coin-overflow-matched-base.png`
-  - `D:\CodexHome\visualizations\2026\08\08\019fe2fd-49a1-7ea1-90c6-70bec3ee5db1\coin-overflow-matched-tier1.png`
-  - `D:\CodexHome\visualizations\2026\08\08\019fe2fd-49a1-7ea1-90c6-70bec3ee5db1\coin-overflow-tier3-done.png`
-- Combined comparison: `D:\CodexHome\visualizations\2026\08\08\019fe2fd-49a1-7ea1-90c6-70bec3ee5db1\coin-design-comparison.png`
-- Viewport: a 402 × 414 live capital field inside the 402 × 874 mobile shell; the complete game was also checked at the in-app Browser's wide viewport.
-- States: pre-overflow, first overflow while bundles are falling, maximum bounded overflow, and the first live campaign battle.
+  - `C:\Users\yutto\.codex\visualizations\2026\08\08\019fe2fd-49a1-7ea1-90c6-70bec3ee5db1\coin-refine-402-tier1.png`
+  - `C:\Users\yutto\.codex\visualizations\2026\08\08\019fe2fd-49a1-7ea1-90c6-70bec3ee5db1\coin-refine-final-descent.png`
+  - `C:\Users\yutto\.codex\visualizations\2026\08\08\019fe2fd-49a1-7ea1-90c6-70bec3ee5db1\coin-refine-430-tier3.png`
+- Combined comparison: `C:\Users\yutto\.codex\visualizations\2026\08\08\019fe2fd-49a1-7ea1-90c6-70bec3ee5db1\coin-refine-comparison.png`
+- Viewports: 402 × 874 and 430 × 932 phone shells, each with the production-height 414px capital field.
+- States: settled first overflow, overflow descent with incoming bundles, maximum bounded overflow, and a 2.8-second audio stream.
 
 ## Full-view comparison evidence
 
-The completed four-row treasury stays broad and dense rather than forming a central peak. On the first real overflow crossing, the completed pile and pedestal move down while the incoming three-to-six-coin bundles remain in flight. At the maximum tier, the footing leaves the viewport and the full-width coin wall remains visible, matching the reference behavior rather than hiding the accumulated coins.
+The tall-phone layout now leaves a deliberate centre aisle between the two treasuries while keeping the reviewed coin size and dense four-row construction. Tier one leaves the pedestal visibly inside the field; tier two approaches the lower mask; tier three sends the footing below the viewport while retaining the complete visible wall. The completed pedestal, glow, columns and loose coins descend together instead of splitting across two floor positions.
 
 ## Focused comparison evidence
 
-The matched pre-overflow/first-overflow captures confirm that the pile moves down by a visible authored step without shrinking its coin width. The mid-transition capture confirms separate completed-pile and incoming-bundle layers. The combined source/implementation image confirms dense horizontal spacing, broad shoulders, metallic rims and a non-pointed top. A separate focused typography comparison was not needed because this change does not alter text or controls.
+The transition capture shows separate completed-pile and incoming-bundle layers: short three-to-five-coin packets keep falling while the finished mountain accelerates down. The source/implementation comparison confirms broad shoulders, a non-pointed top, individual metallic rims and a centre gap close to the original trade screen. Focused audio analysis measured roughly 60–75ms between metallic pulses; the implementation reuses the approved recorded tick in a 1,056ms cached loop with subtle, non-alternating pitch and volume variation.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: unchanged; no Canvas text or application copy was added.
-- Spacing and layout rhythm: coin pitch remains responsive and dense in portrait and landscape; the overflow shift creates visible upper headroom without changing the field or control footprint.
+- Fonts and typography: unchanged; the Canvas adds no text and the QA overlay only marks the existing readout safe zone.
+- Spacing and layout rhythm: each side occupies 44% of the field with a 3% outer inset, a 41.36% pedestal and at least 8% centre pile gap at both 402px and 430px widths.
 - Colors and visual tokens: existing player-gold, enemy-red, cyan/red pressure colors and casino background are preserved.
-- Image quality and asset fidelity: existing high-quality procedural Canvas coins and raster battlefield backdrops are preserved; no placeholder or substitute asset was introduced.
+- Image quality and asset fidelity: the existing high-quality coin renderer and raster battlefield backdrops are preserved; no placeholder asset was introduced.
 - Copy and content: unchanged.
 
 ## Findings
 
-- P3: At the maximum bounded tier the current wall is flatter than the stepped example in `trade.png`. This is acceptable for this pass because the video reference also shows a near-flat extreme wall, and the user explicitly rejected a pointed central mountain. A later polish pass could retain a one-coin shoulder variation without changing overflow behavior.
+- P3: The maximum wall is flatter than the stepped `trade.png` example. This remains acceptable because the referenced extreme-capital video also resolves to a near-flat wall and the requested pass prioritizes descent, portrait balance and sound rather than changing the approved coin appearance.
 
 ## Interaction and runtime checks
 
-- First-tier and third-tier controls were exercised in the local visual harness.
-- The real first campaign battle was opened and its opening enemy pile rendered correctly.
-- Browser console: zero errors and zero warnings; only Vite connection and React development information messages.
-- Static and deterministic checks cover portrait/landscape shift, rack/stack separation, incoming bundle cadence, no pre-lowering, and final footing retention.
+- Base, descent, first-tier and maximum-tier controls were exercised at both portrait widths.
+- The 2.8-second stack loop started and stopped through a user gesture with no console error or warning.
+- The sound path uses one looping `AudioBufferSource` per active side instead of creating roughly fifteen sources per second.
+- Static checks cover 402/430 width, pedestal and pile gaps, portrait/landscape stops, pile/hoard/glow cohesion, short bundles, cached audio cadence and renderer cleanup.
 
 ## Comparison history
 
-1. Initial implementation showed the pile growing and scrolling from the same depth value, visually cancelling the descent.
-2. The renderer was split into completed-pile `rackDepth` and absorbed-overflow `stackDepth`, with a 180ms accelerating descent and concurrent incoming bundles.
-3. Post-fix captures show a visible lower tray, continuing falling bundles, and a readable maximum wall. No P0/P1/P2 findings remain.
+1. The prior pass restored descent, but the glow and overflow coins stayed on the old floor and made the mountain appear visually split.
+2. The portrait trays still occupied 47.6% per side, leaving almost no centre aisle; tier one moved farther down than its eight new layers grew upward.
+3. The completed visual group now shares `baseY`; portrait trays use 44% side areas, tier stops are 10/18/27%, and incoming bundles begin below the readout.
+4. The repeated 66ms tick scheduler was replaced by one cached loop voice with measured 60–75ms micro-cadence and a short stop fade. No P0/P1/P2 findings remain.
 
 final result: passed
