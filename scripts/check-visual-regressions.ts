@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   BATTLE_CAPITAL_COLUMN_COUNT,
+  CAPITAL_OVERFLOW_RAPID_BEAT_MS,
   CAPITAL_OVERFLOW_RESTACK_BEATS,
   CAPITAL_STACK_BEAT_MS,
   buildCapitalStackTimeline,
@@ -546,16 +547,15 @@ assert.ok(
 );
 const portraitTallerPile = resolveBattleCapitalStackGeometry(414, false, 320);
 assert.ok(
-  Math.abs(portraitTallerPile.scrollPx - portraitTallPile.scrollPx - 20) < 1e-9,
-  'every additional overflow pixel must move the hidden footing by one pixel'
+  portraitTallerPile.scrollPx >= portraitTallPile.scrollPx &&
+    portraitTallerPile.baseY + 14 * 1.16 < 414,
+  'extra height may clip above the field but must not bury the reviewed pedestal below the Canvas'
 );
 const portraitExtremePile = resolveBattleCapitalStackGeometry(414, false, 380);
 assert.ok(
-  portraitExtremePile.baseY > 414 &&
-    Math.abs(
-      portraitExtremePile.baseY - 380 - portraitExtremePile.safeTopY
-    ) < 1e-9,
-  'an extreme pile may scroll its footing offscreen only while its full visible top remains pinned'
+  portraitExtremePile.scrollPx === portraitTallerPile.scrollPx &&
+    portraitExtremePile.baseY + 14 * 1.16 < 414,
+  'an extreme wall may clip above the field while its silver footing stays visibly attached'
 );
 const landscapeShortPile = resolveBattleCapitalStackGeometry(171, true, 50);
 assert.equal(landscapeShortPile.scrollPx, 0);
@@ -651,8 +651,13 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const copyOffset =[\s\S]{0,180}column\.coinWidth \*[\s\S]{0,40}0\.16;[\s\S]{0,120}const unmergedWave = 1 - Math\.pow\(staggeredProgress, 4\);[\s\S]{0,260}const copyTrail =[\s\S]{0,220}unmergedWave;[\s\S]{0,180}x \+ copyOffset,[\s\S]{0,80}packetBaseY \+ copyTrail/,
+  /const unmergedWave = 1 - Math\.pow\(staggeredProgress, 4\);[\s\S]{0,100}const copyOffset =[\s\S]{0,180}renderedCoinWidth \*[\s\S]{0,60}0\.16 \*[\s\S]{0,40}unmergedWave;[\s\S]{0,260}const copyTrail =[\s\S]{0,220}unmergedWave;[\s\S]{0,180}x \+ copyOffset,[\s\S]{0,80}packetBaseY \+ copyTrail/,
   'mass copies must form a readable compact wave in flight and converge into the same settled column at landing'
+);
+assert.match(
+  battleCapitalCanvas,
+  /renderedCoinWidth:\s*column\.coinWidth \* depthScale,[\s\S]{0,120}renderedCoinHeight,[\s\S]{0,80}renderedLayerStep,[\s\S]*const packetHeight =[\s\S]{0,100}renderedCoinHeight \+[\s\S]{0,100}renderedLayerStep;[\s\S]{0,100}const landingBaseY = columnBaseY - bodyHeight;[\s\S]*drawCoinColumn\([\s\S]{0,160}renderedCoinWidth,[\s\S]{0,60}renderedCoinHeight,[\s\S]{0,60}renderedLayerStep/,
+  'falling bundles must share the exact settled coin width, thickness, layer pitch and landing surface'
 );
 assert.match(
   battleCapitalCanvas,
@@ -1369,6 +1374,10 @@ assert.ok(
     (firstTrueOverflowPacket.stackDepth ?? 0) === 0,
   'the first post-drop packet must remain visually separate until it lands'
 );
+const lastTrueOverflowPacket = firstTrueOverflowTimeline.frames.findLast(
+  (frame) =>
+    frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+);
 // Production Canvas heights exclude the shared command lane: approximately
 // 368px on a 430x932 portrait and 129px on a compact landscape phone.
 const portraitCanvasHeight = 368;
@@ -1428,15 +1437,14 @@ assert.ok(
     landscapeCanvasHeight,
   'the descended landscape pedestal rim must remain visibly inside the canvas above the command lane'
 );
-const firstTrueOverflowAbsorption = firstTrueOverflowTimeline.frames.find(
-  (frame) =>
-    frame.phase === 'pour' &&
-    frame.activeColumnIndices.length === 0 &&
-    (frame.stackDepth ?? 0) === 1
-);
+const firstTrueOverflowAbsorption = firstTrueOverflowTimeline.frames.at(-1);
 assert.ok(
   firstTrueOverflowAbsorption &&
-    firstTrueOverflowAbsorption.atMs > firstTrueOverflowPacket.atMs,
+    firstTrueOverflowAbsorption.phase === 'settle' &&
+    firstTrueOverflowAbsorption.stackDepth === 1 &&
+    lastTrueOverflowPacket &&
+    firstTrueOverflowAbsorption.atMs >=
+      lastTrueOverflowPacket.atMs + lastTrueOverflowPacket.durationMs,
   'the hidden overflow layer may join the completed pile only after the falling sequence'
 );
 const saturatedReloadFrames = getMechanicalCapitalColumnFrames(
@@ -1533,8 +1541,21 @@ assert.ok(
   'large capital must keep every bundle visible across at least three 30fps samples'
 );
 assert.ok(
-  saturatedReloadFrames.length * CAPITAL_STACK_BEAT_MS.heavy >= 3_000,
-  'exceptional reloads must spend time on visible stacking instead of collapsing inside one second'
+  buildCapitalStackTimeline({
+    id: 'visual-saturated-rapid-reload',
+    side: 'player',
+    source: 'direct',
+    previousCapital: 8_000_000,
+    nextCapital: 11_000_000,
+    marketPrice: 1_000_000,
+    intensity: 'heavy',
+    seed: 92,
+  }).frames
+    .filter(
+      (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+    )
+    .every((frame) => frame.durationMs === CAPITAL_OVERFLOW_RAPID_BEAT_MS),
+  'exceptional reloads must preserve every bounded mass sweep at the ultra-fast recorded tick cadence'
 );
 assert.match(
   battleModal,
@@ -1946,6 +1967,25 @@ assert.match(
   battleModal,
   /playCapitalStackStep\([\s\S]{0,220}frame\.durationMs/,
   'capital rendering must pass the final packet duration into audio shutdown'
+);
+const audibleFrameSelectors = [
+  ...battleModal.matchAll(
+    /const audibleFrames = timeline\.frames\.filter\([\s\S]{0,220}\);/g
+  ),
+].map((match) => match[0]);
+assert.equal(
+  audibleFrameSelectors.length,
+  2,
+  'direct and side-preview capital paths must share the same audio selection contract'
+);
+assert.ok(
+  audibleFrameSelectors.every(
+    (selection) =>
+      selection.includes("frame.phase === 'pour'") &&
+      selection.includes('frame.activeColumnIndices.length > 0') &&
+      !selection.includes('rackShift')
+  ),
+  'the metallic stack loop must begin with the first falling bundle, not during the one-shot empty rack descent'
 );
 assert.match(
   battleModal,

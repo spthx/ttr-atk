@@ -143,9 +143,13 @@ export const resolveBattleCapitalStackGeometry = (
   const safeTopY = safeHeight * (landscape ? 0.06 : 0.22);
   const visibleWindow = floorY - safeTopY;
   const normalizedRackDepth = clamp(rackDepth, 0, 3);
+  // The first overflow keeps the approved, clearly readable 14% drop. Later
+  // tiers are resolved into the same one-shot destination without burying the
+  // silver pedestal again: the wall itself may clip above the field, while a
+  // thin rim remains visible as proof that the whole treasury moved together.
   const rackStops = landscape
-    ? [0, safeHeight * 0.14, safeHeight * 0.28, safeHeight * 0.42]
-    : [0, safeHeight * 0.14, safeHeight * 0.28, safeHeight * 0.42];
+    ? [0, safeHeight * 0.14, safeHeight * 0.16, safeHeight * 0.175]
+    : [0, safeHeight * 0.14, safeHeight * 0.16, safeHeight * 0.175];
   const lowerStop = Math.floor(normalizedRackDepth);
   const upperStop = Math.ceil(normalizedRackDepth);
   const stopProgress = normalizedRackDepth - lowerStop;
@@ -159,7 +163,15 @@ export const resolveBattleCapitalStackGeometry = (
   );
   // Authored descent itself creates visible room for the next eight layers.
   // Only content beyond that enlarged window may push the footing farther.
-  const scrollPx = contentSafetyScroll + authoredRackScroll;
+  const rackHeight = clamp(safeHeight * 0.04, 7, 14);
+  const maximumVisibleScroll = Math.max(
+    0,
+    safeHeight - floorY - rackHeight * 1.16 - 1
+  );
+  const scrollPx = Math.min(
+    contentSafetyScroll + authoredRackScroll,
+    maximumVisibleScroll
+  );
   return {
     baseY: floorY + scrollPx,
     floorY,

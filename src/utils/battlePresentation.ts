@@ -940,6 +940,11 @@ export const CAPITAL_OVERFLOW_RESTACK_BEATS = {
   compact: 10,
 } as const;
 
+// Overflow still carries every authored sweep and every bounded mass copy,
+// but the already-full treasury receives them at the measured metallic tick
+// cadence instead of repeating a slow normal-investment beat per tier.
+export const CAPITAL_OVERFLOW_RAPID_BEAT_MS = 66;
+
 const getCapitalSweepGroups = (
   order: readonly number[],
   maximumColumnsPerBeat: number
@@ -1282,7 +1287,7 @@ export const buildCapitalStackTimeline = (
     : heavy
       ? CAPITAL_OVERFLOW_RESTACK_BEATS.heavy
       : CAPITAL_OVERFLOW_RESTACK_BEATS.standard;
-  let mechanicalFrames = getMechanicalCapitalColumnFrames(
+  const rawMechanicalFrames = getMechanicalCapitalColumnFrames(
     previousStage,
     targetStage,
     compact ? 4 : heavy ? 24 : 22,
@@ -1292,27 +1297,39 @@ export const buildCapitalStackTimeline = (
     heavy,
     event.side
   );
-  // A true capacity crossing must lower the completed treasury before any of
-  // this commitment's new bundles are shown. The generic mechanical helper
-  // appends reload passes after normal growth, so move only the first real
-  // rack-shift marker to the front and retain all later sweep order.
+  const growthFrames = rawMechanicalFrames.filter(
+    (frame) => (frame.overflowPass ?? 0) === 0
+  );
+  const overflowFrames = rawMechanicalFrames.filter(
+    (frame) =>
+      (frame.overflowPass ?? 0) > 0 && frame.activeColumnIndices.length > 0
+  );
+  // All requested reload sweeps retain their mass, but pass-boundary idle
+  // frames are removed. A real multi-tier crossing gets one total rack shift,
+  // never a staircase of separate descents.
+  let mechanicalFrames: MechanicalCapitalColumnFrame[] = [
+    ...growthFrames,
+    ...overflowFrames,
+  ];
   if (overflowTierGrowth > 0) {
-    const firstRackShiftIndex = mechanicalFrames.findIndex(
-      (frame) =>
-        (frame.overflowPass ?? 0) === 1 && (frame.stackBeat ?? 0) === 0
-    );
-    if (firstRackShiftIndex > 0) {
-      const firstRackShift = mechanicalFrames[firstRackShiftIndex];
-      mechanicalFrames = [
-        {
-          ...firstRackShift,
-          visibleUnits: previousStage,
-          columnHeights: getCapitalColumnHeights(previousStage),
-        },
-        ...mechanicalFrames.slice(0, firstRackShiftIndex),
-        ...mechanicalFrames.slice(firstRackShiftIndex + 1),
-      ];
-    }
+    const shiftAfterBaseFill = previousStage === 0;
+    const shiftSource = shiftAfterBaseFill
+      ? growthFrames.at(-1)
+      : undefined;
+    const rackShiftFrame: MechanicalCapitalColumnFrame = {
+      visibleUnits: shiftSource?.visibleUnits ?? previousStage,
+      columnHeights:
+        shiftSource?.columnHeights ?? getCapitalColumnHeights(previousStage),
+      activeColumnIndices: [],
+      incomingBundleCopies: 1,
+      rackCompressed: true,
+      overflowPass: 1,
+      stackBeat: 0,
+      rackShift: true,
+    };
+    mechanicalFrames = shiftAfterBaseFill
+      ? [...growthFrames, rackShiftFrame, ...overflowFrames]
+      : [rackShiftFrame, ...growthFrames, ...overflowFrames];
   }
   const seed = Number.isFinite(event.seed) ? Math.trunc(event.seed) : 0;
   const capitalDistance = event.nextCapital - event.previousCapital;
@@ -1322,16 +1339,23 @@ export const buildCapitalStackTimeline = (
     event.marketPrice
   );
   const stageDistance = targetStage - previousStage;
+  const activeFrameCount = mechanicalFrames.filter(
+    (frame) => frame.activeColumnIndices.length > 0
+  ).length;
+  const overflowActiveFrameCount = mechanicalFrames.filter(
+    (frame) =>
+      (frame.overflowPass ?? 0) > 0 && frame.activeColumnIndices.length > 0
+  ).length;
   const presentedCapitalFor = (
     visibleUnits: number,
-    frameIndex: number
+    completedActiveFrames: number
   ) => {
     if (capitalDistance === 0) return event.nextCapital;
     // Once the fixed rack is visually saturated, overflow reloads still need
     // a readable ledger climb. Interpolate across the bounded packet sequence
     // instead of snapping the displayed amount on its first frame.
-    if (stageDistance === 0) {
-      const progress = (frameIndex + 1) / Math.max(1, mechanicalFrames.length);
+    if (reloadPasses > 0) {
+      const progress = completedActiveFrames / Math.max(1, activeFrameCount);
       return Math.round(event.previousCapital + capitalDistance * progress);
     }
     const progress = Math.max(
@@ -1355,37 +1379,46 @@ export const buildCapitalStackTimeline = (
     packetSeed: seed,
   };
   let pourAtMs = preloadMs;
-  let currentRackDepth = previousOverflowTier;
+  let completedActiveFrames = 0;
+  let completedOverflowActiveFrames = 0;
+  let rackHasShifted = overflowTierGrowth <= 0;
+  let settledVisibleUnits = previousStage;
+  let settledColumnHeights = getCapitalColumnHeights(previousStage);
   const pourFrames = mechanicalFrames.map(
     (frame, index): CapitalStackTimelineFrame => {
-      const overflowPass = frame.overflowPass ?? 0;
-      const isRackShift = overflowPass > 0 && (frame.stackBeat ?? 0) === 0;
-      const passStartDepth = Math.min(
-        targetOverflowTier,
-        previousOverflowTier + Math.max(0, overflowPass - 1)
-      );
-      const passTargetDepth = Math.min(
-        targetOverflowTier,
-        previousOverflowTier + overflowPass
-      );
-      const passProgress =
-        overflowPass > 0
-          ? Math.max(
-              0,
-              Math.min(1, ((frame.stackBeat ?? 0) - 1) / reloadBeats)
-            )
+      const isRackShift = frame.rackShift === true;
+      const isActive = frame.activeColumnIndices.length > 0;
+      const isOverflowActive = (frame.overflowPass ?? 0) > 0 && isActive;
+      const completedBefore = completedActiveFrames;
+      const absorbedProgress =
+        overflowTierGrowth > 0
+          ? completedOverflowActiveFrames /
+            Math.max(1, overflowActiveFrameCount)
           : 0;
-      if (isRackShift && passTargetDepth > currentRackDepth) {
-        currentRackDepth = passTargetDepth;
-      }
-      // Let the completed treasury finish its full descent and visibly settle
-      // before the first new bundle starts falling. The Canvas owns only the
-      // bounded interpolation; this timeline owns the sequencing contract.
+      const rackDepthForFrame =
+        isRackShift || rackHasShifted
+          ? targetOverflowTier
+          : previousOverflowTier;
+      // Let the completed treasury finish its one total descent before the
+      // first bundle. Thereafter every reload sweep runs at the recorded coin
+      // tick cadence with no idle boundary between tiers.
       const durationMs = isRackShift
         ? BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS
-        : beatMs;
+        : reloadPasses > 0
+          ? CAPITAL_OVERFLOW_RAPID_BEAT_MS
+          : beatMs;
       const timelineFrame: CapitalStackTimelineFrame = {
         ...frame,
+        // Draw falling bundles against the previously settled pile. The raw
+        // mechanical frame becomes settled only on the following beat, so new
+        // coins are never visible both in the mountain and in mid-air.
+        visibleUnits:
+          isActive && reloadPasses > 0
+            ? settledVisibleUnits
+            : frame.visibleUnits,
+        columnHeights: isActive && reloadPasses > 0
+          ? [...settledColumnHeights]
+          : [...frame.columnHeights],
         // Use a timeline-global beat so persistent fixed DOM nodes can alternate
         // their CSS animation name and visibly relaunch every packet.
         stackBeat: index + 1,
@@ -1394,16 +1427,25 @@ export const buildCapitalStackTimeline = (
         atMs: pourAtMs,
         durationMs,
         rackDepth:
-          currentRackDepth,
+          rackDepthForFrame,
         stackDepth:
-          overflowPass > 0
-            ? passStartDepth +
-              (passTargetDepth - passStartDepth) * passProgress
-            : previousOverflowTier,
-        rackShift: isRackShift && passTargetDepth > passStartDepth,
-        presentedCapital: presentedCapitalFor(frame.visibleUnits, index),
+          previousOverflowTier + overflowTierGrowth * absorbedProgress,
+        rackShift: isRackShift,
+        presentedCapital: presentedCapitalFor(
+          isActive && reloadPasses > 0
+            ? settledVisibleUnits
+            : frame.visibleUnits,
+          completedBefore
+        ),
         packetSeed: seed + (index + 1) * 7_919,
       };
+      if (isActive) {
+        completedActiveFrames += 1;
+        if (isOverflowActive) completedOverflowActiveFrames += 1;
+        settledVisibleUnits = frame.visibleUnits;
+        settledColumnHeights = [...frame.columnHeights];
+      }
+      if (isRackShift) rackHasShifted = true;
       pourAtMs += durationMs;
       return timelineFrame;
     }

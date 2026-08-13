@@ -40,6 +40,7 @@ import {
   BATTLE_STATE_UPDATE_INTERVAL_MS,
   BATTLE_HIT_STOP_TIMING,
   BATTLE_STATUS_MESSAGE_DURATION_MS,
+  CAPITAL_OVERFLOW_RAPID_BEAT_MS,
   CAPITAL_OVERFLOW_RESTACK_BEATS,
   CAPITAL_STACK_BEAT_MS,
   advanceEnemySupportTelegraphClock,
@@ -2051,8 +2052,8 @@ assert.ok(
       (frame) =>
         frame.phase === 'pour' && frame.activeColumnIndices.length > 0
     )
-    .every((frame) => frame.durationMs >= 100),
-  'every primary heavy packet remains visible for at least three 30fps samples'
+    .every((frame) => frame.durationMs === CAPITAL_OVERFLOW_RAPID_BEAT_MS),
+  'a bounded reload must stack at the recorded rapid metallic cadence'
 );
 assert.ok(
   heavyCapitalTimeline.frames.every((frame) => frame.rackShift !== true),
@@ -2114,15 +2115,101 @@ const multiTierOverflowTimeline = buildCapitalStackTimeline({
 });
 assert.equal(
   multiTierOverflowTimeline.frames.filter((frame) => frame.rackShift).length,
-  2,
-  'crossing two real overflow thresholds must visibly lower the completed tray twice'
+  1,
+  'one commitment must resolve every crossed overflow threshold in one total descent'
 );
 assert.deepEqual(
   multiTierOverflowTimeline.frames
     .filter((frame) => frame.rackShift)
     .map((frame) => [frame.rackDepth, frame.stackDepth]),
-  [[1, 0], [2, 1]],
-  'each descent must happen before that tier of incoming coins is absorbed'
+  [[2, 0]],
+  'the single descent must target the final footing before any new tier is absorbed'
+);
+const multiTierActiveFrames = multiTierOverflowTimeline.frames.filter(
+  (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+);
+assert.ok(
+  multiTierActiveFrames.length > 0 &&
+    multiTierActiveFrames.every(
+      (frame) =>
+        frame.rackDepth === 2 &&
+        (frame.stackDepth ?? 0) < 2 &&
+        frame.durationMs === CAPITAL_OVERFLOW_RAPID_BEAT_MS
+    ),
+  'all post-drop mass must use the final rack position and remain airborne until its rapid beat lands'
+);
+assert.equal(
+  multiTierOverflowTimeline.frames.at(-1)?.stackDepth,
+  2,
+  'only the final settled frame may absorb the complete multi-tier mass'
+);
+assert.ok(
+  multiTierOverflowTimeline.frames.every(
+    (frame, index, frames) =>
+      index === 0 || frame.presentedCapital >= frames[index - 1].presentedCapital
+  ),
+  'the one-shot descent and lagged incoming bundles must never make the displayed capital regress'
+);
+for (const [previousCapital, nextCapital, previousTier, targetTier] of [
+  [8_000_000_000, 18_000_000_000, 0, 3],
+  [10_625_000_000, 18_000_000_000, 1, 3],
+] as const) {
+  const timeline = buildCapitalStackTimeline({
+    id: `balance-one-shot-${previousTier}-${targetTier}`,
+    side: 'player',
+    source: 'direct',
+    previousCapital,
+    nextCapital,
+    marketPrice: 7_500_000_000,
+    intensity: 'heavy',
+    seed: 45 + previousTier,
+  });
+  const shifts = timeline.frames.filter((frame) => frame.rackShift === true);
+  const firstPostShiftPacket = timeline.frames.find(
+    (frame) =>
+      frame.phase === 'pour' &&
+      frame.activeColumnIndices.length > 0 &&
+      frame.atMs >= shifts[0].atMs + shifts[0].durationMs
+  );
+  assert.deepEqual(
+    shifts.map((frame) => [frame.rackDepth, frame.stackDepth]),
+    [[targetTier, previousTier]],
+    'every real multi-tier transition must calculate one final rack destination up front'
+  );
+  assert.ok(
+    shifts[0].activeColumnIndices.length === 0 &&
+      shifts[0].presentedCapital === previousCapital &&
+      firstPostShiftPacket?.rackDepth === targetTier &&
+      firstPostShiftPacket.stackDepth === previousTier,
+    'the total descent must contain no new coins and must finish before rapid stacking starts'
+  );
+  assert.equal(timeline.frames.at(-1)?.presentedCapital, nextCapital);
+  assert.equal(timeline.frames.at(-1)?.stackDepth, targetTier);
+}
+const emptyToOverflowTimeline = buildCapitalStackTimeline({
+  id: 'balance-empty-to-overflow',
+  side: 'player',
+  source: 'opening',
+  previousCapital: 0,
+  nextCapital: 18_000_000_000,
+  marketPrice: 7_500_000_000,
+  intensity: 'heavy',
+  seed: 48,
+});
+const emptyOverflowShiftIndex = emptyToOverflowTimeline.frames.findIndex(
+  (frame) => frame.rackShift === true
+);
+assert.ok(
+  emptyOverflowShiftIndex > 1 &&
+    emptyToOverflowTimeline.frames
+      .slice(1, emptyOverflowShiftIndex)
+      .some((frame) => frame.activeColumnIndices.length > 0),
+  'an empty tray must build its base treasury before the single overflow descent'
+);
+assert.equal(
+  emptyToOverflowTimeline.frames.filter((frame) => frame.rackShift).length,
+  1,
+  'even an empty-to-maximum commitment must descend only once'
 );
 assert.deepEqual(
   buildCapitalStackTimeline(heavyCapitalTimeline.event),

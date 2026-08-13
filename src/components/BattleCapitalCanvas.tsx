@@ -705,7 +705,9 @@ const drawCapitalSide = (
       column,
       index,
       visualLayers,
-      depthScale,
+      renderedCoinWidth: column.coinWidth * depthScale,
+      renderedCoinHeight,
+      renderedLayerStep,
       bodyHeight,
       baselineLift,
     };
@@ -804,7 +806,10 @@ const drawCapitalSide = (
     column,
     index,
     visualLayers,
-    depthScale,
+    renderedCoinWidth,
+    renderedCoinHeight,
+    renderedLayerStep,
+    bodyHeight,
     baselineLift,
   } of renderedColumns) {
     const mirroredPosition = playerSide ? column.xRatio : 1 - column.xRatio;
@@ -814,9 +819,9 @@ const drawCapitalSide = (
       context,
       x,
       columnBaseY,
-      column.coinWidth * depthScale,
-      column.coinHeight * depthScale,
-      column.layerStep * depthScale,
+      renderedCoinWidth,
+      renderedCoinHeight,
+      renderedLayerStep,
       visualLayers,
       side.side,
       activeColumns.has(index)
@@ -843,33 +848,31 @@ const drawCapitalSide = (
         );
         const easedProgress = 1 - Math.pow(1 - staggeredProgress, 2.4);
         const packetHeight =
-          column.coinHeight +
-          Math.max(0, packetLayers - 1) * column.layerStep;
-        const landingBaseY =
-          columnBaseY -
-          Math.max(column.coinHeight, visualLayers * column.layerStep) -
-          column.coinHeight;
+          renderedCoinHeight +
+          Math.max(0, packetLayers - 1) * renderedLayerStep;
+        const landingBaseY = columnBaseY - bodyHeight;
         // Start below the semantic gauge/readout band instead of dropping coins
         // behind it. The pile still has the full remaining field to gather speed.
         const startBaseY = safeTopY + packetHeight;
         const packetBaseY =
           startBaseY + (landingBaseY - startBaseY) * easedProgress;
+        const unmergedWave = 1 - Math.pow(staggeredProgress, 4);
         const copyOffset =
           (copyIndex - (side.frame.incomingBundleCopies - 1) / 2) *
-          column.coinWidth *
-          0.16;
-        const unmergedWave = 1 - Math.pow(staggeredProgress, 4);
+          renderedCoinWidth *
+          0.16 *
+          unmergedWave;
         const copyTrail =
           copyIndex *
-          (packetHeight + column.coinHeight * 0.5) *
+          (packetHeight + renderedCoinHeight * 0.5) *
           unmergedWave;
         drawCoinColumn(
           context,
           x + copyOffset,
           packetBaseY + copyTrail,
-          column.coinWidth,
-          column.coinHeight,
-          column.layerStep,
+          renderedCoinWidth,
+          renderedCoinHeight,
+          renderedLayerStep,
           packetLayers,
           side.side,
           true
