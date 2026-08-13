@@ -3,8 +3,6 @@ import type { BossAbilityTier } from './gameBalance';
 import {
   BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER,
   BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS,
-  resolveBattleCapitalDepthForOverflowLayers,
-  resolveBattleCapitalOverflowLayers,
 } from './battleCapitalCanvasLayout';
 
 export const BATTLE_CINEMATIC_TIMING = {
@@ -906,7 +904,16 @@ export const getCapitalColumnHeights = (visibleUnits: number) => {
 
 export interface MechanicalCapitalColumnFrame {
   visibleUnits: number;
+  /** Settled coins in the reusable upper field. */
   columnHeights: number[];
+  /**
+   * The most recently completed upper page after it has been banked below the
+   * field divider. Older pages are represented by `bankedPileCount`; renderers
+   * must keep their node/column count bounded.
+   */
+  bankedColumnHeights?: number[];
+  /** Number of completed upper pages stored below the divider. */
+  bankedPileCount?: number;
   activeColumnIndices: number[];
   /** Number of short incoming bundles drawn per active column (one to three). */
   incomingBundleCopies?: number;
@@ -918,12 +925,17 @@ export interface MechanicalCapitalColumnFrame {
   overflowPass?: number;
   /** One-based mechanical dealing beat inside an overflow reload pass. */
   stackBeat?: number;
-  /** Completed pile/tray depth. It moves independently from incoming coins. */
+  /** @deprecated Compatibility alias for `bankedPileCount`. */
   rackDepth?: number;
-  /** Extra bounded layers already absorbed by the completed overflow pile. */
+  /** @deprecated Compatibility alias for settled `bankedPileCount`. */
   stackDepth?: number;
-  /** The short authored beat where the completed pile starts moving down. */
+  /** @deprecated Compatibility alias for `bankTransfer`. */
   rackShift?: boolean;
+  /**
+   * One silent beat that moves the whole completed active page and its tray to
+   * the bank in a single motion. Incoming packets begin only after this beat.
+   */
+  bankTransfer?: boolean;
 }
 
 export const CAPITAL_STACK_BEAT_MS = {
@@ -1263,73 +1275,39 @@ export const buildCapitalStackTimeline = (
     event.nextCapital,
     event.marketPrice
   );
-  const previousAmountOverflowDepth = getBattleCapitalOverflowDepth(
-    event.previousCapital,
-    event.marketPrice
+  const previousBankedPileCount = Math.max(
+    0,
+    Math.floor(event.previousRackDepth ?? 0)
   );
-  const previousOverflowDepth = Math.max(
-    previousAmountOverflowDepth,
-    Math.max(0, event.previousRackDepth ?? 0)
-  );
-  const amountTargetOverflowDepth = getBattleCapitalOverflowDepth(
-    event.nextCapital,
-    event.marketPrice
-  );
-  const previousBaseLayers = previousStage / BATTLE_CAPITAL_COLUMN_COUNT;
-  const targetBaseLayers = targetStage / BATTLE_CAPITAL_COLUMN_COUNT;
-  const previousVisualLayers =
-    previousBaseLayers +
-    resolveBattleCapitalOverflowLayers(previousOverflowDepth);
-  const amountTargetVisualLayers =
-    targetBaseLayers +
-    resolveBattleCapitalOverflowLayers(amountTargetOverflowDepth);
   const capitalGain = Math.max(0, event.nextCapital - event.previousCapital);
   const marketGainRatio = capitalGain / Math.max(1, event.marketPrice);
+  // Once pages have been banked, compare the next offer with one page rather
+  // than the lifetime capital total. Equal 300M waves must therefore keep
+  // producing equal pages at 600->900M, 900->1.2B and beyond.
+  const estimatedActivePageCapital = event.previousCapital /
+    Math.max(1, previousBankedPileCount + 1);
   const usesMassCurtain =
     event.previousCapital > 0 &&
+    previousStage >= MAX_BATTLE_CAPITAL_VISIBLE_UNITS * 0.9 &&
     capitalGain > 0 &&
     marketGainRatio >= CAPITAL_MASS_CURTAIN_MINIMUM_MARKET_RATIO &&
-    capitalGain >= event.previousCapital * 0.5;
-  // Once a real treasury exists, a second treasury-sized commitment must add
-  // the same visible mass instead of being square-root compressed. This is a
-  // presentation-only bank: committed capital and ownership remain untouched.
-  const proportionalTargetVisualLayers = usesMassCurtain
-    ? previousVisualLayers * (event.nextCapital / event.previousCapital)
-    : amountTargetVisualLayers;
-  const targetVisualLayers = Math.max(
-    previousVisualLayers,
-    amountTargetVisualLayers,
-    Math.min(
-      MAX_BATTLE_CAPITAL_VISUAL_LAYERS_PER_COLUMN,
-      proportionalTargetVisualLayers
-    )
-  );
-  const targetOverflowLayers = Math.max(
-    0,
-    targetVisualLayers - targetBaseLayers
-  );
-  const targetOverflowDepth = Math.max(
-    previousOverflowDepth,
-    amountTargetOverflowDepth,
-    resolveBattleCapitalDepthForOverflowLayers(targetOverflowLayers)
-  );
+    capitalGain >= estimatedActivePageCapital * 0.5;
+  // A treasury-sized repeat does not stretch the same rolls. The completed
+  // active page is promoted to the bank, the upper field becomes empty, then
+  // a fresh page is dealt. This is presentation-only: committed capital and
+  // ownership are still supplied by the caller and never changed here.
+  const targetBankedPileCount =
+    previousBankedPileCount + (usesMassCurtain ? 1 : 0);
+  const emptyColumnHeights = getCapitalColumnHeights(0);
+  const previousActiveColumnHeights = getCapitalColumnHeights(previousStage);
+  const previousBankedColumnHeights = previousBankedPileCount > 0
+    ? getCapitalColumnHeights(MAX_BATTLE_CAPITAL_VISIBLE_UNITS)
+    : emptyColumnHeights;
   const requestedReloadPasses = getCapitalOverflowPassCount(
     event.previousCapital,
     event.nextCapital,
     event.marketPrice,
     heavy
-  );
-  const legacyReloadPasses = Math.min(
-    3,
-    Math.max(
-      requestedReloadPasses,
-      getBattleCapitalOverflowTier(event.nextCapital, event.marketPrice) -
-        getBattleCapitalOverflowTier(event.previousCapital, event.marketPrice)
-    )
-  );
-  const overflowDepthGrowth = Math.max(
-    0,
-    targetOverflowDepth - previousOverflowDepth
   );
   // Once the bounded rack is full, any further positive capital still needs a
   // visible packet. Otherwise common 7–16% enemy counters update only the
@@ -1337,10 +1315,10 @@ export const buildCapitalStackTimeline = (
   const reloadPasses = Math.min(
     3,
     previousStage === targetStage && event.nextCapital > event.previousCapital
-      ? Math.max(1, requestedReloadPasses, Math.ceil(overflowDepthGrowth - 1e-9))
-      : Math.max(requestedReloadPasses, Math.ceil(overflowDepthGrowth - 1e-9))
+      ? Math.max(1, requestedReloadPasses)
+      : requestedReloadPasses
   );
-  const willCompress = heavy || reloadPasses > 0;
+  const willCompress = heavy || reloadPasses > 0 || usesMassCurtain;
   // Heavy/reload commands keep a readable anticipation beat before the first
   // packet. This marker must never move an empty rack ahead of the visible coins.
   const preloadMs = compact ? 24 : willCompress ? 300 : 90;
@@ -1359,18 +1337,7 @@ export const buildCapitalStackTimeline = (
     heavy,
     event.side
   );
-  const legacyMechanicalFrames = legacyReloadPasses === reloadPasses
-    ? rawMechanicalFrames
-    : getMechanicalCapitalColumnFrames(
-        previousStage,
-        targetStage,
-        compact ? 4 : heavy ? 24 : 22,
-        compact ? 6 : heavy ? 5 : 4,
-        legacyReloadPasses,
-        reloadBeats,
-        heavy,
-        event.side
-      );
+  const legacyMechanicalFrames = rawMechanicalFrames;
   const growthFrames = rawMechanicalFrames.filter(
     (frame) => (frame.overflowPass ?? 0) === 0
   );
@@ -1380,8 +1347,16 @@ export const buildCapitalStackTimeline = (
   );
   const overflowFrames: MechanicalCapitalColumnFrame[] = usesMassCurtain
     ? Array.from({ length: CAPITAL_MASS_CURTAIN_BEATS }, (_, beatIndex) => ({
-        visibleUnits: targetStage,
-        columnHeights: getCapitalColumnHeights(targetStage),
+        visibleUnits: Math.round(
+          targetStage * (beatIndex + 1) / CAPITAL_MASS_CURTAIN_BEATS
+        ),
+        columnHeights: getCapitalColumnHeights(
+          Math.round(
+            targetStage * (beatIndex + 1) / CAPITAL_MASS_CURTAIN_BEATS
+          )
+        ),
+        bankedColumnHeights: previousActiveColumnHeights,
+        bankedPileCount: targetBankedPileCount,
         activeColumnIndices: [...CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER],
         incomingBundleCopies: 3,
         incomingBundleLayers: CAPITAL_MASS_CURTAIN_BUNDLE_LAYERS,
@@ -1394,28 +1369,24 @@ export const buildCapitalStackTimeline = (
   // frames are removed. A real multi-tier crossing gets one total rack shift,
   // never a staircase of separate descents.
   let mechanicalFrames: MechanicalCapitalColumnFrame[] = [
-    ...growthFrames,
+    ...(usesMassCurtain ? [] : growthFrames),
     ...overflowFrames,
   ];
-  if (overflowDepthGrowth > 1e-9) {
-    const shiftAfterBaseFill = previousStage === 0;
-    const shiftSource = shiftAfterBaseFill
-      ? growthFrames.at(-1)
-      : undefined;
+  if (usesMassCurtain) {
     const rackShiftFrame: MechanicalCapitalColumnFrame = {
-      visibleUnits: shiftSource?.visibleUnits ?? previousStage,
-      columnHeights:
-        shiftSource?.columnHeights ?? getCapitalColumnHeights(previousStage),
+      visibleUnits: previousStage,
+      columnHeights: previousActiveColumnHeights,
+      bankedColumnHeights: previousBankedColumnHeights,
+      bankedPileCount: targetBankedPileCount,
       activeColumnIndices: [],
       incomingBundleCopies: 1,
       rackCompressed: true,
       overflowPass: 1,
       stackBeat: 0,
       rackShift: true,
+      bankTransfer: true,
     };
-    mechanicalFrames = shiftAfterBaseFill
-      ? [...growthFrames, rackShiftFrame, ...overflowFrames]
-      : [rackShiftFrame, ...growthFrames, ...overflowFrames];
+    mechanicalFrames = [rackShiftFrame, ...overflowFrames];
   }
   const seed = Number.isFinite(event.seed) ? Math.trunc(event.seed) : 0;
   const capitalDistance = event.nextCapital - event.previousCapital;
@@ -1427,10 +1398,6 @@ export const buildCapitalStackTimeline = (
   const stageDistance = targetStage - previousStage;
   const activeFrameCount = mechanicalFrames.filter(
     (frame) => frame.activeColumnIndices.length > 0
-  ).length;
-  const overflowActiveFrameCount = mechanicalFrames.filter(
-    (frame) =>
-      (frame.overflowPass ?? 0) > 0 && frame.activeColumnIndices.length > 0
   ).length;
   const presentedCapitalFor = (
     visibleUnits: number,
@@ -1456,12 +1423,14 @@ export const buildCapitalStackTimeline = (
     durationMs: preloadMs,
     commandRechargeScale: 1,
     visibleUnits: previousStage,
-    columnHeights: getCapitalColumnHeights(previousStage),
+    columnHeights: previousActiveColumnHeights,
+    bankedColumnHeights: previousBankedColumnHeights,
+    bankedPileCount: previousBankedPileCount,
     activeColumnIndices: [],
     incomingBundleCopies,
     rackCompressed: willCompress,
-    rackDepth: previousOverflowDepth,
-    stackDepth: previousOverflowDepth,
+    rackDepth: previousBankedPileCount,
+    stackDepth: previousBankedPileCount,
     presentedCapital: event.previousCapital,
     packetSeed: seed,
   };
@@ -1475,7 +1444,7 @@ export const buildCapitalStackTimeline = (
   const acceleratedPourDurationMs = mechanicalFrames.reduce(
     (total, frame) =>
       total + (
-        frame.rackShift === true
+        frame.bankTransfer === true
           ? BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS
           : reloadPasses > 0
             ? CAPITAL_OVERFLOW_RAPID_BEAT_MS
@@ -1490,29 +1459,16 @@ export const buildCapitalStackTimeline = (
     : 1;
   let pourAtMs = preloadMs;
   let completedActiveFrames = 0;
-  let completedOverflowActiveFrames = 0;
-  let rackHasShifted = overflowDepthGrowth <= 1e-9;
   let settledVisibleUnits = previousStage;
-  let settledColumnHeights = getCapitalColumnHeights(previousStage);
+  let settledColumnHeights = previousActiveColumnHeights;
   const pourFrames = mechanicalFrames.map(
     (frame, index): CapitalStackTimelineFrame => {
-      const isRackShift = frame.rackShift === true;
+      const isBankTransfer = frame.bankTransfer === true;
       const isActive = frame.activeColumnIndices.length > 0;
-      const isOverflowActive = (frame.overflowPass ?? 0) > 0 && isActive;
       const completedBefore = completedActiveFrames;
-      const absorbedProgress =
-        overflowDepthGrowth > 1e-9
-          ? completedOverflowActiveFrames /
-            Math.max(1, overflowActiveFrameCount)
-          : 0;
-      const rackDepthForFrame =
-        isRackShift || rackHasShifted
-          ? targetOverflowDepth
-          : previousOverflowDepth;
-      // Let the completed treasury finish its one total descent before the
-      // first bundle. Thereafter every reload sweep runs at the recorded coin
-      // tick cadence with no idle boundary between tiers.
-      const durationMs = isRackShift
+      // Finish the one full-page transfer before the first replacement bundle.
+      // Thereafter every reload sweep runs at the rapid metallic tick cadence.
+      const durationMs = isBankTransfer
         ? BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS
         : reloadPasses > 0
           ? CAPITAL_OVERFLOW_RAPID_BEAT_MS
@@ -1535,15 +1491,19 @@ export const buildCapitalStackTimeline = (
         incomingBundleCopies:
           frame.incomingBundleCopies ?? incomingBundleCopies,
         incomingBundleLayers: frame.incomingBundleLayers,
+        bankedColumnHeights: frame.bankedColumnHeights ??
+          previousBankedColumnHeights,
+        bankedPileCount: frame.bankedPileCount ?? previousBankedPileCount,
         phase: 'pour',
         atMs: pourAtMs,
         durationMs,
         commandRechargeScale,
-        rackDepth:
-          rackDepthForFrame,
-        stackDepth:
-          previousOverflowDepth + overflowDepthGrowth * absorbedProgress,
-        rackShift: isRackShift,
+        rackDepth: frame.bankedPileCount ?? previousBankedPileCount,
+        stackDepth: isBankTransfer
+          ? previousBankedPileCount
+          : frame.bankedPileCount ?? previousBankedPileCount,
+        rackShift: isBankTransfer,
+        bankTransfer: isBankTransfer,
         presentedCapital: presentedCapitalFor(
           isActive && reloadPasses > 0
             ? settledVisibleUnits
@@ -1554,11 +1514,15 @@ export const buildCapitalStackTimeline = (
       };
       if (isActive) {
         completedActiveFrames += 1;
-        if (isOverflowActive) completedOverflowActiveFrames += 1;
         settledVisibleUnits = frame.visibleUnits;
         settledColumnHeights = [...frame.columnHeights];
       }
-      if (isRackShift) rackHasShifted = true;
+      if (isBankTransfer) {
+        // The promoted page now lives below the divider. Replacement packets
+        // must land into a genuinely empty upper field.
+        settledVisibleUnits = 0;
+        settledColumnHeights = emptyColumnHeights;
+      }
       pourAtMs += durationMs;
       return timelineFrame;
     }
@@ -1571,11 +1535,15 @@ export const buildCapitalStackTimeline = (
     commandRechargeScale: 1,
     visibleUnits: targetStage,
     columnHeights: getCapitalColumnHeights(targetStage),
+    bankedColumnHeights: usesMassCurtain
+      ? previousActiveColumnHeights
+      : previousBankedColumnHeights,
+    bankedPileCount: targetBankedPileCount,
     activeColumnIndices: [],
     incomingBundleCopies,
     rackCompressed: heavy,
-    rackDepth: targetOverflowDepth,
-    stackDepth: targetOverflowDepth,
+    rackDepth: targetBankedPileCount,
+    stackDepth: targetBankedPileCount,
     presentedCapital: event.nextCapital,
     packetSeed: seed + (pourFrames.length + 1) * 7_919,
   };

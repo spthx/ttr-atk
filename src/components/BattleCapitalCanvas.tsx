@@ -7,7 +7,6 @@ import {
 import {
   BATTLE_CAPITAL_COLUMN_COUNT,
   MAX_BATTLE_CAPITAL_COLUMN_LAYERS,
-  getBattleCapitalOverflowDepth,
   getBattleCapitalOverflowTier,
   getBattleCapitalVisibleUnits,
   getCapitalColumnHeights,
@@ -16,9 +15,9 @@ import {
 import { resolveBattleCanvasDpr } from '../utils/battleCanvasQuality';
 import {
   easeBattleCapitalRackDepth,
+  resolveBattleCapitalBankGeometry,
   resolveBattleCapitalCanvasLayout,
   resolveBattleCapitalHoardVerticalGeometry,
-  resolveBattleCapitalOverflowLayers,
   resolveBattleCapitalStackGeometry,
   resolveBattleCapitalVisualLayers,
 } from '../utils/battleCapitalCanvasLayout';
@@ -78,6 +77,9 @@ export interface BattleCapitalCanvasProps {
 interface NormalizedCapitalFrame {
   visibleUnits: number;
   columnHeights: number[];
+  bankedColumnHeights: number[];
+  bankedPileCount: number;
+  bankTransfer: boolean;
   activeColumnIndices: number[];
   incomingBundleCopies: number;
   incomingBundleLayers?: number;
@@ -204,10 +206,6 @@ const normalizeSide = (
     marketPrice
   );
   const preview = state.previewFrame;
-  const amountOverflowDepth = getBattleCapitalOverflowDepth(
-    amount,
-    marketPrice
-  );
   const visibleUnits = Math.max(
     0,
     Math.round(preview?.visibleUnits ?? fallbackVisibleUnits)
@@ -220,6 +218,35 @@ const normalizeSide = (
       Math.round(
         clamp(
           sourceHeights[index] ?? 0,
+          0,
+          MAX_BATTLE_CAPITAL_COLUMN_LAYERS
+        )
+      )
+  );
+  const bankedPileCount = Math.max(
+    0,
+    Math.floor(
+      finiteNonNegative(
+        preview?.bankedPileCount ??
+          preview?.stackDepth ??
+          state.rackFloorDepth ??
+          0
+      )
+    )
+  );
+  const fallbackBankedHeights = bankedPileCount > 0
+    ? getCapitalColumnHeights(
+        MAX_BATTLE_CAPITAL_COLUMN_LAYERS * BATTLE_CAPITAL_COLUMN_COUNT
+      )
+    : Array<number>(BATTLE_CAPITAL_COLUMN_COUNT).fill(0);
+  const sourceBankedHeights =
+    preview?.bankedColumnHeights ?? fallbackBankedHeights;
+  const bankedColumnHeights = Array.from(
+    { length: BATTLE_CAPITAL_COLUMN_COUNT },
+    (_, index) =>
+      Math.round(
+        clamp(
+          sourceBankedHeights[index] ?? 0,
           0,
           MAX_BATTLE_CAPITAL_COLUMN_LAYERS
         )
@@ -256,6 +283,9 @@ const normalizeSide = (
     frame: {
       visibleUnits,
       columnHeights,
+      bankedColumnHeights,
+      bankedPileCount,
+      bankTransfer: preview?.bankTransfer === true,
       activeColumnIndices,
       incomingBundleCopies: Math.round(
         clamp(preview?.incomingBundleCopies ?? 1, 1, 3)
@@ -272,12 +302,10 @@ const normalizeSide = (
       packetProgress: activeColumnIndices.length > 0 ? 0 : 1,
       beatDurationMs: Math.max(1, preview?.beatDurationMs ?? 90),
       rackDepth: finiteNonNegative(
-        preview?.rackDepth ??
-          Math.max(amountOverflowDepth, state.rackFloorDepth ?? 0)
+        preview?.rackDepth ?? bankedPileCount
       ),
       stackDepth: finiteNonNegative(
-        preview?.stackDepth ??
-          Math.max(amountOverflowDepth, state.rackFloorDepth ?? 0)
+        preview?.stackDepth ?? bankedPileCount
       ),
     },
   };
@@ -685,62 +713,109 @@ const drawCapitalSide = (
   const coinWidth = representativeColumn.coinWidth;
   const coinHeight = representativeColumn.coinHeight;
   const activeColumns = new Set(side.frame.activeColumnIndices);
-  const maxRawLayers = Math.max(0, ...side.frame.columnHeights);
-  const overflowLayers = resolveBattleCapitalOverflowLayers(
-    side.frame.stackDepth
-  );
-  const renderedColumns = layout.columns.map((column, index) => {
-    const layers = side.frame.columnHeights[index] ?? 0;
-    const stackVariation = 0.98 + deterministicNoise(index * 37 + 11) * 0.04;
-    const baseVisualLayers = resolveBattleCapitalVisualLayers({
-      layers,
-      depth: column.depth,
-      maxRawLayers,
-      variation: stackVariation,
-    });
-    const visualLayers =
-      baseVisualLayers > 0 ? baseVisualLayers + overflowLayers : 0;
-    const depthScale = 0.97 + column.depth * 0.01;
-    const renderedCoinHeight = column.coinHeight * depthScale;
-    const renderedLayerStep = column.layerStep * depthScale;
-    const bodyHeight =
-      visualLayers <= 0
+  const resolveRenderedColumns = (heights: number[]) => {
+    const maxRawLayers = Math.max(0, ...heights);
+    return layout.columns.map((column, index) => {
+      const layers = heights[index] ?? 0;
+      const stackVariation =
+        0.98 + deterministicNoise(index * 37 + 11) * 0.04;
+      const visualLayers = resolveBattleCapitalVisualLayers({
+        layers,
+        depth: column.depth,
+        maxRawLayers,
+        variation: stackVariation,
+      });
+      const depthScale = 0.97 + column.depth * 0.01;
+      const renderedCoinHeight = column.coinHeight * depthScale;
+      const renderedLayerStep = column.layerStep * depthScale;
+      const bodyHeight = visualLayers <= 0
         ? 0
         : renderedCoinHeight +
           Math.max(0, visualLayers - 1) * renderedLayerStep;
-    const baselineLift =
-      (column.bottom / 100) * height * 0.19 + column.depth * 0.25;
-    return {
-      column,
-      index,
-      visualLayers,
-      renderedCoinWidth: column.coinWidth * depthScale,
-      renderedCoinHeight,
-      renderedLayerStep,
-      bodyHeight,
-      baselineLift,
-    };
-  });
-  const tallestColumnExtent = Math.max(
+      const baselineLift =
+        (column.bottom / 100) * height * 0.19 + column.depth * 0.25;
+      return {
+        column,
+        index,
+        visualLayers,
+        renderedCoinWidth: column.coinWidth * depthScale,
+        renderedCoinHeight,
+        renderedLayerStep,
+        bodyHeight,
+        baselineLift,
+      };
+    });
+  };
+  const getPageHeight = (
+    columns: ReturnType<typeof resolveRenderedColumns>
+  ) => Math.max(
     0,
-    ...renderedColumns.map(({ bodyHeight, baselineLift }) =>
+    ...columns.map(({ bodyHeight, baselineLift }) =>
       bodyHeight > 0 ? bodyHeight + baselineLift : 0
     )
   );
+  const activeRenderedColumns = resolveRenderedColumns(
+    side.frame.columnHeights
+  );
+  const bankedRenderedColumns = resolveRenderedColumns(
+    side.frame.bankedColumnHeights
+  );
+  const activePageHeight = getPageHeight(activeRenderedColumns);
+  const bankedPageHeight = getPageHeight(bankedRenderedColumns);
   const stackGeometry = resolveBattleCapitalStackGeometry(
     height,
     layout.landscape,
-    tallestColumnExtent,
-    side.frame.rackDepth
+    activePageHeight,
+    0
   );
-  const { baseY, safeTopY } = stackGeometry;
+  const { safeTopY } = stackGeometry;
+  const bankedPileCount = Math.max(0, side.frame.bankedPileCount);
+  const previousBankedPileCount = side.frame.bankTransfer
+    ? Math.max(0, bankedPileCount - 1)
+    : bankedPileCount;
+  const transferProgress = side.frame.bankTransfer
+    ? clamp(
+        side.frame.rackDepth - previousBankedPileCount,
+        0,
+        1
+      )
+    : 0;
+  const bankGeometry = resolveBattleCapitalBankGeometry({
+    height,
+    landscape: layout.landscape,
+    tallestActiveExtent: bankedPageHeight,
+    bankedPileCount,
+  });
+  const transferGeometry = resolveBattleCapitalBankGeometry({
+    height,
+    landscape: layout.landscape,
+    tallestActiveExtent: activePageHeight,
+    bankedPileCount: previousBankedPileCount,
+    transferProgress,
+  });
+  const upperFloorY = bankGeometry.activeBaseY;
+  // The completed upper page is the unit of motion. Translating the whole
+  // treasury by its real painted height makes the former page finish below the
+  // fixed field divider, instead of stretching one ever-taller column.
+  const transferOffset = side.frame.bankTransfer
+    ? transferGeometry.promotedPageBaseY - transferGeometry.activeBaseY
+    : 0;
+  const drawnBankedPileCount = side.frame.bankTransfer
+    ? previousBankedPileCount
+    : bankedPileCount;
+  const physicalTrayY =
+    side.frame.bankTransfer
+      ? upperFloorY +
+        drawnBankedPileCount * bankGeometry.pageTravelPx +
+        transferOffset
+      : bankGeometry.trayBaseY;
 
   const auraStrength = clamp(Math.log2(side.capitalRatio + 1) / 5, 0, 1);
   const hoardGeometry = resolveBattleCapitalHoardVerticalGeometry({
-    baseY,
+    baseY: physicalTrayY,
     fieldHeight: height,
     coinHeight,
-    stackDepth: side.frame.stackDepth,
+    stackDepth: drawnBankedPileCount,
     auraStrength,
   });
   const pileGlow = context.createRadialGradient(
@@ -783,7 +858,12 @@ const drawCapitalSide = (
 
   const rackWidth = areaWidth * 0.94;
   const rackHeight = clamp(height * 0.04, 7, 14);
-  const rackGradient = context.createLinearGradient(0, baseY, 0, baseY + rackHeight);
+  const rackGradient = context.createLinearGradient(
+    0,
+    physicalTrayY,
+    0,
+    physicalTrayY + rackHeight
+  );
   rackGradient.addColorStop(0, '#d7dee2');
   rackGradient.addColorStop(0.2, '#697984');
   rackGradient.addColorStop(0.64, '#28353d');
@@ -791,7 +871,7 @@ const drawCapitalSide = (
   context.beginPath();
   context.ellipse(
     centerX,
-    baseY + rackHeight * 0.34,
+    physicalTrayY + rackHeight * 0.34,
     rackWidth / 2,
     rackHeight * 0.82,
     0,
@@ -807,7 +887,7 @@ const drawCapitalSide = (
   context.beginPath();
   context.ellipse(
     centerX,
-    baseY,
+    physicalTrayY,
     rackWidth * 0.49,
     rackHeight * 0.42,
     0,
@@ -818,6 +898,56 @@ const drawCapitalSide = (
   context.fill();
   context.globalAlpha = 1;
 
+  if (drawnBankedPileCount > 0) {
+    context.save();
+    context.beginPath();
+    context.rect(
+      Math.max(0, areaLeft - coinWidth * 0.6),
+      bankGeometry.bankClipTopY,
+      Math.min(width, areaWidth + coinWidth * 1.2),
+      Math.max(0, height - bankGeometry.bankClipTopY)
+    );
+    context.clip();
+    for (const {
+      column,
+      visualLayers,
+      renderedCoinWidth,
+      renderedCoinHeight,
+      renderedLayerStep,
+      bodyHeight,
+      baselineLift,
+    } of bankedRenderedColumns) {
+      if (visualLayers <= 0 || bodyHeight <= 0) continue;
+      const mirroredPosition = playerSide ? column.xRatio : 1 - column.xRatio;
+      const x = areaLeft + mirroredPosition * areaWidth;
+      const totalBodyHeight =
+        bodyHeight +
+        Math.max(0, drawnBankedPileCount - 1) *
+          bankGeometry.pageTravelPx;
+      const continuousLayers =
+        1 +
+        Math.max(0, totalBodyHeight - renderedCoinHeight) /
+          Math.max(0.01, renderedLayerStep);
+      const columnBaseY =
+        upperFloorY +
+        drawnBankedPileCount * bankGeometry.pageTravelPx -
+        baselineLift +
+        transferOffset;
+      drawCoinColumn(
+        context,
+        x,
+        columnBaseY,
+        renderedCoinWidth,
+        renderedCoinHeight,
+        renderedLayerStep,
+        continuousLayers,
+        side.side,
+        false
+      );
+    }
+    context.restore();
+  }
+
   for (const {
     column,
     index,
@@ -827,10 +957,10 @@ const drawCapitalSide = (
     renderedLayerStep,
     bodyHeight,
     baselineLift,
-  } of renderedColumns) {
+  } of activeRenderedColumns) {
     const mirroredPosition = playerSide ? column.xRatio : 1 - column.xRatio;
     const x = areaLeft + mirroredPosition * areaWidth;
-    const columnBaseY = baseY - baselineLift;
+    const columnBaseY = upperFloorY - baselineLift + transferOffset;
     drawCoinColumn(
       context,
       x,
@@ -840,10 +970,10 @@ const drawCapitalSide = (
       renderedLayerStep,
       visualLayers,
       side.side,
-      activeColumns.has(index)
+      !side.frame.bankTransfer && activeColumns.has(index)
     );
 
-    if (activeColumns.has(index)) {
+    if (!side.frame.bankTransfer && activeColumns.has(index)) {
       const packetOrder = side.frame.activeColumnIndices.indexOf(index);
       for (
         let copyIndex = 0;
@@ -905,7 +1035,7 @@ const drawCapitalSide = (
   context.beginPath();
   context.ellipse(
     centerX,
-    baseY + rackHeight * 0.05,
+    physicalTrayY + rackHeight * 0.05,
     rackWidth * 0.49,
     rackHeight * 0.34,
     0,
@@ -915,6 +1045,36 @@ const drawCapitalSide = (
   context.stroke();
   context.restore();
 
+  // A narrow opaque field rail is the visual boundary between money already
+  // banked below and the reusable upper stacking page. It deliberately is not
+  // another tray: the only physical plate remains at the bottom of the bank.
+  if (bankedPileCount > 0 || side.frame.bankTransfer) {
+    const dividerHeight = clamp(height * 0.025, 5, 9);
+    const dividerX = areaLeft;
+    const dividerWidth = areaWidth;
+    const dividerY = bankGeometry.bankClipTopY - dividerHeight * 0.5;
+    const dividerGradient = context.createLinearGradient(
+      0,
+      dividerY,
+      0,
+      dividerY + dividerHeight
+    );
+    dividerGradient.addColorStop(0, 'rgba(6, 15, 17, .82)');
+    dividerGradient.addColorStop(0.48, 'rgba(19, 29, 31, .96)');
+    dividerGradient.addColorStop(1, 'rgba(3, 9, 11, .9)');
+    context.fillStyle = dividerGradient;
+    context.fillRect(dividerX, dividerY, dividerWidth, dividerHeight);
+    context.strokeStyle = 'rgba(213, 190, 123, .28)';
+    context.lineWidth = 0.65;
+    context.beginPath();
+    context.moveTo(dividerX, dividerY + 0.8);
+    context.lineTo(
+      dividerX + dividerWidth,
+      dividerY + 0.8
+    );
+    context.stroke();
+  }
+
   if (side.impact) {
     context.strokeStyle = SIDE_COLORS[side.side].edge;
     context.globalAlpha = 0.48;
@@ -923,7 +1083,7 @@ const drawCapitalSide = (
       context.beginPath();
       context.ellipse(
         centerX,
-        baseY - height * 0.07,
+        upperFloorY - height * 0.07 + transferOffset,
         areaWidth * (0.22 + ring * 0.08),
         height * (0.12 + ring * 0.045),
         0,

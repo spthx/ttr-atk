@@ -2045,39 +2045,11 @@ const firstOverflowTimeline = buildCapitalStackTimeline({
   intensity: 'standard',
   seed: 43,
 });
-const firstOverflowRackFrameIndex = firstOverflowTimeline.frames.findIndex(
-  (frame) => frame.rackShift === true
-);
-const firstOverflowPacketAfterRackIndex = firstOverflowTimeline.frames.findIndex(
-  (frame, index) =>
-    index > firstOverflowRackFrameIndex &&
-    frame.activeColumnIndices.length > 0
-);
 assert.ok(
-  firstOverflowRackFrameIndex > 0 &&
-    firstOverflowPacketAfterRackIndex > firstOverflowRackFrameIndex,
-  'the completed pile starts descending before the first overflow bundle joins it'
-);
-assert.ok(
-  firstOverflowTimeline.frames
-    .slice(0, firstOverflowRackFrameIndex)
-    .every((frame) => frame.activeColumnIndices.length === 0),
-  'no new bundle may overlap the old treasury before its first descent'
-);
-assert.equal(
-  firstOverflowTimeline.frames[firstOverflowRackFrameIndex].stackDepth,
-  0,
-  'the rack-shift frame must not synthesize overflow coins before they fall'
-);
-assert.equal(
-  firstOverflowTimeline.frames.at(-1)?.rackDepth,
-  1,
-  'the first true overflow crossing must retain its lowered footing'
-);
-assert.equal(
-  firstOverflowTimeline.frames.at(-1)?.stackDepth,
-  1,
-  'the first true overflow crossing must finish its bounded added layers'
+  firstOverflowTimeline.frames.every(
+    (frame) => frame.bankTransfer !== true && frame.bankedPileCount === 0
+  ),
+  'an initial large pile fills the reusable upper field without pre-banking it'
 );
 const multiTierOverflowTimeline = buildCapitalStackTimeline({
   id: 'balance-multi-tier-overflow',
@@ -2145,82 +2117,30 @@ assert.equal(
   multiTierLegacyPourMs,
   'rapid overflow visuals must preserve the legacy command-recharge clock'
 );
-assert.equal(
-  multiTierOverflowTimeline.frames.filter((frame) => frame.rackShift).length,
-  1,
-  'one commitment must resolve every crossed overflow threshold in one total descent'
-);
-assert.deepEqual(
-  multiTierOverflowTimeline.frames
-    .filter((frame) => frame.rackShift)
-    .map((frame) => [frame.rackDepth, frame.stackDepth]),
-  [[multiTierOverflowTimeline.frames.at(-1)?.rackDepth, 0]],
-  'the single descent must target the final footing before any new tier is absorbed'
-);
 const multiTierActiveFrames = multiTierOverflowTimeline.frames.filter(
   (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
 );
-const multiTierFinalDepth = multiTierOverflowTimeline.frames.at(-1)?.rackDepth ?? 0;
 assert.ok(
   multiTierActiveFrames.length > 0 &&
     multiTierActiveFrames.every(
       (frame) =>
-        frame.rackDepth === multiTierFinalDepth &&
-        (frame.stackDepth ?? 0) < multiTierFinalDepth &&
+        frame.bankedPileCount === 1 &&
         frame.durationMs === CAPITAL_OVERFLOW_RAPID_BEAT_MS
     ),
-  'all post-drop mass must use the final rack position and remain airborne until its rapid beat lands'
+  'a treasury-scale repeat refills rapidly above the newly banked page'
 );
 assert.equal(
-  multiTierOverflowTimeline.frames.at(-1)?.stackDepth,
-  multiTierFinalDepth,
-  'only the final settled frame may absorb the complete multi-tier mass'
+  multiTierOverflowTimeline.frames.filter((frame) => frame.bankTransfer).length,
+  1,
+  'one treasury-scale event promotes the full active page only once'
 );
 assert.ok(
   multiTierOverflowTimeline.frames.every(
     (frame, index, frames) =>
       index === 0 || frame.presentedCapital >= frames[index - 1].presentedCapital
   ),
-  'the one-shot descent and lagged incoming bundles must never make the displayed capital regress'
+  'lagged incoming bundles must never make the displayed capital regress'
 );
-for (const [previousCapital, nextCapital, previousTier, targetTier] of [
-  [8_000_000_000, 18_000_000_000, 0, 3],
-  [10_625_000_000, 18_000_000_000, 1, 3],
-] as const) {
-  const timeline = buildCapitalStackTimeline({
-    id: `balance-one-shot-${previousTier}-${targetTier}`,
-    side: 'player',
-    source: 'direct',
-    previousCapital,
-    nextCapital,
-    marketPrice: 7_500_000_000,
-    intensity: 'heavy',
-    seed: 45 + previousTier,
-  });
-  const shifts = timeline.frames.filter((frame) => frame.rackShift === true);
-  const previousDepth = timeline.frames[0].stackDepth;
-  const finalDepth = timeline.frames.at(-1)?.rackDepth;
-  const firstPostShiftPacket = timeline.frames.find(
-    (frame) =>
-      frame.phase === 'pour' &&
-      frame.activeColumnIndices.length > 0 &&
-      frame.atMs >= shifts[0].atMs + shifts[0].durationMs
-  );
-  assert.deepEqual(
-    shifts.map((frame) => [frame.rackDepth, frame.stackDepth]),
-    [[finalDepth, previousDepth]],
-    'every real multi-tier transition must calculate one final rack destination up front'
-  );
-  assert.ok(
-    shifts[0].activeColumnIndices.length === 0 &&
-      shifts[0].presentedCapital === previousCapital &&
-      firstPostShiftPacket?.rackDepth === finalDepth &&
-      firstPostShiftPacket.stackDepth === previousDepth,
-    'the total descent must contain no new coins and must finish before rapid stacking starts'
-  );
-  assert.equal(timeline.frames.at(-1)?.presentedCapital, nextCapital);
-  assert.equal(timeline.frames.at(-1)?.stackDepth, finalDepth);
-}
 const emptyToOverflowTimeline = buildCapitalStackTimeline({
   id: 'balance-empty-to-overflow',
   side: 'player',
@@ -2231,20 +2151,11 @@ const emptyToOverflowTimeline = buildCapitalStackTimeline({
   intensity: 'heavy',
   seed: 48,
 });
-const emptyOverflowShiftIndex = emptyToOverflowTimeline.frames.findIndex(
-  (frame) => frame.rackShift === true
-);
 assert.ok(
-  emptyOverflowShiftIndex > 1 &&
-    emptyToOverflowTimeline.frames
-      .slice(1, emptyOverflowShiftIndex)
-      .some((frame) => frame.activeColumnIndices.length > 0),
-  'an empty tray must build its base treasury before the single overflow descent'
-);
-assert.equal(
-  emptyToOverflowTimeline.frames.filter((frame) => frame.rackShift).length,
-  1,
-  'even an empty-to-maximum commitment must descend only once'
+  emptyToOverflowTimeline.frames.every(
+    (frame) => frame.bankTransfer !== true && frame.bankedPileCount === 0
+  ),
+  'even a maximum opening commitment fills the empty active page before any later bank transfer'
 );
 assert.deepEqual(
   buildCapitalStackTimeline(heavyCapitalTimeline.event),
@@ -2307,12 +2218,12 @@ const repeatedFundingTimeline = buildCapitalStackTimeline({
   marketPrice: repeatedFundingMarketPrice,
   intensity: 'heavy',
   seed: 300,
-  previousRackDepth: repeatedFundingPreviousDepth,
+  previousRackDepth: 0,
 });
-const repeatedFundingFinalDepth =
-  repeatedFundingTimeline.frames.at(-1)?.stackDepth ?? 0;
-const repeatedFundingShift = repeatedFundingTimeline.frames.filter(
-  (frame) => frame.rackShift === true
+const repeatedFundingFinalBankCount =
+  repeatedFundingTimeline.frames.at(-1)?.bankedPileCount ?? 0;
+const repeatedFundingTransfer = repeatedFundingTimeline.frames.filter(
+  (frame) => frame.bankTransfer === true
 );
 assert.ok(
   repeatedFundingPreviousDepth > 3 &&
@@ -2320,14 +2231,18 @@ assert.ok(
   'repeated funding beyond the third decoration grade must retain additional structural depth'
 );
 assert.equal(
-  repeatedFundingShift.length,
+  repeatedFundingTransfer.length,
   1,
-  'the second 300M commitment must calculate one new rack destination'
+  'the second 300M commitment must bank the completed active page exactly once'
 );
 assert.deepEqual(
-  [repeatedFundingShift[0].rackDepth, repeatedFundingShift[0].stackDepth],
-  [repeatedFundingFinalDepth, repeatedFundingPreviousDepth],
-  'the old 300M pile must descend intact before the next 300M is absorbed'
+  [
+    repeatedFundingTransfer[0].bankedPileCount,
+    repeatedFundingTransfer[0].stackDepth,
+    repeatedFundingTransfer[0].activeColumnIndices.length,
+  ],
+  [1, 0, 0],
+  'the old 300M page must descend intact and silently before any replacement coin appears'
 );
 const repeatedFundingFirstPacket = repeatedFundingTimeline.frames.find(
   (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
@@ -2335,15 +2250,16 @@ const repeatedFundingFirstPacket = repeatedFundingTimeline.frames.find(
 assert.ok(
   repeatedFundingFirstPacket &&
     repeatedFundingFirstPacket.atMs >=
-      repeatedFundingShift[0].atMs + repeatedFundingShift[0].durationMs &&
-    repeatedFundingFirstPacket.rackDepth === repeatedFundingFinalDepth &&
-    repeatedFundingFirstPacket.stackDepth === repeatedFundingPreviousDepth,
-  'rapid packets may begin only after the completed treasury reaches its new depth'
+      repeatedFundingTransfer[0].atMs + repeatedFundingTransfer[0].durationMs &&
+    repeatedFundingFirstPacket.bankedPileCount === 1 &&
+    Math.max(...repeatedFundingFirstPacket.columnHeights) === 0 &&
+    Math.max(...(repeatedFundingFirstPacket.bankedColumnHeights ?? [])) === 36,
+  'rapid packets begin only after the old page is banked and the upper field is genuinely empty'
 );
 assert.equal(
-  repeatedFundingTimeline.frames.at(-1)?.stackDepth,
-  repeatedFundingFinalDepth,
-  'the repeated event must retain its new physical mass after the preview ends'
+  repeatedFundingFinalBankCount,
+  1,
+  'the repeated event must retain one completed lower page after the preview ends'
 );
 const repeatedFundingCurtain = repeatedFundingTimeline.frames.filter(
   (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
@@ -2357,6 +2273,11 @@ assert.ok(
       frame.incomingBundleLayers === CAPITAL_MASS_CURTAIN_BUNDLE_LAYERS
   ),
   'a treasury-sized second commitment must fall as repeated full-width nine-layer coin curtains'
+);
+assert.deepEqual(
+  repeatedFundingCurtain.map((frame) => Math.max(...frame.columnHeights)),
+  [0, 6, 12, 18, 24, 30],
+  'the upper field must refill from empty in six dense, monotonic landing beats'
 );
 const initialFundingTimeline = buildCapitalStackTimeline({
   id: 'balance-initial-300m-overflow',
@@ -2382,21 +2303,76 @@ assert.ok(
     fallingMassProxy(initialFundingTimeline) * 1.15,
   'the second equal 300M must show at least as much falling mass as the first treasury, with an exaggerated margin'
 );
-const firstTreasuryLayers =
-  getBattleCapitalVisibleUnits(300_000_000, repeatedFundingMarketPrice) /
-    BATTLE_CAPITAL_COLUMN_COUNT +
-  resolveBattleCapitalOverflowLayers(repeatedFundingPreviousDepth);
+const repeatedFundingSettled = repeatedFundingTimeline.frames.at(-1);
+const firstTreasuryLayers = Math.max(
+  ...getCapitalColumnHeights(
+    getBattleCapitalVisibleUnits(300_000_000, repeatedFundingMarketPrice)
+  )
+);
 const doubledTreasuryLayers =
-  getBattleCapitalVisibleUnits(600_000_000, repeatedFundingMarketPrice) /
-    BATTLE_CAPITAL_COLUMN_COUNT +
-  resolveBattleCapitalOverflowLayers(repeatedFundingFinalDepth);
+  Math.max(...(repeatedFundingSettled?.columnHeights ?? [])) +
+  Math.max(...(repeatedFundingSettled?.bankedColumnHeights ?? []));
 assert.ok(
   doubledTreasuryLayers >= firstTreasuryLayers * 1.95,
-  'doubling the committed capital must leave a completed wall that is visually almost twice as massive'
+  'doubling the committed capital must leave one full active page plus one full banked page'
+);
+for (let bankedPileCount = 0; bankedPileCount < 4; bankedPileCount += 1) {
+  const previousCapital = (bankedPileCount + 1) * 300_000_000;
+  const timeline = buildCapitalStackTimeline({
+    id: `balance-repeat-page-${bankedPileCount}`,
+    side: 'player',
+    source: 'direct',
+    previousCapital,
+    nextCapital: previousCapital + 300_000_000,
+    marketPrice: repeatedFundingMarketPrice,
+    intensity: 'heavy',
+    seed: 600 + bankedPileCount,
+    previousRackDepth: bankedPileCount,
+  });
+  const transferFrames = timeline.frames.filter(
+    (frame) => frame.bankTransfer === true
+  );
+  assert.equal(
+    transferFrames.length,
+    1,
+    `equal 300M wave ${bankedPileCount + 2} must bank exactly one completed page`
+  );
+  assert.equal(
+    timeline.frames.at(-1)?.bankedPileCount,
+    bankedPileCount + 1,
+    'every equal wave advances the bounded bank by one page'
+  );
+  assert.equal(
+    Math.max(...(timeline.frames.at(-1)?.columnHeights ?? [])),
+    MAX_BATTLE_CAPITAL_COLUMN_LAYERS,
+    'every equal wave refills the reusable active page completely'
+  );
+}
+const singleHugeFundingTimeline = buildCapitalStackTimeline({
+  id: 'balance-single-huge-page-transfer',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 300_000_000,
+  nextCapital: 1_500_000_000,
+  marketPrice: repeatedFundingMarketPrice,
+  intensity: 'heavy',
+  seed: 1_500,
+  previousRackDepth: 0,
+});
+assert.equal(
+  singleHugeFundingTimeline.frames.filter((frame) => frame.bankTransfer).length,
+  1,
+  'one exceptional command still performs one precomputed bank motion instead of a staircase of drops'
 );
 assert.ok(
-  repeatedFundingFinalDepth > repeatedFundingTargetDepth + 5,
-  'the visual bank must exaggerate repeated equal funding instead of returning to square-root compression'
+  singleHugeFundingTimeline.frames
+    .filter((frame) => frame.activeColumnIndices.length > 0)
+    .every(
+      (frame) =>
+        frame.durationMs === CAPITAL_OVERFLOW_RAPID_BEAT_MS &&
+        frame.activeColumnIndices.length === BATTLE_CAPITAL_COLUMN_COUNT
+    ),
+  'the single combined drop hands off to one bounded full-width rapid curtain'
 );
 const cruelOpeningFrames = getMechanicalCapitalColumnFrames(
   0,

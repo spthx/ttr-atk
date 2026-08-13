@@ -416,15 +416,22 @@ class SoundEffects {
     // Direct measurements of the reference put the metallic supply clock at
     // roughly 60–75ms. Build one reusable mono loop from the approved local
     // tick so long investments keep a single AudioBufferSource voice on iOS.
-    const loopDurationMs = 1_056;
+    // Fresh frame/audio measurements retain the fine coin chatter at about
+    // 65ms, but the recognisable metallic landings recur every three
+    // microticks (median reference onset: 203ms). Bake both rhythms into one
+    // reusable loop made only from the approved recorded tick.
+    const loopDurationMs = 1_188;
     const tickOffsetsMs = [
-      0, 64, 131, 196, 264, 329, 395, 462,
-      527, 594, 659, 725, 792, 858, 923, 990,
+      0, 65, 131, 198, 264, 330, 396, 462, 528,
+      594, 660, 726, 792, 858, 924, 990, 1_056, 1_122,
     ] as const;
+    const accentEveryTicks = 3;
     const playbackRates = [
-      0.99, 1.025, 0.98, 1.01, 1.035, 0.995, 1.018, 0.975,
+      0.985, 1.035, 1.015, 0.995, 1.025, 1.045,
+      0.98, 1.03, 1.01,
     ] as const;
-    const gains = [1, 0.94, 0.98, 1.03, 0.96, 1.01, 0.92, 0.99] as const;
+    const strongAccentGains = [1, 0.96, 1.03, 0.98, 1.01, 0.95] as const;
+    const weakMicrotickGains = [0.26, 0.2, 0.23, 0.18] as const;
     const output = ctx.createBuffer(
       1,
       Math.ceil(ctx.sampleRate * loopDurationMs / 1_000),
@@ -452,7 +459,12 @@ class SoundEffects {
     tickOffsetsMs.forEach((offsetMs, tickIndex) => {
       const destinationStart = Math.round(ctx.sampleRate * offsetMs / 1_000);
       const rate = playbackRates[tickIndex % playbackRates.length];
-      const gain = gains[tickIndex % gains.length];
+      const isStrongAccent = tickIndex % accentEveryTicks === 0;
+      const gain = isStrongAccent
+        ? strongAccentGains[
+            Math.floor(tickIndex / accentEveryTicks) % strongAccentGains.length
+          ]
+        : weakMicrotickGains[(tickIndex - 1) % weakMicrotickGains.length];
       const destinationFrames = Math.ceil(
         tickWindowFrames * ctx.sampleRate / tickBuffer.sampleRate / rate
       );

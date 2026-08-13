@@ -1,6 +1,8 @@
 export const BATTLE_CAPITAL_CANVAS_ROW_COUNTS = [4, 5, 6, 7] as const;
-export const BATTLE_CAPITAL_RACK_TWEEN_MS = 180;
-export const BATTLE_CAPITAL_RACK_SETTLE_MS = 40;
+// Fresh frame analysis measured the completed-page bank drop at roughly
+// 167ms. Keep one decisive 170ms movement, then start the rapid refill.
+export const BATTLE_CAPITAL_RACK_TWEEN_MS = 140;
+export const BATTLE_CAPITAL_RACK_SETTLE_MS = 30;
 export const BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS =
   BATTLE_CAPITAL_RACK_TWEEN_MS + BATTLE_CAPITAL_RACK_SETTLE_MS;
 export const BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER = 8;
@@ -132,6 +134,67 @@ export interface BattleCapitalStackGeometry {
   scrollPx: number;
   visibleWindow: number;
 }
+
+export interface BattleCapitalBankGeometry {
+  /** Stable baseline for the reusable upper stacking field. */
+  activeBaseY: number;
+  /** Top edge of the lower bank; renderers clip banked coins above this line. */
+  bankClipTopY: number;
+  /** Baseline reached by the page currently being promoted. */
+  promotedPageBaseY: number;
+  /** One full visible page, measured from the actual rendered active pile. */
+  pageTravelPx: number;
+  /** The single tray below every completed page; it may be outside the Canvas. */
+  trayBaseY: number;
+}
+
+/**
+ * Separates the reusable upper pile from completed pages below it.
+ *
+ * A transfer always moves by one *actual rendered page height*. It is not a
+ * shallow percentage step and it is not split by overflow tiers. The most
+ * recently promoted page therefore clears the upper field completely, while
+ * the one bounded 22-column bank can continue below the Canvas and its tray is
+ * explicitly allowed to leave the viewport.
+ */
+export const resolveBattleCapitalBankGeometry = ({
+  height,
+  landscape,
+  tallestActiveExtent,
+  bankedPileCount,
+  transferProgress = 1,
+}: {
+  height: number;
+  landscape: boolean;
+  tallestActiveExtent: number;
+  bankedPileCount: number;
+  transferProgress?: number;
+}): BattleCapitalBankGeometry => {
+  const safeHeight = Math.max(1, Number.isFinite(height) ? height : 1);
+  const activeBaseY = safeHeight * (landscape ? 0.76 : 0.78);
+  const rackHeight = clamp(safeHeight * 0.04, 7, 14);
+  // Include the tray lip in the promoted page so no old coin remains
+  // pre-positioned in the upper field after the descent completes.
+  const pageTravelPx = Math.max(
+    rackHeight,
+    Math.max(
+      0,
+      Number.isFinite(tallestActiveExtent) ? tallestActiveExtent : 0
+    ) + rackHeight * 0.72
+  );
+  const boundedCount = Math.max(
+    0,
+    Math.floor(Number.isFinite(bankedPileCount) ? bankedPileCount : 0)
+  );
+  const progress = clamp(transferProgress, 0, 1);
+  return {
+    activeBaseY,
+    bankClipTopY: activeBaseY + rackHeight * 0.2,
+    promotedPageBaseY: activeBaseY + pageTravelPx * progress,
+    pageTravelPx,
+    trayBaseY: activeBaseY + pageTravelPx * boundedCount,
+  };
+};
 
 /**
  * Resolves one dense four-row treasury tray. Column width follows row pitch,
