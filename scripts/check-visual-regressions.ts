@@ -1069,8 +1069,12 @@ const skillSelectionActionStart = battleModal.indexOf(
   synergyActionStart
 );
 const networkActionStart = battleModal.indexOf(
-  '{hasNetworkSupport && (',
+  '{battleSubs.length > 0 && (',
   skillSelectionActionStart
+);
+const allianceActionStart = battleModal.indexOf(
+  '{alliance.active && (',
+  networkActionStart
 );
 const actionStripEnd = battleModal.indexOf('</section>', networkActionStart);
 assert.ok(
@@ -1079,6 +1083,7 @@ assert.ok(
     synergyActionStart > limitBreakActionStart &&
     skillSelectionActionStart > synergyActionStart &&
     networkActionStart > skillSelectionActionStart &&
+    allianceActionStart > networkActionStart &&
     actionStripEnd > networkActionStart,
   'the visible action-strip blocks must remain discoverable in their reviewed order'
 );
@@ -1090,16 +1095,17 @@ const synergyAction = battleModal.slice(
   synergyActionStart,
   skillSelectionActionStart
 );
-const networkAction = battleModal.slice(networkActionStart, actionStripEnd);
+const networkAction = battleModal.slice(networkActionStart, allianceActionStart);
+const allianceAction = battleModal.slice(allianceActionStart, actionStripEnd);
 assert.match(
   battleModal,
-  /const networkSupportSummary = battleSubs\.length > 0[\s\S]{0,760}`人脈 残り\$\{limitedNetworkSupportRemaining\}回\$\{alliance\.active && !allianceUsed \? '／外部協力 1回' : ''\}`/,
-  'finite high-end relationship support must be summarized as an explicit remaining-use count'
+  /const networkSupportSummary = battleSubs\.length > 0[\s\S]{0,360}`人脈 残り\$\{limitedNetworkSupportRemaining\}回・自動配分`/,
+  'post-Savage relationship support must summarize its finite count and automatic routing without folding in the alliance'
 );
 assert.match(
   networkAction,
-  /limitedNetworkSupportRemaining !== null[\s\S]{0,160}`残\$\{limitedNetworkSupportRemaining\}回\$\{alliance\.active && !allianceUsed \? '＋協力' : ''\}`/,
-  'the compact high-end network action must show its remaining uses without opening the drawer'
+  /limitedNetworkSupportRemaining !== null[\s\S]{0,100}`残\$\{limitedNetworkSupportRemaining\}回`/,
+  'the one-tap network action must show only its own remaining-use count'
 );
 assert.match(
   battleModal,
@@ -1133,7 +1139,7 @@ assert.match(
 );
 assert.match(
   networkAction,
-  /^\{hasNetworkSupport && \([\s\S]*disabled=\{[\s\S]{0,140}actionsLocked[\s\S]{0,240}aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'/,
+  /^\{battleSubs\.length > 0 && \([\s\S]*disabled=\{[\s\S]{0,140}actionsLocked[\s\S]{0,240}aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'/,
   'network support must stay visible, disabled and labelled as presentation-locked during the cut-in'
 );
 assert.match(
@@ -1148,7 +1154,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'[\s\S]{0,280}: commandReady[\s\S]{0,220}'利用可能な支援へ即時要請可能'/,
+  /aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null \? `、残り\$\{limitedNetworkSupportRemaining\}回` : ''\}。\$\{\s*actionsLocked\s*\? '演出中のため要請できません'[\s\S]{0,280}: commandReady[\s\S]{0,220}'使用回数の少ない有力先へ即時要請可能'/,
   'network accessibility text must announce the presentation lock before an available-state message'
 );
 assert.match(
@@ -1158,8 +1164,13 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const hasNetworkSupport = battleSubs\.length > 0 \|\| alliance\.active;[\s\S]*\{hasNetworkSupport && \([\s\S]*aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null/,
-  'the support drawer must stay absent until the player has a relationship or an alliance request'
+  /\{battleSubs\.length > 0 && \([\s\S]*aria-label=\{`人脈\$\{limitedNetworkSupportRemaining !== null/,
+  'the owned-network action must stay absent until the player has an owned relationship'
+);
+assert.match(
+  allianceAction,
+  /^\{alliance\.active && \([\s\S]*className="battle-action-strip__action battle-action-strip__action--alliance"[\s\S]*onClick=\{requestAlliance\}[\s\S]*disabled=\{!commandReady \|\| actionsLocked \|\| !canUseAllianceSupport\}/,
+  'external cooperation must be a separately disabled one-tap action rather than a network source choice'
 );
 assert.match(
   battleModal,
@@ -1168,13 +1179,13 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /disabled=\{[\s\S]{0,120}!hasAvailableNetworkSupport[\s\S]{0,420}今回使える支援はありません/,
-  'an exhausted alliance-only drawer must remain visible as state but cannot open an empty action panel'
+  /disabled=\{[\s\S]{0,120}!canUseNetworkSupport[\s\S]{0,420}今回使える人脈はありません/,
+  'an exhausted owned network must disable only its own action'
 );
 assert.match(
   battleModal,
-  /const networkSupportLimit =[\s\S]{0,650}canRequestLimitedNetworkSupport\(networkRequestCount, networkSupportLimit\)/,
-  'Savage and Ultimate must expose finite battle-local relationship-support budgets'
+  /const oneTapNetworkSupportEnabled = savageUnlocked \|\| isHighEndRaid;[\s\S]{0,80}const networkSupportLimit = isUltimate \|\| isKarma[\s\S]{0,100}ULTIMATE_NETWORK_SUPPORT_LIMIT[\s\S]{0,80}oneTapNetworkSupportEnabled[\s\S]{0,80}SAVAGE_NETWORK_SUPPORT_LIMIT[\s\S]{0,650}canRequestLimitedNetworkSupport\(networkRequestCount, networkSupportLimit\)/,
+  'Savage unlock must make every later battle finite while Ultimate and Karma retain their tighter budget'
 );
 assert.match(
   battleModal,
@@ -1198,8 +1209,8 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /panel !== 'capital'[\s\S]{0,180}title: '人脈を選択中'[\s\S]{0,160}閉じて商戦へ戻ります/,
-  'the command state must explain that an open relationship drawer intentionally pauses selection'
+  /!oneTapNetworkSupportEnabled && panel === 'funds'[\s\S]{0,520}aria-label="人脈"/,
+  'the individual relationship chooser must remain reachable only before Savage unlock'
 );
 assert.match(
   battleModal,
@@ -1313,28 +1324,38 @@ assert.equal(
 );
 assert.match(
   battleModal,
-  /const highEndNetworkChoiceRequired =[\s\S]{0,260}quickNetworkSupportProperty[\s\S]{0,220}alliance\.active &&[\s\S]{0,80}!allianceUsed/,
-  'high-end support must detect when owned-network and external-alliance routes both need a visible choice'
+  /savageUnlocked\?: boolean;/,
+  'the battle presenter must accept the persisted Savage-unlock milestone'
 );
 assert.match(
   battleModal,
-  /onClick=\{\(\) => \{[\s\S]{0,180}!isHighEndRaid \|\| highEndNetworkChoiceRequired[\s\S]{0,160}setPanel\('funds'\)[\s\S]{0,360}demandFromProperty\(quickNetworkSupportProperty\)[\s\S]{0,140}requestAlliance\(\)/,
-  'high-end support must open one source choice when both routes exist, then return to direct requests after that choice is resolved'
+  /savageUnlocked = false/,
+  'the battle presenter must derive global one-tap support from the persisted Savage-unlock milestone while retaining a safe pre-unlock default'
 );
 assert.match(
   battleModal,
-  /highEndNetworkChoiceRequired\s*\?\s*'仲間か外部協力を選択可能'/,
-  'the compact high-end action must announce when tapping it opens the network-versus-alliance choice'
+  /const oneTapNetworkSupportEnabled = savageUnlocked \|\| isHighEndRaid/,
+  'Savage unlock and every high-end mode must enable the one-tap relationship policy'
 );
 assert.match(
-  battleModal,
-  /highEndNetworkChoiceRequired\s*\?\s*'選択可'/,
-  'the compact high-end action badge must switch from immediate request to source selection'
+  app,
+  /savageUnlocked=\{savageUnlocked\}[\s\S]{0,180}isSavage=\{activeBattleMode === 'savage'\}/,
+  'App must pass the global Savage-unlock milestone into normal as well as high-end battles'
 );
 assert.match(
+  networkAction,
+  /onClick=\{\(\) => \{[\s\S]{0,80}if \(oneTapNetworkSupportEnabled\)[\s\S]{0,180}demandFromProperty\(quickNetworkSupportProperty\)[\s\S]{0,120}else \{[\s\S]{0,80}setPanel\('funds'\)/,
+  'owned network must auto-target with one tap after Savage unlock and open individual selection only before unlock'
+);
+assert.doesNotMatch(
   battleModal,
-  /仲間\$\{battleSubs\.length\}件\$\{alliance\.active && !allianceUsed \? '＋外部協力' : ''\}/,
-  'the compact support summary must stop advertising external cooperation after its one use'
+  /highEndNetworkChoiceRequired|仲間か外部協力を選択可能|人脈 残り\$\{limitedNetworkSupportRemaining\}回／外部協力/,
+  'the removed network-versus-alliance chooser must not be reintroduced'
+);
+assert.match(
+  allianceAction,
+  /aria-label=\{`\$\{alliancePublicPatronage \? '公的後援' : '外部協力'\}、\$\{alliance\.allyName\}へ一回で即時要請。[\s\S]{0,380}約\$\{formatCurrency\(allianceSupport\)\}相当の支援を即時要請可能/,
+  'the separate alliance action must expose its one-tap amount and availability accessibly'
 );
 assert.match(
   battleEncounterData,
@@ -3228,8 +3249,8 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const limitedLimitBreakSpent =[\s\S]*isUltimate && limitBreakUseCount >= ULTIMATE_LIMIT_BREAK_LIMIT;[\s\S]*const networkSupportLimit = usesSavageMechanics[\s\S]*SAVAGE_NETWORK_SUPPORT_LIMIT[\s\S]*const capitalReversalRequired =[\s\S]*usesSavageMechanics && savageLayer >= 3[\s\S]*const forcedLiquidationRequired =[\s\S]*usesSavageMechanics && savageLayer >= 4/,
-  'Phantom retains Savage network limits and layer mechanics without inheriting the Ultimate one-use LB rule'
+  /const limitedLimitBreakSpent =[\s\S]*isUltimate && limitBreakUseCount >= ULTIMATE_LIMIT_BREAK_LIMIT;[\s\S]*const oneTapNetworkSupportEnabled = savageUnlocked \|\| isHighEndRaid;[\s\S]*const networkSupportLimit = isUltimate \|\| isKarma[\s\S]*ULTIMATE_NETWORK_SUPPORT_LIMIT[\s\S]*oneTapNetworkSupportEnabled[\s\S]*SAVAGE_NETWORK_SUPPORT_LIMIT[\s\S]*const capitalReversalRequired =[\s\S]*usesSavageMechanics && savageLayer >= 3[\s\S]*const forcedLiquidationRequired =[\s\S]*usesSavageMechanics && savageLayer >= 4/,
+  'global post-unlock support keeps the eighteen-call default while Phantom retains Savage layer mechanics and Ultimate/Karma keep eight calls'
 );
 assert.match(
   battleModal,

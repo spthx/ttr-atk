@@ -287,6 +287,7 @@ interface BattleModalProps {
   battleRegionLabel?: string;
   nextCommunity?: string | null;
   isTutorial?: boolean;
+  savageUnlocked?: boolean;
   isSavage?: boolean;
   isUltimate?: boolean;
   isCruel?: boolean;
@@ -891,6 +892,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   battleRegionLabel,
   nextCommunity = null,
   isTutorial = false,
+  savageUnlocked = false,
   isSavage = false,
   isUltimate = false,
   isCruel = false,
@@ -2539,11 +2541,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   const allianceSupport = alliance.active && !allianceUsed
     ? calculateAllianceSupport(targetProperty.marketPrice)
     : 0;
-  const hasNetworkSupport = battleSubs.length > 0 || alliance.active;
-  const networkSupportLimit = usesSavageMechanics
-    ? SAVAGE_NETWORK_SUPPORT_LIMIT
-    : isUltimate || isKarma
-      ? ULTIMATE_NETWORK_SUPPORT_LIMIT
+  const oneTapNetworkSupportEnabled = savageUnlocked || isHighEndRaid;
+  const networkSupportLimit = isUltimate || isKarma
+    ? ULTIMATE_NETWORK_SUPPORT_LIMIT
+    : oneTapNetworkSupportEnabled
+      ? SAVAGE_NETWORK_SUPPORT_LIMIT
       : null;
   const limitedNetworkSupportRemaining = networkSupportLimit === null
     ? null
@@ -2555,9 +2557,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ? '幻'
     : isKarma
       ? '業'
-    : isSavage
-      ? '零式'
-      : '絶';
+      : isCruel
+        ? '酷'
+        : isUltimate
+          ? '絶'
+          : isSavage
+            ? '零式'
+            : '零式解放後';
   const canUseNetworkSupport =
     !limitedNetworkSupportExhausted &&
     battleSubs.length > 0;
@@ -2565,22 +2571,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     alliance.active && !allianceUsed;
   const hasAvailableNetworkSupport =
     canUseNetworkSupport || canUseAllianceSupport;
-  const highEndNetworkChoiceRequired =
-    isHighEndRaid &&
-    !!quickNetworkSupportProperty &&
-    canUseNetworkSupport &&
-    canUseAllianceSupport;
   const networkSupportSummary = battleSubs.length > 0
     ? limitedNetworkSupportExhausted
-      ? alliance.active && !allianceUsed
-        ? `人脈 残り0回／外部協力 残り1回`
-        : `人脈 残り0回`
+      ? `人脈 残り0回`
       : limitedNetworkSupportRemaining !== null
-        ? `人脈 残り${limitedNetworkSupportRemaining}回${alliance.active && !allianceUsed ? '／外部協力 1回' : ''}`
-        : `仲間${battleSubs.length}件${alliance.active && !allianceUsed ? '＋外部協力' : ''}`
-    : allianceUsed
-      ? '協力支援は要請済み'
-      : '外部協力 残り1回';
+        ? `人脈 残り${limitedNetworkSupportRemaining}回・自動配分`
+        : `仲間${battleSubs.length}件から選択`
+    : '利用できる人脈なし';
   const readinessMechanics: string[] = [];
   if (bossAbilityTier === 'invincible') {
     readinessMechanics.push('インビンシブル5秒→有限パッセ6秒');
@@ -8455,6 +8452,16 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     hasAvailableNetworkSupport ||
     limitBreakTier > 0 ||
     cash >= Math.round(targetProperty.marketPrice * 0.1);
+  const remainingRecoveryResourceLabels = [
+    ...(canUseNetworkSupport ? ['人脈'] : []),
+    ...(canUseAllianceSupport
+      ? [alliancePublicPatronage ? '公的後援' : '外部協力']
+      : []),
+    ...(limitBreakTier > 0 ? ['LB'] : []),
+    ...(cash >= Math.round(targetProperty.marketPrice * 0.1)
+      ? ['大口出資']
+      : []),
+  ];
   const phantomNoPlayerOpeningAction =
     isPhantom &&
     winner === 'opponent' &&
@@ -8465,7 +8472,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     limitBreakUseCount === 0 &&
     !allianceUsed;
   const phantomUnusedOpeningRoutes = [
-    ...(battleSubs.length > 0 && hasAvailableNetworkSupport ? ['人脈'] : []),
+    ...(canUseNetworkSupport ? ['人脈'] : []),
     ...(alliance.active && !allianceUsed ? ['外部協力'] : []),
     ...(equippedCapitalBoostSkill &&
       !usedSkillIds.has(equippedCapitalBoostSkill.id)
@@ -8518,7 +8525,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     ultimateUnusedPreparationRoutes.push(equippedPassageSkill.name);
   }
   const ultimateRemainingRecoveryRoutes: string[] = [];
-  if (isUltimate && hasAvailableNetworkSupport) {
+  if (isUltimate && canUseNetworkSupport) {
     ultimateRemainingRecoveryRoutes.push('人脈');
   }
   if (isUltimate && limitBreakTier > 0) {
@@ -8576,7 +8583,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           : `最後まで資金差を維持できたのが勝因でっす！ 競合の防衛を崩し、${FINISH_LABELS[finishMethod]}で押し切ったでっす。`
       : defeatReason === 'WALKING_DEAD_FAILED'
         ? recoveryResourceAvailableAtResult
-          ? 'リビングデッド中に所有率30%へ戻せなかったものの、人脈・LB・大口出資に使える資源は残っていたでっす。清算後へ抱えたままにせず、猶予中にすぐ投入するでっす。'
+          ? `リビングデッド中に所有率30%へ戻せなかったものの、${remainingRecoveryResourceLabels.join('・')}は残っていたでっす。清算後へ抱えたままにせず、猶予中にすぐ投入するでっす。`
           : 'リビングデッドは発動したものの、10秒以内に所有率30%へ戻せなかったでっす。次はぶんどるや大口出資を温存しておくでっす。'
         : defeatReason === 'CRUEL_RECKONING_FAILED'
           ? `終極資本査定は${formatCruelReckoningFailureRequirements()}で未達だったでっす。第一宣告後の資本とLBを温存し、15秒の査定開始直後に自社資金を2回積むでっす。`
@@ -9632,38 +9639,31 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             </button>
           )}
 
-          {hasNetworkSupport && (
+          {battleSubs.length > 0 && (
             <button
               type="button"
-              className={`battle-action-strip__action battle-action-strip__action--drawer ${panel === 'funds' ? 'active' : ''}`}
+              className={`battle-action-strip__action battle-action-strip__action--drawer ${!oneTapNetworkSupportEnabled && panel === 'funds' ? 'active' : ''}`}
               onClick={() => {
-                if (!isHighEndRaid || highEndNetworkChoiceRequired) {
+                if (oneTapNetworkSupportEnabled) {
+                  if (quickNetworkSupportProperty && canUseNetworkSupport) {
+                    demandFromProperty(quickNetworkSupportProperty);
+                  }
+                } else {
                   setPanel('funds');
-                  return;
                 }
-                if (
-                  quickNetworkSupportProperty &&
-                  canUseNetworkSupport
-                ) {
-                  demandFromProperty(quickNetworkSupportProperty);
-                  return;
-                }
-                if (canUseAllianceSupport) requestAlliance();
               }}
               disabled={
-                !commandReady || actionsLocked || !hasAvailableNetworkSupport
+                !commandReady || actionsLocked || !canUseNetworkSupport
               }
               aria-label={`人脈${limitedNetworkSupportRemaining !== null ? `、残り${limitedNetworkSupportRemaining}回` : ''}。${
                 actionsLocked
                   ? '演出中のため要請できません'
-                  : !hasAvailableNetworkSupport
-                  ? '今回使える支援はありません'
+                  : !canUseNetworkSupport
+                  ? '今回使える人脈はありません'
                   : commandReady
-                    ? isHighEndRaid
-                      ? highEndNetworkChoiceRequired
-                        ? '仲間か外部協力を選択可能'
-                        : '利用可能な支援へ即時要請可能'
-                      : '仲間へ支援要請可能'
+                    ? oneTapNetworkSupportEnabled
+                      ? '使用回数の少ない有力先へ即時要請可能'
+                      : '仲間を選んで支援要請可能'
                     : '自社コマンドの準備中'
               }`}
             >
@@ -9678,16 +9678,46 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               </span>
               <em>{actionsLocked
                 ? '演出待ち'
-                : !hasAvailableNetworkSupport
+                : !canUseNetworkSupport
                   ? '要請済み'
                   : limitedNetworkSupportRemaining !== null
-                    ? `残${limitedNetworkSupportRemaining}回${alliance.active && !allianceUsed ? '＋協力' : ''}`
+                    ? `残${limitedNetworkSupportRemaining}回`
                   : commandReady
-                    ? isHighEndRaid
-                      ? highEndNetworkChoiceRequired
-                        ? '選択可'
-                        : '即時要請'
+                    ? oneTapNetworkSupportEnabled
+                      ? '即時要請'
                       : '選択可'
+                    : '準備中'}</em>
+            </button>
+          )}
+
+          {alliance.active && (
+            <button
+              type="button"
+              className="battle-action-strip__action battle-action-strip__action--alliance"
+              onClick={requestAlliance}
+              disabled={!commandReady || actionsLocked || !canUseAllianceSupport}
+              aria-label={`${alliancePublicPatronage ? '公的後援' : '外部協力'}、${alliance.allyName}へ一回で即時要請。${
+                actionsLocked
+                  ? '演出中のため要請できません'
+                  : allianceUsed
+                    ? '今回は要請済みです'
+                    : commandReady
+                      ? `約${formatCurrency(allianceSupport)}相当の支援を即時要請可能`
+                      : '自社コマンドの準備中'
+              }`}
+              title={`${alliancePublicPatronage ? '公的後援' : '外部協力'}：${alliance.allyName}／約${formatCurrency(allianceSupport)}相当`}
+            >
+              <Users />
+              <span>
+                <b>{alliancePublicPatronage ? '公的後援' : '外部協力'}</b>
+                <small>{alliance.allyName}・約{formatCurrency(allianceSupport)}</small>
+              </span>
+              <em>{actionsLocked
+                ? '演出待ち'
+                : allianceUsed
+                  ? '要請済み'
+                  : commandReady
+                    ? '即時要請'
                     : '準備中'}</em>
             </button>
           )}
@@ -9756,7 +9786,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           </div>
         </section>
 
-        {panel === 'funds' && (
+        {!oneTapNetworkSupportEnabled && panel === 'funds' && (
           <div className="battle-drawer-shell" role="presentation">
             <button type="button" className="battle-drawer-backdrop" onClick={() => setPanel('capital')} aria-label="人脈を閉じる" />
             <section ref={fundsDrawerRef} className="battle-drawer" role="dialog" aria-modal="true" aria-label="人脈" tabIndex={-1}>
@@ -9780,64 +9810,22 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 </div>
               )}
               <div className="command-panel command-panel--funds">
-              {isHighEndRaid ? (
-                <div className="property-funds property-funds--high-end">
-                  {quickNetworkSupportProperty && (
-                    <button
-                      type="button"
-                      onClick={() => demandFromProperty(quickNetworkSupportProperty)}
-                      disabled={!commandReady || actionsLocked || limitedNetworkSupportExhausted}
-                    >
-                      <span>
-                        <b>人脈から要請</b>
-                        <small>有力な支援先を自動選択</small>
-                      </span>
-                      <em>回数制</em>
-                      <strong>{limitedNetworkSupportRemaining !== null
-                          ? `残り${limitedNetworkSupportRemaining}回`
-                          : '要請可'}</strong>
-                    </button>
-                  )}
-                  {alliance.active && (
-                    <button
-                      type="button"
-                      className="alliance-fund"
-                      onClick={requestAlliance}
-                      disabled={!commandReady || allianceUsed || actionsLocked}
-                    >
-                      <Users />
-                      <span>{alliancePublicPatronage ? '公的後援' : '外部協力'}：{alliance.allyName}</span>
-                      <b>{allianceUsed
-                          ? '要請済み'
-                          : '残り1回'}</b>
-                    </button>
-                  )}
+                <div className="property-funds">
+                  {sortedBattleSubs.map((property) => {
+                    const risk = riskPresentation(property.loyaltyRisk);
+                    return (
+                      <button type="button" key={property.id} onClick={() => demandFromProperty(property)} disabled={!commandReady || actionsLocked || limitedNetworkSupportExhausted}>
+                        <span><b>{property.name}</b><small>{`個別要求 ${subRequestCounts[property.id] || 0}回・人脈全体 ${networkRequestCount}回`}</small></span>
+                        <em className={risk.className}>
+                          {getReacquisitionLevel(property) > 0 &&
+                            `復帰強化${getReacquisitionLevel(property)}・`}
+                          {risk.label} {property.loyaltyRisk}%
+                        </em>
+                        <strong>+{formatCurrency(getBattleSupportAmount(property))}</strong>
+                      </button>
+                    );
+                  })}
                 </div>
-              ) : (
-                <>
-                  {alliance.active && (
-                    <button type="button" className="alliance-fund" onClick={requestAlliance} disabled={!commandReady || allianceUsed || actionsLocked}>
-                      <Users /><span>{alliancePublicPatronage ? '公的後援' : '協力協定'}：{alliance.allyName}</span><b>{allianceUsed ? '要請済み' : `+${formatCurrency(allianceSupport)}相当`}</b>
-                    </button>
-                  )}
-                  <div className="property-funds">
-                    {sortedBattleSubs.map((property) => {
-                      const risk = riskPresentation(property.loyaltyRisk);
-                      return (
-                        <button type="button" key={property.id} onClick={() => demandFromProperty(property)} disabled={!commandReady || actionsLocked || limitedNetworkSupportExhausted}>
-                          <span><b>{property.name}</b><small>{`個別要求 ${subRequestCounts[property.id] || 0}回・人脈全体 ${networkRequestCount}回`}</small></span>
-                          <em className={risk.className}>
-                            {getReacquisitionLevel(property) > 0 &&
-                              `復帰強化${getReacquisitionLevel(property)}・`}
-                            {risk.label} {property.loyaltyRisk}%
-                          </em>
-                          <strong>+{formatCurrency(getBattleSupportAmount(property))}</strong>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
               {battleSubs.length === 0 && !alliance.active && <p className="empty-funds">資金を要求できる人脈がありません。</p>}
               </div>
             </section>
@@ -10103,7 +10091,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <li><b>市場の風を読む</b><span>{isTraining ? '木人訓練では風は発生せず、自社・木人双方への補正もありません。' : `グリダニア制覇後は自社の追い風だけ、リムサ制覇後は自社／競合の追い風が半々、クガネ制覇後は自社の向かい風と乱旋風も加わります。開始から最低10秒は静穏で、${BATTLE_WIND_TELEGRAPH_SECONDS}秒の予兆後に${BATTLE_WIND_ACTIVE_MIN_SECONDS}～${BATTLE_WIND_ACTIVE_MAX_SECONDS}秒だけ発生します。`}</span></li>
               {!isTraining && <li><b>時代の風</b><span>二つの企業連合本部をすべて制覇すると修得する上位SYNERGYです。16秒間、資本圧力×2.18・LB蓄積×1.25・継続圧力+0.85/秒となり、敵の相場風を解除して再発を防ぎます。1争奪戦につき1回です。</span></li>}
               <li><b>LIMIT BREAK</b><span>攻防の資金衝突で通常比20%速く蓄積し、動員資金も20%増加。自社＋人脈が合計4/8/16枠で1/2/3本まで解放され、LB1/2の集約資金は対象相場の80%/120%が上限です。発動のたび全ゲージを0にし、同じ戦闘でも再蓄積すれば再発動できます。</span></li>
-              <li><b>特殊アクション</b><span>商戦フィールド直下のアイコンからLB・選択中のSYNERGY・主要アビリティを1タップで実行できます。未解放の枠は表示せず、人脈はドロワーで開きます。アビリティの選択だけは演出待ち中も変更できます。</span></li>
+              <li><b>特殊アクション</b><span>商戦フィールド直下のアイコンからLB・選択中のSYNERGY・主要アビリティを1タップで実行できます。零式解放後の人脈は有力先へ即時要請し、外部協力・公的後援は別ボタンで発動します。解放前の通常商戦だけ人脈の選択欄を開きます。アビリティの選択だけは演出待ち中も変更できます。</span></li>
               <li><b>牽制とブラックナイト</b><span>牽制は発動から10秒間、競合の押し込みを10%軽減します。ブラックナイトは7秒・所有率25%分のバリアで、時間切れでは何も起きず、完全に割れた時だけ暗黒波動を自動発動します。演出やコイン積載中は残り時間が止まります。</span></li>
               {isHighEndRaid && <li><b>零式3・4層ギミック</b><span>資本反転は次の直接出資だけを70%取得・30%反射にし、投入全額を精算対象にします。小口で消費するか10秒待てば回避できます。強制清算は牽制→バリア／パッセ→致死回避の順に判定。着弾時に投資パネルへ戻り、絶では4秒間、自社だけが最初の反撃を選べます。猶予終了後は競合圧力だけが再開し、反撃を1回入力するまで清算前の自社圧力では押し戻せません。</span></li>}
               <li><b>効果通知</b><span>味方への良い効果は青く上昇し、競合への妨害や悪い効果は赤く下降します。詳しい履歴は戦局ログで後から確認できます。</span></li>

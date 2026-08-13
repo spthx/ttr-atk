@@ -129,6 +129,7 @@ interface SimulationScenario {
   isSavage?: boolean;
   isUltimate?: boolean;
   isCruel?: boolean;
+  savageUnlocked?: boolean;
   isPhantom?: boolean;
   ultimateAutoPatternIndex?: number;
   disableEnemySupport?: boolean;
@@ -368,10 +369,12 @@ const simulateBattle = (
   const usesUltimateBasePower = isUltimate || isPhantom;
   const isHighEndRaid =
     usesSavageMechanics || isUltimate || isCruel;
-  const networkSupportLimit = usesSavageMechanics
-    ? SAVAGE_NETWORK_SUPPORT_LIMIT
-    : isUltimate
-      ? ULTIMATE_NETWORK_SUPPORT_LIMIT
+  const oneTapNetworkSupportEnabled =
+    scenario.savageUnlocked === true || isHighEndRaid;
+  const networkSupportLimit = isUltimate
+    ? ULTIMATE_NETWORK_SUPPORT_LIMIT
+    : oneTapNetworkSupportEnabled
+      ? SAVAGE_NETWORK_SUPPORT_LIMIT
       : Number.POSITIVE_INFINITY;
   const enemySupportProfile = scenario.disableEnemySupport
     ? []
@@ -2373,6 +2376,14 @@ const normalScenarios = [
 const normalReports = normalScenarios.map((scenario, index) =>
   summarize(scenario, 8, 2_000 + index * 100)
 );
+const postSavageNormalNetworkLimitProbe = simulateBattle(
+  {
+    ...normalScenarios[4],
+    id: 'normal_late_solution_nine_after_savage_unlock',
+    savageUnlocked: true,
+  },
+  2_499
+);
 
 /**
  * Explicit first-two-city cadence probes stay outside the historical fixed
@@ -3323,6 +3334,16 @@ assert.equal(
   'Ultimate restores a four-second rebuild window after the forced drop'
 );
 assert.equal(reportById.gridania_first.wins, 8);
+assert.equal(
+  reportById.normal_late_solution_nine.networkSupportLimit,
+  Number.POSITIVE_INFINITY,
+  'normal battles before Savage unlock keep individual, unlimited relationship selection'
+);
+assert.equal(
+  postSavageNormalNetworkLimitProbe.networkSupportLimit,
+  SAVAGE_NETWORK_SUPPORT_LIMIT,
+  'the same normal battle becomes an eighteen-call finite network after Savage unlock'
+);
 assert.ok(
   reportById.gridania_first.medianDirectActions >= 4 &&
     reportById.gridania_first.medianDirectActions <= 6

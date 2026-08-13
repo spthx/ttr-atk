@@ -2704,6 +2704,7 @@ export default function App() {
             activeBattleProperty.community === 'グリダニア' &&
             activeBattleProperty.countsTowardCityConquest !== false
           }
+          savageUnlocked={savageUnlocked}
           isSavage={activeBattleMode === 'savage'}
           isUltimate={activeBattleMode === 'ultimate'}
           isCruel={activeBattleMode === 'cruel'}
