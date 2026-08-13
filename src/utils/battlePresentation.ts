@@ -883,6 +883,12 @@ export interface MechanicalCapitalColumnFrame {
   overflowPass?: number;
   /** One-based mechanical dealing beat inside an overflow reload pass. */
   stackBeat?: number;
+  /** Completed pile/tray depth. It moves independently from incoming coins. */
+  rackDepth?: number;
+  /** Extra bounded layers already absorbed by the completed overflow pile. */
+  stackDepth?: number;
+  /** The short authored beat where the completed pile starts moving down. */
+  rackShift?: boolean;
 }
 
 export const CAPITAL_STACK_BEAT_MS = {
@@ -1215,13 +1221,27 @@ export const buildCapitalStackTimeline = (
     event.marketPrice,
     heavy
   );
+  const previousOverflowTier = getBattleCapitalOverflowTier(
+    event.previousCapital,
+    event.marketPrice
+  );
+  const targetOverflowTier = getBattleCapitalOverflowTier(
+    event.nextCapital,
+    event.marketPrice
+  );
+  const overflowTierGrowth = Math.max(
+    0,
+    targetOverflowTier - previousOverflowTier
+  );
   // Once the bounded rack is full, any further positive capital still needs a
   // visible packet. Otherwise common 7–16% enemy counters update only the
   // ledger and the core coin contest appears to stop at saturation.
-  const reloadPasses =
+  const reloadPasses = Math.min(
+    3,
     previousStage === targetStage && event.nextCapital > event.previousCapital
-      ? Math.max(1, requestedReloadPasses)
-      : requestedReloadPasses;
+      ? Math.max(1, requestedReloadPasses, overflowTierGrowth)
+      : Math.max(requestedReloadPasses, overflowTierGrowth)
+  );
   const willCompress = heavy || reloadPasses > 0;
   // Heavy/reload commands keep a readable anticipation beat before the first
   // packet. This marker must never move an empty rack ahead of the visible coins.
@@ -1270,23 +1290,53 @@ export const buildCapitalStackTimeline = (
     columnHeights: getCapitalColumnHeights(previousStage),
     activeColumnIndices: [],
     rackCompressed: willCompress,
+    rackDepth: previousOverflowTier,
+    stackDepth: previousOverflowTier,
     presentedCapital: event.previousCapital,
     packetSeed: seed,
   };
+  let pourAtMs = preloadMs;
   const pourFrames = mechanicalFrames.map(
-    (frame, index): CapitalStackTimelineFrame => ({
-      ...frame,
-      // Use a timeline-global beat so persistent fixed DOM nodes can alternate
-      // their CSS animation name and visibly relaunch every packet.
-      stackBeat: index + 1,
-      phase: 'pour',
-      atMs: preloadMs + index * beatMs,
-      durationMs: beatMs,
-      presentedCapital: presentedCapitalFor(frame.visibleUnits, index),
-      packetSeed: seed + (index + 1) * 7_919,
-    })
+    (frame, index): CapitalStackTimelineFrame => {
+      const overflowPass = frame.overflowPass ?? 0;
+      const isRackShift = overflowPass > 0 && (frame.stackBeat ?? 0) === 0;
+      const passStartDepth = Math.min(
+        targetOverflowTier,
+        previousOverflowTier + Math.max(0, overflowPass - 1)
+      );
+      const passTargetDepth = Math.min(
+        targetOverflowTier,
+        previousOverflowTier + overflowPass
+      );
+      const passProgress =
+        overflowPass > 0
+          ? Math.max(0, Math.min(1, (frame.stackBeat ?? 0) / reloadBeats))
+          : 0;
+      const durationMs = isRackShift && !compact ? 62 : beatMs;
+      const timelineFrame: CapitalStackTimelineFrame = {
+        ...frame,
+        // Use a timeline-global beat so persistent fixed DOM nodes can alternate
+        // their CSS animation name and visibly relaunch every packet.
+        stackBeat: index + 1,
+        phase: 'pour',
+        atMs: pourAtMs,
+        durationMs,
+        rackDepth:
+          overflowPass > 0 ? passTargetDepth : previousOverflowTier,
+        stackDepth:
+          overflowPass > 0
+            ? passStartDepth +
+              (passTargetDepth - passStartDepth) * passProgress
+            : previousOverflowTier,
+        rackShift: isRackShift && passTargetDepth > passStartDepth,
+        presentedCapital: presentedCapitalFor(frame.visibleUnits, index),
+        packetSeed: seed + (index + 1) * 7_919,
+      };
+      pourAtMs += durationMs;
+      return timelineFrame;
+    }
   );
-  const pourDurationMs = pourFrames.length * beatMs;
+  const pourDurationMs = pourAtMs - preloadMs;
   const settleFrame: CapitalStackTimelineFrame = {
     phase: 'settle',
     atMs: preloadMs + pourDurationMs,
@@ -1295,6 +1345,8 @@ export const buildCapitalStackTimeline = (
     columnHeights: getCapitalColumnHeights(targetStage),
     activeColumnIndices: [],
     rackCompressed: heavy,
+    rackDepth: targetOverflowTier,
+    stackDepth: targetOverflowTier,
     presentedCapital: event.nextCapital,
     packetSeed: seed + (pourFrames.length + 1) * 7_919,
   };

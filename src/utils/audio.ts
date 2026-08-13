@@ -455,11 +455,18 @@ class SoundEffects {
     session.master = master;
     session.panner = panner;
 
-    // The approved click is fired every 38ms. One chunk is never longer than
-    // one second; if painting continues, the next chunk is started afterward.
-    for (let offsetMs = 0; offsetMs < chunkMs; offsetMs += 38) {
+    // Romancing SaGa 3 deals short metallic ticks at roughly 15 hits/second.
+    // Keep the stream continuous while the completed tray descends and the
+    // incoming bundles continue falling; a small deterministic pitch alternation
+    // prevents the repeated asset from turning into one flat buzz.
+    for (let offsetMs = 0; offsetMs < chunkMs; offsetMs += 66) {
       const source = ctx.createBufferSource();
       source.buffer = buffer;
+      const tickIndex = Math.floor(offsetMs / 66);
+      source.playbackRate.setValueAtTime(
+        [0.97, 1.02, 0.99, 1.04][tickIndex % 4],
+        now + offsetMs / 1_000
+      );
       source.connect(master);
       session.sources.add(source);
       source.onended = () => {

@@ -6,6 +6,7 @@ import {
   BATTLE_CAPITAL_COLUMN_COUNT,
   CAPITAL_OVERFLOW_RESTACK_BEATS,
   CAPITAL_STACK_BEAT_MS,
+  buildCapitalStackTimeline,
   getCapitalOverflowPassCount,
   getCapitalPresentationRecoveryAction,
   getMechanicalCapitalColumnFrames,
@@ -298,8 +299,8 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const overflowTier = Math\.round\([\s\S]{0,120}Math\.max\([\s\S]{0,160}preview\?\.overflowTier \?\?[\s\S]{0,120}getBattleCapitalOverflowTier\(amount, marketPrice\)[\s\S]{0,100}state\.rackFloorTier \?\? 0/,
-  'the Canvas2D rack must retain the deepest preview or battle-lifetime overflow footing'
+  /rackDepth:\s*clamp\([\s\S]{0,180}preview\?\.rackDepth \?\? Math\.max\(overflowTier, state\.rackFloorTier \?\? 0\)[\s\S]{0,180}stackDepth:\s*clamp\([\s\S]{0,180}preview\?\.stackDepth \?\? Math\.max\(overflowTier, state\.rackFloorTier \?\? 0\)/,
+  'the Canvas2D rack must keep completed-pile descent separate from absorbed overflow layers'
 );
 assert.doesNotMatch(
   battleCapitalCanvas,
@@ -529,9 +530,30 @@ assert.equal(
   8,
   'each true overflow tier must add visible height before any safe-line scroll'
 );
-assert.equal(BATTLE_CAPITAL_RACK_TWEEN_MS, 280);
+const portraitFirstOverflow = resolveBattleCapitalStackGeometry(
+  414,
+  false,
+  80,
+  1
+);
+const landscapeFirstOverflow = resolveBattleCapitalStackGeometry(
+  171,
+  true,
+  50,
+  1
+);
+assert.ok(
+  portraitFirstOverflow.scrollPx >= 414 * 0.12 &&
+    landscapeFirstOverflow.scrollPx >= 171 * 0.16,
+  'the first true overflow must visibly lower the completed tray in both orientations'
+);
+assert.equal(BATTLE_CAPITAL_RACK_TWEEN_MS, 180);
 assert.equal(easeBattleCapitalRackDepth(0, 3, 0), 0);
 assert.equal(easeBattleCapitalRackDepth(0, 3, BATTLE_CAPITAL_RACK_TWEEN_MS), 3);
+assert.ok(
+  easeBattleCapitalRackDepth(0, 3, BATTLE_CAPITAL_RACK_TWEEN_MS / 2) < 1.5,
+  'the short rack descent must gather speed instead of easing to a stop'
+);
 assert.match(
   battleCapitalCanvasLayout,
   /const span = ROW_SPANS\[depth\] \* \(landscape \? 0\.84 : 1\);[\s\S]{0,240}const coinWidth = clamp\(pitch \* \(landscape \? 0\.92 : 0\.86\), 12, 72\);/,
@@ -575,13 +597,18 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const packetLayers =\s*6 \+ Math\.abs\(side\.frame\.packetSeed \+ index \* 3\) % 7;[\s\S]{0,220}side\.frame\.packetProgress - Math\.max\(0, packetOrder\) \* 0\.025/,
-  'each active Canvas2D column must receive one deterministic six-to-twelve-layer staggered packet'
+  /const packetLayers =\s*3 \+ Math\.abs\(side\.frame\.packetSeed \+ index \* 3\) % 4;[\s\S]{0,220}side\.frame\.packetProgress - Math\.max\(0, packetOrder\) \* 0\.025/,
+  'each active Canvas2D column must receive one short deterministic three-to-six-layer bundle without bounce physics'
 );
 assert.match(
   battleCapitalCanvas,
   /const rackClockRef = useRef<[\s\S]*CapitalRackClock[\s\S]*fromDepth:\s*0[\s\S]*targetDepth:\s*0[\s\S]*const hasRackMotion = [\s\S]*readRackDepth\(clock, effectStartedAt\) < clock\.targetDepth - 0\.001/,
-  'each rack must keep one bounded 280ms descent clock without changing battle state'
+  'each rack must keep one bounded descent clock without changing battle state'
+);
+assert.match(
+  battleCapitalCanvas,
+  /side\.frame\.stackDepth \* BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER[\s\S]{0,1600}resolveBattleCapitalStackGeometry\([\s\S]{0,140}side\.frame\.rackDepth/,
+  'completed-pile descent and newly absorbed coin layers must remain separate visual inputs'
 );
 assert.match(
   battleCapitalCanvas,
@@ -1135,8 +1162,8 @@ assert.doesNotMatch(
 );
 assert.match(
   battleCapitalCanvas,
-  /const packetLayers =\s*6 \+ Math\.abs\(side\.frame\.packetSeed \+ index \* 3\) % 7/,
-  'each of the fixed active columns must receive one deterministic six-to-twelve-layer packet'
+  /const packetLayers =\s*3 \+ Math\.abs\(side\.frame\.packetSeed \+ index \* 3\) % 4/,
+  'each fixed active column must receive one short three-to-six-layer bundle'
 );
 assert.match(
   integratedCss,
@@ -1228,6 +1255,34 @@ assert.equal(
   saturatedReloadPasses,
   3,
   'one exceptional funding event may request at most three full-rack reloads'
+);
+const firstTrueOverflowTimeline = buildCapitalStackTimeline({
+  id: 'visual-first-overflow',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 1_490_000,
+  nextCapital: 1_510_000,
+  marketPrice: 1_000_000,
+  intensity: 'standard',
+  seed: 91,
+});
+const firstTrueRackShift = firstTrueOverflowTimeline.frames.find(
+  (frame) => frame.rackShift === true
+);
+const firstTrueOverflowPacket = firstTrueOverflowTimeline.frames.find(
+  (frame) =>
+    frame.phase === 'pour' &&
+    frame.activeColumnIndices.length > 0 &&
+    (frame.rackDepth ?? 0) === 1
+);
+assert.ok(firstTrueRackShift);
+assert.equal(firstTrueRackShift.stackDepth, 0);
+assert.equal(firstTrueRackShift.durationMs, 62);
+assert.ok(
+  firstTrueOverflowPacket &&
+    (firstTrueOverflowPacket.stackDepth ?? 0) > 0 &&
+    (firstTrueOverflowPacket.stackDepth ?? 0) < 1,
+  'incoming bundles must continue while the independently clocked completed pile is descending'
 );
 const saturatedReloadFrames = getMechanicalCapitalColumnFrames(
   BATTLE_CAPITAL_COLUMN_COUNT * 36,
@@ -1631,8 +1686,8 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const overflowLayers =[\s\S]{0,120}side\.frame\.rackDepth \* BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;[\s\S]*const stackGeometry = resolveBattleCapitalStackGeometry\([\s\S]{0,100}tallestColumnExtent[\s\S]{0,80}const \{ baseY, floorY \} = stackGeometry;/,
-  'the Canvas2D rack must add visible overflow height first and scroll only the part above the safe line'
+  /const overflowLayers =[\s\S]{0,120}side\.frame\.stackDepth \* BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;[\s\S]*const stackGeometry = resolveBattleCapitalStackGeometry\([\s\S]{0,120}tallestColumnExtent,[\s\S]{0,60}side\.frame\.rackDepth[\s\S]{0,80}const \{ baseY, floorY \} = stackGeometry;/,
+  'the Canvas2D rack must lower the completed pile independently while incoming overflow bundles keep stacking'
 );
 assert.match(
   battleModal,
@@ -1714,8 +1769,8 @@ assert.match(
 );
 assert.match(
   audio,
-  /const chunkMs = Math\.min\(1_000, remainingMs\)[\s\S]*offsetMs \+= 38/,
-  'each stream chunk must be capped at one second and fire the click every 38ms'
+  /const chunkMs = Math\.min\(1_000, remainingMs\)[\s\S]*offsetMs \+= 66[\s\S]*playbackRate\.setValueAtTime\([\s\S]*\[0\.97, 1\.02, 0\.99, 1\.04\]/,
+  'each stream chunk must be capped at one second and alternate metallic ticks at the observed roughly 66ms cadence'
 );
 assert.match(
   audio,

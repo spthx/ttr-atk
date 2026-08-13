@@ -1767,7 +1767,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const isStacking = nextCapital >= previousCapital;
       const audibleFrames = timeline.frames.filter(
         (frame) =>
-          frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+          frame.phase === 'pour' &&
+          (frame.activeColumnIndices.length > 0 || frame.rackShift === true)
       );
       const audibleFrameIndices = new Map(
         audibleFrames.map((frame, index) => [frame.packetSeed, index])
@@ -6849,7 +6850,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const finalTimelineFrame = timeline.frames.at(-1) ?? firstTimelineFrame;
     const audibleFrames = timeline.frames.filter(
       (frame) =>
-        frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+        frame.phase === 'pour' &&
+        (frame.activeColumnIndices.length > 0 || frame.rackShift === true)
     );
     const audibleFrameIndices = new Map(
       audibleFrames.map((frame, index) => [frame.packetSeed, index])

@@ -83,6 +83,7 @@ interface NormalizedCapitalFrame {
   packetProgress: number;
   beatDurationMs: number;
   rackDepth: number;
+  stackDepth: number;
 }
 
 interface NormalizedCapitalSide {
@@ -255,7 +256,16 @@ const normalizeSide = (
       packetSeed: Math.round(finiteNonNegative(preview?.packetSeed ?? 0)),
       packetProgress: activeColumnIndices.length > 0 ? 0 : 1,
       beatDurationMs: Math.max(1, preview?.beatDurationMs ?? 90),
-      rackDepth: overflowTier,
+      rackDepth: clamp(
+        preview?.rackDepth ?? Math.max(overflowTier, state.rackFloorTier ?? 0),
+        0,
+        3
+      ),
+      stackDepth: clamp(
+        preview?.stackDepth ?? Math.max(overflowTier, state.rackFloorTier ?? 0),
+        0,
+        3
+      ),
     },
   };
 };
@@ -691,7 +701,7 @@ const drawCapitalSide = (
   const activeColumns = new Set(side.frame.activeColumnIndices);
   const maxRawLayers = Math.max(0, ...side.frame.columnHeights);
   const overflowLayers =
-    side.frame.rackDepth * BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;
+    side.frame.stackDepth * BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER;
   const renderedColumns = layout.columns.map((column, index) => {
     const layers = side.frame.columnHeights[index] ?? 0;
     const stackVariation = 0.98 + deterministicNoise(index * 37 + 11) * 0.04;
@@ -731,7 +741,8 @@ const drawCapitalSide = (
   const stackGeometry = resolveBattleCapitalStackGeometry(
     height,
     layout.landscape,
-    tallestColumnExtent
+    tallestColumnExtent,
+    side.frame.rackDepth
   );
   const { baseY, floorY } = stackGeometry;
 
@@ -835,7 +846,7 @@ const drawCapitalSide = (
 
     if (activeColumns.has(index)) {
       const packetLayers =
-        6 + Math.abs(side.frame.packetSeed + index * 3) % 7;
+        3 + Math.abs(side.frame.packetSeed + index * 3) % 4;
       const packetOrder = side.frame.activeColumnIndices.indexOf(index);
       const staggeredProgress = clamp(
         side.frame.packetProgress - Math.max(0, packetOrder) * 0.025,

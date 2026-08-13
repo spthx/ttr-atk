@@ -2002,9 +2002,76 @@ assert.equal(
 );
 assert.ok(
   heavyCapitalTimeline.frames
-    .filter((frame) => frame.phase === 'pour')
+    .filter(
+      (frame) =>
+        frame.phase === 'pour' && frame.activeColumnIndices.length > 0
+    )
     .every((frame) => frame.durationMs >= 100),
   'every primary heavy packet remains visible for at least three 30fps samples'
+);
+assert.ok(
+  heavyCapitalTimeline.frames.every((frame) => frame.rackShift !== true),
+  'a heavy 35% command must not lower a treasury that has not crossed overflow'
+);
+const firstOverflowTimeline = buildCapitalStackTimeline({
+  id: 'balance-first-overflow',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 1_490_000,
+  nextCapital: 1_510_000,
+  marketPrice: 1_000_000,
+  intensity: 'standard',
+  seed: 43,
+});
+const firstOverflowRackFrameIndex = firstOverflowTimeline.frames.findIndex(
+  (frame) => frame.rackShift === true
+);
+const firstOverflowPacketAfterRackIndex = firstOverflowTimeline.frames.findIndex(
+  (frame, index) =>
+    index > firstOverflowRackFrameIndex &&
+    frame.activeColumnIndices.length > 0
+);
+assert.ok(
+  firstOverflowRackFrameIndex > 0 &&
+    firstOverflowPacketAfterRackIndex > firstOverflowRackFrameIndex,
+  'the completed pile starts descending before the first overflow bundle joins it'
+);
+assert.equal(
+  firstOverflowTimeline.frames[firstOverflowRackFrameIndex].stackDepth,
+  0,
+  'the rack-shift frame must not synthesize overflow coins before they fall'
+);
+assert.equal(
+  firstOverflowTimeline.frames.at(-1)?.rackDepth,
+  1,
+  'the first true overflow crossing must retain its lowered footing'
+);
+assert.equal(
+  firstOverflowTimeline.frames.at(-1)?.stackDepth,
+  1,
+  'the first true overflow crossing must finish its bounded added layers'
+);
+const multiTierOverflowTimeline = buildCapitalStackTimeline({
+  id: 'balance-multi-tier-overflow',
+  side: 'enemy',
+  source: 'enemy-defense',
+  previousCapital: 1_490_000,
+  nextCapital: 3_100_000,
+  marketPrice: 1_000_000,
+  intensity: 'heavy',
+  seed: 44,
+});
+assert.equal(
+  multiTierOverflowTimeline.frames.filter((frame) => frame.rackShift).length,
+  2,
+  'crossing two real overflow thresholds must visibly lower the completed tray twice'
+);
+assert.deepEqual(
+  multiTierOverflowTimeline.frames
+    .filter((frame) => frame.rackShift)
+    .map((frame) => [frame.rackDepth, frame.stackDepth]),
+  [[1, 0], [2, 1]],
+  'each descent must happen before that tier of incoming coins is absorbed'
 );
 assert.deepEqual(
   buildCapitalStackTimeline(heavyCapitalTimeline.event),

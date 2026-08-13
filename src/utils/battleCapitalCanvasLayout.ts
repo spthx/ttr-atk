@@ -1,5 +1,5 @@
 export const BATTLE_CAPITAL_CANVAS_ROW_COUNTS = [4, 5, 6, 7] as const;
-export const BATTLE_CAPITAL_RACK_TWEEN_MS = 280;
+export const BATTLE_CAPITAL_RACK_TWEEN_MS = 180;
 export const BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER = 8;
 
 const ROW_SPANS = [0.52, 0.7, 0.84, 0.9] as const;
@@ -108,25 +108,38 @@ export const resolveBattleCapitalVisualLayers = ({
 
 /**
  * Keeps the treasury on its visible floor until the tallest completed column
- * reaches the upper safe line. After that, every added pixel of coin height
- * scrolls the footing by exactly one pixel: the visible wall never shrinks and
- * an all-in command cannot pre-bury an empty rack.
+ * reaches the upper safe line. A true overflow tier then moves the completed
+ * tray by one authored screen-relative stop while incoming bundles keep falling.
+ * Content that grows beyond that stop still scrolls pixel-for-pixel, so the
+ * visible wall never shrinks and an all-in command cannot pre-bury an empty rack.
  */
 export const resolveBattleCapitalStackGeometry = (
   height: number,
   landscape: boolean,
-  tallestColumnExtent: number
+  tallestColumnExtent: number,
+  rackDepth = 0
 ): BattleCapitalStackGeometry => {
   const safeHeight = Math.max(1, Number.isFinite(height) ? height : 1);
   const floorY = safeHeight * (landscape ? 0.78 : 0.82);
   // Landscape keeps the wall beneath the compact DOM gauge/readout band.
   const safeTopY = safeHeight * (landscape ? 0.42 : 0.22);
   const visibleWindow = floorY - safeTopY;
-  const scrollPx = Math.max(
+  const normalizedRackDepth = clamp(rackDepth, 0, 3);
+  const rackStops = landscape
+    ? [0, safeHeight * 0.16, safeHeight * 0.25, safeHeight * 0.34]
+    : [0, safeHeight * 0.12, safeHeight * 0.18, safeHeight * 0.24];
+  const lowerStop = Math.floor(normalizedRackDepth);
+  const upperStop = Math.ceil(normalizedRackDepth);
+  const stopProgress = normalizedRackDepth - lowerStop;
+  const authoredRackScroll =
+    rackStops[lowerStop] +
+    (rackStops[upperStop] - rackStops[lowerStop]) * stopProgress;
+  const contentSafetyScroll = Math.max(
     0,
     (Number.isFinite(tallestColumnExtent) ? tallestColumnExtent : 0) -
       visibleWindow
   );
+  const scrollPx = Math.max(authoredRackScroll, contentSafetyScroll);
   return {
     baseY: floorY + scrollPx,
     floorY,
@@ -143,6 +156,8 @@ export const easeBattleCapitalRackDepth = (
 ) => {
   if (toDepth <= fromDepth) return toDepth;
   const progress = clamp(elapsedMs / BATTLE_CAPITAL_RACK_TWEEN_MS, 0, 1);
-  const eased = 1 - Math.pow(1 - progress, 3);
+  // The reference tray starts deliberately, then gathers speed as the
+  // completed mountain slips behind the lower account band.
+  const eased = progress * progress;
   return fromDepth + (toDepth - fromDepth) * eased;
 };
