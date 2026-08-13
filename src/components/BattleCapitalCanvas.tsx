@@ -17,6 +17,7 @@ import {
   BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER,
   easeBattleCapitalRackDepth,
   resolveBattleCapitalCanvasLayout,
+  resolveBattleCapitalHoardVerticalGeometry,
   resolveBattleCapitalStackGeometry,
   resolveBattleCapitalVisualLayers,
 } from '../utils/battleCapitalCanvasLayout';
@@ -503,16 +504,16 @@ const drawCoin = (
 const drawOverflowHoard = (
   context: CanvasRenderingContext2D,
   centerX: number,
-  baseY: number,
   areaWidth: number,
   side: NormalizedCapitalSide,
   coinWidth: number,
-  coinHeight: number
+  coinHeight: number,
+  geometry: ReturnType<typeof resolveBattleCapitalHoardVerticalGeometry>
 ) => {
   // Only coins that have actually completed their reload may spill around the
   // pedestal. The target tier is known before its packets arrive, so using it
   // here made loose coins appear on the old floor ahead of the descending pile.
-  const tier = Math.floor(side.frame.stackDepth + 1e-6);
+  const { tier } = geometry;
   if (tier <= 0) return;
 
   const colors = SIDE_COLORS[side.side];
@@ -521,9 +522,9 @@ const drawOverflowHoard = (
   context.beginPath();
   context.ellipse(
     centerX,
-    baseY + coinHeight,
+    geometry.moundCenterY,
     moundWidth / 2,
-    coinHeight * (1.2 + tier * 0.35),
+    geometry.moundRadiusY,
     0,
     0,
     Math.PI * 2
@@ -538,11 +539,10 @@ const drawOverflowHoard = (
       index * 41 +
       (side.side === 'player' ? 7 : 19);
     const spread = deterministicNoise(seed) - 0.5;
-    const row = index % (tier + 2);
     drawCoin(
       context,
       centerX + spread * moundWidth,
-      baseY + row * coinHeight * 0.55,
+      geometry.spillCenterYs[index],
       coinWidth * (0.74 + deterministicNoise(seed + 3) * 0.25),
       coinHeight,
       side.side,
@@ -727,12 +727,19 @@ const drawCapitalSide = (
   const { baseY, safeTopY } = stackGeometry;
 
   const auraStrength = clamp(Math.log2(side.capitalRatio + 1) / 5, 0, 1);
+  const hoardGeometry = resolveBattleCapitalHoardVerticalGeometry({
+    baseY,
+    fieldHeight: height,
+    coinHeight,
+    stackDepth: side.frame.stackDepth,
+    auraStrength,
+  });
   const pileGlow = context.createRadialGradient(
     centerX,
-    baseY - height * 0.07,
+    hoardGeometry.pileGlowCenterY,
     0,
     centerX,
-    baseY - height * 0.07,
+    hoardGeometry.pileGlowCenterY,
     areaWidth * 0.54
   );
   pileGlow.addColorStop(0, side.side === 'player'
@@ -745,9 +752,9 @@ const drawCapitalSide = (
   context.beginPath();
   context.ellipse(
     centerX,
-    baseY + coinHeight,
+    hoardGeometry.pileGlowCenterY,
     areaWidth * (0.43 + auraStrength * 0.11),
-    height * (0.06 + auraStrength * 0.026),
+    hoardGeometry.pileGlowRadiusY,
     0,
     0,
     Math.PI * 2
@@ -758,11 +765,11 @@ const drawCapitalSide = (
   drawOverflowHoard(
     context,
     centerX,
-    baseY,
     areaWidth,
     side,
     coinWidth,
-    coinHeight
+    coinHeight,
+    hoardGeometry
   );
 
   const rackWidth = areaWidth * 0.94;
@@ -880,6 +887,24 @@ const drawCapitalSide = (
       }
     }
   }
+
+  // Repaint only the front lip after the columns. This tiny silver arc masks
+  // their roots like the reference tray without hiding any meaningful height.
+  context.save();
+  context.strokeStyle = 'rgba(218, 228, 234, .86)';
+  context.lineWidth = clamp(rackHeight * 0.18, 1.4, 2.6);
+  context.beginPath();
+  context.ellipse(
+    centerX,
+    baseY + rackHeight * 0.05,
+    rackWidth * 0.49,
+    rackHeight * 0.34,
+    0,
+    0,
+    Math.PI
+  );
+  context.stroke();
+  context.restore();
 
   if (side.impact) {
     context.strokeStyle = SIDE_COLORS[side.side].edge;

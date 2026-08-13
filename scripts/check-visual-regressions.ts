@@ -31,6 +31,7 @@ import {
   BATTLE_CAPITAL_RACK_TWEEN_MS,
   easeBattleCapitalRackDepth,
   resolveBattleCapitalCanvasLayout,
+  resolveBattleCapitalHoardVerticalGeometry,
   resolveBattleCapitalStackGeometry,
   resolveBattleCapitalVisualLayers,
 } from '../src/utils/battleCapitalCanvasLayout';
@@ -671,13 +672,39 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const tier = Math\.floor\(side\.frame\.stackDepth \+ 1e-6\);[\s\S]*drawOverflowHoard\([\s\S]{0,120}baseY,[\s\S]{0,120}coinWidth/,
+  /resolveBattleCapitalHoardVerticalGeometry\(\{[\s\S]{0,220}stackDepth: side\.frame\.stackDepth,[\s\S]*drawOverflowHoard\([\s\S]{0,180}hoardGeometry/,
   'loose overflow coins must appear only after their packets are absorbed and must descend with the completed pile'
 );
 assert.match(
   battleCapitalCanvas,
-  /const pileGlow = context\.createRadialGradient\([\s\S]{0,100}baseY - height \* 0\.07[\s\S]{0,100}baseY - height \* 0\.07[\s\S]{0,500}context\.ellipse\([\s\S]{0,80}baseY \+ coinHeight/,
-  'the glow, pedestal, columns and overflow hoard must move as one completed treasury'
+  /geometry\.moundCenterY[\s\S]{0,120}geometry\.moundRadiusY[\s\S]{0,500}geometry\.spillCenterYs\[index\][\s\S]*hoardGeometry\.pileGlowCenterY[\s\S]{0,500}hoardGeometry\.pileGlowRadiusY/,
+  'the glow and every loose overflow coin must remain above the pedestal baseline'
+);
+for (const landscape of [false, true]) {
+  const fieldHeight = landscape ? 129 : 368;
+  const baseY = fieldHeight * (landscape ? 0.76 : 0.78);
+  for (const tier of [1, 2, 3]) {
+    const geometry = resolveBattleCapitalHoardVerticalGeometry({
+      baseY,
+      fieldHeight,
+      coinHeight: landscape ? 12 : 9,
+      stackDepth: tier,
+      auraStrength: 1,
+    });
+    assert.ok(
+      geometry.pileGlowCenterY + geometry.pileGlowRadiusY <= baseY + 1e-6 &&
+        geometry.moundCenterY + geometry.moundRadiusY <= baseY + 1e-6 &&
+        geometry.spillCenterYs.every(
+          (centerY) => centerY + (landscape ? 12 : 9) * 0.78 <= baseY + 1e-6
+        ),
+      'player/enemy glow and spill decorations must never protrude below the silver tray'
+    );
+  }
+}
+assert.match(
+  battleCapitalCanvas,
+  /Repaint only the front lip[\s\S]{0,500}rackWidth \* 0\.49[\s\S]{0,160}Math\.PI[\s\S]{0,80}context\.stroke\(\)/,
+  'the final silver front lip must mask only the column roots after every coin pass'
 );
 assert.match(
   battleCapitalCanvas,

@@ -5,6 +5,55 @@ export const BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS =
   BATTLE_CAPITAL_RACK_TWEEN_MS + BATTLE_CAPITAL_RACK_SETTLE_MS;
 export const BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER = 8;
 
+export interface BattleCapitalHoardVerticalGeometry {
+  tier: number;
+  pileGlowCenterY: number;
+  pileGlowRadiusY: number;
+  moundCenterY: number;
+  moundRadiusY: number;
+  spillCenterYs: number[];
+}
+
+/**
+ * Keeps every pre-pedestal decoration on the tray side of its baseline.
+ * The silver rack is painted afterwards and therefore masks the lower edge;
+ * no loose coin or glow may leak below it as a false second pile.
+ */
+export const resolveBattleCapitalHoardVerticalGeometry = ({
+  baseY,
+  fieldHeight,
+  coinHeight,
+  stackDepth,
+  auraStrength,
+}: {
+  baseY: number;
+  fieldHeight: number;
+  coinHeight: number;
+  stackDepth: number;
+  auraStrength: number;
+}): BattleCapitalHoardVerticalGeometry => {
+  const tier = Math.floor(clamp(stackDepth + 1e-6, 0, 3));
+  const safeCoinHeight = Math.max(0, coinHeight);
+  const pileGlowRadiusY = Math.max(0, fieldHeight) *
+    (0.06 + clamp(auraStrength, 0, 1) * 0.026);
+  const moundRadiusY = tier > 0
+    ? safeCoinHeight * (1.2 + tier * 0.35)
+    : 0;
+  const spillCenterYs = Array.from({ length: tier * 7 }, (_, index) => {
+    const row = index % (tier + 2);
+    // drawCoin extends 0.78 coin-heights below its supplied centre.
+    return baseY - safeCoinHeight * (0.78 + row * 0.55);
+  });
+  return {
+    tier,
+    pileGlowCenterY: baseY - pileGlowRadiusY,
+    pileGlowRadiusY,
+    moundCenterY: baseY - moundRadiusY,
+    moundRadiusY,
+    spillCenterYs,
+  };
+};
+
 // Keep every depth row on nearly the same coin pitch. The original trade
 // screen reads as one dense treasury block, not four unrelated fan shapes.
 const ROW_SPANS = [0.4, 0.53, 0.66, 0.8] as const;
