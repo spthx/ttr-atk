@@ -1217,6 +1217,8 @@ export interface CapitalStackTimelineFrame
   phase: CapitalStackPhase;
   atMs: number;
   durationMs: number;
+  /** Keeps command recharge on the pre-acceleration logical clock. */
+  commandRechargeScale: number;
   presentedCapital: number;
   packetSeed: number;
 }
@@ -1368,6 +1370,7 @@ export const buildCapitalStackTimeline = (
     phase: 'preload',
     atMs: 0,
     durationMs: preloadMs,
+    commandRechargeScale: 1,
     visibleUnits: previousStage,
     columnHeights: getCapitalColumnHeights(previousStage),
     activeColumnIndices: [],
@@ -1378,6 +1381,24 @@ export const buildCapitalStackTimeline = (
     presentedCapital: event.previousCapital,
     packetSeed: seed,
   };
+  const legacyPourDurationMs = rawMechanicalFrames.reduce((total, frame) => {
+    const legacyRackShift =
+      (frame.overflowPass ?? 0) > 0 && (frame.stackBeat ?? 0) === 0;
+    return total + (
+      legacyRackShift ? BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS : beatMs
+    );
+  }, 0);
+  const acceleratedPourDurationMs = mechanicalFrames.reduce((total, frame) => {
+    const durationMs = frame.rackShift === true
+      ? BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS
+      : reloadPasses > 0
+        ? CAPITAL_OVERFLOW_RAPID_BEAT_MS
+        : beatMs;
+    return total + durationMs;
+  }, 0);
+  const commandRechargeScale = acceleratedPourDurationMs > 0
+    ? Math.max(1, legacyPourDurationMs / acceleratedPourDurationMs)
+    : 1;
   let pourAtMs = preloadMs;
   let completedActiveFrames = 0;
   let completedOverflowActiveFrames = 0;
@@ -1426,6 +1447,7 @@ export const buildCapitalStackTimeline = (
         phase: 'pour',
         atMs: pourAtMs,
         durationMs,
+        commandRechargeScale,
         rackDepth:
           rackDepthForFrame,
         stackDepth:
@@ -1455,6 +1477,7 @@ export const buildCapitalStackTimeline = (
     phase: 'settle',
     atMs: preloadMs + pourDurationMs,
     durationMs: settleMs,
+    commandRechargeScale: 1,
     visibleUnits: targetStage,
     columnHeights: getCapitalColumnHeights(targetStage),
     activeColumnIndices: [],

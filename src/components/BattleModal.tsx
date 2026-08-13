@@ -373,6 +373,7 @@ interface CapitalPilePresentationFrame extends MechanicalCapitalColumnFrame {
   overflowTier: number;
   presentationSerial: number;
   commandRecharge: CapitalPileCommandRecharge;
+  commandRechargeScale: number;
   presentedCapital: number;
   beatDurationMs: number;
   packetSeed: number;
@@ -2702,6 +2703,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     capitalPreviewStage?.commandRecharge !== 'pause' &&
     playerCapitalPilePreviewStage?.commandRecharge !== 'pause' &&
     enemyCapitalPilePreviewStage?.commandRecharge !== 'pause';
+  const capitalPresentationCommandRechargeScale = Math.max(
+    capitalPreviewStage?.commandRechargeScale ?? 1,
+    playerCapitalPilePreviewStage?.commandRechargeScale ?? 1,
+    enemyCapitalPilePreviewStage?.commandRechargeScale ?? 1
+  );
   const presentationLocked =
     !!battleAnnouncement ||
     !!conditionAnnouncement ||
@@ -6324,7 +6330,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       setCommandProgress((value) =>
         Math.min(
           100,
-          value + commandProgressPerTick * commandTimeScale * tickScale
+          value +
+            commandProgressPerTick *
+              commandTimeScale *
+              capitalPresentationCommandRechargeScale *
+              tickScale
         )
       );
     }, BATTLE_STATE_UPDATE_INTERVAL_MS);
@@ -6332,6 +6342,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   }, [
     battlePhase,
     capitalPresentationActive,
+    capitalPresentationCommandRechargeScale,
     commandProgressPerTick,
     commandTimeScale,
     timeScale,

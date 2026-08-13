@@ -95,6 +95,7 @@ import {
   shouldInertBattleFooter,
   TERMINAL_CINEMATIC_TIMING,
 } from '../src/utils/battlePresentation';
+import { BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS } from '../src/utils/battleCapitalCanvasLayout';
 import {
   isPendingBattleTargetAvailable,
   parsePendingBattleSession,
@@ -2113,6 +2114,62 @@ const multiTierOverflowTimeline = buildCapitalStackTimeline({
   intensity: 'heavy',
   seed: 44,
 });
+const multiTierPreviousStage = getBattleCapitalVisibleUnits(
+  multiTierOverflowTimeline.event.previousCapital,
+  multiTierOverflowTimeline.event.marketPrice
+);
+const multiTierTargetStage = getBattleCapitalVisibleUnits(
+  multiTierOverflowTimeline.event.nextCapital,
+  multiTierOverflowTimeline.event.marketPrice
+);
+const multiTierReloadPasses = Math.min(
+  3,
+  Math.max(
+    getCapitalOverflowPassCount(
+      multiTierOverflowTimeline.event.previousCapital,
+      multiTierOverflowTimeline.event.nextCapital,
+      multiTierOverflowTimeline.event.marketPrice,
+      true
+    ),
+    getBattleCapitalOverflowTier(
+      multiTierOverflowTimeline.event.nextCapital,
+      multiTierOverflowTimeline.event.marketPrice
+    ) -
+      getBattleCapitalOverflowTier(
+        multiTierOverflowTimeline.event.previousCapital,
+        multiTierOverflowTimeline.event.marketPrice
+      )
+  )
+);
+const multiTierLegacyPourMs = getMechanicalCapitalColumnFrames(
+  multiTierPreviousStage,
+  multiTierTargetStage,
+  24,
+  5,
+  multiTierReloadPasses,
+  CAPITAL_OVERFLOW_RESTACK_BEATS.heavy,
+  true,
+  'enemy'
+).reduce(
+  (total, frame) =>
+    total + (
+      (frame.overflowPass ?? 0) > 0 && (frame.stackBeat ?? 0) === 0
+        ? BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS
+        : CAPITAL_STACK_BEAT_MS.heavy
+    ),
+  0
+);
+const multiTierLogicalRechargeMs = multiTierOverflowTimeline.frames
+  .filter((frame) => frame.phase === 'pour')
+  .reduce(
+    (total, frame) => total + frame.durationMs * frame.commandRechargeScale,
+    0
+  );
+assert.equal(
+  Math.round(multiTierLogicalRechargeMs),
+  multiTierLegacyPourMs,
+  'rapid overflow visuals must preserve the legacy command-recharge clock'
+);
 assert.equal(
   multiTierOverflowTimeline.frames.filter((frame) => frame.rackShift).length,
   1,

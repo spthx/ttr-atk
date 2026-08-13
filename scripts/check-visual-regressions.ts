@@ -2248,8 +2248,13 @@ assert.ok(
 );
 assert.match(
   battleModal,
-  /!capitalPresentationActive \|\|[\s\S]*commandTimeScale <= 0[\s\S]*setCommandProgress\([\s\S]*commandProgressPerTick \* commandTimeScale/,
-  'the dedicated pile interval must advance only the player command clock'
+  /!capitalPresentationActive \|\|[\s\S]*commandTimeScale <= 0[\s\S]*setCommandProgress\([\s\S]*commandProgressPerTick \*[\s\S]*commandTimeScale \*[\s\S]*capitalPresentationCommandRechargeScale \*[\s\S]*tickScale/,
+  'the dedicated pile interval must advance only the player command clock while preserving its pre-acceleration logical duration'
+);
+assert.match(
+  battlePresentation,
+  /legacyPourDurationMs[\s\S]*acceleratedPourDurationMs[\s\S]*commandRechargeScale/,
+  'rapid overflow rendering must expose an explicit clock scale instead of shortening gameplay time'
 );
 assert.match(
   battleModal,
