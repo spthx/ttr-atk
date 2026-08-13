@@ -1,5 +1,8 @@
 export const BATTLE_CAPITAL_CANVAS_ROW_COUNTS = [4, 5, 6, 7] as const;
 export const BATTLE_CAPITAL_RACK_TWEEN_MS = 180;
+export const BATTLE_CAPITAL_RACK_SETTLE_MS = 40;
+export const BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS =
+  BATTLE_CAPITAL_RACK_TWEEN_MS + BATTLE_CAPITAL_RACK_SETTLE_MS;
 export const BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER = 8;
 
 // Keep every depth row on nearly the same coin pitch. The original trade
@@ -120,9 +123,11 @@ export const resolveBattleCapitalVisualLayers = ({
 /**
  * Keeps the treasury on its visible floor until the tallest completed column
  * reaches the upper safe line. A true overflow tier then moves the completed
- * tray by one authored screen-relative stop while incoming bundles keep falling.
- * Content that grows beyond that stop still scrolls pixel-for-pixel, so the
- * visible wall never shrinks and an all-in command cannot pre-bury an empty rack.
+ * tray by one authored screen-relative stop. The timeline completes this drop
+ * before the next bundles start, so the old treasury visibly makes room for the
+ * new one instead of both layers intersecting. Content that grows beyond that
+ * stop still scrolls pixel-for-pixel, so the visible wall never shrinks and an
+ * all-in command cannot pre-bury an empty rack.
  */
 export const resolveBattleCapitalStackGeometry = (
   height: number,
@@ -137,8 +142,8 @@ export const resolveBattleCapitalStackGeometry = (
   const visibleWindow = floorY - safeTopY;
   const normalizedRackDepth = clamp(rackDepth, 0, 3);
   const rackStops = landscape
-    ? [0, safeHeight * 0.14, safeHeight * 0.23, safeHeight * 0.33]
-    : [0, safeHeight * 0.1, safeHeight * 0.18, safeHeight * 0.27];
+    ? [0, safeHeight * 0.2, safeHeight * 0.4, safeHeight * 0.6]
+    : [0, safeHeight * 0.14, safeHeight * 0.28, safeHeight * 0.42];
   const lowerStop = Math.floor(normalizedRackDepth);
   const upperStop = Math.ceil(normalizedRackDepth);
   const stopProgress = normalizedRackDepth - lowerStop;
@@ -150,7 +155,10 @@ export const resolveBattleCapitalStackGeometry = (
     (Number.isFinite(tallestColumnExtent) ? tallestColumnExtent : 0) -
       visibleWindow
   );
-  const scrollPx = Math.max(authoredRackScroll, contentSafetyScroll);
+  // Content safety keeps the current wall below the gauge. Authored rack
+  // descent is additional: otherwise a tall existing wall consumes the whole
+  // drop and visually moves only a few pixels before the next bundles arrive.
+  const scrollPx = contentSafetyScroll + authoredRackScroll;
   return {
     baseY: floorY + scrollPx,
     floorY,

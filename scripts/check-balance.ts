@@ -2062,9 +2062,9 @@ const firstOverflowTimeline = buildCapitalStackTimeline({
   id: 'balance-first-overflow',
   side: 'player',
   source: 'direct',
-  previousCapital: 1_490_000,
-  nextCapital: 1_510_000,
-  marketPrice: 1_000_000,
+  previousCapital: 8_000_000_000,
+  nextCapital: 10_625_000_000,
+  marketPrice: 7_500_000_000,
   intensity: 'standard',
   seed: 43,
 });
@@ -2080,6 +2080,12 @@ assert.ok(
   firstOverflowRackFrameIndex > 0 &&
     firstOverflowPacketAfterRackIndex > firstOverflowRackFrameIndex,
   'the completed pile starts descending before the first overflow bundle joins it'
+);
+assert.ok(
+  firstOverflowTimeline.frames
+    .slice(0, firstOverflowRackFrameIndex)
+    .every((frame) => frame.activeColumnIndices.length === 0),
+  'no new bundle may overlap the old treasury before its first descent'
 );
 assert.equal(
   firstOverflowTimeline.frames[firstOverflowRackFrameIndex].stackDepth,
@@ -2100,9 +2106,9 @@ const multiTierOverflowTimeline = buildCapitalStackTimeline({
   id: 'balance-multi-tier-overflow',
   side: 'enemy',
   source: 'enemy-defense',
-  previousCapital: 1_490_000,
-  nextCapital: 3_100_000,
-  marketPrice: 1_000_000,
+  previousCapital: 8_000_000_000,
+  nextCapital: 13_000_000_000,
+  marketPrice: 7_500_000_000,
   intensity: 'heavy',
   seed: 44,
 });
@@ -2221,11 +2227,11 @@ assert.ok(
   'each mechanical beat touches at most one five-column rack group'
 );
 assert.deepEqual(
-  [1.49, 1.5, 3, 6].map((ratio) =>
-    getBattleCapitalOverflowTier(ratio * 1_000_000, 1_000_000)
+  [8_000_000_000, 10_625_000_000, 13_000_000_000, 18_000_000_000].map(
+    (amount) => getBattleCapitalOverflowTier(amount, 7_500_000_000)
   ),
   [0, 1, 2, 3],
-  'overcapital spectacle uses three bounded grades instead of amount-scaled DOM'
+  'overcapital spectacle follows actual fixed-rack capacity with three bounded grades'
 );
 assert.deepEqual(
   [1, 2, 3, 4, 5].map(getInvestmentStakeVisualPieceCount),

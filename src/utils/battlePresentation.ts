@@ -1,5 +1,9 @@
 import type { BattlePhase } from '../types';
 import type { BossAbilityTier } from './gameBalance';
+import {
+  BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER,
+  BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS,
+} from './battleCapitalCanvasLayout';
 
 export const BATTLE_CINEMATIC_TIMING = {
   startAnnouncementMs: 3_800,
@@ -830,10 +834,7 @@ const CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER = [
  * the square-root curve keeps small offers readable and prevents late-game
  * capital from requiring amount-proportional DOM nodes.
  */
-export const getBattleCapitalVisibleUnits = (
-  amount: number,
-  marketPrice: number
-) => {
+const getBattleCapitalLayerDemand = (amount: number, marketPrice: number) => {
   const normalizedAmount = Math.max(0, amount);
   if (normalizedAmount <= 0) return 0;
 
@@ -847,13 +848,20 @@ export const getBattleCapitalVisibleUnits = (
     )
   );
   const ratio = normalizedAmount / normalizedPrice;
+  return layersAtTarget * Math.sqrt(ratio);
+};
+
+export const getBattleCapitalVisibleUnits = (
+  amount: number,
+  marketPrice: number
+) => {
+  const layerDemand = getBattleCapitalLayerDemand(amount, marketPrice);
+  if (layerDemand <= 0) return 0;
   return Math.max(
     1,
     Math.min(
       MAX_BATTLE_CAPITAL_VISIBLE_UNITS,
-      Math.round(
-        BATTLE_CAPITAL_COLUMN_COUNT * layersAtTarget * Math.sqrt(ratio)
-      )
+      Math.round(BATTLE_CAPITAL_COLUMN_COUNT * layerDemand)
     )
   );
 };
@@ -1274,7 +1282,7 @@ export const buildCapitalStackTimeline = (
     : heavy
       ? CAPITAL_OVERFLOW_RESTACK_BEATS.heavy
       : CAPITAL_OVERFLOW_RESTACK_BEATS.standard;
-  const mechanicalFrames = getMechanicalCapitalColumnFrames(
+  let mechanicalFrames = getMechanicalCapitalColumnFrames(
     previousStage,
     targetStage,
     compact ? 4 : heavy ? 24 : 22,
@@ -1284,6 +1292,28 @@ export const buildCapitalStackTimeline = (
     heavy,
     event.side
   );
+  // A true capacity crossing must lower the completed treasury before any of
+  // this commitment's new bundles are shown. The generic mechanical helper
+  // appends reload passes after normal growth, so move only the first real
+  // rack-shift marker to the front and retain all later sweep order.
+  if (overflowTierGrowth > 0) {
+    const firstRackShiftIndex = mechanicalFrames.findIndex(
+      (frame) =>
+        (frame.overflowPass ?? 0) === 1 && (frame.stackBeat ?? 0) === 0
+    );
+    if (firstRackShiftIndex > 0) {
+      const firstRackShift = mechanicalFrames[firstRackShiftIndex];
+      mechanicalFrames = [
+        {
+          ...firstRackShift,
+          visibleUnits: previousStage,
+          columnHeights: getCapitalColumnHeights(previousStage),
+        },
+        ...mechanicalFrames.slice(0, firstRackShiftIndex),
+        ...mechanicalFrames.slice(firstRackShiftIndex + 1),
+      ];
+    }
+  }
   const seed = Number.isFinite(event.seed) ? Math.trunc(event.seed) : 0;
   const capitalDistance = event.nextCapital - event.previousCapital;
   const incomingBundleCopies = getCapitalIncomingBundleCopies(
@@ -1325,6 +1355,7 @@ export const buildCapitalStackTimeline = (
     packetSeed: seed,
   };
   let pourAtMs = preloadMs;
+  let currentRackDepth = previousOverflowTier;
   const pourFrames = mechanicalFrames.map(
     (frame, index): CapitalStackTimelineFrame => {
       const overflowPass = frame.overflowPass ?? 0;
@@ -1339,9 +1370,20 @@ export const buildCapitalStackTimeline = (
       );
       const passProgress =
         overflowPass > 0
-          ? Math.max(0, Math.min(1, (frame.stackBeat ?? 0) / reloadBeats))
+          ? Math.max(
+              0,
+              Math.min(1, ((frame.stackBeat ?? 0) - 1) / reloadBeats)
+            )
           : 0;
-      const durationMs = isRackShift && !compact ? 62 : beatMs;
+      if (isRackShift && passTargetDepth > currentRackDepth) {
+        currentRackDepth = passTargetDepth;
+      }
+      // Let the completed treasury finish its full descent and visibly settle
+      // before the first new bundle starts falling. The Canvas owns only the
+      // bounded interpolation; this timeline owns the sequencing contract.
+      const durationMs = isRackShift
+        ? BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS
+        : beatMs;
       const timelineFrame: CapitalStackTimelineFrame = {
         ...frame,
         // Use a timeline-global beat so persistent fixed DOM nodes can alternate
@@ -1352,7 +1394,7 @@ export const buildCapitalStackTimeline = (
         atMs: pourAtMs,
         durationMs,
         rackDepth:
-          overflowPass > 0 ? passTargetDepth : previousOverflowTier,
+          currentRackDepth,
         stackDepth:
           overflowPass > 0
             ? passStartDepth +
@@ -1392,16 +1434,31 @@ export const buildCapitalStackTimeline = (
   };
 };
 
-/** Fixed visual grades for capital beyond the drawable twenty-two-column rack. */
+/**
+ * Fixed visual grades beyond the drawable 22x36 rack. Overflow begins when
+ * the price-scaled layer demand actually exceeds that rack, then advances once
+ * per eight hidden layers. This keeps late-game treasuries from waiting for an
+ * unrelated 1.5x price ratio even after the visible tray is already full.
+ */
 export const getBattleCapitalOverflowTier = (
   amount: number,
   marketPrice: number
 ) => {
-  const ratio = Math.max(0, amount) / Math.max(1, marketPrice);
-  if (ratio < 1.5) return 0;
-  if (ratio < 3) return 1;
-  if (ratio < 6) return 2;
-  return 3;
+  const overflowLayers = Math.max(
+    0,
+    getBattleCapitalLayerDemand(amount, marketPrice) -
+      MAX_BATTLE_CAPITAL_COLUMN_LAYERS
+  );
+  if (overflowLayers <= 1e-9) return 0;
+  return Math.min(
+    3,
+    Math.max(
+      1,
+      Math.ceil(
+        overflowLayers / BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER - 1e-9
+      )
+    )
+  );
 };
 
 /**

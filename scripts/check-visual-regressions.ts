@@ -25,6 +25,8 @@ import {
 import {
   BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER,
   BATTLE_CAPITAL_CANVAS_ROW_COUNTS,
+  BATTLE_CAPITAL_RACK_SETTLE_MS,
+  BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS,
   BATTLE_CAPITAL_RACK_TWEEN_MS,
   easeBattleCapitalRackDepth,
   resolveBattleCapitalCanvasLayout,
@@ -578,11 +580,13 @@ const landscapeFirstOverflow = resolveBattleCapitalStackGeometry(
   1
 );
 assert.ok(
-  portraitFirstOverflow.scrollPx >= 414 * 0.1 &&
-    landscapeFirstOverflow.scrollPx >= 171 * 0.14,
-  'the first true overflow must visibly lower the completed tray in both orientations'
+  portraitFirstOverflow.scrollPx >= 414 * 0.14 - 1e-9 &&
+    landscapeFirstOverflow.scrollPx >= 171 * 0.2 - 1e-9,
+  'the first true overflow must move the completed tray decisively into the lower bank in both orientations'
 );
 assert.equal(BATTLE_CAPITAL_RACK_TWEEN_MS, 180);
+assert.equal(BATTLE_CAPITAL_RACK_SETTLE_MS, 40);
+assert.equal(BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS, 220);
 assert.equal(easeBattleCapitalRackDepth(0, 3, 0), 0);
 assert.equal(easeBattleCapitalRackDepth(0, 3, BATTLE_CAPITAL_RACK_TWEEN_MS), 3);
 assert.ok(
@@ -1332,9 +1336,9 @@ const firstTrueOverflowTimeline = buildCapitalStackTimeline({
   id: 'visual-first-overflow',
   side: 'player',
   source: 'direct',
-  previousCapital: 1_490_000,
-  nextCapital: 1_510_000,
-  marketPrice: 1_000_000,
+  previousCapital: 8_000_000_000,
+  nextCapital: 10_625_000_000,
+  marketPrice: 7_500_000_000,
   intensity: 'standard',
   seed: 91,
 });
@@ -1349,12 +1353,61 @@ const firstTrueOverflowPacket = firstTrueOverflowTimeline.frames.find(
 );
 assert.ok(firstTrueRackShift);
 assert.equal(firstTrueRackShift.stackDepth, 0);
-assert.equal(firstTrueRackShift.durationMs, 62);
+assert.equal(firstTrueRackShift.durationMs, BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS);
 assert.ok(
   firstTrueOverflowPacket &&
-    (firstTrueOverflowPacket.stackDepth ?? 0) > 0 &&
-    (firstTrueOverflowPacket.stackDepth ?? 0) < 1,
-  'incoming bundles must continue while the independently clocked completed pile is descending'
+    (firstTrueOverflowPacket.stackDepth ?? 0) === 0,
+  'the first post-drop packet must remain visually separate until it lands'
+);
+const portraitCapacityPinnedBefore = resolveBattleCapitalStackGeometry(
+  414,
+  false,
+  300,
+  0
+);
+const portraitCapacityPinnedAfter = resolveBattleCapitalStackGeometry(
+  414,
+  false,
+  300,
+  1
+);
+const landscapeCapacityPinnedBefore = resolveBattleCapitalStackGeometry(
+  171,
+  true,
+  150,
+  0
+);
+const landscapeCapacityPinnedAfter = resolveBattleCapitalStackGeometry(
+  171,
+  true,
+  150,
+  1
+);
+assert.ok(
+  firstTrueOverflowPacket &&
+    firstTrueOverflowPacket.atMs >=
+      firstTrueRackShift.atMs + BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS,
+  'incoming bundles must not start until the old treasury has fully descended and settled'
+);
+assert.ok(
+  portraitCapacityPinnedAfter.scrollPx -
+      portraitCapacityPinnedBefore.scrollPx >=
+    414 * 0.14 - 1e-9 &&
+    landscapeCapacityPinnedAfter.scrollPx -
+      landscapeCapacityPinnedBefore.scrollPx >=
+    171 * 0.2 - 1e-9,
+  'a tall capacity-pinned treasury must still receive the full authored drop before new coins arrive'
+);
+const firstTrueOverflowAbsorption = firstTrueOverflowTimeline.frames.find(
+  (frame) =>
+    frame.phase === 'pour' &&
+    frame.activeColumnIndices.length === 0 &&
+    (frame.stackDepth ?? 0) === 1
+);
+assert.ok(
+  firstTrueOverflowAbsorption &&
+    firstTrueOverflowAbsorption.atMs > firstTrueOverflowPacket.atMs,
+  'the hidden overflow layer may join the completed pile only after the falling sequence'
 );
 const saturatedReloadFrames = getMechanicalCapitalColumnFrames(
   BATTLE_CAPITAL_COLUMN_COUNT * 36,
