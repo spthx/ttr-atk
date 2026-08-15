@@ -55,7 +55,7 @@ rendererはこれらを変更せず、コールバックで再計算も要求し
 - `CapitalStackTimelineFrame`
 - `buildCapitalStackTimeline(event)`
 
-rendererは`activeColumnIndices`、`columnHeights`、`bankedColumnHeights`、`bankedPileCount`、`bankTransferPages`、`incomingBundleCopies`、`incomingBundleLayers`、`packetSeed`、`atMs`、`durationMs`をそのまま消費する。相場35%の全力投入を満杯1pageとするpage work、金額に応じたwave数、page完了時の一括transfer、24列全面×3束×9層の走査順をrenderer側で乱数生成し直してはならない。通常設定は66msのwaveを使い、モーション低減時だけ1wave・1束へ圧縮する。
+rendererは`activeColumnIndices`、`columnHeights`、`bankedColumnHeights`、`bankedPileCount`、`bankTransferPages`、`incomingBundleCopies`、`incomingBundleLayers`、`packetSeed`、`atMs`、`durationMs`をそのまま消費する。相場35%の全力投入を満杯1pageとするpage work、金額に応じたwave数、page完了時の一括transfer、24列全面×3束×9層の走査順をrenderer側で乱数生成し直してはならない。通常設定は99msのwaveを使い、モーション低減時だけ1wave・1束へ圧縮する。
 
 30fps／60fpsはtimelineを読む回数だけを変え、scene、seed、page work、wave数、開始・着地・transfer時刻、最終active/banked状態を変えない。
 
@@ -152,7 +152,7 @@ scripts/coin-renderer-benchmark/
 2. `ResizeObserver`でCSS寸法を受け、viewportとprojection matrixだけを更新する。
 3. timelineの絶対経過時間から現在frameを選ぶ。
 4. `columnHeights`と`bankedColumnHeights`をそれぞれの24列固定instance領域へ反映する。
-5. `activeColumnIndices`の24列すべてへ、各列3束×9層の短いincoming bundleを66msで同時に落とす。
+5. `activeColumnIndices`の24列すべてへ、各列3束×9層のincoming bundleを99msで同時に落とす。
 6. `bankTransferPages`が示す完了page数の下げ幅を先に計算し、active pageと受け皿を一度で画面下のbankへ移動する。transfer後の二次sinkは加えず、banked pageの可視clip帯を残す。
 7. incoming wave着地と同じframeでactive pageの列高を確定する。
 8. 最終frameを保持し、Reactから完了通知を受けるまで独自に消去しない。

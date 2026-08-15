@@ -1046,11 +1046,13 @@ export const CAPITAL_OVERFLOW_RESTACK_BEATS = {
   compact: 10,
 } as const;
 
-// Overflow still carries every authored sweep and every bounded mass copy,
-// but the already-full treasury receives them at the measured metallic tick
-// cadence instead of repeating a slow normal-investment beat per tier.
-export const CAPITAL_OVERFLOW_RAPID_BEAT_MS = 66;
-/** Dense treasury pages land on the established rapid metallic tick. */
+// Overflow still carries every authored sweep and every bounded mass copy.
+// The visual beat is deliberately slower than the 65ms audio microticks so a
+// full-width packet remains readable instead of vanishing after two frames.
+// Three frames at 30fps keeps each full-width coin wave readable and weighty.
+// Four visual waves also align with the recorded stream's 396ms strong accent.
+export const CAPITAL_OVERFLOW_RAPID_BEAT_MS = 99;
+/** Dense treasury pages land on the reviewed three-frame visual beat. */
 export const CAPITAL_COIN_WAVE_MS = CAPITAL_OVERFLOW_RAPID_BEAT_MS;
 export const CAPITAL_COIN_WAVES_PER_PAGE = 9;
 export const CAPITAL_COIN_WAVE_MIN_COLUMNS = BATTLE_CAPITAL_COLUMN_COUNT;

@@ -82,7 +82,7 @@ ui.battle.commit
 
 ### 3.2 コイン画像
 
-コインは`BattleCapitalCanvas`のCanvas2Dへ決定論的に描き、左右それぞれ24列の再利用可能なactive page、完了分を画面下に一部clipしつつ量感を見せるbanked page、24列すべてへ各列3束×9層を66msで落とすincoming waveに分ける。相場35%の全力投入を満杯1pageとし、通常設定では1pageを9waveで満たし、モーション低減時だけ1wave・1束へ圧縮する。投入額はpage workとwave数へ連続的に変換するが、DOM nodeやCanvasの同時描画資源は金額に比例して増やさない。将来texture atlasへ差し替える際は、同じ論理キーで次を用意する。
+コインは`BattleCapitalCanvas`のCanvas2Dへ決定論的に描き、左右それぞれ24列の再利用可能なactive page、完了分を画面下に一部clipしつつ量感を見せるbanked page、24列すべてへ各列3束×9層を99msで落とすincoming waveに分ける。相場35%の全力投入を満杯1pageとし、通常設定では1pageを9waveで満たし、モーション低減時だけ1wave・1束へ圧縮する。投入額はpage workとwave数へ連続的に変換するが、DOM nodeやCanvasの同時描画資源は金額に比例して増やさない。将来texture atlasへ差し替える際は、同じ論理キーで次を用意する。
 
 ```text
 coin_player_unit
