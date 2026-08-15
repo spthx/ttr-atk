@@ -16,6 +16,7 @@ import { resolveBattleCanvasDpr } from '../utils/battleCanvasQuality';
 import {
   easeBattleCapitalRackDepth,
   resolveBattleCapitalBankGeometry,
+  resolveBattleCapitalBankSeamBridge,
   resolveBattleCapitalCanvasLayout,
   resolveBattleCapitalHoardVerticalGeometry,
   resolveBattleCapitalPacketStartBaseY,
@@ -78,6 +79,7 @@ export interface BattleCapitalCanvasProps {
 interface NormalizedCapitalFrame {
   visibleUnits: number;
   columnHeights: number[];
+  settledAfterColumnHeights: number[];
   bankedColumnHeights: number[];
   bankedPileCount: number;
   bankTransfer: boolean;
@@ -223,6 +225,19 @@ const normalizeSide = (
         )
       )
   );
+  const sourceSettledAfterHeights =
+    preview?.settledAfterColumnHeights ?? sourceHeights;
+  const settledAfterColumnHeights = Array.from(
+    { length: BATTLE_CAPITAL_COLUMN_COUNT },
+    (_, index) =>
+      Math.round(
+        clamp(
+          sourceSettledAfterHeights[index] ?? columnHeights[index] ?? 0,
+          0,
+          MAX_BATTLE_CAPITAL_COLUMN_LAYERS
+        )
+      )
+  );
   const bankedPileCount = Math.max(
     0,
     Math.floor(
@@ -279,6 +294,7 @@ const normalizeSide = (
     frame: {
       visibleUnits,
       columnHeights,
+      settledAfterColumnHeights,
       bankedColumnHeights,
       bankedPileCount,
       bankTransfer: preview?.bankTransfer === true,
@@ -761,6 +777,9 @@ const drawCapitalSide = (
   const activeRenderedColumns = resolveRenderedColumns(
     side.frame.columnHeights
   );
+  const landedRenderedColumns = resolveRenderedColumns(
+    side.frame.settledAfterColumnHeights
+  );
   const bankedRenderedColumns = resolveRenderedColumns(
     side.frame.bankedColumnHeights
   );
@@ -937,7 +956,12 @@ const drawCapitalSide = (
       const totalBodyHeight =
         bodyHeight +
         Math.max(0, drawnBankedPileCount - 1) *
-          bankGeometry.pageTravelPx;
+          bankGeometry.pageTravelPx +
+        resolveBattleCapitalBankSeamBridge({
+          pageTravelPx: bankGeometry.pageTravelPx,
+          bodyHeight,
+          renderedCoinHeight,
+        });
       const continuousLayers =
         1 +
         Math.max(0, totalBodyHeight - renderedCoinHeight) /
@@ -975,6 +999,21 @@ const drawCapitalSide = (
     const mirroredPosition = playerSide ? column.xRatio : 1 - column.xRatio;
     const x = areaLeft + mirroredPosition * areaWidth;
     const columnBaseY = upperFloorY - baselineLift + transferOffset;
+    const transferSeamBridge = side.frame.bankTransfer
+      ? (
+          Math.max(0, bankTransferPages - 1) *
+            bankGeometry.pageTravelPx +
+          resolveBattleCapitalBankSeamBridge({
+            pageTravelPx: bankGeometry.pageTravelPx,
+            bodyHeight,
+            renderedCoinHeight,
+          })
+        ) * transferProgress
+      : 0;
+    const transferVisualLayers = visualLayers <= 0
+      ? 0
+      : visualLayers +
+        transferSeamBridge / Math.max(0.01, renderedLayerStep);
     drawCoinColumn(
       context,
       x,
@@ -982,7 +1021,7 @@ const drawCapitalSide = (
       renderedCoinWidth,
       renderedCoinHeight,
       renderedLayerStep,
-      visualLayers,
+      transferVisualLayers,
       side.side,
       !side.frame.bankTransfer && activeColumns.has(index)
     );
@@ -1010,7 +1049,15 @@ const drawCapitalSide = (
         const packetHeight =
           renderedCoinHeight +
           Math.max(0, packetLayers - 1) * renderedLayerStep;
-        const landingBaseY = columnBaseY - bodyHeight;
+        const landedBodyHeight = Math.max(
+          bodyHeight,
+          landedRenderedColumns[index]?.bodyHeight ?? bodyHeight
+        );
+        // Match the packet's upper edge to the next settled silhouette. Surplus
+        // packet layers slide into the existing roll instead of disappearing
+        // as a tall cap on the following frame.
+        const landingBaseY =
+          columnBaseY - landedBodyHeight + packetHeight;
         // A nearly full reservoir leaves less than one bundle of clear field.
         // Start that bundle above the semantic safe line and clip it until it
         // enters, rather than reversing its path upward toward the landing.

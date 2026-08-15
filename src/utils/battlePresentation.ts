@@ -992,6 +992,8 @@ export interface MechanicalCapitalColumnFrame {
   visibleUnits: number;
   /** Settled coins in the reusable upper field. */
   columnHeights: number[];
+  /** Settled upper-field shape after the current incoming wave lands. */
+  settledAfterColumnHeights?: number[];
   /**
    * The most recently completed upper page after it has been banked below the
    * field divider. Older pages are represented by `bankedPileCount`; renderers
@@ -1584,6 +1586,9 @@ const buildLegacyCapitalStackTimeline = (
         columnHeights: isActive && reloadPasses > 0
           ? [...settledColumnHeights]
           : [...frame.columnHeights],
+        settledAfterColumnHeights: isActive
+          ? [...frame.columnHeights]
+          : undefined,
         // Use a timeline-global beat so persistent fixed DOM nodes can alternate
         // their CSS animation name and visibly relaunch every packet.
         stackBeat: index + 1,
@@ -1870,6 +1875,9 @@ export const buildCapitalStackTimeline = (
       commandRechargeScale,
       visibleUnits: beat.settledBefore,
       columnHeights: getCapitalColumnHeights(beat.settledBefore),
+      settledAfterColumnHeights: isTransfer
+        ? undefined
+        : getCapitalColumnHeights(beat.settledAfter),
       bankedColumnHeights: beat.bankedPileCount > 0
         ? fullColumnHeights
         : emptyColumnHeights,

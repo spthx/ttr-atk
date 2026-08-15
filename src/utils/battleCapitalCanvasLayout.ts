@@ -149,6 +149,34 @@ export interface BattleCapitalBankGeometry {
   trayBaseY: number;
 }
 
+/**
+ * Extends only the join at the top of the lower bank.  Page travel remains the
+ * full reviewed drop; the extension replaces its former background stripe
+ * with a small coin-on-coin overlap without multiplying the whole bank mass.
+ */
+export const resolveBattleCapitalBankSeamBridge = ({
+  pageTravelPx,
+  bodyHeight,
+  renderedCoinHeight,
+}: {
+  pageTravelPx: number;
+  bodyHeight: number;
+  renderedCoinHeight: number;
+}) => {
+  const safeCoinHeight = Math.max(
+    0,
+    Number.isFinite(renderedCoinHeight) ? renderedCoinHeight : 0
+  );
+  const seamOverlap = clamp(safeCoinHeight * 0.55, 2, 7);
+  return Math.max(
+    0,
+    (Number.isFinite(pageTravelPx) ? pageTravelPx : 0) -
+      (Number.isFinite(bodyHeight) ? Math.max(0, bodyHeight) : 0) -
+      safeCoinHeight +
+      seamOverlap
+  );
+};
+
 /** Keeps every incoming roll on a strictly downward screen-space path. */
 export const resolveBattleCapitalPacketStartBaseY = ({
   safeTopY,
@@ -198,8 +226,8 @@ export const resolveBattleCapitalBankGeometry = ({
   const safeHeight = Math.max(1, Number.isFinite(height) ? height : 1);
   const activeBaseY = safeHeight * (landscape ? 0.76 : 0.78);
   const rackHeight = clamp(safeHeight * 0.04, 7, 14);
-  // Include the tray lip in the promoted page so no old coin remains
-  // pre-positioned in the upper field after the descent completes.
+  // Preserve the reviewed full-height rack drop. The renderer bridges the
+  // resulting page seam column-by-column instead of shortening this motion.
   const pageTravelPx = Math.max(
     rackHeight,
     Math.max(
@@ -214,7 +242,10 @@ export const resolveBattleCapitalBankGeometry = ({
   const progress = clamp(transferProgress, 0, 1);
   return {
     activeBaseY,
-    bankClipTopY: activeBaseY + rackHeight * 0.2,
+    // Do not flatten the four staggered row crests at a single seam line.
+    // Canvas bounds provide the outer clip and the active page is painted
+    // afterwards, naturally hiding the small bank/active overlap.
+    bankClipTopY: 0,
     promotedPageBaseY: activeBaseY + pageTravelPx * progress,
     pageTravelPx,
     trayBaseY: activeBaseY + pageTravelPx * boundedCount,
@@ -241,14 +272,25 @@ export const resolveBattleCapitalCanvasLayout = (
 
   BATTLE_CAPITAL_CANVAS_ROW_COUNTS.forEach((count, depth) => {
     const span = ROW_SPANS[depth] * (landscape ? 0.84 : 1);
-    const pitch = areaWidth * span / Math.max(1, count - 1);
+    const rawPitch = areaWidth * span / Math.max(1, count - 1);
+    const maximumCoinWidth = clamp(safeWidth * 0.05, 72, 96);
     const coinWidth = clamp(
-      Math.max(pitch * (landscape ? 0.98 : 1.03), safeWidth * 0.055),
+      Math.max(rawPitch * (landscape ? 0.98 : 1.03), safeWidth * 0.055),
       12,
-      72
+      maximumCoinWidth
     );
     const coinHeight = clamp(coinWidth * 0.2, 4.5, 12);
     const layerStep = 1;
+    const depthScale = 0.97 + depth * 0.01;
+    const renderedCoinWidth = coinWidth * depthScale;
+    const minimumOverlap = Math.max(1, renderedCoinWidth * 0.03);
+    // Wide screens used to keep expanding pitch after the coin reached its
+    // 72px cap.  Constrain the row instead: this trims a little mound width but
+    // guarantees that adjacent rolls never expose the backdrop between them.
+    const pitch = Math.min(
+      rawPitch,
+      Math.max(1, renderedCoinWidth - minimumOverlap)
+    );
 
     for (let column = 0; column < count; column += 1) {
       const centered = column - (count - 1) / 2;

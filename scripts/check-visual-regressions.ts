@@ -38,6 +38,7 @@ import {
   BATTLE_CAPITAL_RACK_TWEEN_MS,
   easeBattleCapitalRackDepth,
   resolveBattleCapitalBankGeometry,
+  resolveBattleCapitalBankSeamBridge,
   resolveBattleCapitalEffectiveDepth,
   resolveBattleCapitalCanvasLayout,
   resolveBattleCapitalHoardVerticalGeometry,
@@ -335,7 +336,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const pageState = getBattleCapitalPageState\(amount, marketPrice\);[\s\S]{0,700}const bankedPileCount = Math\.max\([\s\S]{0,220}preview\?\.bankedPileCount \?\?[\s\S]{0,100}preview\?\.stackDepth \?\?[\s\S]{0,100}pageState\.bankedPileCount[\s\S]{0,500}const bankedColumnHeights = Array\.from/,
+  /const pageState = getBattleCapitalPageState\(amount, marketPrice\);[\s\S]{0,1400}const bankedPileCount = Math\.max\([\s\S]{0,220}preview\?\.bankedPileCount \?\?[\s\S]{0,100}preview\?\.stackDepth \?\?[\s\S]{0,100}pageState\.bankedPileCount[\s\S]{0,500}const bankedColumnHeights = Array\.from/,
   'the Canvas2D renderer must derive post-preview active and banked pages from the committed amount'
 );
 assert.doesNotMatch(
@@ -694,6 +695,16 @@ assert.match(
   /const transferOffset = side\.frame\.bankTransfer[\s\S]{0,180}\(transferGeometry\.promotedPageBaseY - transferGeometry\.activeBaseY\) \*[\s\S]{0,40}bankTransferPages[\s\S]{0,40}: 0;/,
   'one transfer must multiply the rendered page travel by every precomputed bank page'
 );
+assert.match(
+  battleCapitalCanvas,
+  /const totalBodyHeight =[\s\S]{0,220}drawnBankedPileCount - 1[\s\S]{0,180}resolveBattleCapitalBankSeamBridge\(\{[\s\S]{0,160}renderedCoinHeight,[\s\S]{0,100}\}\);/,
+  'the settled lower bank must bridge its top seam once without multiplying decorative mass per page'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const transferSeamBridge = side\.frame\.bankTransfer[\s\S]{0,180}bankTransferPages - 1[\s\S]{0,100}bankGeometry\.pageTravelPx[\s\S]{0,220}resolveBattleCapitalBankSeamBridge\(\{[\s\S]{0,180}\}\)[\s\S]{0,80}\* transferProgress/,
+  'a one-to-four-page transfer must grow into the same connected bank silhouette before its settle frame'
+);
 assert.doesNotMatch(
   battleCapitalCanvas,
   /ReservoirSink|reservoirSink/,
@@ -723,6 +734,110 @@ for (const fixture of [
     'late incoming rolls must retain a measurable downward path in both orientations'
   );
 }
+for (const [label, width, height] of [
+  ['attached desktop', 1520, 278],
+  ['full-hd desktop', 1920, 278],
+  ['portrait phone', 390, 294],
+  ['low landscape phone', 844, 202],
+] as const) {
+  const layout = resolveBattleCapitalCanvasLayout(width, height);
+  for (let depth = 0; depth < BATTLE_CAPITAL_CANVAS_ROW_COUNTS.length; depth += 1) {
+    const row = layout.columns
+      .filter((column) => column.depth === depth)
+      .sort((left, right) => left.column - right.column);
+    for (let index = 1; index < row.length; index += 1) {
+      const left = row[index - 1];
+      const right = row[index];
+      const depthScale = 0.97 + depth * 0.01;
+      const leftWidth = left.coinWidth * depthScale;
+      const rightWidth = right.coinWidth * depthScale;
+      const centreDistance =
+        Math.abs(right.xRatio - left.xRatio) * layout.areaWidth;
+      const overlap = (leftWidth + rightWidth) / 2 - centreDistance;
+      const requiredOverlap = Math.max(
+        1,
+        Math.min(leftWidth, rightWidth) * 0.03
+      );
+      assert.ok(
+        overlap >= requiredOverlap - 1e-9,
+        `${label} depth ${depth} adjacent rolls must overlap enough to prevent an antialiased backdrop slit`
+      );
+    }
+  }
+
+  const renderedColumns = layout.columns.map((column) => {
+    const depthScale = 0.97 + column.depth * 0.01;
+    const renderedCoinHeight = column.coinHeight * depthScale;
+    const renderedLayerStep = column.layerStep * depthScale;
+    const bodyHeight =
+      renderedCoinHeight + 35 * renderedLayerStep;
+    const baselineLift =
+      (column.bottom / 100) * height * 0.19 + column.depth * 0.25;
+    return { bodyHeight, baselineLift, renderedCoinHeight };
+  });
+  const tallestExtent = Math.max(
+    ...renderedColumns.map(({ bodyHeight, baselineLift }) =>
+      bodyHeight + baselineLift
+    )
+  );
+  const bankGeometry = resolveBattleCapitalBankGeometry({
+    height,
+    landscape: layout.landscape,
+    tallestActiveExtent: tallestExtent,
+    bankedPileCount: 1,
+  });
+  assert.equal(
+    bankGeometry.bankClipTopY,
+    0,
+    `${label} bank clip must leave every staggered crest available for active-page occlusion`
+  );
+  assert.ok(
+    bankGeometry.pageTravelPx >= layout.pageTargetHeight,
+    `${label} seam repair must retain the approved full-page rack descent`
+  );
+  for (const {
+    bodyHeight,
+    baselineLift,
+    renderedCoinHeight,
+  } of renderedColumns) {
+    const bridge = resolveBattleCapitalBankSeamBridge({
+      pageTravelPx: bankGeometry.pageTravelPx,
+      bodyHeight,
+      renderedCoinHeight,
+    });
+    const requiredOverlap = Math.min(
+      7,
+      Math.max(2, renderedCoinHeight * 0.55)
+    );
+    const activeBottomY =
+      bankGeometry.activeBaseY - baselineLift + renderedCoinHeight / 2;
+    const rawBankTopY =
+      bankGeometry.activeBaseY +
+      bankGeometry.pageTravelPx -
+      baselineLift -
+      bodyHeight -
+      bridge -
+      renderedCoinHeight / 2;
+    const visibleBankTopY = Math.max(
+      bankGeometry.bankClipTopY,
+      rawBankTopY
+    );
+    assert.ok(
+      activeBottomY - visibleBankTopY >= requiredOverlap - 1e-9,
+      `${label} active and banked pages must meet with a metal overlap and no horizontal background stripe`
+    );
+    const transferEndTopY =
+      bankGeometry.activeBaseY +
+      bankGeometry.pageTravelPx -
+      baselineLift -
+      (bodyHeight + bridge) -
+      renderedCoinHeight / 2;
+    assert.ok(
+      Math.abs(transferEndTopY - rawBankTopY) < 1e-9,
+      `${label} transfer end and settled bank crest must be pixel-continuous`
+    );
+  }
+}
 assert.ok(
   portraitBankPage.pageTravelPx >= 280 &&
     landscapeBankPage.pageTravelPx >= 105 &&
@@ -732,8 +847,8 @@ assert.ok(
 );
 assert.match(
   battleCapitalCanvasLayout,
-  /const areaWidth = safeWidth \* 0\.44;[\s\S]{0,120}const sideInset = safeWidth \* 0\.03;[\s\S]{0,520}Math\.max\(pitch \* \(landscape \? 0\.98 : 1\.03\), safeWidth \* 0\.055\)[\s\S]*const pageTargetHeight = usableHeight \* 0\.9;[\s\S]{0,700}const globalLayerStep = clamp\(Math\.max\(\.\.\.requiredSteps\), 1\.6, 14\.5\)/,
-  'dense coins must keep their reviewed width while a full page scales to ninety percent of every usable field'
+  /const areaWidth = safeWidth \* 0\.44;[\s\S]{0,120}const sideInset = safeWidth \* 0\.03;[\s\S]{0,700}const rawPitch =[\s\S]{0,220}const maximumCoinWidth = clamp\(safeWidth \* 0\.05, 72, 96\);[\s\S]{0,420}const minimumOverlap = Math\.max\(1, renderedCoinWidth \* 0\.03\);[\s\S]{0,420}const pitch = Math\.min\([\s\S]{0,100}renderedCoinWidth - minimumOverlap[\s\S]*const pageTargetHeight = usableHeight \* 0\.9;[\s\S]{0,700}const globalLayerStep = clamp\(Math\.max\(\.\.\.requiredSteps\), 1\.6, 14\.5\)/,
+  'dense coins must keep their reviewed scale while capping wide-screen pitch so the backdrop cannot open between rolls'
 );
 assert.match(
   battleCapitalCanvas,
@@ -788,8 +903,8 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /renderedCoinWidth:\s*column\.coinWidth \* depthScale,[\s\S]{0,120}renderedCoinHeight,[\s\S]{0,80}renderedLayerStep,[\s\S]*const packetHeight =[\s\S]{0,100}renderedCoinHeight \+[\s\S]{0,100}renderedLayerStep;[\s\S]{0,100}const landingBaseY = columnBaseY - bodyHeight;[\s\S]*drawCoinColumn\([\s\S]{0,160}renderedCoinWidth,[\s\S]{0,60}renderedCoinHeight,[\s\S]{0,60}renderedLayerStep/,
-  'falling bundles must share the exact settled coin width, thickness, layer pitch and landing surface'
+  /renderedCoinWidth:\s*column\.coinWidth \* depthScale,[\s\S]{0,120}renderedCoinHeight,[\s\S]{0,80}renderedLayerStep,[\s\S]*const packetHeight =[\s\S]{0,100}renderedCoinHeight \+[\s\S]{0,100}renderedLayerStep;[\s\S]{0,260}const landedBodyHeight = Math\.max\([\s\S]{0,160}landedRenderedColumns\[index\]\?\.bodyHeight[\s\S]{0,260}const landingBaseY =[\s\S]{0,100}columnBaseY - landedBodyHeight \+ packetHeight;[\s\S]*drawCoinColumn\([\s\S]{0,160}renderedCoinWidth,[\s\S]{0,60}renderedCoinHeight,[\s\S]{0,60}renderedLayerStep/,
+  'falling bundles must share settled coin dimensions and converge on the following frame silhouette without a shrinking cap'
 );
 assert.match(
   battleCapitalCanvas,
@@ -1430,7 +1545,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvasLayout,
-  /const landscape = safeWidth \/ safeHeight >= 1\.45;[\s\S]{0,1200}xRatio:\s*0\.5 \+ centered \* \(pitch \/ areaWidth\)/,
+  /const landscape = safeWidth \/ safeHeight >= 1\.45;[\s\S]{0,2200}xRatio:\s*0\.5 \+ centered \* \(pitch \/ areaWidth\)/,
   'portrait and landscape canvases must resolve a real orientation-specific dense spread'
 );
 assert.doesNotMatch(
@@ -1868,6 +1983,40 @@ for (const [label, timeline, expectedTransferPages] of [
         Math.abs(emptyRefillTrayY - settleTrayY) < 1e-9,
       `${label} tray/hoard/glow baseline must remain at the page-travel result after transfer at ${fieldHeight}px`
     );
+    const renderedCoinHeight = landscape ? 10 : 5;
+    const bodyHeight = Math.max(
+      renderedCoinHeight,
+      fullPageExtent - renderedCoinHeight
+    );
+    const seamBridge = resolveBattleCapitalBankSeamBridge({
+      pageTravelPx: expectedGeometry.pageTravelPx,
+      bodyHeight,
+      renderedCoinHeight,
+    });
+    const transferEndTop =
+      expectedGeometry.activeBaseY +
+      expectedGeometry.pageTravelPx * expectedTransferPages -
+      (
+        bodyHeight +
+        expectedGeometry.pageTravelPx * (expectedTransferPages - 1) +
+        seamBridge
+      );
+    const targetBankedPileCount = Math.max(
+      1,
+      transferFrame.bankedPileCount ?? expectedTransferPages
+    );
+    const settledBankTop =
+      expectedGeometry.activeBaseY +
+      expectedGeometry.pageTravelPx * targetBankedPileCount -
+      (
+        bodyHeight +
+        expectedGeometry.pageTravelPx * (targetBankedPileCount - 1) +
+        seamBridge
+      );
+    assert.ok(
+      Math.abs(transferEndTop - settledBankTop) < 1e-9,
+      `${label} promoted silhouette must equal the connected ${expectedTransferPages}-page bank at transfer end`
+    );
   }
 }
 assert.ok(
@@ -1895,6 +2044,15 @@ assert.ok(
   ),
   'each normal treasury page must arrive as nine rapid twenty-four-column waves with three nine-layer rolls per column'
 );
+for (const frame of repeatedFundingCurtain) {
+  const frameIndex = repeatedFundingTimeline.frames.indexOf(frame);
+  const nextFrame = repeatedFundingTimeline.frames[frameIndex + 1];
+  assert.deepEqual(
+    frame.settledAfterColumnHeights,
+    nextFrame?.columnHeights,
+    'every incoming wave must author the exact upper-wall silhouette rendered by the following frame'
+  );
+}
 assert.deepEqual(
   repeatedFundingCurtain.map((frame) => Math.max(...frame.columnHeights)),
   [0, 4, 8, 12, 16, 20, 24, 28, 32],
