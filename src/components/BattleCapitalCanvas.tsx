@@ -612,7 +612,8 @@ const drawCoinColumn = (
   layerStep: number,
   layers: number,
   side: BattleCapitalCanvasSide,
-  active: boolean
+  active: boolean,
+  connectedBelow = false
 ) => {
   if (layers <= 0) return;
   const colors = SIDE_COLORS[side];
@@ -651,33 +652,65 @@ const drawCoinColumn = (
   context.fill();
   context.shadowBlur = 0;
 
-  // Preserve the countable coin texture of a completed page. The previous
-  // fifteen-seam cap stretched tall treasuries into a few oversized metal
-  // bands; thirty-six visible layers now retain all thirty-five separations,
-  // while deep off-screen banks remain bounded.
-  const seamCount = Math.min(48, Math.max(0, layers - 1));
-  if (seamCount > 0) {
+  // Preserve one separation per visible coin even when several completed pages
+  // have become one continuous lower bank. Distributing a fixed seam count over
+  // the entire off-screen body turned the visible portion into a smooth metal
+  // pillar. Skip off-screen seams instead, and keep a fixed per-column ceiling.
+  const safeLayerStep = Math.max(0.01, layerStep);
+  const totalSeams = Math.max(0, Math.floor(layers) - 1);
+  const transformScaleY = Math.max(
+    0.01,
+    Math.abs(context.getTransform().d)
+  );
+  const visibleCanvasHeight = context.canvas.height / transformScaleY;
+  const firstVisibleSeam = Math.max(
+    1,
+    Math.ceil((0 - topY) / safeLayerStep)
+  );
+  const maximumVisibleSeams = 72;
+  const lastVisibleSeam = Math.min(
+    totalSeams,
+    Math.floor((visibleCanvasHeight - topY) / safeLayerStep),
+    firstVisibleSeam + maximumVisibleSeams - 1
+  );
+  if (firstVisibleSeam <= lastVisibleSeam) {
     context.lineWidth = Math.max(0.65, coinHeight * 0.1);
-    for (let seam = 1; seam <= seamCount; seam += 1) {
-      const seamY = topY + (bodyHeight * seam) / (seamCount + 1);
-      context.strokeStyle = side === 'player'
-        ? 'rgba(62, 31, 5, .65)'
-        : 'rgba(70, 6, 18, .72)';
-      context.beginPath();
+    context.strokeStyle = side === 'player'
+      ? 'rgba(62, 31, 5, .65)'
+      : 'rgba(70, 6, 18, .72)';
+    context.beginPath();
+    for (
+      let seam = firstVisibleSeam;
+      seam <= lastVisibleSeam;
+      seam += 1
+    ) {
+      const seamY = topY + seam * safeLayerStep;
       context.moveTo(x - width / 2, seamY);
       context.lineTo(x + width / 2, seamY);
-      context.stroke();
-      context.strokeStyle = side === 'player'
-        ? 'rgba(255, 224, 125, .42)'
-        : 'rgba(255, 184, 175, .46)';
-      context.beginPath();
+    }
+    context.stroke();
+    context.strokeStyle = side === 'player'
+      ? 'rgba(255, 224, 125, .42)'
+      : 'rgba(255, 184, 175, .46)';
+    context.beginPath();
+    for (
+      let seam = firstVisibleSeam;
+      seam <= lastVisibleSeam;
+      seam += 1
+    ) {
+      const seamY = topY + seam * safeLayerStep;
       context.moveTo(x - width * 0.44, seamY + Math.max(0.65, coinHeight * 0.12));
       context.lineTo(x + width * 0.4, seamY + Math.max(0.65, coinHeight * 0.12));
-      context.stroke();
     }
+    context.stroke();
   }
 
-  context.fillStyle = colors.coinDark;
+  // A completed upper page shares this bottom coin with the banked page below.
+  // Keeping the usual dark underside here painted a false horizontal cavity
+  // across an otherwise connected treasury, especially in Edge at desktop
+  // widths. Match the lower page's top metal only at that internal join; the
+  // real lowest page and its tray retain the darker weight-bearing underside.
+  context.fillStyle = connectedBelow ? colors.coinMid : colors.coinDark;
   context.beginPath();
   context.ellipse(x, baseY, width / 2, coinHeight / 2, 0, 0, Math.PI * 2);
   context.fill();
@@ -980,6 +1013,7 @@ const drawCapitalSide = (
         renderedLayerStep,
         continuousLayers,
         side.side,
+        false,
         false
       );
     }
@@ -1023,7 +1057,8 @@ const drawCapitalSide = (
       renderedLayerStep,
       transferVisualLayers,
       side.side,
-      !side.frame.bankTransfer && activeColumns.has(index)
+      !side.frame.bankTransfer && activeColumns.has(index),
+      drawnBankedPileCount > 0
     );
 
     if (!side.frame.bankTransfer && activeColumns.has(index)) {
@@ -1098,7 +1133,8 @@ const drawCapitalSide = (
           renderedLayerStep,
           packetLayers,
           side.side,
-          true
+          true,
+          false
         );
         context.restore();
       }

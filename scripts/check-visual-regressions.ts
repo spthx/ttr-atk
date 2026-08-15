@@ -702,6 +702,36 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
+  /context\.fillStyle = connectedBelow \? colors\.coinMid : colors\.coinDark;[\s\S]*drawCoinColumn\([\s\S]{0,240}transferVisualLayers,[\s\S]{0,100}drawnBankedPileCount > 0/,
+  'an active page connected to a lower bank must paint a shared metal seam instead of a false dark cavity'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const totalSeams = Math\.max\(0, Math\.floor\(layers\) - 1\);[\s\S]{0,260}context\.getTransform\(\)\.d[\s\S]{0,180}const visibleCanvasHeight = context\.canvas\.height \/ transformScaleY;/,
+  'deep bank columns must derive their seam window from the visible transformed canvas'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const firstVisibleSeam = Math\.max\([\s\S]{0,180}Math\.ceil\(\(0 - topY\) \/ safeLayerStep\)[\s\S]{0,120}const maximumVisibleSeams = 72;[\s\S]{0,260}firstVisibleSeam \+ maximumVisibleSeams - 1/,
+  'deep bank columns must skip off-screen seams and cap only the visible drawing work'
+);
+assert.match(
+  battleCapitalCanvas,
+  /for \([\s\S]{0,180}let seam = firstVisibleSeam;[\s\S]{0,180}seam <= lastVisibleSeam;[\s\S]{0,180}const seamY = topY \+ seam \* safeLayerStep;/,
+  'every rendered lower-bank separator must retain the authored per-coin layer pitch'
+);
+assert.doesNotMatch(
+  battleCapitalCanvas,
+  /bodyHeight \* seam\) \/ \(seamCount \+ 1\)|const seamCount = Math\.min\(48/,
+  'off-screen bank depth must not redistribute a sparse fixed seam count over the visible pillar'
+);
+assert.match(
+  battleCapitalCanvas,
+  /drawCoinColumn\([\s\S]{0,220}continuousLayers,[\s\S]{0,80}side\.side,[\s\S]{0,40}false,[\s\S]{0,40}false[\s\S]*drawCoinColumn\([\s\S]{0,220}packetLayers,[\s\S]{0,80}side\.side,[\s\S]{0,40}true,[\s\S]{0,40}false/,
+  'only the internal active-to-bank join may use the shared seam colour; the lower bank and incoming bundles keep their authored caps'
+);
+assert.match(
+  battleCapitalCanvas,
   /const transferSeamBridge = side\.frame\.bankTransfer[\s\S]{0,180}bankTransferPages - 1[\s\S]{0,100}bankGeometry\.pageTravelPx[\s\S]{0,220}resolveBattleCapitalBankSeamBridge\(\{[\s\S]{0,180}\}\)[\s\S]{0,80}\* transferProgress/,
   'a one-to-four-page transfer must grow into the same connected bank silhouette before its settle frame'
 );
@@ -857,8 +887,8 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const seamCount = Math\.min\(48, Math\.max\(0, layers - 1\)\);/,
-  'a full thirty-six-layer page must retain all thirty-five visible seams while deeper banks stay bounded'
+  /const totalSeams = Math\.max\(0, Math\.floor\(layers\) - 1\);[\s\S]{0,900}if \(firstVisibleSeam <= lastVisibleSeam\)/,
+  'a full thirty-six-layer page must retain all thirty-five visible seams while deeper banks cull only off-screen work'
 );
 assert.match(
   battleCapitalCanvas,
