@@ -2053,9 +2053,9 @@ assert.ok(
   repeatedFundingTimeline.frames
     .filter((frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0)
     .every((frame) => frame.durationMs === CAPITAL_COIN_WAVE_MS),
-  'post-drop repeated funding must use the reviewed rapid 66ms metallic cadence'
+  'post-drop repeated funding must keep each full-width coin wave visible for the reviewed weighty cadence'
 );
-assert.equal(CAPITAL_COIN_WAVE_MS, 66);
+assert.equal(CAPITAL_COIN_WAVE_MS, 99);
 assert.equal(CAPITAL_COIN_WAVE_MIN_COLUMNS, BATTLE_CAPITAL_COLUMN_COUNT);
 assert.equal(CAPITAL_COIN_WAVE_MAX_COLUMNS, BATTLE_CAPITAL_COLUMN_COUNT);
 assert.equal(CAPITAL_COIN_WAVE_BUNDLE_LAYERS, 9);
@@ -2067,7 +2067,7 @@ assert.equal(repeatedFundingCurtain.length, CAPITAL_COIN_WAVES_PER_PAGE);
 assert.ok(
   repeatedFundingCurtain.every(
     (frame) =>
-      frame.durationMs === 66 &&
+      frame.durationMs === CAPITAL_COIN_WAVE_MS &&
       frame.activeColumnIndices.length === BATTLE_CAPITAL_COLUMN_COUNT &&
       frame.incomingBundleCopies === 3 &&
       frame.incomingBundleLayers === CAPITAL_COIN_WAVE_BUNDLE_LAYERS
@@ -2312,7 +2312,7 @@ assert.ok(
         frame.incomingBundleCopies === 3 &&
         frame.incomingBundleLayers === CAPITAL_COIN_WAVE_BUNDLE_LAYERS
     ),
-  'exceptional funding must remain a sustained three-bundle torrent at the rapid 66ms cadence'
+  'exceptional funding must remain a sustained three-bundle torrent at the weighty 99ms cadence'
 );
 assert.match(
   battleModal,
