@@ -958,11 +958,12 @@ export const BATTLE_LOYALTY_BALANCE = {
 } as const;
 
 /**
- * Endgame duties are fought by the whole acquired network, not petty cash.
- * The extra weight keeps ally calls satisfying after enemy barriers, Passage and
- * LB3 were made meaningful, without raising the player's personal bankroll.
+ * Endgame one-tap requests repeatedly use the strongest relationship for up to
+ * 18 calls. Half-strength per call preserves the full-network spectacle while
+ * preventing that single source from replacing direct investment, SYNERGY and
+ * LB. External alliance and LB amounts remain unmodified.
  */
-export const HIGH_DIFFICULTY_SUPPORT_MULTIPLIER = 1.7;
+export const HIGH_DIFFICULTY_SUPPORT_MULTIPLIER = 0.5;
 
 export const PROFIT_ALLOCATION_OPTIONS = [
   {
@@ -1056,7 +1057,7 @@ export const calculateLimitBreakPushGilEquivalent = (
     (Math.max(0, marketPrice) * Math.max(0, ownershipPoints)) / 85
   );
 
-export const sortSubsidiariesBySupport = (properties: Property[]) =>
+export const sortSubsidiariesBySupport = (properties: readonly Property[]) =>
   [...properties].sort((left, right) => {
     const supportDifference =
       calculateSubsidiarySupportAmount(right) -
@@ -1064,6 +1065,14 @@ export const sortSubsidiariesBySupport = (properties: Property[]) =>
     if (supportDifference !== 0) return supportDifference;
     return left.name.localeCompare(right.name, 'ja');
   });
+
+/**
+ * Canonical source for the post-Savage one-tap request. Runtime readiness and
+ * deterministic simulations must all ask the same strongest relationship.
+ */
+export const getStrongestSubsidiarySupport = (
+  properties: readonly Property[]
+) => sortSubsidiariesBySupport(properties)[0] ?? null;
 
 export const getSubsidiaryRiskIncrease = (
   property: Property,

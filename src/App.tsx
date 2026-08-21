@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, {
+  Suspense,
+  lazy,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import {
   Property,
   TacticalSkill,
@@ -22,14 +29,8 @@ import { soundFx } from './utils/audio';
 
 import { Header } from './components/Header';
 import { MarketView } from './components/MarketView';
-import { PortfolioView } from './components/PortfolioView';
-import { SkillsSynergyView } from './components/SkillsSynergyView';
-import { CartelAllianceView } from './components/CartelAllianceView';
-import { BattleModal } from './components/BattleModal';
 import { TatarAdvisor } from './components/TatarAdvisor';
 import { LaunchIntro } from './components/LaunchIntro';
-import { EndingModal } from './components/EndingModal';
-import { HighEndRaidView } from './components/HighEndRaidView';
 import {
   getWindProgressionStage,
 } from './components/WindIndicator';
@@ -63,7 +64,9 @@ import {
   isNormalCityBoss,
   isSkillUnlocked,
   PASSIVE_REVENUE_MULTIPLIER,
+  SAVAGE_NETWORK_SUPPORT_LIMIT,
   TACTICAL_SKILL_BALANCE,
+  ULTIMATE_NETWORK_SUPPORT_LIMIT,
 } from './utils/gameBalance';
 import {
   calculateAllianceSupport,
@@ -132,6 +135,46 @@ import {
   buildKarmaProperty,
   KARMA_RAID_DEFINITION,
 } from './utils/karmaBattle';
+
+const loadBattleModal = () => import('./components/BattleModal');
+const BattleModal = lazy(() =>
+  loadBattleModal().then((module) => ({ default: module.BattleModal }))
+);
+const HighEndRaidView = lazy(() =>
+  import('./components/HighEndRaidView').then((module) => ({
+    default: module.HighEndRaidView,
+  }))
+);
+const PortfolioView = lazy(() =>
+  import('./components/PortfolioView').then((module) => ({
+    default: module.PortfolioView,
+  }))
+);
+const SkillsSynergyView = lazy(() =>
+  import('./components/SkillsSynergyView').then((module) => ({
+    default: module.SkillsSynergyView,
+  }))
+);
+const CartelAllianceView = lazy(() =>
+  import('./components/CartelAllianceView').then((module) => ({
+    default: module.CartelAllianceView,
+  }))
+);
+const EndingModal = lazy(() =>
+  import('./components/EndingModal').then((module) => ({
+    default: module.EndingModal,
+  }))
+);
+
+const DeferredPanelFallback = ({ label }: { label: string }) => (
+  <section
+    className="min-h-48 rounded-2xl border border-cyan-500/20 bg-slate-950/80 p-6 text-center text-cyan-50"
+    role="status"
+  >
+    <b className="block text-sm font-black tracking-[.14em]">TRADE LEDGER LOADING</b>
+    <span className="mt-2 block text-xs text-slate-400">{label}を準備しています</span>
+  </section>
+);
 
 export { PASSIVE_REVENUE_MULTIPLIER };
 
@@ -470,6 +513,10 @@ export default function App() {
   const deferredBattleIncomeRef = useRef(0);
   const highEndViewRef = useRef<HTMLDivElement | null>(null);
   const highEndBattlePlaceholderHeightRef = useRef(0);
+  const unlockExplanationActionRef = useRef<HTMLButtonElement | null>(null);
+  const featureUnlockActionRef = useRef<HTMLButtonElement | null>(null);
+  const cityUnlockActionRef = useRef<HTMLButtonElement | null>(null);
+  const unlockDialogReturnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const unlockAudio = () => soundFx.unlock();
@@ -482,6 +529,14 @@ export default function App() {
       window.removeEventListener('pageshow', unlockAudio);
     };
   }, []);
+
+  useEffect(() => {
+    if (showLaunchIntro) return undefined;
+    const preloadTimer = window.setTimeout(() => {
+      void loadBattleModal();
+    }, 800);
+    return () => window.clearTimeout(preloadTimer);
+  }, [showLaunchIntro]);
 
   const completeLaunchIntro = () => {
     const normalizedName = companyName.trim() || GAME_WORLD.companyName;
@@ -1020,6 +1075,37 @@ export default function App() {
     !endingNotice &&
     !featureUnlockNoticeId &&
     !unlockNotice;
+  const unlockDialogKey = unlockExplanationVisible && unlockExplanationNotice
+    ? `explanation:${unlockExplanationNotice.key}`
+    : featureUnlockNotice
+      ? `feature:${featureUnlockNoticeId}`
+      : unlockNotice
+        ? `city:${unlockNotice}`
+        : null;
+
+  useEffect(() => {
+    if (!unlockDialogKey) {
+      const returnTarget = unlockDialogReturnFocusRef.current;
+      unlockDialogReturnFocusRef.current = null;
+      if (returnTarget?.isConnected) returnTarget.focus();
+      return undefined;
+    }
+    if (!unlockDialogReturnFocusRef.current) {
+      unlockDialogReturnFocusRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+    }
+    const focusFrame = window.requestAnimationFrame(() => {
+      const action = unlockExplanationVisible
+        ? unlockExplanationActionRef.current
+        : featureUnlockNotice
+          ? featureUnlockActionRef.current
+          : cityUnlockActionRef.current;
+      action?.focus();
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [featureUnlockNotice, unlockDialogKey, unlockExplanationVisible]);
   const announcedUnlockExplanationKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -2183,6 +2269,12 @@ export default function App() {
           targetRegionalInfluence.playerBonus +
           tradeNetworkBonus,
       battleMode: isExtreme ? 'extreme' : mode,
+      networkSupportLimit:
+        mode === 'ultimate' || mode === 'karma'
+          ? ULTIMATE_NETWORK_SUPPORT_LIMIT
+          : savageUnlocked || isHighEndRaid
+            ? SAVAGE_NETWORK_SUPPORT_LIMIT
+            : null,
       mechanicWarning: normalMechanicWarning,
       mechanicSeverity: normalMechanicSeverity,
     });
@@ -2304,7 +2396,15 @@ export default function App() {
             />
           ) : (
             <div ref={highEndViewRef}>
-              <HighEndRaidView
+              <Suspense
+                fallback={
+                  <section className="min-h-72 rounded-2xl border border-rose-500/25 bg-slate-950/85 p-6 text-center text-rose-100" role="status">
+                    <b className="block text-sm font-black tracking-[.18em]">HIGH-END DUTY LOADING</b>
+                    <span className="mt-2 block text-xs text-slate-400">高難度交易台帳を準備しています</span>
+                  </section>
+                }
+              >
+                <HighEndRaidView
                 savageProperties={savageProperties}
                 properties={properties}
                 cartels={cartels}
@@ -2336,24 +2436,28 @@ export default function App() {
                   soundFx.playVictory();
                 }}
                 onOpenCartels={() => setActiveTab('cartels')}
-              />
+                />
+              </Suspense>
             </div>
           )
         )}
 
         {activeTab === 'portfolio' && (
-          <PortfolioView
-            companyName={companyName}
-            properties={properties}
-            totalFunds={totalFunds}
-            propertyRevenueMultipliers={savagePropertyRevenueMultipliers}
-            onReduceLoyaltyRisk={handleReduceLoyaltyRisk}
-            onGlobalNemawashi={handleGlobalNemawashi}
-          />
+          <Suspense fallback={<DeferredPanelFallback label="保有事業台帳" />}>
+            <PortfolioView
+              companyName={companyName}
+              properties={properties}
+              totalFunds={totalFunds}
+              propertyRevenueMultipliers={savagePropertyRevenueMultipliers}
+              onReduceLoyaltyRisk={handleReduceLoyaltyRisk}
+              onGlobalNemawashi={handleGlobalNemawashi}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'skills' && (
-          <SkillsSynergyView
+          <Suspense fallback={<DeferredPanelFallback label="アビリティとSYNERGY台帳" />}>
+            <SkillsSynergyView
             skills={skills}
             equippedSkillIds={equippedSkillIds}
             groupSynergies={groupSynergies}
@@ -2386,24 +2490,27 @@ export default function App() {
             onToggleEquipSkill={handleToggleEquipSkill}
             onSetSkillActivationMode={handleSetSkillActivationMode}
             onSelectBattleSynergy={setSelectedBattleSynergyId}
-          />
+            />
+          </Suspense>
         )}
 
         {activeTab === 'cartels' && tradeAllianceUnlocked && (
-          <CartelAllianceView
-            companyName={companyName}
-            cartels={cartels}
-            properties={properties}
-            alliance={alliance}
-            getStrengthComparison={(property) =>
-              getBattleReadinessForTarget(property, 'normal')
-            }
-            onFormAlliance={handleFormAlliance}
-            onBreakAlliance={handleBreakAlliance}
-            onStartBuyout={(property) =>
-              handleStartBuyout(property, 'cartels')
-            }
-          />
+          <Suspense fallback={<DeferredPanelFallback label="企業連合・協力台帳" />}>
+            <CartelAllianceView
+              companyName={companyName}
+              cartels={cartels}
+              properties={properties}
+              alliance={alliance}
+              getStrengthComparison={(property) =>
+                getBattleReadinessForTarget(property, 'normal')
+              }
+              onFormAlliance={handleFormAlliance}
+              onBreakAlliance={handleBreakAlliance}
+              onStartBuyout={(property) =>
+                handleStartBuyout(property, 'cartels')
+              }
+            />
+          </Suspense>
         )}
 
         <section className="rounded-xl border border-cyan-400/25 bg-gradient-to-r from-slate-950 via-cyan-950/25 to-slate-950 px-4 py-3 shadow-lg">
@@ -2492,17 +2599,27 @@ export default function App() {
       </footer>
 
       {endingNotice && (
-        <EndingModal ending={endingNotice} companyName={companyName} onContinue={acknowledgeEnding} />
+        <Suspense fallback={null}>
+          <EndingModal ending={endingNotice} companyName={companyName} onContinue={acknowledgeEnding} />
+        </Suspense>
       )}
 
       {unlockExplanationVisible && unlockExplanationNotice && (
-        <button
-          type="button"
-          onClick={acknowledgeUnlockExplanation}
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="unlock-explanation-title"
+          aria-describedby="unlock-explanation-detail unlock-explanation-operation"
           className="city-unlock fixed inset-0 z-[188] flex items-center justify-center bg-slate-950/92 p-4 text-left"
-          aria-label={`${unlockExplanationNotice.title}の説明を確認する`}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') acknowledgeUnlockExplanation();
+            if (event.key === 'Tab') {
+              event.preventDefault();
+              unlockExplanationActionRef.current?.focus();
+            }
+          }}
         >
-          <span
+          <div
             className={`city-unlock__card relative block w-full max-w-2xl overflow-hidden rounded-2xl border bg-slate-900 p-5 shadow-2xl sm:p-7 ${
               unlockExplanationNotice.kind === 'synergy'
                 ? 'border-violet-300/70'
@@ -2516,13 +2633,13 @@ export default function App() {
               decoding="async"
               className="absolute inset-0 h-full w-full object-cover opacity-20"
             />
-            <span className="relative z-10 flex items-end gap-4">
+            <div className="relative z-10 flex items-end gap-4">
               <img
                 src={FANKIT_ART.tataru.dressUp}
                 alt="タタル"
                 className="h-28 w-24 shrink-0 object-contain object-bottom drop-shadow-[0_0_16px_rgba(251,191,36,.45)] sm:h-36 sm:w-32"
               />
-              <span className="min-w-0 pb-1">
+              <div className="min-w-0 pb-1">
                 <span
                   className={`block text-[10px] font-black tracking-[.28em] ${
                     unlockExplanationNotice.kind === 'synergy'
@@ -2532,22 +2649,25 @@ export default function App() {
                 >
                   {unlockExplanationNotice.kicker} UNLOCKED
                 </span>
-                <span className="mt-1 block text-xl font-black text-white sm:text-3xl">
+                <h2 id="unlock-explanation-title" className="mt-1 block text-xl font-black text-white sm:text-3xl">
                   {unlockExplanationNotice.title}
-                </span>
+                </h2>
                 <span className="mt-3 block rounded-xl border border-white/15 bg-slate-950/80 p-3 text-sm font-bold leading-relaxed text-slate-50">
                   「{unlockExplanationNotice.dialogue}」
                 </span>
-              </span>
-            </span>
-            <span className="relative z-10 mt-3 block text-xs font-semibold leading-relaxed text-slate-200 sm:text-sm">
+              </div>
+            </div>
+            <span id="unlock-explanation-detail" className="relative z-10 mt-3 block text-xs font-semibold leading-relaxed text-slate-200 sm:text-sm">
               {unlockExplanationNotice.detail}
             </span>
-            <span className="relative z-10 mt-3 block rounded-lg border border-cyan-200/20 bg-cyan-950/45 px-3 py-2 text-xs font-bold leading-relaxed text-cyan-50 sm:text-sm">
+            <span id="unlock-explanation-operation" className="relative z-10 mt-3 block rounded-lg border border-cyan-200/20 bg-cyan-950/45 px-3 py-2 text-xs font-bold leading-relaxed text-cyan-50 sm:text-sm">
               使い方：{unlockExplanationNotice.operation}
             </span>
-            <span
-              className={`relative z-10 mt-4 inline-block rounded-lg px-4 py-2 text-xs font-black text-slate-950 ${
+            <button
+              ref={unlockExplanationActionRef}
+              type="button"
+              onClick={acknowledgeUnlockExplanation}
+              className={`relative z-10 mt-4 inline-flex min-h-11 items-center rounded-lg px-4 py-2 text-xs font-black text-slate-950 ${
                 unlockExplanationNotice.kind === 'synergy'
                   ? 'bg-violet-300'
                   : 'bg-amber-300'
@@ -2556,53 +2676,67 @@ export default function App() {
               {unlockExplanationQueue.length > 1
                 ? '次の解放を見る'
                 : 'アビリティを確認'}
-            </span>
-          </span>
-        </button>
+            </button>
+          </div>
+        </div>
       )}
 
       {featureUnlockNotice && (
-        <button
-          type="button"
-          onClick={acknowledgeFeatureUnlock}
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="feature-unlock-title"
+          aria-describedby="feature-unlock-detail"
           className="city-unlock fixed inset-0 z-[185] flex items-center justify-center bg-slate-950/92 p-4 text-left"
-          aria-label={`${featureUnlockNotice.title}の説明を閉じる`}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') acknowledgeFeatureUnlock();
+            if (event.key === 'Tab') {
+              event.preventDefault();
+              featureUnlockActionRef.current?.focus();
+            }
+          }}
         >
-          <span className="city-unlock__card relative block w-full max-w-2xl overflow-hidden rounded-2xl border border-cyan-300/60 bg-slate-900 p-5 shadow-2xl sm:p-7">
+          <div className="city-unlock__card relative block w-full max-w-2xl overflow-hidden rounded-2xl border border-cyan-300/60 bg-slate-900 p-5 shadow-2xl sm:p-7">
             <img src={FANKIT_ART.marketBackdrop} alt="" aria-hidden="true" decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-20" />
-            <span className="relative z-10 flex items-end gap-4">
+            <div className="relative z-10 flex items-end gap-4">
               <img src={FANKIT_ART.tataru.dressUp} alt="タタル" className="h-28 w-24 shrink-0 object-contain object-bottom drop-shadow-[0_0_16px_rgba(103,232,249,.5)] sm:h-36 sm:w-32" />
-              <span className="min-w-0 pb-1">
+              <div className="min-w-0 pb-1">
                 <span className="block text-[10px] font-black tracking-[.28em] text-cyan-300">{featureUnlockNotice.kicker} UNLOCKED</span>
-                <span className="mt-1 block text-xl font-black text-white sm:text-3xl">{featureUnlockNotice.title}</span>
+                <h2 id="feature-unlock-title" className="mt-1 block text-xl font-black text-white sm:text-3xl">{featureUnlockNotice.title}</h2>
                 <span className="mt-3 block rounded-xl border border-cyan-200/25 bg-slate-950/75 p-3 text-sm font-bold leading-relaxed text-cyan-50">「{featureUnlockNotice.dialogue}」</span>
-              </span>
-            </span>
-            <span className="relative z-10 mt-3 block text-xs leading-relaxed text-slate-300 sm:text-sm">{featureUnlockNotice.detail}</span>
-            <span className="relative z-10 mt-4 inline-block rounded-lg bg-cyan-300 px-4 py-2 text-xs font-black text-slate-950">わかった！</span>
-          </span>
-        </button>
+              </div>
+            </div>
+            <span id="feature-unlock-detail" className="relative z-10 mt-3 block text-xs leading-relaxed text-slate-300 sm:text-sm">{featureUnlockNotice.detail}</span>
+            <button ref={featureUnlockActionRef} type="button" onClick={acknowledgeFeatureUnlock} className="relative z-10 mt-4 inline-flex min-h-11 items-center rounded-lg bg-cyan-300 px-4 py-2 text-xs font-black text-slate-950">わかった！</button>
+          </div>
+        </div>
       )}
 
       {unlockNotice && (
-        <button type="button" onClick={() => setUnlockNotice(null)} className="city-unlock fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/90 p-4 text-left">
-          <span className="city-unlock__card relative block w-full max-w-2xl overflow-hidden rounded-2xl border border-amber-300/60 bg-slate-900 p-5 shadow-2xl sm:p-7">
+        <div role="dialog" aria-modal="true" aria-labelledby="city-unlock-title" aria-describedby="city-unlock-detail" className="city-unlock fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/90 p-4 text-left" onKeyDown={(event) => {
+          if (event.key === 'Escape') setUnlockNotice(null);
+          if (event.key === 'Tab') {
+            event.preventDefault();
+            cityUnlockActionRef.current?.focus();
+          }
+        }}>
+          <div className="city-unlock__card relative block w-full max-w-2xl overflow-hidden rounded-2xl border border-amber-300/60 bg-slate-900 p-5 shadow-2xl sm:p-7">
             <img src={FANKIT_ART.marketBackdrop} alt="" aria-hidden="true" decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-25" />
-            <span className="relative z-10 flex items-end gap-4">
+            <div className="relative z-10 flex items-end gap-4">
               <img src={FANKIT_ART.tataru.windUp} alt="タタル" className="h-28 w-24 shrink-0 object-contain object-bottom sm:h-36 sm:w-32" />
-              <span className="min-w-0 pb-1">
+              <div className="min-w-0 pb-1">
                 <span className="block text-[10px] font-black tracking-[.3em] text-cyan-300">NEW TRADE ROUTE</span>
-                <span className="mt-1 flex items-center gap-2 text-2xl font-black text-white sm:text-3xl"><MapPinned className="h-7 w-7 shrink-0 text-amber-300" /> {unlockNotice}</span>
-                <span className="mt-3 block rounded-xl border border-amber-200/25 bg-slate-950/75 p-3 text-sm font-bold leading-relaxed text-amber-50">「この都市の人脈がつながったでっす。新しい交易路から、次の市場へ進むでっす！」</span>
-              </span>
-            </span>
-            <span className="relative z-10 mt-4 inline-block rounded-lg bg-amber-400 px-4 py-2 text-xs font-black text-slate-950">
+                <h2 id="city-unlock-title" className="mt-1 flex items-center gap-2 text-2xl font-black text-white sm:text-3xl"><MapPinned className="h-7 w-7 shrink-0 text-amber-300" /> {unlockNotice}</h2>
+                <span id="city-unlock-detail" className="mt-3 block rounded-xl border border-amber-200/25 bg-slate-950/75 p-3 text-sm font-bold leading-relaxed text-amber-50">「この都市の人脈がつながったでっす。新しい交易路から、次の市場へ進むでっす！」</span>
+              </div>
+            </div>
+            <button ref={cityUnlockActionRef} type="button" onClick={() => setUnlockNotice(null)} className="relative z-10 mt-4 inline-flex min-h-11 items-center rounded-lg bg-amber-400 px-4 py-2 text-xs font-black text-slate-950">
               {normalBattleOrigin === 'cartels'
                 ? '企業連合攻略へ戻る'
                 : '次の都市の交渉先へ'}
-            </span>
-          </span>
-        </button>
+            </button>
+          </div>
+        </div>
       )}
 
       {offlineIncomeNotice > 0 && !activeBattleProperty && (
@@ -2615,7 +2749,17 @@ export default function App() {
 
       {/* Real-time Buyout Battle Modal */}
       {activeBattleProperty && (
-        <BattleModal
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/95 p-6 text-center text-amber-50" role="status" aria-live="polite">
+              <span>
+                <b className="block text-lg font-black tracking-[.16em]">TRADE ARENA LOADING</b>
+                <small className="mt-2 block text-xs text-slate-400">コイン台と商戦記録を準備しています</small>
+              </span>
+            </div>
+          }
+        >
+          <BattleModal
           targetProperty={activeBattleProperty}
           companyName={companyName}
           totalFunds={totalFunds}
@@ -2735,7 +2879,8 @@ export default function App() {
             setActiveBattleMode('normal');
             setBattleTimeScale(1);
           }}
-        />
+          />
+        </Suspense>
       )}
     </div>
   );

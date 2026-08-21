@@ -48,6 +48,8 @@ export interface BattleCapitalCanvasPreviewFrame
   presentedCapital?: number;
   packetSeed?: number;
   beatDurationMs?: number;
+  /** Matches the recorded 396ms landing accent (every fourth 99ms wave). */
+  strongBeat?: boolean;
 }
 
 export interface BattleCapitalCanvasSideState {
@@ -92,6 +94,7 @@ interface NormalizedCapitalFrame {
   packetSeed: number;
   packetProgress: number;
   beatDurationMs: number;
+  strongBeat: boolean;
   rackDepth: number;
   stackDepth: number;
 }
@@ -118,6 +121,11 @@ export interface BattleCapitalCanvasMetrics {
   cssHeight: number;
   devicePixelRatio: number;
   backingPixels: number;
+}
+
+export interface BattleCapitalCanvasCssSize {
+  width: number;
+  height: number;
 }
 
 interface CapitalPacketClock {
@@ -317,6 +325,7 @@ const normalizeSide = (
       packetSeed: Math.round(finiteNonNegative(preview?.packetSeed ?? 0)),
       packetProgress: activeColumnIndices.length > 0 ? 0 : 1,
       beatDurationMs: Math.max(1, preview?.beatDurationMs ?? 90),
+      strongBeat: preview?.strongBeat === true,
       rackDepth: finiteNonNegative(
         preview?.rackDepth ?? bankedPileCount
       ),
@@ -553,6 +562,97 @@ const drawCoin = (
   context.globalAlpha = 1;
 };
 
+const drawCapitalPacketImpact = (
+  context: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  areaWidth: number,
+  coinWidth: number,
+  coinHeight: number,
+  side: NormalizedCapitalSide
+) => {
+  if (side.frame.activeColumnIndices.length === 0) return;
+  const progress = clamp(side.frame.packetProgress, 0, 1);
+  const attack = clamp((progress - 0.32) / 0.36, 0, 1);
+  const release = 1 - clamp((progress - 0.74) / 0.26, 0, 1);
+  const pulse = attack * release;
+  if (pulse <= 0.01) return;
+
+  const colors = SIDE_COLORS[side.side];
+  const accentWeight = side.frame.strongBeat ? 1 : 0.56;
+  const mass = clamp(
+    side.frame.activeColumnIndices.length / BATTLE_CAPITAL_COLUMN_COUNT,
+    0.2,
+    1
+  );
+  const radiusX = areaWidth * (0.14 + mass * (0.22 + accentWeight * 0.12));
+  const radiusY = Math.max(coinHeight * 2.2, radiusX * 0.13);
+
+  context.save();
+  context.globalCompositeOperation = 'lighter';
+  const bloom = context.createRadialGradient(
+    centerX,
+    centerY,
+    0,
+    centerX,
+    centerY,
+    radiusX
+  );
+  bloom.addColorStop(
+    0,
+    `rgba(255, 250, 205, ${0.72 * accentWeight * pulse})`
+  );
+  bloom.addColorStop(
+    0.18,
+    side.side === 'player'
+      ? `rgba(255, 195, 54, ${0.5 * accentWeight * pulse})`
+      : `rgba(255, 104, 120, ${0.5 * accentWeight * pulse})`
+  );
+  bloom.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  context.fillStyle = bloom;
+  context.beginPath();
+  context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+  context.fill();
+
+  context.strokeStyle = colors.coinLight;
+  context.globalAlpha = 0.62 * accentWeight * pulse;
+  context.lineWidth = Math.max(1, coinHeight * 0.2);
+  context.beginPath();
+  context.moveTo(centerX - radiusX * 0.9, centerY);
+  context.lineTo(centerX + radiusX * 0.9, centerY);
+  context.stroke();
+
+  const particleCount = side.frame.strongBeat
+    ? Math.min(12, 4 + Math.ceil(side.frame.activeColumnIndices.length / 3))
+    : Math.min(6, 2 + Math.ceil(side.frame.activeColumnIndices.length / 8));
+  for (let index = 0; index < particleCount; index += 1) {
+    const seed =
+      side.frame.packetSeed * 19 +
+      side.frame.presentationSerial * 101 +
+      index * 47 +
+      (side.side === 'player' ? 13 : 29);
+    const direction = deterministicNoise(seed) < 0.5 ? -1 : 1;
+    const spread = 0.16 + deterministicNoise(seed + 1) * 0.78;
+    const lift = 0.25 + deterministicNoise(seed + 2) * 0.8;
+    const particleProgress = clamp((progress - 0.38) / 0.62, 0, 1);
+    const particleX =
+      centerX + direction * radiusX * spread * particleProgress;
+    const particleY =
+      centerY - radiusY * lift * Math.sin(particleProgress * Math.PI);
+    const particleScale = 0.22 + deterministicNoise(seed + 3) * 0.18;
+    drawCoin(
+      context,
+      particleX,
+      particleY,
+      coinWidth * particleScale,
+      Math.max(1.4, coinHeight * particleScale),
+      side.side,
+      accentWeight * pulse * (0.55 + deterministicNoise(seed + 4) * 0.35)
+    );
+  }
+  context.restore();
+};
+
 const drawOverflowHoard = (
   context: CanvasRenderingContext2D,
   centerX: number,
@@ -684,7 +784,9 @@ const drawCoinColumn = (
       seam <= lastVisibleSeam;
       seam += 1
     ) {
-      const seamY = topY + seam * safeLayerStep;
+      const seamY = Math.round(
+        (topY + seam * safeLayerStep) * transformScaleY
+      ) / transformScaleY;
       context.moveTo(x - width / 2, seamY);
       context.lineTo(x + width / 2, seamY);
     }
@@ -698,9 +800,12 @@ const drawCoinColumn = (
       seam <= lastVisibleSeam;
       seam += 1
     ) {
-      const seamY = topY + seam * safeLayerStep;
-      context.moveTo(x - width * 0.44, seamY + Math.max(0.65, coinHeight * 0.12));
-      context.lineTo(x + width * 0.4, seamY + Math.max(0.65, coinHeight * 0.12));
+      const highlightY = Math.round(
+        (topY + seam * safeLayerStep + Math.max(0.65, coinHeight * 0.12)) *
+          transformScaleY
+      ) / transformScaleY;
+      context.moveTo(x - width * 0.44, highlightY);
+      context.lineTo(x + width * 0.4, highlightY);
     }
     context.stroke();
   }
@@ -1141,6 +1246,45 @@ const drawCapitalSide = (
     }
   }
 
+  if (!side.frame.bankTransfer && activeColumns.size > 0) {
+    const impactPoints = landedRenderedColumns
+      .filter(({ index }) => activeColumns.has(index))
+      .map(
+        ({
+          column,
+          renderedCoinHeight,
+          bodyHeight,
+          baselineLift,
+        }) => {
+          const mirroredPosition = playerSide
+            ? column.xRatio
+            : 1 - column.xRatio;
+          return {
+            x: areaLeft + mirroredPosition * areaWidth,
+            y:
+              upperFloorY -
+              baselineLift +
+              transferOffset -
+              bodyHeight +
+              renderedCoinHeight * 0.72,
+          };
+        }
+      );
+    if (impactPoints.length > 0) {
+      drawCapitalPacketImpact(
+        context,
+        impactPoints.reduce((sum, point) => sum + point.x, 0) /
+          impactPoints.length,
+        impactPoints.reduce((sum, point) => sum + point.y, 0) /
+          impactPoints.length,
+        areaWidth,
+        coinWidth,
+        coinHeight,
+        side
+      );
+    }
+  }
+
   // Repaint only the front lip after the columns. This tiny silver arc masks
   // their roots like the reference tray without hiding any meaningful height.
   context.save();
@@ -1213,12 +1357,24 @@ const drawCenterClash = (
   context.fillText('VS', centerX, centerY + 0.5);
 };
 
-const getCanvasCssSize = (canvas: HTMLCanvasElement) => {
+const getCanvasCssSize = (
+  canvas: HTMLCanvasElement,
+  observedSize?: BattleCapitalCanvasCssSize | null
+): BattleCapitalCanvasCssSize => {
+  if (
+    observedSize &&
+    Number.isFinite(observedSize.width) &&
+    Number.isFinite(observedSize.height) &&
+    observedSize.width > 0 &&
+    observedSize.height > 0
+  ) {
+    return observedSize;
+  }
   const bounds = canvas.getBoundingClientRect();
-  const width = Math.max(1, Math.round(bounds.width || canvas.clientWidth || 720));
+  const width = Math.max(1, bounds.width || canvas.clientWidth || 720);
   const height = Math.max(
     1,
-    Math.round(bounds.height || canvas.clientHeight || width * (7 / 16))
+    bounds.height || canvas.clientHeight || width * (7 / 16)
   );
   return { width, height };
 };
@@ -1231,11 +1387,13 @@ export const paintBattleCapitalCanvas = (
     devicePixelRatio,
     frameRate = 30,
     backgroundImage = null,
+    cssSize = null,
   }: Pick<BattleCapitalCanvasProps, 'devicePixelRatio' | 'frameRate'> & {
     backgroundImage?: HTMLImageElement | null;
+    cssSize?: BattleCapitalCanvasCssSize | null;
   } = {}
 ): BattleCapitalCanvasMetrics | null => {
-  const { width, height } = getCanvasCssSize(canvas);
+  const { width, height } = getCanvasCssSize(canvas, cssSize);
   const nativeDpr =
     typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
   const requestedDpr = Number.isFinite(devicePixelRatio)
@@ -1254,7 +1412,9 @@ export const paintBattleCapitalCanvas = (
     desynchronized: true,
   });
   if (!context) return null;
-  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const scaleX = backingWidth / width;
+  const scaleY = backingHeight / height;
+  context.setTransform(scaleX, 0, 0, scaleY, 0, 0);
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = 'high';
 
@@ -1263,8 +1423,14 @@ export const paintBattleCapitalCanvas = (
   drawCapitalSide(context, width, height, scene.enemy);
   drawCenterClash(context, width, height, scene.pressureDirection);
 
-  canvas.dataset.renderDpr = dpr.toFixed(2);
-  canvas.dataset.backingPixels = String(backingWidth * backingHeight);
+  const renderDpr = dpr.toFixed(2);
+  const backingPixels = String(backingWidth * backingHeight);
+  if (canvas.dataset.renderDpr !== renderDpr) {
+    canvas.dataset.renderDpr = renderDpr;
+  }
+  if (canvas.dataset.backingPixels !== backingPixels) {
+    canvas.dataset.backingPixels = backingPixels;
+  }
   return {
     cssWidth: width,
     cssHeight: height,
@@ -1297,6 +1463,7 @@ export const BattleCapitalCanvas = ({
     mobile: HTMLImageElement | null;
   }>({ wide: null, mobile: null });
   const mountedRef = useRef(true);
+  const canvasSizeRef = useRef<BattleCapitalCanvasCssSize | null>(null);
   const paintedSceneRef = useRef<BattleCapitalCanvasScene | null>(null);
   const packetClockRef = useRef<
     Record<BattleCapitalCanvasSide, CapitalPacketClock>
@@ -1327,9 +1494,13 @@ export const BattleCapitalCanvas = ({
 
   const repaint = useCallback((sceneOverride?: BattleCapitalCanvasScene) => {
     if (!canvasRef.current) return;
-    const bounds = canvasRef.current.getBoundingClientRect();
+    const cssSize = getCanvasCssSize(
+      canvasRef.current,
+      canvasSizeRef.current
+    );
+    canvasSizeRef.current = cssSize;
     const backgroundImage =
-      bounds.width <= 620
+      cssSize.width <= 620
         ? backgroundsRef.current.mobile
         : backgroundsRef.current.wide;
     const sceneToPaint =
@@ -1338,7 +1509,7 @@ export const BattleCapitalCanvas = ({
     paintBattleCapitalCanvas(
       canvasRef.current,
       sceneToPaint,
-      { ...renderOptionsRef.current, backgroundImage }
+      { ...renderOptionsRef.current, backgroundImage, cssSize }
     );
   }, []);
 
@@ -1491,26 +1662,38 @@ export const BattleCapitalCanvas = ({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
-    ensureResponsiveBackdrop(canvas.getBoundingClientRect().width);
+    canvasSizeRef.current = getCanvasCssSize(canvas);
+    ensureResponsiveBackdrop(canvasSizeRef.current.width);
     return () => {
       backgroundsRef.current = { wide: null, mobile: null };
+      canvasSizeRef.current = null;
     };
   }, [ensureResponsiveBackdrop]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
-    const handleResize = () => {
-      ensureResponsiveBackdrop(canvas.getBoundingClientRect().width);
+    const handleResize = (entry?: ResizeObserverEntry) => {
+      const nextSize = entry?.contentRect.width && entry.contentRect.height
+        ? {
+            width: entry.contentRect.width,
+            height: entry.contentRect.height,
+          }
+        : getCanvasCssSize(canvas);
+      canvasSizeRef.current = nextSize;
+      ensureResponsiveBackdrop(nextSize.width);
       repaint();
     };
     if (typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(handleResize);
+      const observer = new ResizeObserver((entries) => {
+        handleResize(entries[0]);
+      });
       observer.observe(canvas);
       return () => observer.disconnect();
     }
-    window.addEventListener('resize', handleResize, { passive: true });
-    return () => window.removeEventListener('resize', handleResize);
+    const handleWindowResize = () => handleResize();
+    window.addEventListener('resize', handleWindowResize, { passive: true });
+    return () => window.removeEventListener('resize', handleWindowResize);
   }, [ensureResponsiveBackdrop, repaint]);
 
   return (

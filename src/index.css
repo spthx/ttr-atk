@@ -41,7 +41,7 @@ body {
 
 @media (max-width: 639px) {
   body {
-    touch-action: pan-y;
+    touch-action: pan-y pinch-zoom;
   }
 }
 
@@ -327,7 +327,8 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .launch-intro, .launch-intro__panel, .city-unlock, .city-unlock__card,
-  .ownership-battle--finishing, .ownership-track__clash, .ownership-event {
+  .ownership-battle--finishing, .ownership-track__clash, .ownership-event,
+  .market-screen-enter, .battle-screen-enter, .animate-bounce {
     animation: none;
   }
 }

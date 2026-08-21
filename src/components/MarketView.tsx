@@ -88,6 +88,15 @@ export const MarketView: React.FC<MarketViewProps> = ({
   const [viewMode, setViewMode] = useState<'map' | 'targets'>(hasStartedCampaign ? 'map' : 'targets');
   const [showGuide, setShowGuide] = useState(false);
   const [showOwnedProperties, setShowOwnedProperties] = useState(false);
+  const ownedPropertyIds = useMemo(
+    () =>
+      new Set(
+        properties
+          .filter((property) => property.owner === 'player')
+          .map((property) => property.id)
+      ),
+    [properties]
+  );
 
   useEffect(() => {
     if (!navigationRequest) return;
@@ -336,7 +345,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
       {/* Insufficient Funds Warning Banner */}
       {noticeMessage && (
-        <div className="bg-rose-950/90 border border-rose-500 text-rose-200 px-4 py-2.5 rounded-lg text-xs font-bold flex items-center justify-between shadow-lg animate-bounce">
+        <div role="alert" aria-live="assertive" className="bg-rose-950/90 border border-rose-500 text-rose-200 px-4 py-2.5 rounded-lg text-xs font-bold flex items-center justify-between shadow-lg animate-bounce">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{noticeMessage}</span>
@@ -426,9 +435,31 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 marketPrice: activePrice,
               });
           const propertyPresentation = getPropertyPresentation(prop.description);
-          const linkedSynergies = INITIAL_GROUP_SYNERGIES.filter((synergy) =>
-            prop.groupKeys.includes(synergy.id)
-          ).slice(0, 2);
+          const linkedSynergies = INITIAL_GROUP_SYNERGIES.filter(
+            (synergy) =>
+              !synergy.battleOnly &&
+              synergy.requiredPropertyIds.includes(prop.id)
+          )
+            .map((synergy) => {
+              const ownedBefore = synergy.requiredPropertyIds.filter((id) =>
+                ownedPropertyIds.has(id)
+              ).length;
+              const ownedAfter = Math.min(
+                synergy.requiredPropertyIds.length,
+                ownedBefore + (ownedPropertyIds.has(prop.id) ? 0 : 1)
+              );
+              return {
+                synergy,
+                ownedAfter,
+                remaining: synergy.requiredPropertyIds.length - ownedAfter,
+              };
+            })
+            .sort(
+              (left, right) =>
+                left.remaining - right.remaining ||
+                right.ownedAfter - left.ownedAfter
+            )
+            .slice(0, 2);
           const isBoss =
             campaignMode === 'savage' ||
             isNormalCityBoss(properties, prop);
@@ -512,7 +543,26 @@ export const MarketView: React.FC<MarketViewProps> = ({
                     <b className="block text-emerald-300">勝利すると強くなること</b>
                     <span>この企業が人脈に加わり、毎秒収益が増える</span>
                     {linkedSynergies.length > 0 && (
-                      <small className="mt-1 block text-cyan-200">有効な事業連携：{linkedSynergies.map((synergy) => synergy.name).join('／')}</small>
+                      <span className="mt-1 grid gap-1 text-cyan-100">
+                        <b className="text-[10px] text-cyan-300">有効な事業連携</b>
+                        <small className="grid gap-1">
+                          {linkedSynergies.map(({ synergy, ownedAfter, remaining }) => (
+                            <span
+                              key={synergy.id}
+                              className={`rounded border px-2 py-1 ${
+                                remaining === 0
+                                  ? 'border-amber-300/55 bg-amber-300/10 text-amber-100'
+                                  : 'border-cyan-400/25 bg-cyan-950/30'
+                              }`}
+                            >
+                              <b>{remaining === 0 ? 'この買収で連携完成' : '商流接続'}</b>
+                              {' · '}
+                              {synergy.name} {ownedAfter}/{synergy.requiredPropertyIds.length}
+                              {remaining > 0 ? `（あと${remaining}件）` : ''}
+                            </span>
+                          ))}
+                        </small>
+                      </span>
                     )}
                   </div>
                 )}

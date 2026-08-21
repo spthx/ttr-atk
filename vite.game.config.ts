@@ -7,6 +7,7 @@ import { defineConfig } from 'vite';
 // Codex worktrees can be exposed through a C: junction while their real files live
 // on D:, which otherwise makes build-html emit an invalid absolute asset name.
 const projectRoot = realpathSync(process.cwd());
+const publicAssetBase = (process.env.VITE_PUBLIC_BASE || '/').replace(/\/?$/, '/');
 
 export default defineConfig({
   root: projectRoot,
@@ -15,7 +16,21 @@ export default defineConfig({
   build: {
     copyPublicDir: false,
   },
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      name: 'game-html-public-assets',
+      transformIndexHtml: {
+        order: 'post',
+        handler(html) {
+          return `${html
+            .replaceAll('__PUBLIC_ASSET_BASE__', publicAssetBase)
+            .trimEnd()}\n`;
+        },
+      },
+    },
+  ],
   resolve: {
     alias: {
       '@': projectRoot,

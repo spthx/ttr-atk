@@ -260,6 +260,10 @@
   font-size: .75rem;
 }
 
+.integrated-battlefield .ownership-board__mobile-pressure {
+  display: none;
+}
+
 .integrated-battlefield .ownership-duel {
   position: absolute;
   z-index: 18;
@@ -4497,6 +4501,35 @@
 
   .integrated-battlefield .ownership-board__labels > span {
     display: none;
+  }
+
+  .integrated-battlefield .ownership-board__mobile-pressure {
+    position: absolute;
+    z-index: 8;
+    top: 50%;
+    left: 50%;
+    display: block;
+    max-width: calc(100% - 2.35rem);
+    padding: .13rem .34rem;
+    overflow: hidden;
+    border: 1px solid rgba(226, 232, 240, .32);
+    border-radius: 999px;
+    color: #e2e8f0;
+    background: rgba(2, 6, 23, .84);
+    box-shadow: 0 .08rem .22rem rgba(0, 0, 0, .72);
+    font: 900 .62rem/1.05 sans-serif;
+    text-overflow: ellipsis;
+    text-shadow: 0 .08rem .14rem #000;
+    white-space: nowrap;
+    transform: translate(-50%, -50%);
+  }
+
+  .integrated-battlefield .ownership-board__mobile-pressure.push-player {
+    color: #fef08a;
+  }
+
+  .integrated-battlefield .ownership-board__mobile-pressure.push-enemy {
+    color: #fecdd3;
   }
 
   .integrated-battlefield .capital-visual-row .ownership-fighter {

@@ -1,0 +1,1 @@
+var e=5e7,t=.05,n=(e,t)=>t.has(e.hqPropertyId)&&e.subsidiaryIds.every(e=>t.has(e)),r=(n,r,i)=>r>=i?Math.max(e,Math.round(n.maxDefenseCapital*t)):Math.round(n.maxDefenseCapital*((i-r+1)/(i+1)));export{n,r as t};

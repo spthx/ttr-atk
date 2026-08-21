@@ -145,12 +145,13 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Desktop Main Tab Navigation */}
-      <div className="hidden md:flex max-w-7xl mx-auto px-4 sm:px-6 space-x-1 border-t border-slate-800/80 overflow-x-auto scrollbar-none">
+      <nav aria-label="主要画面" className="hidden md:flex max-w-7xl mx-auto px-4 sm:px-6 space-x-1 border-t border-slate-800/80 overflow-x-auto scrollbar-none">
         <button
           onClick={() =>
             marketReturnAttention ? onOpenMap() : setActiveTab('market')
           }
-          className={`py-2 px-3 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+          aria-current={activeTab === 'market' ? 'page' : undefined}
+          className={`min-h-11 py-2 px-3 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
             activeTab === 'market'
               ? 'border-amber-400 text-amber-400 bg-amber-500/5'
               : marketReturnAttention
@@ -164,7 +165,8 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={() => setActiveTab('portfolio')}
-          className={`py-2 px-3 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+          aria-current={activeTab === 'portfolio' ? 'page' : undefined}
+          className={`min-h-11 py-2 px-3 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
             activeTab === 'portfolio'
               ? 'border-amber-400 text-amber-400 bg-amber-500/5'
               : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
@@ -178,7 +180,8 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={() => setActiveTab('skills')}
-          className={`py-2 px-3 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+          aria-current={activeTab === 'skills' ? 'page' : undefined}
+          className={`min-h-11 py-2 px-3 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
             activeTab === 'skills'
               ? 'border-amber-400 text-amber-400 bg-amber-500/5'
               : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
@@ -191,7 +194,8 @@ export const Header: React.FC<HeaderProps> = ({
         {tradeAllianceUnlocked && (
           <button
             onClick={() => setActiveTab('cartels')}
-            className={`py-2 px-3 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+            aria-current={activeTab === 'cartels' ? 'page' : undefined}
+            className={`min-h-11 py-2 px-3 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
               activeTab === 'cartels'
                 ? 'border-amber-400 text-amber-400 bg-amber-500/5'
                 : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
@@ -205,7 +209,8 @@ export const Header: React.FC<HeaderProps> = ({
         {savageUnlocked && (
           <button
             onClick={() => setActiveTab('savage')}
-            className={`py-2 px-3 text-xs sm:text-sm font-black border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+            aria-current={activeTab === 'savage' ? 'page' : undefined}
+            className={`min-h-11 py-2 px-3 text-xs sm:text-sm font-black border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
               activeTab === 'savage'
                 ? 'border-rose-400 text-rose-300 bg-rose-500/10'
                 : 'border-transparent text-rose-300/75 hover:text-rose-200 hover:bg-rose-950/30'
@@ -219,7 +224,7 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </button>
         )}
-      </div>
+      </nav>
 
       {/* Mobile Sticky Bottom Command Navigation Bar */}
       <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900 border-t border-slate-800 grid ${savageUnlocked ? 'grid-cols-5' : tradeAllianceUnlocked ? 'grid-cols-4' : 'grid-cols-3'} h-14 px-1 shadow-lg touch-manipulation select-none pb-safe`}>

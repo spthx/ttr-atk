@@ -7,10 +7,13 @@ import {
   DIRECT_INVESTMENT_BALANCE,
   HIGH_DIFFICULTY_SUPPORT_MULTIPLIER,
   LIMIT_BREAK_MULTIPLIERS,
+  SAVAGE_NETWORK_SUPPORT_LIMIT,
+  ULTIMATE_NETWORK_SUPPORT_LIMIT,
   getChargedLimitBreakTier,
   getLimitBreakChargeCapacity,
   getLimitBreakTier,
   getRepeatedNetworkSupportMultiplier,
+  getStrongestSubsidiarySupport,
   PLAYER_BATTLE_CASH_CAP_RATIO,
   TACTICAL_SKILL_BALANCE,
   calculateSubsidiarySupportAmount,
@@ -141,6 +144,8 @@ export interface BattleReadinessInput {
    * close fight merely because deploying several contacts takes time.
    */
   battleMode?: BattleMode | 'extreme';
+  /** Exact live one-tap request cap. Null keeps the pre-Savage manual roster. */
+  networkSupportLimit?: number | null;
   /**
    * 敵固有の防御・開幕・瀕死ギミックなど、資金総額だけでは測れない警告。
    * 通常都市ボスや企業連合本部も呼び出し側から明示できる。
@@ -250,6 +255,7 @@ const getBestSupportRoute = ({
   selectedBattleSynergy,
   limitBreakCharge,
   battleMode,
+  networkSupportLimit,
 }: Pick<
   BattleReadinessInput,
   | 'targetMarketPrice'
@@ -257,45 +263,79 @@ const getBestSupportRoute = ({
   | 'selectedBattleSynergy'
   | 'limitBreakCharge'
   | 'battleMode'
+  | 'networkSupportLimit'
 >) => {
   const routes: SupportRoute[] = [];
   const supportMultiplier = isHighDifficultyBattleMode(battleMode)
     ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
     : 1;
   const highDifficultyLabel =
-    supportMultiplier > 1
+    supportMultiplier !== 1
       ? `（高難度×${supportMultiplier.toFixed(2)}）`
       : '';
 
   if (subsidiaries.length > 0) {
-    const onePass = expectedSupport(
-      subsidiaries,
-      BATTLE_LOYALTY_BALANCE.individualRiskIncrease,
-      BATTLE_SUPPORT_BALANCE.subsidiaryMarketRatio
-    );
-    const orderedSupportAmounts = subsidiaries
-      .map((property) =>
-        Math.round(calculateSubsidiarySupportAmount(property) * supportMultiplier)
-      )
-      .sort((a, b) => b - a);
-    const networkTotal = orderedSupportAmounts.reduce(
-      (total, amount, requestIndex) =>
-        total +
-        Math.round(
-          amount * getRepeatedNetworkSupportMultiplier(requestIndex)
-        ),
-      0
-    );
+    const oneTapSupportLimit = networkSupportLimit === null
+      ? null
+      : Math.max(0, Math.floor(networkSupportLimit));
+    const strongestProperty = getStrongestSubsidiarySupport(subsidiaries);
+    const onePass = oneTapSupportLimit !== null && strongestProperty
+      ? (() => {
+          const finalRisk = Math.min(
+            100,
+            strongestProperty.loyaltyRisk +
+              getSubsidiaryRiskIncrease(
+                strongestProperty,
+                BATTLE_LOYALTY_BALANCE.individualRiskIncrease
+              ) * oneTapSupportLimit
+          );
+          const failureProbability = calculateRebellionProbability(finalRisk);
+          return {
+            amount: 0,
+            maxFailureProbability: failureProbability,
+            allSucceedProbability: 1 - failureProbability,
+          };
+        })()
+      : expectedSupport(
+          subsidiaries,
+          BATTLE_LOYALTY_BALANCE.individualRiskIncrease,
+          BATTLE_SUPPORT_BALANCE.subsidiaryMarketRatio
+        );
+    const networkTotal = oneTapSupportLimit !== null && strongestProperty
+      ? Array.from({ length: oneTapSupportLimit }, (_, requestIndex) =>
+          Math.round(
+            calculateSubsidiarySupportAmount(
+              strongestProperty,
+              requestIndex
+            ) * supportMultiplier
+          )
+        ).reduce((total, amount) => total + amount, 0)
+      : subsidiaries
+          .map((property) => calculateSubsidiarySupportAmount(property))
+          .sort((left, right) => right - left)
+          .reduce(
+            (total, amount, requestIndex) =>
+              total +
+              Math.round(
+                amount *
+                  getRepeatedNetworkSupportMultiplier(requestIndex) *
+                  supportMultiplier
+              ),
+            0
+          );
+    const actionCount = oneTapSupportLimit ?? subsidiaries.length;
     routes.push({
       name: '人脈一巡',
       amount: networkTotal,
-      actionCount: subsidiaries.length,
+      actionCount,
       maxFailureProbability: onePass.maxFailureProbability,
       cumulativeFailureProbability: 1 - onePass.allSucceedProbability,
       components: [
         {
           key: 'subsidiaries',
-          label: `人脈${subsidiaries.length}件を強い順に要請（2回目から全体減衰）${highDifficultyLabel}`,
+          label: oneTapSupportLimit !== null && strongestProperty
+            ? `最有力先「${strongestProperty.name}」へ最大${oneTapSupportLimit}回要請（2回目から全体減衰）${highDifficultyLabel}`
+            : `人脈${subsidiaries.length}件を強い順に要請（2回目から全体減衰）${highDifficultyLabel}`,
           amount: networkTotal,
         },
       ],
@@ -487,9 +527,17 @@ export const calculateBattleReadiness = ({
   playerPushBonus,
   cashCapRatio = PLAYER_BATTLE_CASH_CAP_RATIO,
   battleMode = 'normal',
+  networkSupportLimit: requestedNetworkSupportLimit,
   mechanicWarning: requestedMechanicWarning,
   mechanicSeverity: requestedMechanicSeverity,
 }: BattleReadinessInput): BattleReadinessResult => {
+  const networkSupportLimit = requestedNetworkSupportLimit === undefined
+    ? battleMode === 'ultimate' || battleMode === 'karma'
+      ? ULTIMATE_NETWORK_SUPPORT_LIMIT
+      : isHighDifficultyBattleMode(battleMode)
+        ? SAVAGE_NETWORK_SUPPORT_LIMIT
+        : null
+    : requestedNetworkSupportLimit;
   const minimumInvestment = Math.max(
     10,
     Math.round(Math.max(0, targetMarketPrice) * 0.02)
@@ -519,6 +567,7 @@ export const calculateBattleReadiness = ({
     selectedBattleSynergy,
     limitBreakCharge,
     battleMode,
+    networkSupportLimit,
   });
   const capitalBoost = hasCapitalBoost
     ? Math.round(

@@ -54,6 +54,8 @@ const readSource = (path: string) =>
 const battleModal = readSource('src/components/BattleModal.tsx');
 const app = readSource('src/App.tsx');
 const appPage = readSource('app/page.tsx');
+const gameHtml = readSource('index.html');
+const viteGameConfig = readSource('vite.game.config.ts');
 const battlePresentation = readSource('src/utils/battlePresentation.ts');
 const battleCanvasQuality = readSource('src/utils/battleCanvasQuality.ts');
 const battleCapitalCanvasLayout = readSource(
@@ -183,10 +185,30 @@ assert.match(
   /EMBEDDED_GAME_VERSION\s*=\s*["'`]casino-field-/,
   'the embedded game cache key must retain the casino-field generation'
 );
+assert.match(
+  gameHtml,
+  /__PUBLIC_ASSET_BASE__manifest\.webmanifest[\s\S]*__PUBLIC_ASSET_BASE__ff14-fankit\/app-icons\/tataru-192\.png/,
+  'the nested Sites game and project Pages build must share base-aware manifest and icon links'
+);
+assert.match(
+  viteGameConfig,
+  /process\.env\.VITE_PUBLIC_BASE[\s\S]*replaceAll\('__PUBLIC_ASSET_BASE__', publicAssetBase\)[\s\S]*trimEnd\(\)/,
+  'the game HTML build must resolve public assets per deployment and remove trailing blank output'
+);
 assert.doesNotMatch(
   `${app}\n${battleModal}`,
   /\blightweightMode\b/,
   '30/60fps must not reintroduce a visual lightweight branch'
+);
+assert.match(
+  battleModal,
+  /ownership-board__mobile-pressure[\s\S]{0,260}battlePressureLabel/,
+  'portrait battles must retain a compact visible pressure label inside the ownership gauge'
+);
+assert.match(
+  integratedCss,
+  /@media \(max-width: 639px\)[\s\S]*?ownership-board__mobile-pressure[\s\S]*?display:\s*block/,
+  'the compact battle pressure label must become visible on portrait screens'
 );
 assert.match(
   battleModal,
@@ -717,8 +739,8 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /for \([\s\S]{0,180}let seam = firstVisibleSeam;[\s\S]{0,180}seam <= lastVisibleSeam;[\s\S]{0,180}const seamY = topY \+ seam \* safeLayerStep;/,
-  'every rendered lower-bank separator must retain the authored per-coin layer pitch'
+  /for \([\s\S]{0,180}let seam = firstVisibleSeam;[\s\S]{0,180}seam <= lastVisibleSeam;[\s\S]{0,220}const seamY = Math\.round\([\s\S]{0,100}topY \+ seam \* safeLayerStep[\s\S]{0,100}transformScaleY[\s\S]{0,80}\/ transformScaleY;/,
+  'every rendered lower-bank separator must retain the authored per-coin layer pitch and snap to physical pixels'
 );
 assert.doesNotMatch(
   battleCapitalCanvas,
@@ -1034,8 +1056,13 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const handleResize = \(\) => \{[\s\S]{0,120}ensureResponsiveBackdrop\(canvas\.getBoundingClientRect\(\)\.width\);[\s\S]{0,80}repaint\(\);[\s\S]{0,100}if \(typeof ResizeObserver !== 'undefined'\) \{[\s\S]{0,120}const observer = new ResizeObserver\(handleResize\);[\s\S]{0,80}observer\.observe\(canvas\);[\s\S]{0,80}return \(\) => observer\.disconnect\(\);[\s\S]{0,180}window\.addEventListener\('resize', handleResize, \{ passive: true \}\);[\s\S]{0,120}window\.removeEventListener\('resize', handleResize\);/,
-  'orientation and layout changes must repaint once and release either resize observer path'
+  /const handleResize = \(entry\?: ResizeObserverEntry\) => \{[\s\S]{0,300}canvasSizeRef\.current = nextSize;[\s\S]{0,80}ensureResponsiveBackdrop\(nextSize\.width\);[\s\S]{0,80}repaint\(\);[\s\S]{0,100}if \(typeof ResizeObserver !== 'undefined'\) \{[\s\S]{0,180}handleResize\(entries\[0\]\);[\s\S]{0,100}observer\.observe\(canvas\);[\s\S]{0,80}return \(\) => observer\.disconnect\(\);[\s\S]{0,180}const handleWindowResize = \(\) => handleResize\(\);[\s\S]{0,100}window\.addEventListener\('resize', handleWindowResize, \{ passive: true \}\);[\s\S]{0,120}window\.removeEventListener\('resize', handleWindowResize\);/,
+  'orientation and layout changes must cache observed dimensions, repaint once, and release either resize observer path'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const cssSize = getCanvasCssSize\([\s\S]{0,160}canvasSizeRef\.current[\s\S]{0,360}paintBattleCapitalCanvas\([\s\S]{0,220}backgroundImage, cssSize/,
+  'animated frames must reuse ResizeObserver dimensions instead of forcing layout reads'
 );
 assert.doesNotMatch(
   battleCapitalCanvas,
@@ -1480,8 +1507,8 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const strongestNetworkSupportProperty = sortedBattleSubs\[0\] \?\? null;/,
-  'one-tap network support must keep selecting the strongest eligible relationship'
+  /const strongestNetworkSupportProperty = useMemo\([\s\S]{0,140}getStrongestSubsidiarySupport\(battleSubs\)/,
+  'one-tap network support must use the shared strongest-relationship selector'
 );
 assert.doesNotMatch(
   battleModal,
@@ -2918,6 +2945,26 @@ assert.match(
   /協力・企業連合[\s\S]*aria-current=\{activeTab === 'market'[\s\S]*aria-current=\{activeTab === 'portfolio'[\s\S]*aria-current=\{activeTab === 'skills'[\s\S]*aria-current=\{activeTab === 'cartels'[\s\S]*連合攻略[\s\S]*aria-current=\{activeTab === 'savage'/,
   'desktop navigation names both concepts while mobile uses a short alliance goal and exposes the current page'
 );
+assert.ok(
+  (app.match(/role="dialog"/g) ?? []).length >= 3 &&
+    (app.match(/aria-modal="true"/g) ?? []).length >= 3,
+  'unlock announcements must remain real modal dialogs instead of full-screen buttons'
+);
+assert.match(
+  app,
+  /unlockDialogReturnFocusRef[\s\S]*returnTarget\?\.isConnected[\s\S]*returnTarget\.focus\(\)[\s\S]*event\.key === 'Tab'/,
+  'unlock dialogs must trap their single action and restore the invoking focus target'
+);
+assert.match(
+  marketView,
+  /role="alert" aria-live="assertive"[\s\S]{0,700}\{noticeMessage\}/,
+  'market funding failures must be announced without relying on motion alone'
+);
+assert.match(
+  indexCss,
+  /@media \(max-width: 639px\)[\s\S]*touch-action:\s*pan-y pinch-zoom/,
+  'portrait controls must preserve browser pinch zoom'
+);
 assert.doesNotMatch(
   header,
   /fixed bottom-0[^>]*backdrop-blur/,
@@ -2989,7 +3036,7 @@ assert.ok(
 );
 assert.match(
   battleModal,
-  /高難度支援：人脈・通常グループSYNERGYが強化（外部アライアンス・LBは別枠）/,
+  /高難度支援：人脈・通常グループSYNERGYは各波×\$\{HIGH_DIFFICULTY_SUPPORT_MULTIPLIER\.toFixed\(2\)\}（外部アライアンス・LBは別枠）/,
   'high-difficulty rules must exclude both external alliance and LIMIT BREAK'
 );
 const requestAllianceSource = battleModal.slice(

@@ -224,6 +224,7 @@ import {
   resolveLivingDeadOutcome,
   shouldEnemyUseBlackestNight,
   shouldForceUltimateCriticalBeforeVictory,
+  getStrongestSubsidiarySupport,
   sortSubsidiariesBySupport,
   TACTICAL_SKILL_BALANCE,
   ULTIMATE_ENEMY_AUTO_PATTERNS,
@@ -361,6 +362,7 @@ interface CapitalPilePresentationFrame extends MechanicalCapitalColumnFrame {
   presentedCapital: number;
   beatDurationMs: number;
   packetSeed: number;
+  strongBeat?: boolean;
 }
 type LogCategory = 'system' | 'player' | 'enemy' | 'funds' | 'skill' | 'result';
 type BattleAnnouncement = 'start' | 'limit';
@@ -1787,6 +1789,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         const frame = timeline.frames[index];
         const isFinalFrame = index === timeline.frames.length - 1;
         const overflowReloading = (frame.overflowPass ?? 0) > 0;
+        const audibleIndex = audibleFrameIndices.get(frame.packetSeed);
         if (isFinalFrame) {
           if (side === 'player') {
             const nextDepth = Math.max(
@@ -1817,8 +1820,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           commandRecharge,
           beatDurationMs: frame.durationMs,
           packetSeed: frame.packetSeed,
+          strongBeat:
+            audibleIndex !== undefined && (audibleIndex + 1) % 4 === 0,
         });
-        const audibleIndex = audibleFrameIndices.get(frame.packetSeed);
         if (isStacking && audibleIndex !== undefined) {
           soundFx.playCapitalStackStep(
             side === 'player' ? 'player' : 'opponent',
@@ -2094,7 +2098,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   // the shared request count applies diminishing returns. Keep one-tap calls
   // on the strongest eligible relationship instead of rotating through tiny
   // early properties whose capital would collapse into a token one-wave pour.
-  const strongestNetworkSupportProperty = sortedBattleSubs[0] ?? null;
+  const strongestNetworkSupportProperty = useMemo(
+    () => getStrongestSubsidiarySupport(battleSubs),
+    [battleSubs]
+  );
   const selectedCost = getInvestmentCost(targetProperty.marketPrice, selectedLevel);
   const activeProgressionSynergyEffect =
     progressionSynergyRemaining > 0
@@ -2376,6 +2383,17 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 : '準備中';
   const ownershipRate = Math.abs(gaugeSpeed) / 2;
   const battleDirection = gaugeSpeed < -0.08 ? 'player' : gaugeSpeed > 0.08 ? 'enemy' : 'even';
+  const battlePressureLabel = isTraining
+    ? gaugeSpeed < -0.02
+      ? '▶ 木人耐久を削り中'
+      : gaugeSpeed > 0.02
+        ? '◀ 木人耐久に押し戻される'
+        : '◆ 訓練資本拮抗'
+    : gaugeSpeed < -0.02
+      ? '▶ 買収推進中'
+      : gaugeSpeed > 0.02
+        ? '◀ 競合防衛中'
+        : '◆ 競り値拮抗';
   const enemyReserveCapacity = Math.max(1, enemyBudget);
   const enemyMinimumCommitment = getEnemyMinimumCommitment(
     targetProperty.marketPrice
@@ -2638,6 +2656,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 : isExtremeBattle
                   ? 'extreme'
                   : 'normal',
+      networkSupportLimit,
       mechanicWarning: normalMechanicWarning,
       mechanicSeverity: normalMechanicSeverity,
     })
@@ -6813,6 +6832,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       const frame = timeline.frames[index];
       const isFinalFrame = index === timeline.frames.length - 1;
       const overflowReloading = (frame.overflowPass ?? 0) > 0;
+      const audibleIndex = audibleFrameIndices.get(frame.packetSeed);
       if (isFinalFrame) {
         const nextDepth = Math.max(
           playerCapitalRackFloorDepthRef.current,
@@ -6834,8 +6854,9 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         commandRecharge: 'continue',
         beatDurationMs: frame.durationMs,
         packetSeed: frame.packetSeed,
+        strongBeat:
+          audibleIndex !== undefined && (audibleIndex + 1) % 4 === 0,
       });
-      const audibleIndex = audibleFrameIndices.get(frame.packetSeed);
       if (audibleIndex !== undefined) {
         soundFx.playCapitalStackStep(
           'player',
@@ -8619,7 +8640,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ]
       : []),
     ...(isHighEndRaid
-      ? ['高難度支援：人脈・通常グループSYNERGYが強化（外部アライアンス・LBは別枠）']
+      ? [`高難度支援：人脈・通常グループSYNERGYは各波×${HIGH_DIFFICULTY_SUPPORT_MULTIPLIER.toFixed(2)}（外部アライアンス・LBは別枠）`]
       : []),
     ...(tradeNetworkBonus > 0 ? ['都市交易網：自社の押し込みを強化'] : []),
   ];
@@ -8944,17 +8965,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
               <MarqueeText text={companyName} delayMs={450} />
             </b>
             <span className={gaugeSpeed < -0.02 ? 'push-player' : gaugeSpeed > 0.02 ? 'push-enemy' : ''}>
-              {isTraining
-                ? gaugeSpeed < -0.02
-                  ? '▶ 木人耐久を削り中'
-                  : gaugeSpeed > 0.02
-                    ? '◀ 木人耐久に押し戻される'
-                    : '◆ 訓練資本拮抗'
-                : gaugeSpeed < -0.02
-                  ? '▶ 買収推進中'
-                  : gaugeSpeed > 0.02
-                    ? '◀ 競合防衛中'
-                    : '◆ 競り値拮抗'}
+              {battlePressureLabel}
             </span>
             <b
               className="company-name-compact"
@@ -8987,6 +8998,12 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <div className="ownership-track__player" />
                 <div className="ownership-track__enemy-flow" />
               </div>
+              <span
+                className={`ownership-board__mobile-pressure ${gaugeSpeed < -0.02 ? 'push-player' : gaugeSpeed > 0.02 ? 'push-enemy' : ''}`}
+                aria-hidden="true"
+              >
+                {battlePressureLabel}
+              </span>
               {windVisible && (
                 <div className={`battle-wind-magic ${eraWindActive ? 'battle-wind-magic--era' : ''} ${windTelegraphVisible ? 'battle-wind-magic--telegraph' : ''}`} aria-hidden="true"><i /><i /><i /><i /></div>
               )}

@@ -5058,7 +5058,7 @@ assert.equal(coverSkill.id, 'skill_demoralize', 'legacy equipped ability id rema
 assert.equal(coverSkill.effectType, 'COVER');
 assert.equal(coverSkill.oncePerBattle, true);
 assert.equal(TACTICAL_SKILL_BALANCE.cover.durationMs, 16_000);
-assert.equal(HIGH_DIFFICULTY_SUPPORT_MULTIPLIER, 1.7);
+assert.equal(HIGH_DIFFICULTY_SUPPORT_MULTIPLIER, 0.5);
 assert.equal(TACTICAL_SKILL_BALANCE.cover.absorbRatio, 0.92);
 assert.equal(TACTICAL_SKILL_BALANCE.cover.gaugeCapacity, 84);
 assert.deepEqual(

@@ -42,6 +42,7 @@ import {
   getOpeningBossAbilityTier,
   getEnemySupportAutoProfile,
   getEnemySupportSkillProfile,
+  getStrongestSubsidiarySupport,
   getBossAbilityTier,
   getCampaignProperties,
   isExtremeReacquisition,
@@ -371,6 +372,9 @@ const simulateBattle = (
     usesSavageMechanics || isUltimate || isCruel;
   const oneTapNetworkSupportEnabled =
     scenario.savageUnlocked === true || isHighEndRaid;
+  const strongestNetworkSupportProperty = oneTapNetworkSupportEnabled
+    ? getStrongestSubsidiarySupport(scenario.supportSources ?? [])
+    : null;
   const networkSupportLimit = isUltimate
     ? ULTIMATE_NETWORK_SUPPORT_LIMIT
     : oneTapNetworkSupportEnabled
@@ -1400,7 +1404,9 @@ const simulateBattle = (
       const supportSource = cruelSignaturePending || preferDirectInvestment ||
         supportActions >= networkSupportLimit
         ? undefined
-        : scenario.supportSources?.[supportActions];
+        : oneTapNetworkSupportEnabled
+          ? strongestNetworkSupportProperty ?? undefined
+          : scenario.supportSources?.[supportActions];
       const supportThreshold =
         scenario.supportAfterDirectActions?.(supportActions, seed) ??
         Number.POSITIVE_INFINITY;

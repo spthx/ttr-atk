@@ -323,6 +323,34 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
                 </aside>
               )}
 
+              <button
+                type="button"
+                disabled={!unlocked || !affordable}
+                onClick={() => onStartSavage(property)}
+                aria-label={
+                  cleared
+                    ? `第${raid.series}編・第${raid.layer}層 踏破済み。記録戦へ再挑戦`
+                    : undefined
+                }
+              >
+                {!unlocked ? (
+                  previousRaid
+                    ? `第${previousRaid.series}編・第${previousRaid.layer}層の踏破で解放`
+                    : '前章の踏破で解放'
+                ) : cleared ? (
+                  <>
+                    <CheckCircle2 />
+                    {affordable
+                      ? `第${raid.layer}層 踏破済み・再挑戦`
+                      : `踏破済み・再挑戦まで あと${formatCurrency(fee - totalFunds)}`}
+                  </>
+                ) : !affordable ? (
+                  `手数料まで あと${formatCurrency(fee - totalFunds)}`
+                ) : (
+                  `第${raid.layer}層へ挑戦`
+                )}
+              </button>
+
               <section className="savage-layer-card__reward">
                 <span><Sparkles />初回踏破報酬：攻略利益＋通常編の事業・連携強化</span>
                 <small>攻略利益は相場5%。勝利後に0%／50%／100%の3択で人脈へ配分します。</small>
@@ -351,34 +379,6 @@ export const HighEndRaidView: React.FC<HighEndRaidViewProps> = ({
                   </p>
                 ))}
               </section>
-
-              <button
-                type="button"
-                disabled={!unlocked || !affordable}
-                onClick={() => onStartSavage(property)}
-                aria-label={
-                  cleared
-                    ? `第${raid.series}編・第${raid.layer}層 踏破済み。記録戦へ再挑戦`
-                    : undefined
-                }
-              >
-                {!unlocked ? (
-                  previousRaid
-                    ? `第${previousRaid.series}編・第${previousRaid.layer}層の踏破で解放`
-                    : '前章の踏破で解放'
-                ) : cleared ? (
-                  <>
-                    <CheckCircle2 />
-                    {affordable
-                      ? `第${raid.layer}層 踏破済み・再挑戦`
-                      : `踏破済み・再挑戦まで あと${formatCurrency(fee - totalFunds)}`}
-                  </>
-                ) : !affordable ? (
-                  `手数料まで あと${formatCurrency(fee - totalFunds)}`
-                ) : (
-                  `第${raid.layer}層へ挑戦`
-                )}
-              </button>
             </article>
           );
         })}

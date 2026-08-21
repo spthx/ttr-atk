@@ -214,7 +214,7 @@
 .savage-layer-card > header span small {
   display: block;
   margin-top: .18rem;
-  color: #64748b;
+  color: #94a3b8;
   font: 800 .56rem/1 ui-monospace, monospace;
   letter-spacing: .06em;
 }
@@ -377,7 +377,7 @@
 .ultimate-raid-card__actions button:disabled {
   border-color: #334155;
   background: #1e293b;
-  color: #64748b;
+  color: #94a3b8;
 }
 
 .savage-layer-card--cleared > button {
@@ -762,7 +762,7 @@
 .cruel-raid-card__actions button:disabled {
   border-color: #475569;
   background: #1e293b;
-  color: #64748b;
+  color: #94a3b8;
 }
 
 .cruel-raid-card__actions svg {
@@ -996,7 +996,7 @@
 .karma-raid-card__actions button:disabled {
   border-color: #475569;
   background: #1e293b;
-  color: #64748b;
+  color: #94a3b8;
 }
 
 .karma-raid-card__actions svg {
@@ -1191,7 +1191,7 @@
 
 .phantom-raid-card__copy > button:disabled {
   border-color: #475569;
-  color: #64748b;
+  color: #94a3b8;
   background: #1e293b;
 }
 

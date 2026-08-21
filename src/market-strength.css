@@ -93,7 +93,7 @@
 
 .market-readiness-overview__grades dd small {
   margin-left: .12rem;
-  color: #64748b;
+  color: #94a3b8;
   font-size: .62rem;
 }
 
@@ -123,7 +123,7 @@
 
 .market-readiness-overview > footer small {
   margin-left: auto;
-  color: #64748b;
+  color: #94a3b8;
   font-size: .66rem;
 }
 
@@ -456,7 +456,7 @@
 }
 
 .trade-target-card__details p { margin: 0; }
-.trade-target-card__details small { color: #64748b; font-size: .68rem; }
+.trade-target-card__details small { color: #94a3b8; font-size: .68rem; }
 
 .trade-target-card__tags {
   display: flex;

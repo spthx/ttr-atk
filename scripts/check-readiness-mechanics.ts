@@ -11,6 +11,7 @@ import {
 import {
   BATTLE_SUPPORT_BALANCE,
   HIGH_DIFFICULTY_SUPPORT_MULTIPLIER,
+  SAVAGE_NETWORK_SUPPORT_LIMIT,
   getRepeatedNetworkSupportMultiplier,
   getSubsidiarySupportMultiplier,
 } from '../src/utils/gameBalance';
@@ -302,25 +303,22 @@ const highDifficultyContactReadiness = calculateBattleReadiness({
   allianceSupport: 0,
   battleMode: 'savage',
 });
-const normalContactReadiness = calculateBattleReadiness({
-  ...baseInput,
-  availableCash: 2_000,
-  subsidiaries: [contact],
-  allianceSupport: 0,
-  battleMode: 'normal',
-});
 assert.equal(
   highDifficultyContactReadiness.supportCapital,
-  Math.round(
-    normalContactReadiness.supportCapital *
-      HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
-  )
+  Array.from({ length: SAVAGE_NETWORK_SUPPORT_LIMIT }, (_, requestIndex) =>
+    Math.round(
+      75_000 *
+        getRepeatedNetworkSupportMultiplier(requestIndex) *
+        HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
+    )
+  ).reduce((total, amount) => total + amount, 0),
+  'Savage readiness must model the live strongest-contact one-tap limit'
 );
 assert.match(
   highDifficultyContactReadiness.capitalComponents.find(
     (component) => component.key === 'subsidiaries'
   )?.label ?? '',
-  /高難度×1\.70/
+  /最有力先.*最大18回.*高難度×0\.50/
 );
 
 const regularGroupSynergy = INITIAL_GROUP_SYNERGIES.find(
@@ -345,6 +343,7 @@ const highDifficultyGroupReadiness = calculateBattleReadiness({
   selectedBattleSynergy: regularGroupSynergy,
   allianceSupport: 0,
   battleMode: 'ultimate',
+  networkSupportLimit: 0,
 });
 assert.equal(normalGroupReadiness.supportRoute, '戦闘連携');
 assert.equal(highDifficultyGroupReadiness.supportRoute, '戦闘連携');
@@ -371,7 +370,7 @@ assert.match(
   highDifficultyGroupReadiness.capitalComponents.find(
     (component) => component.key === 'subsidiaries'
   )?.label ?? '',
-  /高難度×1\.70/
+  /高難度×0\.50/
 );
 assert.equal(
   highDifficultyGroupReadiness.capitalComponents.find(
