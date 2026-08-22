@@ -34,6 +34,7 @@ export const NORMAL_BATTLE_GAUGE_SPEED_FACTOR = 4.5;
 export const INITIAL_BATTLE_COMMAND_PROGRESS = 100;
 export const TRAINING_GAUGE_SPEED_MULTIPLIER = 0.1;
 export const TRAINING_MIN_OWNERSHIP_PERCENT = 1;
+export const CAMPAIGN_NETWORK_FINISHER_MIN_GAUGE_PER_SECOND = 18;
 export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
 export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.58;
 export const SAVAGE_LAYER_BUDGET_MULTIPLIERS = [1, 1.08, 1.18, 1.25] as const;
@@ -57,6 +58,19 @@ export const resolveBattleGaugeSpeedFactor = ({
   isTraining || isHighEndRaid
     ? BATTLE_GAUGE_SPEED_FACTOR
     : NORMAL_BATTLE_GAUGE_SPEED_FACTOR;
+
+/**
+ * The first scripted network-support lesson has already consumed the user's
+ * decision. Keep its full coin/gauge finish, but prevent a weak early-company
+ * velocity from turning the non-interactive sweep into a long wait.
+ */
+export const applyCampaignNetworkFinisherMomentum = (
+  velocity: number,
+  active: boolean
+) =>
+  active && velocity < 0
+    ? Math.min(velocity, -CAMPAIGN_NETWORK_FINISHER_MIN_GAUGE_PER_SECOND)
+    : velocity;
 
 /**
  * Claims a once-per-battle synergy without mutating the caller's Set.
@@ -964,6 +978,7 @@ export const BATTLE_LOYALTY_BALANCE = {
  * LB. External alliance and LB amounts remain unmodified.
  */
 export const HIGH_DIFFICULTY_SUPPORT_MULTIPLIER = 0.5;
+export const SAVAGE_NETWORK_SUPPORT_FLOOR_RATIO = 0.5;
 
 export const PROFIT_ALLOCATION_OPTIONS = [
   {
@@ -1047,6 +1062,34 @@ export const calculateSubsidiarySupportAmount = (
       getSubsidiarySupportMultiplier(property),
     previousNetworkSupportUses
   );
+
+/**
+ * Normal-campaign completion must be enough to enter the raid ladder. Optional
+ * cartel acquisitions may still improve a contact, but cannot be an invisible
+ * prerequisite merely because their absolute market prices are much larger.
+ * The floor is applied before the existing high-difficulty ×0.5 coefficient
+ * and shares the same battle-local decay as an ordinary request.
+ */
+export const calculateHighDifficultyNetworkSupportAmount = (
+  property: Property,
+  targetMarketPrice: number,
+  previousNetworkSupportUses = 0
+) => {
+  const sourceBaseAmount =
+    property.marketPrice *
+    BATTLE_SUPPORT_BALANCE.subsidiaryMarketRatio *
+    getSubsidiarySupportMultiplier(property);
+  const campaignCompletionFloor =
+    property.countsTowardCityConquest === false
+      ? 0
+      : Math.max(0, targetMarketPrice) * SAVAGE_NETWORK_SUPPORT_FLOOR_RATIO;
+  return Math.round(
+    applyRepeatedNetworkSupportDecay(
+      Math.max(sourceBaseAmount, campaignCompletionFloor),
+      previousNetworkSupportUses
+    ) * HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
+  );
+};
 
 /** Inverts the LIMIT BREAK pressure formula: amount / price * 85 = push pt. */
 export const calculateLimitBreakPushGilEquivalent = (

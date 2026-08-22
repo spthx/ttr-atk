@@ -6,7 +6,7 @@ import {
 } from './battleCapitalCanvasLayout';
 
 export const BATTLE_CINEMATIC_TIMING = {
-  startAnnouncementMs: 3_800,
+  startAnnouncementMs: 2_000,
   conditionAnnouncementMs: 1_650,
   limitAnnouncementMs: 1_900,
   limitResolveMs: 2_300,
@@ -973,10 +973,9 @@ export const getCapitalIncomingBundleCopies = (
   const deltaRatio =
     Math.max(0, nextCapital - previousCapital) / Math.max(1, marketPrice);
   if (deltaRatio <= 0) return 1;
-  return Math.min(
-    3,
-    Math.max(1, Math.ceil(Math.sqrt(deltaRatio / 0.05) - Number.EPSILON))
-  );
+  if (deltaRatio <= 0.1) return 1;
+  if (deltaRatio <= 0.25) return 2;
+  return 3;
 };
 
 /** Same amount always produces the same monotonic eighteen-stack showcase. */

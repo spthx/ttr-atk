@@ -113,6 +113,7 @@ import {
   isPendingBattleTargetAvailable,
   parsePendingBattleSession,
   PENDING_BATTLE_SESSION_MAX_AGE_MS,
+  refreshPendingBattleTarget,
   shouldRestorePendingBattleSession,
 } from '../src/utils/battleSession';
 import { calculateCartelHeadquartersDefense } from '../src/utils/cartel';
@@ -242,6 +243,8 @@ import {
   applyCoverToGaugeDelta,
   applyTrainingGaugeSpeed,
   applyNormalClosingMomentum,
+  applyCampaignNetworkFinisherMomentum,
+  CAMPAIGN_NETWORK_FINISHER_MIN_GAUGE_PER_SECOND,
   LIQUIDITY_CLOSEOUT_MIN_GAUGE_PER_SECOND,
   LIQUIDITY_CLOSEOUT_OWNERSHIP_THRESHOLD,
   BOSS_COVER_BALANCE,
@@ -257,6 +260,8 @@ import {
   calculateEnemyDrillReserveCost,
   calculateLimitBreakPushGilEquivalent,
   calculateSubsidiarySupportAmount,
+  calculateHighDifficultyNetworkSupportAmount,
+  SAVAGE_NETWORK_SUPPORT_FLOOR_RATIO,
   calculateProfitAllocationCost,
   calculateCompanyStrengthScore,
   calculateBattleVictoryReward,
@@ -1603,6 +1608,41 @@ assert.equal(
   true,
   'legacy high-end save IDs remain recoverable without becoming normal contacts'
 );
+const refreshedPendingBattle = refreshPendingBattleTarget(
+  {
+    ...pendingBattleSession!,
+    targetProperty: {
+      ...pendingBattleSession!.targetProperty,
+      name: '旧版の名称',
+      marketPrice: 1,
+    },
+  },
+  INITIAL_PROPERTIES
+);
+assert.equal(
+  refreshedPendingBattle?.targetProperty.name,
+  pendingBattleProperty.name,
+  'an interrupted battle rebinds to the current authored property by stable ID'
+);
+assert.equal(
+  refreshedPendingBattle?.targetProperty.marketPrice,
+  pendingBattleProperty.marketPrice,
+  'a resumed battle never keeps a stale pre-update balance snapshot'
+);
+assert.equal(
+  refreshPendingBattleTarget(
+    {
+      ...pendingBattleSession!,
+      targetProperty: {
+        ...pendingBattleSession!.targetProperty,
+        id: 'retired-property',
+      },
+    },
+    INITIAL_PROPERTIES
+  ),
+  null,
+  'a retired authored target cannot reopen from a recovery snapshot'
+);
 assert.equal(
   shouldRestorePendingBattleSession(
     pendingBattleSession!,
@@ -2013,7 +2053,7 @@ assert.deepEqual(
   [0.02, 0.05, 0.1, 0.2, 0.35].map((ratio) =>
     getCapitalIncomingBundleCopies(0, ratio * 1_000_000, 1_000_000)
   ),
-  [1, 1, 2, 2, 3],
+  [1, 1, 1, 2, 3],
   'larger commitments must bring one to three bounded incoming bundles per active column'
 );
 assert.equal(
@@ -4709,6 +4749,50 @@ assert.equal(SAVAGE_NETWORK_SUPPORT_LIMIT, 18);
 assert.equal(ULTIMATE_NETWORK_SUPPORT_LIMIT, 8);
 assert.equal(ULTIMATE_LIMIT_BREAK_LIMIT, 1);
 assert.equal(ULTIMATE_APPRAISAL_LIMIT_MS, 108_000);
+assert.equal(SAVAGE_NETWORK_SUPPORT_FLOOR_RATIO, 0.5);
+const requiredCampaignStrongestSupport = INITIAL_PROPERTIES
+  .filter((property) => property.countsTowardCityConquest !== false)
+  .sort(
+    (left, right) =>
+      calculateSubsidiarySupportAmount(right) -
+      calculateSubsidiarySupportAmount(left)
+  )[0];
+assert.equal(
+  calculateHighDifficultyNetworkSupportAmount(
+    requiredCampaignStrongestSupport,
+    3_000_000_000,
+    0
+  ),
+  750_000_000,
+  'normal-campaign completion grants a 25%-of-target first Savage support request after the existing high-difficulty coefficient'
+);
+assert.equal(
+  calculateHighDifficultyNetworkSupportAmount(
+    requiredCampaignStrongestSupport,
+    3_000_000_000,
+    99
+  ),
+  375_000_000,
+  'the campaign-completion floor still obeys the shared repeated-request decay'
+);
+assert.equal(
+  calculateHighDifficultyNetworkSupportAmount(
+    requiredCampaignStrongestSupport,
+    6_000_000_000,
+    0
+  ),
+  1_500_000_000,
+  'the required campaign network remains viable when the authored raid market scale rises'
+);
+assert.equal(
+  calculateHighDifficultyNetworkSupportAmount(
+    agoraTradeAgreement,
+    3_000_000_000,
+    0
+  ),
+  937_500_000,
+  'an optional cartel relationship keeps its authored market-price advantage instead of receiving the completion floor'
+);
 assert.equal(canRequestLimitedNetworkSupport(17, SAVAGE_NETWORK_SUPPORT_LIMIT), true);
 assert.equal(canRequestLimitedNetworkSupport(18, SAVAGE_NETWORK_SUPPORT_LIMIT), false);
 assert.equal(canRequestLimitedNetworkSupport(7, ULTIMATE_NETWORK_SUPPORT_LIMIT), true);
@@ -6252,6 +6336,21 @@ assert.equal(
   }),
   -0.2,
   'high-end encounters never inherit the normal liquidity closeout'
+);
+assert.equal(
+  applyCampaignNetworkFinisherMomentum(-0.2, true),
+  -CAMPAIGN_NETWORK_FINISHER_MIN_GAUGE_PER_SECOND,
+  'the scripted first network-support finish cannot become a long non-interactive wait'
+);
+assert.equal(
+  applyCampaignNetworkFinisherMomentum(-24, true),
+  -24,
+  'an already decisive campaign finish keeps its stronger natural momentum'
+);
+assert.equal(
+  applyCampaignNetworkFinisherMomentum(-0.2, false),
+  -0.2,
+  'ordinary player pressure retains the authored battle cadence'
 );
 assert.equal(
   applyNormalClosingMomentum({

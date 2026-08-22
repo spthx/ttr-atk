@@ -17,6 +17,7 @@ import {
   PLAYER_BATTLE_CASH_CAP_RATIO,
   TACTICAL_SKILL_BALANCE,
   calculateSubsidiarySupportAmount,
+  calculateHighDifficultyNetworkSupportAmount,
   getSubsidiaryRiskIncrease,
   getSubsidiarySupportMultiplier,
 } from './gameBalance';
@@ -303,12 +304,18 @@ const getBestSupportRoute = ({
         );
     const networkTotal = oneTapSupportLimit !== null && strongestProperty
       ? Array.from({ length: oneTapSupportLimit }, (_, requestIndex) =>
-          Math.round(
-            calculateSubsidiarySupportAmount(
-              strongestProperty,
-              requestIndex
-            ) * supportMultiplier
-          )
+          battleMode === 'savage' || battleMode === 'phantom'
+            ? calculateHighDifficultyNetworkSupportAmount(
+                strongestProperty,
+                targetMarketPrice,
+                requestIndex
+              )
+            : Math.round(
+                calculateSubsidiarySupportAmount(
+                  strongestProperty,
+                  requestIndex
+                ) * supportMultiplier
+              )
         ).reduce((total, amount) => total + amount, 0)
       : subsidiaries
           .map((property) => calculateSubsidiarySupportAmount(property))

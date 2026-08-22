@@ -154,6 +154,7 @@ import { BattleCapitalCanvas } from './BattleCapitalCanvas';
 import {
   applyTrainingGaugeSpeed,
   applyNormalClosingMomentum,
+  applyCampaignNetworkFinisherMomentum,
   advanceBattleCashRecovery,
   applyCoverToGaugeDelta,
   applyBlackestNightToGaugeDelta,
@@ -167,6 +168,7 @@ import {
   calculateDirectInvestmentGaugeImpact,
   ENEMY_SUPPORT_SKILL_BALANCE,
   calculateSubsidiarySupportAmount,
+  calculateHighDifficultyNetworkSupportAmount,
   HIGH_DIFFICULTY_SUPPORT_MULTIPLIER,
   calculateEnemyBudget,
   calculateOwnershipFromGauge,
@@ -1972,10 +1974,18 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      const activeElement = document.activeElement;
+      if (
+        activeElement === activeSurface ||
+        !(activeElement instanceof Node) ||
+        !activeSurface.contains(activeElement)
+      ) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && activeElement === first) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && activeElement === last) {
         event.preventDefault();
         first.focus();
       }
@@ -3613,7 +3623,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     if (openingSlowTimerRef.current) window.clearTimeout(openingSlowTimerRef.current);
     openingSlowTimerRef.current = window.setTimeout(
       () => setOpeningSlowActive(false),
-      3900
+      BATTLE_CINEMATIC_TIMING.startAnnouncementMs + 100
     );
   };
 
@@ -6675,8 +6685,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           : enemyReserveRef.current,
         enemyMinimumCommitment,
       });
+      const campaignFinisherAdjustedVelocity =
+        applyCampaignNetworkFinisherMomentum(
+          closingAdjustedVelocity,
+          campaignNetworkFinisherActive
+        );
       const cruelAdjustedVelocity = resolveCruelRecoveryContinuousVelocity({
-        velocity: closingAdjustedVelocity,
+        velocity: campaignFinisherAdjustedVelocity,
         isCruel,
         phase: cruelScriptPhaseRef.current,
       });
@@ -6720,7 +6735,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [battleFrameRate, criticalAutoReadyForTrigger, enemyLimitBreakHoldRemaining, enemyMinimumCommitment, eraWindActive, isCruel, isExtremeBattle, isHighEndRaid, isKarma, isTraining, liveRawGaugeVelocity, timeScale, updateGauge, winner]);
+  }, [battleFrameRate, campaignNetworkFinisherActive, criticalAutoReadyForTrigger, enemyLimitBreakHoldRemaining, enemyMinimumCommitment, eraWindActive, isCruel, isExtremeBattle, isHighEndRaid, isKarma, isTraining, liveRawGaugeVelocity, timeScale, updateGauge, winner]);
 
   const startCompanyCapitalPresentation = (
     snapshot: CapitalCommitSnapshot,
@@ -7074,16 +7089,20 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     networkRequestCount === 0 &&
     campaignEncounterDefinition?.firstNetworkFinisher === true;
   const getBattleSupportAmount = (property: Property) =>
-    Math.round(
-      calculateSubsidiarySupportAmount(
-        property,
-        networkRequestCount
-      ) *
-        campaignNetworkSupportMultiplier *
-        (isHighEndRaid
-          ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
-          : 1)
-    );
+    isSavage || isPhantom
+      ? calculateHighDifficultyNetworkSupportAmount(
+          property,
+          targetProperty.marketPrice,
+          networkRequestCount
+        )
+      : Math.round(
+          calculateSubsidiarySupportAmount(
+            property,
+            networkRequestCount
+          ) *
+            campaignNetworkSupportMultiplier *
+            (isHighEndRaid ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER : 1)
+        );
 
   const cycleInvestmentLevel = (direction = 1) => {
     const affordableLevels = INVESTMENT_LEVELS.filter(

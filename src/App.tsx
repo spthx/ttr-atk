@@ -88,6 +88,7 @@ import {
   isPendingBattleTargetAvailable,
   loadPendingBattleSession,
   persistPendingBattleSession,
+  refreshPendingBattleTarget,
   shouldRestorePendingBattleSession,
   type NormalBattleOrigin,
 } from './utils/battleSession';
@@ -174,6 +175,20 @@ const DeferredPanelFallback = ({ label }: { label: string }) => (
     <b className="block text-sm font-black tracking-[.14em]">TRADE LEDGER LOADING</b>
     <span className="mt-2 block text-xs text-slate-400">{label}を準備しています</span>
   </section>
+);
+
+const EndingModalFallback = () => (
+  <div
+    className="fixed inset-0 z-[190] flex items-center justify-center bg-slate-950/95 p-5 text-center text-cyan-50"
+    role="dialog"
+    aria-modal="true"
+    aria-label="エンディングを準備中"
+  >
+    <div className="rounded-2xl border border-cyan-300/30 bg-slate-900 px-6 py-5 shadow-2xl" role="status">
+      <b className="block text-sm font-black tracking-[.14em]">TRADE RECORD LOADING</b>
+      <span className="mt-2 block text-xs text-slate-300">決算記録を準備しています</span>
+    </div>
+  </div>
 );
 
 export { PASSIVE_REVENUE_MULTIPLIER };
@@ -298,6 +313,20 @@ export default function App() {
   >(undefined);
   if (pendingBattleSessionRef.current === undefined) {
     const loadedSession = loadPendingBattleSession();
+    const restoredCompanyName =
+      initialSave?.companyName || loadLegacyCompanyName() || GAME_WORLD.companyName;
+    const restoredProperties = restoreProperties(initialSave);
+    const restoredSavageClears = normalizeSavageClearedRaidIds(
+      initialSave?.savageClearedPropertyIds ?? [],
+      initialSave?.savageProgressVersion,
+      initialSave?.savageEndingSeen === true ||
+        initialSave?.ultimateCleared === true
+    );
+    const restoredSavageTargets = buildSavageProperties(
+      INITIAL_PROPERTIES,
+      new Set(restoredSavageClears),
+      restoredCompanyName
+    );
     const normalPropertyIds = new Set(
       INITIAL_PROPERTIES.map((property) => property.id)
     );
@@ -328,7 +357,37 @@ export default function App() {
       clearPendingBattleSession();
       pendingBattleSessionRef.current = null;
     } else {
-      pendingBattleSessionRef.current = loadedSession;
+      const authoredTargets = loadedSession
+        ? loadedSession.mode === 'normal'
+          ? restoredProperties
+          : loadedSession.mode === 'savage' || loadedSession.mode === 'phantom'
+            ? restoredSavageTargets
+            : loadedSession.mode === 'ultimate'
+              ? [
+                  buildUltimateProperty(
+                    initialSave?.ultimateCleared === true,
+                    restoredCompanyName
+                  ),
+                ]
+              : loadedSession.mode === 'cruel'
+                ? [
+                    buildCruelProperty(
+                      initialSave?.cruelCleared === true,
+                      restoredCompanyName
+                    ),
+                  ]
+                : [
+                    buildKarmaProperty(
+                      initialSave?.karmaCleared === true,
+                      restoredCompanyName
+                    ),
+                  ]
+        : [];
+      const refreshedSession = loadedSession
+        ? refreshPendingBattleTarget(loadedSession, authoredTargets)
+        : null;
+      if (loadedSession && !refreshedSession) clearPendingBattleSession();
+      pendingBattleSessionRef.current = refreshedSession;
     }
   }
   const pendingBattleSession = pendingBattleSessionRef.current;
@@ -484,6 +543,7 @@ export default function App() {
     }
   });
   const [logs, setLogs] = useState<GameLog[]>([]);
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>(
     initialSave?.companyName || loadLegacyCompanyName() || GAME_WORLD.companyName
   );
@@ -511,6 +571,7 @@ export default function App() {
     | null
   >(null);
   const deferredBattleIncomeRef = useRef(0);
+  const battleStartGuardRef = useRef(false);
   const highEndViewRef = useRef<HTMLDivElement | null>(null);
   const highEndBattlePlaceholderHeightRef = useRef(0);
   const unlockExplanationActionRef = useRef<HTMLButtonElement | null>(null);
@@ -1128,7 +1189,12 @@ export default function App() {
         : [...current, unlockExplanationNotice.key]
     );
     setUnlockExplanationQueue((current) => current.slice(1));
-    if (unlockExplanationQueue.length === 1) setActiveTab('skills');
+    if (
+      unlockExplanationQueue.length === 1 &&
+      unlockExplanationNotice.kind === 'skill'
+    ) {
+      setActiveTab('skills');
+    }
     soundFx.playCoin();
   };
 
@@ -1197,7 +1263,7 @@ export default function App() {
 
   type SavePayload = Parameters<typeof saveGame>[0];
   const persistGameState = (overrides: Partial<SavePayload> = {}) => {
-    return saveGame({
+    const persisted = saveGame({
       companyName: companyName.trim() || GAME_WORLD.companyName,
       totalFunds,
       properties,
@@ -1225,6 +1291,14 @@ export default function App() {
       passiveIncomePaused: false,
       ...overrides,
     });
+    if (!persisted) {
+      setStorageWarning(
+        '進行状況を端末へ保存できません。空き容量またはブラウザのサイトデータ設定を確認してから再試行してください。'
+      );
+    } else {
+      setStorageWarning(null);
+    }
+    return persisted;
   };
 
   const offlineIncomeAppliedRef = useRef(false);
@@ -1305,7 +1379,10 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    if (!activeBattleProperty) clearPendingBattleSession();
+    if (!activeBattleProperty) {
+      clearPendingBattleSession();
+      battleStartGuardRef.current = false;
+    }
   }, [activeBattleProperty]);
 
   // Handlers
@@ -1322,6 +1399,15 @@ export default function App() {
     return false;
   };
 
+  const claimBattleStart = () => {
+    if (battleStartGuardRef.current) return false;
+    battleStartGuardRef.current = true;
+    if (persistGameState()) return true;
+    battleStartGuardRef.current = false;
+    soundFx.playWarning();
+    return false;
+  };
+
   const handleStartBuyout = (
     property: Property,
     origin: NormalBattleOrigin = 'market'
@@ -1333,9 +1419,9 @@ export default function App() {
       return;
     }
     if (!hasBattleBrokerageFunds(property)) return;
+    if (!claimBattleStart()) return;
     soundFx.playCoin();
     setSkillsStoryReturn(null);
-    persistGameState();
     persistPendingBattleSession('normal', property, { normalOrigin: origin });
     setNormalBattleOrigin(origin);
     setBattleTimeScale(0);
@@ -1346,11 +1432,11 @@ export default function App() {
   const handleStartSavageBuyout = (property: Property) => {
     if (!savageUnlocked || !savageUnlockedIds.has(property.id)) return;
     if (!hasBattleBrokerageFunds(property)) return;
+    if (!claimBattleStart()) return;
     soundFx.playCoin();
     setSkillsStoryReturn(null);
     highEndBattlePlaceholderHeightRef.current =
       highEndViewRef.current?.getBoundingClientRect().height ?? 0;
-    persistGameState();
     persistPendingBattleSession('savage', property);
     setBattleTimeScale(0);
     setActiveBattleMode('savage');
@@ -1360,11 +1446,11 @@ export default function App() {
   const handleStartUltimateBuyout = (property: Property) => {
     if (!ultimateUnlocked) return;
     if (!hasBattleBrokerageFunds(property)) return;
+    if (!claimBattleStart()) return;
     soundFx.playCoin();
     setSkillsStoryReturn(null);
     highEndBattlePlaceholderHeightRef.current =
       highEndViewRef.current?.getBoundingClientRect().height ?? 0;
-    persistGameState();
     persistPendingBattleSession('ultimate', property);
     setBattleTimeScale(0);
     setActiveBattleMode('ultimate');
@@ -1382,11 +1468,11 @@ export default function App() {
       );
       return;
     }
+    if (!claimBattleStart()) return;
     soundFx.playWarning();
     setSkillsStoryReturn(null);
     highEndBattlePlaceholderHeightRef.current =
       highEndViewRef.current?.getBoundingClientRect().height ?? 0;
-    persistGameState();
     persistPendingBattleSession('cruel', property);
     setBattleTimeScale(0);
     setActiveBattleMode('cruel');
@@ -1395,6 +1481,7 @@ export default function App() {
 
   const handleStartKarmaBuyout = (property: Property) => {
     if (!karmaUnlocked || property.id !== KARMA_RAID_DEFINITION.id) return;
+    if (!claimBattleStart()) return;
     soundFx.playWarning();
     setSkillsStoryReturn(null);
     highEndBattlePlaceholderHeightRef.current =
@@ -1402,7 +1489,6 @@ export default function App() {
     // Karma is a record-only duty. LB gained or spent in the imitation ledger
     // is battle-local and discarded when the attempt closes.
     setKarmaBattleLimitBreakCharge(limitBreakCharge);
-    persistGameState();
     persistPendingBattleSession('karma', property);
     setBattleTimeScale(0);
     setActiveBattleMode('karma');
@@ -1411,6 +1497,7 @@ export default function App() {
 
   const handleStartPhantomBuyout = (property: Property) => {
     if (!phantomUnlocked || property.id !== phantomRaidId) return;
+    if (!claimBattleStart()) return;
     soundFx.playWarning();
     setSkillsStoryReturn(null);
     highEndBattlePlaceholderHeightRef.current =
@@ -1418,7 +1505,6 @@ export default function App() {
     // Phantom uses a battle-local copy. Any charge gained or spent during the
     // record attempt is discarded when it closes.
     setPhantomBattleLimitBreakCharge(limitBreakCharge);
-    persistGameState();
     persistPendingBattleSession('phantom', property);
     setBattleTimeScale(0);
     setActiveBattleMode('phantom');
@@ -2103,7 +2189,13 @@ export default function App() {
       '保存済みの所持金・保有事業／契約・装備アビリティ・外部協力／公的後援を削除して、ニューゲームを始めますか？'
     );
     if (!accepted) return;
-    clearGameSave();
+    if (!clearGameSave()) {
+      setStorageWarning(
+        '保存データを削除できませんでした。古い進行を残したまま再読み込みしないため、ニューゲームを中止しました。'
+      );
+      soundFx.playWarning();
+      return;
+    }
     window.location.reload();
   };
 
@@ -2349,6 +2441,12 @@ export default function App() {
         setSoundEnabled={setSoundEnabled}
         onNewGame={handleNewGame}
       />
+
+      {storageWarning && (
+        <div className="mx-auto mt-3 w-[calc(100%-1.5rem)] max-w-7xl rounded-xl border border-rose-300/60 bg-rose-950/90 px-4 py-3 text-xs font-bold leading-relaxed text-rose-50" role="alert">
+          {storageWarning}
+        </div>
+      )}
 
       {/* Main View Area */}
       <main className="max-w-7xl w-full mx-auto px-3 sm:px-6 py-3 pb-20 md:py-6 md:pb-6 flex-1 space-y-4 md:space-y-6">
@@ -2599,7 +2697,7 @@ export default function App() {
       </footer>
 
       {endingNotice && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<EndingModalFallback />}>
           <EndingModal ending={endingNotice} companyName={companyName} onContinue={acknowledgeEnding} />
         </Suspense>
       )}
@@ -2675,7 +2773,9 @@ export default function App() {
             >
               {unlockExplanationQueue.length > 1
                 ? '次の解放を見る'
-                : 'アビリティを確認'}
+                : unlockExplanationNotice.kind === 'skill'
+                  ? 'アビリティを確認'
+                  : '装備済み・商戦へ戻る'}
             </button>
           </div>
         </div>

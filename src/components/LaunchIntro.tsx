@@ -42,6 +42,7 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
     offsetTop: number;
   } | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const revealTimersRef = useRef<number[]>([]);
   const current = INTRO_STEPS[step];
   const StepIcon = current.icon;
@@ -108,8 +109,41 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
     onComplete();
   };
 
+  const trapFocus = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Tab') return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const focusable = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((element) => element.getClientRects().length > 0);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (
+      !(document.activeElement instanceof Node) ||
+      !dialog.contains(document.activeElement)
+    ) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    } else if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   return (
     <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="launch-intro-title"
+      aria-describedby="launch-intro-description"
+      onKeyDown={trapFocus}
       className={`launch-intro fixed inset-0 z-[200] overflow-y-auto overscroll-contain bg-slate-950 text-white ${isNameEditing ? 'launch-intro--name-editing' : ''}`}
       style={visualViewport
         ? {
@@ -143,8 +177,8 @@ export const LaunchIntro: React.FC<LaunchIntroProps> = ({
             <StepIcon className="h-6 w-6" />
           </div>
           <p className="text-[10px] font-black tracking-[.3em] text-cyan-300">{current.eyebrow}</p>
-          <h1 className="mt-2 text-3xl font-black leading-tight text-white drop-shadow-2xl sm:text-5xl">{current.title}</h1>
-          <p className="mt-4 max-w-xl text-sm leading-7 text-slate-200 sm:text-base">{current.body}</p>
+          <h1 id="launch-intro-title" className="mt-2 text-3xl font-black leading-tight text-white drop-shadow-2xl sm:text-5xl">{current.title}</h1>
+          <p id="launch-intro-description" className="mt-4 max-w-xl text-sm leading-7 text-slate-200 sm:text-base">{current.body}</p>
 
           {step === 2 && (
             <label className="launch-intro__name-field mt-5 block max-w-lg">

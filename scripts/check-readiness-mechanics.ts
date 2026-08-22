@@ -416,6 +416,7 @@ const lowValueContacts = Array.from({ length: 3 }, (_, index) => ({
   ...contact,
   id: `lb_contact_${index}`,
   marketPrice: 1,
+  countsTowardCityConquest: false,
 }));
 const normalLimitReadiness = calculateBattleReadiness({
   ...baseInput,

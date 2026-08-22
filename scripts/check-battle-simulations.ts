@@ -29,6 +29,7 @@ import {
   calculateLimitBreakAmount,
   calculateLimitBreakOwnershipPush,
   calculateSubsidiarySupportAmount,
+  calculateHighDifficultyNetworkSupportAmount,
   ENEMY_INITIAL_COMMITMENT_RATIO,
   ENEMY_SUPPORT_SKILL_BALANCE,
   applyBlackestNightToGaugeDelta,
@@ -1416,19 +1417,22 @@ const simulateBattle = (
         const previousSupportUses = supportActions;
         const previousPlayerInvested = playerInvested;
         const amount = Math.round(
-          calculateSubsidiarySupportAmount(
-            supportSource,
-            previousSupportUses
-          ) *
-            (previousSupportUses === 0 &&
-            !isTraining &&
-            !isHighEndRaid &&
-            !isExtremeBattle
-              ? campaignEncounterDefinition?.firstNetworkSupportMultiplier ?? 1
-              : 1) *
-            (isHighEndRaid
-              ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER
-              : 1)
+          usesSavageMechanics
+            ? calculateHighDifficultyNetworkSupportAmount(
+                supportSource,
+                marketPrice,
+                previousSupportUses
+              )
+            : calculateSubsidiarySupportAmount(
+                supportSource,
+                previousSupportUses
+              ) *
+                (previousSupportUses === 0 &&
+                !isTraining &&
+                !isExtremeBattle
+                  ? campaignEncounterDefinition?.firstNetworkSupportMultiplier ?? 1
+                  : 1) *
+                (isHighEndRaid ? HIGH_DIFFICULTY_SUPPORT_MULTIPLIER : 1)
         );
         const impact = Math.min(
           BATTLE_SUPPORT_BALANCE.subsidiaryImpactCap,
@@ -2587,6 +2591,13 @@ const highDifficultySupportSources = [...INITIAL_PROPERTIES]
       calculateSubsidiarySupportAmount(left)
   )
   .slice(0, 12);
+const requiredCampaignSupportSources = INITIAL_PROPERTIES.filter(
+  (property) => property.countsTowardCityConquest !== false
+).sort(
+  (left, right) =>
+    calculateSubsidiarySupportAmount(right) -
+    calculateSubsidiarySupportAmount(left)
+);
 const preparedUltimateSupportRotation = [...INITIAL_PROPERTIES].sort(
   (left, right) =>
     calculateSubsidiarySupportAmount(right) -
@@ -2639,6 +2650,18 @@ const savageReports = savageScenarios.map(
       10,
       5_000 + index * 100
     )
+);
+const normalClearSavageReports = savageScenarios.map((scenario, index) =>
+  summarize(
+    {
+      ...scenario,
+      id: `${scenario.id}_normal_clear_no_alliance`,
+      supportSources: requiredCampaignSupportSources,
+      openingAllianceSupportRatio: undefined,
+    },
+    10,
+    6_500 + index * 100
+  )
 );
 
 /**
@@ -3156,6 +3179,13 @@ console.log(JSON.stringify({
       0
     ),
     reports: savageReports,
+  },
+  normalClearSavageAudit: {
+    totalBattles: normalClearSavageReports.reduce(
+      (total, report) => total + report.battles,
+      0
+    ),
+    reports: normalClearSavageReports,
   },
   savageHumanReadinessAudit: {
     totalBattles: savageHumanReadinessReports.reduce(
@@ -3696,6 +3726,24 @@ savageReports.forEach((report, index) => {
     report.timedCapitalBuffActivations,
     report.battles,
     `${report.id} evaluates the manual Grand Company Eorzea burst`
+  );
+});
+
+assert.equal(
+  requiredCampaignSupportSources.length,
+  16,
+  'the normal-clear raid audit excludes all six optional cartel acquisitions'
+);
+normalClearSavageReports.slice(0, 4).forEach((report) => {
+  assert.equal(
+    report.wins,
+    report.battles,
+    `${report.id} remains clearable after normal completion without an optional cartel or external alliance`
+  );
+  assert.equal(report.timeouts, 0);
+  assert.ok(
+    report.p90Seconds < 120,
+    `${report.id} resolves before a two-minute progression wall`
   );
 });
 
@@ -4638,6 +4686,18 @@ console.log(
     null,
     2
   )
+);
+
+console.log(
+  JSON.stringify({
+    normalClearSavageSummary: normalClearSavageReports.map((report) => ({
+      id: report.id,
+      wins: report.wins,
+      battles: report.battles,
+      timeouts: report.timeouts,
+      p90Seconds: report.p90Seconds,
+    })),
+  })
 );
 
 assert.equal(

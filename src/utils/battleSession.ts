@@ -46,6 +46,21 @@ export const isPendingBattleTargetAvailable = (
   normalPropertyIds: ReadonlySet<string>
 ) => session.mode !== 'normal' || normalPropertyIds.has(session.targetProperty.id);
 
+/**
+ * Recovery markers carry a snapshot for backwards compatibility, but authored
+ * balance and copy may change between releases. Rebind by stable ID so a
+ * resumed battle always uses the current campaign definition.
+ */
+export const refreshPendingBattleTarget = (
+  session: PendingBattleSession,
+  authoredTargets: readonly Property[]
+): PendingBattleSession | null => {
+  const targetProperty = authoredTargets.find(
+    (property) => property.id === session.targetProperty.id
+  );
+  return targetProperty ? { ...session, targetProperty } : null;
+};
+
 const BATTLE_MODES: readonly BattleMode[] = [
   'normal',
   'savage',
