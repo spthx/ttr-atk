@@ -163,6 +163,23 @@ const PEDESTAL_SPRITE_CENTER_WIDTH = 64;
 const PEDESTAL_SPRITE_CAP_WIDTH =
   (PEDESTAL_SPRITE_CROP.width - PEDESTAL_SPRITE_CENTER_WIDTH) / 2;
 const PEDESTAL_SPRITE_CENTER_TILE_COUNT = 12;
+const PEDESTAL_SPRITE_SOURCE_SLICES = [
+  {
+    x: PEDESTAL_SPRITE_CROP.x,
+    width: PEDESTAL_SPRITE_CAP_WIDTH,
+  },
+  ...Array.from({ length: PEDESTAL_SPRITE_CENTER_TILE_COUNT }, () => ({
+    x: PEDESTAL_SPRITE_CROP.x + PEDESTAL_SPRITE_CAP_WIDTH,
+    width: PEDESTAL_SPRITE_CENTER_WIDTH,
+  })),
+  {
+    x:
+      PEDESTAL_SPRITE_CROP.x +
+      PEDESTAL_SPRITE_CAP_WIDTH +
+      PEDESTAL_SPRITE_CENTER_WIDTH,
+    width: PEDESTAL_SPRITE_CAP_WIDTH,
+  },
+] as const;
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
 
@@ -393,26 +410,11 @@ const drawWidePedestalSlice = (
   destinationY: number,
   destinationHeight: number
 ) => {
-  const sourceSlices = [
-    {
-      x: PEDESTAL_SPRITE_CROP.x,
-      width: PEDESTAL_SPRITE_CAP_WIDTH,
-    },
-    ...Array.from({ length: PEDESTAL_SPRITE_CENTER_TILE_COUNT }, () => ({
-      x: PEDESTAL_SPRITE_CROP.x + PEDESTAL_SPRITE_CAP_WIDTH,
-      width: PEDESTAL_SPRITE_CENTER_WIDTH,
-    })),
-    {
-      x: PEDESTAL_SPRITE_CROP.x + PEDESTAL_SPRITE_CAP_WIDTH +
-        PEDESTAL_SPRITE_CENTER_WIDTH,
-      width: PEDESTAL_SPRITE_CAP_WIDTH,
-    },
-  ];
   const scale = geometry.pedestalHeight / PEDESTAL_SPRITE_CROP.height;
   const destinationLeft = geometry.centerX - geometry.pedestalWidth / 2;
   let sourceOffset = 0;
 
-  sourceSlices.forEach((slice) => {
+  PEDESTAL_SPRITE_SOURCE_SLICES.forEach((slice) => {
     const left = snap(destinationLeft + sourceOffset * scale);
     sourceOffset += slice.width;
     const right = snap(destinationLeft + sourceOffset * scale);
@@ -508,12 +510,10 @@ const drawCoinStack = (
 
 const drawCapitalSideBase = (
   context: CanvasRenderingContext2D,
-  width: number,
-  height: number,
   side: NormalizedCapitalSide,
-  sprites: BattleCapitalCanvasSprites
+  sprites: BattleCapitalCanvasSprites,
+  geometry: ReturnType<typeof buildColumnLayout>
 ) => {
-  const geometry = buildColumnLayout(width, height, side.side);
   const active = new Set(side.frame.activeColumnIndices);
   drawPedestalBack(context, geometry, sprites.pedestal);
 
@@ -537,12 +537,11 @@ const drawCapitalSideBase = (
 
 const drawCapitalSideIncoming = (
   context: CanvasRenderingContext2D,
-  width: number,
   height: number,
   side: NormalizedCapitalSide,
-  sprites: BattleCapitalCanvasSprites
+  sprites: BattleCapitalCanvasSprites,
+  geometry: ReturnType<typeof buildColumnLayout>
 ) => {
-  const geometry = buildColumnLayout(width, height, side.side);
   const active = new Set(side.frame.activeColumnIndices);
   geometry.columns.forEach((column) => {
     if (!active.has(column.index)) return;
@@ -612,12 +611,9 @@ const drawCapitalSideIncoming = (
 
 const drawCapitalSidePedestalFront = (
   context: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  side: NormalizedCapitalSide,
-  sprites: BattleCapitalCanvasSprites
+  sprites: BattleCapitalCanvasSprites,
+  geometry: ReturnType<typeof buildColumnLayout>
 ) => {
-  const geometry = buildColumnLayout(width, height, side.side);
   drawPedestalFront(context, geometry, sprites.pedestal);
 };
 
@@ -626,11 +622,6 @@ const getStaticSceneKey = (
   sprites: BattleCapitalCanvasSprites | null
 ) =>
   JSON.stringify({
-    ownershipPercent: scene.ownershipPercent,
-    pressureDirection: scene.pressureDirection,
-    windSide: scene.windSide,
-    difficulty: scene.difficulty,
-    compact: scene.compact,
     spriteSet: sprites ? 'sfc-pedestal-v3-wide-bundled' : 'pending',
     player: scene.player.frame.columnHeights,
     enemy: scene.enemy.frame.columnHeights,
@@ -689,6 +680,12 @@ export const paintBattleCapitalCanvas = (
     desynchronized: true,
   });
   if (!context) return null;
+  const playerGeometry = sprites
+    ? buildColumnLayout(width, height, scene.player.side)
+    : null;
+  const enemyGeometry = sprites
+    ? buildColumnLayout(width, height, scene.enemy.side)
+    : null;
   const staticKey = getStaticSceneKey(scene, sprites);
   let cached = staticCanvasCache.get(canvas);
   if (
@@ -701,8 +698,10 @@ export const paintBattleCapitalCanvas = (
       cached?.canvas ?? canvas.ownerDocument.createElement('canvas');
     cacheCanvas.width = backingWidth;
     cacheCanvas.height = backingHeight;
-    const cacheContext = cacheCanvas.getContext('2d', { alpha: false });
+    const cacheContext = cacheCanvas.getContext('2d', { alpha: true });
     if (!cacheContext) return null;
+    cacheContext.setTransform(1, 0, 0, 1, 0, 0);
+    cacheContext.clearRect(0, 0, backingWidth, backingHeight);
     cacheContext.setTransform(
       backingWidth / width,
       0,
@@ -712,10 +711,9 @@ export const paintBattleCapitalCanvas = (
       0
     );
     cacheContext.imageSmoothingEnabled = false;
-    drawPixelArrowBands(cacheContext, width, height, scene);
-    if (sprites) {
-      drawCapitalSideBase(cacheContext, width, height, scene.player, sprites);
-      drawCapitalSideBase(cacheContext, width, height, scene.enemy, sprites);
+    if (sprites && playerGeometry && enemyGeometry) {
+      drawCapitalSideBase(cacheContext, scene.player, sprites, playerGeometry);
+      drawCapitalSideBase(cacheContext, scene.enemy, sprites, enemyGeometry);
     }
     cached = {
       canvas: cacheCanvas,
@@ -726,18 +724,32 @@ export const paintBattleCapitalCanvas = (
     staticCanvasCache.set(canvas, cached);
   }
 
-  // A late-game field can contain thousands of one-coin seam lines. Cache the
-  // completed field once per authored wave; animation frames then draw only
-  // the short falling rolls and the two inexpensive tray fronts.
-  context.setTransform(1, 0, 0, 1, 0, 0);
+  // Ownership moves independently from the coin presentation. Repaint its
+  // inexpensive arrow bands directly, then composite the transparent settled
+  // pile cache so a 10Hz gauge update cannot rebuild thousands of coin seams.
+  context.setTransform(backingWidth / width, 0, 0, backingHeight / height, 0, 0);
   context.imageSmoothingEnabled = false;
+  drawPixelArrowBands(context, width, height, scene);
+  context.setTransform(1, 0, 0, 1, 0, 0);
   context.drawImage(cached.canvas, 0, 0);
   context.setTransform(backingWidth / width, 0, 0, backingHeight / height, 0, 0);
-  if (sprites) {
-    drawCapitalSideIncoming(context, width, height, scene.player, sprites);
-    drawCapitalSideIncoming(context, width, height, scene.enemy, sprites);
-    drawCapitalSidePedestalFront(context, width, height, scene.player, sprites);
-    drawCapitalSidePedestalFront(context, width, height, scene.enemy, sprites);
+  if (sprites && playerGeometry && enemyGeometry) {
+    drawCapitalSideIncoming(
+      context,
+      height,
+      scene.player,
+      sprites,
+      playerGeometry
+    );
+    drawCapitalSideIncoming(
+      context,
+      height,
+      scene.enemy,
+      sprites,
+      enemyGeometry
+    );
+    drawCapitalSidePedestalFront(context, sprites, playerGeometry);
+    drawCapitalSidePedestalFront(context, sprites, enemyGeometry);
   }
 
   const renderDpr = dpr.toFixed(2);

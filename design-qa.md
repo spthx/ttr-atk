@@ -1,3 +1,29 @@
+# Product Design QA — 軽量化・音声・残留落下（2026-08-23 継続監査）
+
+- final result: passed; static, numerical and production build gates completed
+- source sequence: `tmp/rs3-analysis/01-stack-sequence.jpg`
+- audio source: `tmp/rs3-analysis/sfc-coin-event.wav`
+- implementation audio: `public/game-audio/capital-rapid-fire.mp3`
+
+## Current evidence and decisions
+
+1. SFC別録画では主要な厚い束の後、300.9〜301.4秒／303.5〜303.6秒に薄い楕円状の残留落下物が1〜2個見える。ただし安定後には残らない。
+2. ユーザー実機では孤立した薄い形状が「一枚だけ空中に浮く」退行として見えたため、現製品はairborneも最低束の厚みを維持する。原作観測と製品判断を混同しない。
+3. 165msは1ページ1.40〜1.534秒÷9波の範囲内。99ms microtickと396ms強拍は原作認証値ではなく、現行素材を密に聞かせる演出契約としてのみ維持する。
+4. 原作抽出と実装素材のスペクトル重心は1.47kHz／1.58kHzだが、帯域構成と波形相関は一致しない。「連続した金属的積載音」以上の酷似は未認証。
+5. 所有率変化が完成山キャッシュを無効化していた。矢印帯を直接描画し、透明な完成山だけをキャッシュすることで、10Hz更新時の長柱再描画を除去した。
+6. 左右の列幾何を完成山・incoming・台座前壁ごとに作り直さず、1 paintにつき各陣営1回へ統合した。台座14スライスも定数化した。
+
+## Current priority gate
+
+- P0: ownership-only update rebuilding settled coin seams — fixed
+- P1: repeated geometry and pedestal-slice allocation — fixed
+- P1: active-column before/after pile cache — pending real-device GPU trace
+- release gate: lint、visual/capital-contact、balance、readiness、progression、500戦simulation、exact `npm run build`、diff-check — passed
+- evidence limit: current Browser/Edge performance trace is unavailable in this task; visual geometry is intentionally unchanged
+
+---
+
 # Product Design QA — SFCピクセル投影・着地同一性（2026-08-22 継続監査）
 
 - final result: passed; browser comparison and full release gate completed

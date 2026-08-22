@@ -1174,7 +1174,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /capitalCoinSpriteUrl[\s\S]*sprites\.coin[\s\S]*drawCapitalSideBase\([\s\S]*scene\.player, sprites\)[\s\S]*drawCapitalSideBase\([\s\S]*scene\.enemy, sprites\)/,
+  /capitalCoinSpriteUrl[\s\S]*sprites\.coin[\s\S]*drawCapitalSideBase\([\s\S]*scene\.player,[\s\S]{0,80}sprites,[\s\S]{0,80}playerGeometry[\s\S]*drawCapitalSideBase\([\s\S]*scene\.enemy,[\s\S]{0,80}sprites,[\s\S]{0,80}enemyGeometry/,
   'both sides must share the same authored gold coin sprite instead of red enemy coins'
 );
 assert.match(
@@ -1189,8 +1189,23 @@ assert.doesNotMatch(
 );
 assert.match(
   battleCapitalCanvas,
-  /const staticCanvasCache = new WeakMap[\s\S]*getStaticSceneKey[\s\S]*context\.drawImage\(cached\.canvas, 0, 0\)[\s\S]*drawCapitalSideIncoming/,
+  /const staticCanvasCache = new WeakMap[\s\S]*getStaticSceneKey[\s\S]*getContext\('2d', \{ alpha: true \}\)[\s\S]*drawPixelArrowBands\(context,[\s\S]{0,120}context\.drawImage\(cached\.canvas, 0, 0\)[\s\S]*drawCapitalSideIncoming/,
   'late-game settled towers must be cached so animation frames repaint only falling rolls'
+);
+assert.doesNotMatch(
+  battleCapitalCanvas,
+  /const getStaticSceneKey =[\s\S]{0,500}ownershipPercent/,
+  'ownership-only gauge updates must not invalidate the expensive settled-pile cache'
+);
+assert.equal(
+  battleCapitalCanvas.match(/buildColumnLayout\(/g)?.length,
+  2,
+  'column geometry must be built once per side and shared by every paint layer'
+);
+assert.equal(
+  battleCapitalCanvas.match(/PEDESTAL_SPRITE_SOURCE_SLICES/g)?.length,
+  2,
+  'the fourteen authored pedestal slices must be allocated once instead of per paint'
 );
 assert.doesNotMatch(
   battleCapitalCanvas,
