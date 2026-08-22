@@ -1,9 +1,9 @@
 export const metadata = {
   title: "タタルの大繁盛商店",
-  description: "タタルの大繁盛商店を旗揚げし、FF14の主要都市を順番に制覇する金融ゲーム。",
+  description: "ロマンシング サ・ガ3のトレードゲームをFF14の世界観で再現した非公式ファンゲーム。",
 };
 
-const EMBEDDED_GAME_VERSION = "casino-field-hotfix-v6";
+const EMBEDDED_GAME_VERSION = "sfc-trade-fidelity-v1";
 
 export default function Home() {
   return (

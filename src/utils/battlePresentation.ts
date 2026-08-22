@@ -806,8 +806,10 @@ export const BATTLE_CAPITAL_VISUAL_STAGE_COUNT = 60;
 export const MAX_BATTLE_CAPITAL_VISUAL_STAGE =
   BATTLE_CAPITAL_VISUAL_STAGE_COUNT - 1;
 
-export const BATTLE_CAPITAL_COLUMN_COUNT = 24;
-export const MAX_BATTLE_CAPITAL_COLUMN_LAYERS = 36;
+/** Four staggered SFC tray rows: 4 + 5 + 5 + 4 fixed coin rolls. */
+export const BATTLE_CAPITAL_COLUMN_COUNT = 18;
+/** Columns are allowed to continue past the top edge like the original game. */
+export const MAX_BATTLE_CAPITAL_COLUMN_LAYERS = 512;
 export const MAX_BATTLE_CAPITAL_VISIBLE_UNITS =
   BATTLE_CAPITAL_COLUMN_COUNT * MAX_BATTLE_CAPITAL_COLUMN_LAYERS;
 
@@ -815,23 +817,22 @@ export const MAX_BATTLE_CAPITAL_VISIBLE_UNITS =
 export const BATTLE_CAPITAL_FULL_PAGE_MARKET_RATIO = 0.35;
 
 const CAPITAL_SHOWCASE_FILL_ORDER = [
-  // Spread each new layer across the whole display before raising any stack
-  // again. The result follows Romancing SaGa 3's tray of separate coin rolls
-  // instead of building one pointed mountain in the centre.
-  18, 0, 21, 6, 9, 14, 22, 1, 2, 17, 19, 4,
-  8, 11, 12, 15, 23, 16, 20, 5, 7, 10, 13, 3,
+  // Rear-to-front stagger measured from the SFC 4/5/5/4 tray. Each pass
+  // touches every fixed roll before any roll gains another visible seam.
+  0, 13, 4, 9, 17, 3, 8, 12, 14,
+  1, 5, 10, 16, 2, 7, 11, 15, 6,
 ] as const;
 
-// Screen-space order for the twenty-four persistent columns. Presentation uses
+// Screen-space order for the eighteen persistent columns. Presentation uses
 // this independently from the showcase fill order so incoming bundles travel as
 // one continuous hose-like sweep instead of jumping between distant columns.
 const CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER = [
-  20, 9, 4, 15, 22, 0, 10, 5, 16, 1, 11, 6,
-  17, 23, 2, 12, 7, 18, 3, 13, 8, 19, 14, 21,
+  0, 13, 4, 9, 1, 14, 5, 10, 2,
+  15, 6, 11, 3, 16, 7, 12, 17, 8,
 ] as const;
 
 /**
- * Converts capital into the fixed twenty-four-column display used by the live field.
+ * Converts capital into the fixed eighteen-column display used by the live field.
  * The asking price chooses the campaign-scale height once for both sides, while
  * the square-root curve keeps small offers readable and prevents late-game
  * capital from requiring amount-proportional DOM nodes.
@@ -1029,11 +1030,11 @@ export interface MechanicalCapitalColumnFrame {
 }
 
 export const CAPITAL_STACK_BEAT_MS = {
-  // At 30fps the two primary cadences remain visible for roughly three and
-  // four frames respectively. These are authored exploration values, not
-  // measurements copied from the reference video.
-  standard: 90,
-  heavy: 128,
+  // Source-frame inspection shows the same roughly three-frame drop for both
+  // ordinary and large funding. Amount changes the number of rolls, not their
+  // gravity or cadence.
+  standard: 99,
+  heavy: 99,
   compact: 62,
 } as const;
 
@@ -1058,8 +1059,8 @@ export const CAPITAL_COIN_WAVES_PER_PAGE = 9;
 export const CAPITAL_COIN_WAVE_MIN_COLUMNS = BATTLE_CAPITAL_COLUMN_COUNT;
 export const CAPITAL_COIN_WAVE_MAX_COLUMNS = BATTLE_CAPITAL_COLUMN_COUNT;
 export const CAPITAL_COIN_WAVE_MAX_COUNT = 64;
-/** Restore the approved nine-layer treasury rolls from the dense curtain. */
-export const CAPITAL_COIN_WAVE_BUNDLE_LAYERS = 9;
+/** The falling SFC sprite is a short cylinder, not an individual flat coin. */
+export const CAPITAL_COIN_WAVE_BUNDLE_LAYERS = 4;
 /** Sub-pixel page remainder that does not need a dedicated prefill wave. */
 const CAPITAL_PAGE_PREFILL_EPSILON = 0.005;
 /** Legacy logical-clock constants retained for command recharge equivalence. */
@@ -1670,7 +1671,7 @@ const buildLegacyCapitalStackTimeline = (
  * volume is then expressed as repeated full-tray waves, never by stretching a
  * handful of columns. All values are presentation-only.
  */
-export const buildCapitalStackTimeline = (
+const buildPageCapitalStackTimeline = (
   event: CapitalStackEvent
 ): CapitalStackTimeline => {
   const compact = event.intensity === 'compact';
@@ -1928,6 +1929,138 @@ export const buildCapitalStackTimeline = (
     presentedCapital: event.nextCapital,
     packetSeed: seed + (pourFrames.length + 1) * 7_919,
   };
+  return {
+    event,
+    beatMs,
+    preloadMs,
+    pourDurationMs,
+    settleMs,
+    totalMs: preloadMs + pourDurationMs + settleMs,
+    frames: [preloadFrame, ...pourFrames, settleFrame],
+  };
+};
+
+/**
+ * Builds the SFC-style capital pour: one fixed 4/5/5/4 tray, one short gold
+ * roll per active lane and no page banking. Tall piles remain continuous and
+ * naturally clip above the viewport, exactly as late-game source captures do.
+ */
+export const buildCapitalStackTimeline = (
+  event: CapitalStackEvent
+): CapitalStackTimeline => {
+  const compact = event.intensity === 'compact';
+  const beatMs = compact ? CAPITAL_STACK_BEAT_MS.compact : CAPITAL_COIN_WAVE_MS;
+  const preloadMs = compact ? 24 : CAPITAL_COIN_WAVE_MS;
+  const settleMs = compact ? 72 : CAPITAL_COIN_WAVE_MS;
+  const previousUnits = getBattleCapitalVisibleUnits(
+    event.previousCapital,
+    event.marketPrice
+  );
+  const targetUnits = getBattleCapitalVisibleUnits(
+    event.nextCapital,
+    event.marketPrice
+  );
+  const distance = Math.max(0, targetUnits - previousUnits);
+  // The original's early bids are readable because even a small first wall is
+  // built as a sequence, not as one broad pop. Keep nine authored beats for a
+  // normal bid (one page), while tiny sub-nine-unit corrections still resolve
+  // one visible unit at a time. Compact/reduced-motion remains a single beat.
+  const waveCount = distance <= 0
+    ? 0
+    : compact
+      ? 1
+      : Math.min(CAPITAL_COIN_WAVES_PER_PAGE, Math.max(1, distance));
+  const legacyTimeline = buildLegacyCapitalStackTimeline(event);
+  const legacyPourDurationMs = legacyTimeline.frames
+    .filter((frame) => frame.phase === 'pour')
+    .reduce(
+      (total, frame) =>
+        total + frame.durationMs * frame.commandRechargeScale,
+      0
+    );
+  const authoredPourDurationMs = waveCount * beatMs;
+  const commandRechargeScale = authoredPourDurationMs > 0
+    ? Math.max(1, legacyPourDurationMs) / authoredPourDurationMs
+    : 1;
+  const seed = Number.isFinite(event.seed) ? Math.trunc(event.seed) : 0;
+  const capitalDistance = event.nextCapital - event.previousCapital;
+  const emptyHeights = Array<number>(BATTLE_CAPITAL_COLUMN_COUNT).fill(0);
+  const preloadFrame: CapitalStackTimelineFrame = {
+    phase: 'preload',
+    atMs: 0,
+    durationMs: preloadMs,
+    commandRechargeScale: 1,
+    visibleUnits: previousUnits,
+    columnHeights: getCapitalColumnHeights(previousUnits),
+    bankedColumnHeights: emptyHeights,
+    bankedPileCount: 0,
+    activeColumnIndices: [],
+    incomingBundleCopies: 1,
+    rackDepth: 0,
+    stackDepth: 0,
+    presentedCapital: event.previousCapital,
+    packetSeed: seed,
+  };
+
+  let atMs = preloadMs;
+  const pourFrames = Array.from(
+    { length: waveCount },
+    (_, index): CapitalStackTimelineFrame => {
+      const beforeProgress = index / Math.max(1, waveCount);
+      const afterProgress = (index + 1) / Math.max(1, waveCount);
+      const beforeUnits = Math.round(
+        previousUnits + distance * beforeProgress
+      );
+      const afterUnits = Math.round(
+        previousUnits + distance * afterProgress
+      );
+      const beforeHeights = getCapitalColumnHeights(beforeUnits);
+      const afterHeights = getCapitalColumnHeights(afterUnits);
+      const activeColumnIndices = CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER.filter(
+        (columnIndex) => afterHeights[columnIndex] > beforeHeights[columnIndex]
+      );
+      const frame: CapitalStackTimelineFrame = {
+        phase: 'pour',
+        atMs,
+        durationMs: beatMs,
+        commandRechargeScale,
+        visibleUnits: beforeUnits,
+        columnHeights: beforeHeights,
+        settledAfterColumnHeights: afterHeights,
+        bankedColumnHeights: emptyHeights,
+        bankedPileCount: 0,
+        activeColumnIndices,
+        incomingBundleCopies: 1,
+        incomingBundleLayers: CAPITAL_COIN_WAVE_BUNDLE_LAYERS,
+        stackBeat: index + 1,
+        rackDepth: 0,
+        stackDepth: 0,
+        presentedCapital: Math.round(
+          event.previousCapital + capitalDistance * beforeProgress
+        ),
+        packetSeed: seed + (index + 1) * 7_919,
+      };
+      atMs += beatMs;
+      return frame;
+    }
+  );
+  const settleFrame: CapitalStackTimelineFrame = {
+    phase: 'settle',
+    atMs,
+    durationMs: settleMs,
+    commandRechargeScale: 1,
+    visibleUnits: targetUnits,
+    columnHeights: getCapitalColumnHeights(targetUnits),
+    bankedColumnHeights: emptyHeights,
+    bankedPileCount: 0,
+    activeColumnIndices: [],
+    incomingBundleCopies: 1,
+    rackDepth: 0,
+    stackDepth: 0,
+    presentedCapital: event.nextCapital,
+    packetSeed: seed + (waveCount + 1) * 7_919,
+  };
+  const pourDurationMs = authoredPourDurationMs;
   return {
     event,
     beatMs,

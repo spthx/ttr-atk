@@ -4275,18 +4275,10 @@
   }
 }
 
-/*
- * Permanent premium casino field.
- *
- * This is shared by 30fps and 60fps. Frame-rate selection must never swap the
- * battlefield artwork or fall back to the former blue/red patterned panels.
- * Ownership remains visible as a restrained live tint over the neutral felt.
- */
+/* The opaque SFC-style canvas owns the field. A flat fallback prevents a flash
+ * before first paint without decoding a hidden full-screen image. */
 .buyout-screen .integrated-battlefield {
-  background:
-    #03100c
-    url("./assets/battle/battlefield-casino-wide.webp")
-    center / cover no-repeat;
+  background: #03100c;
 }
 
 .buyout-screen .integrated-battlefield .battlefield-pressure-lane {
@@ -4324,13 +4316,6 @@
   .capital-arena__side:last-child {
   border-color: transparent;
   box-shadow: none;
-}
-
-@media (max-width: 639px) {
-  .buyout-screen .integrated-battlefield {
-    background-image:
-      url("./assets/battle/battlefield-casino-mobile.webp");
-  }
 }
 
 /*

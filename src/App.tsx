@@ -201,7 +201,7 @@ const ENEMY_MECHANIC_NAMES = {
   drain: 'ドレイン',
   drill: 'ドリル',
   divination: 'ディヴィネーション',
-  rapid_assault: '疾風怒濤',
+  rapid_assault: '黒魔紋',
   limit_break_3: '敵LIMIT BREAK 3',
   capital_reversal: '資本反転',
   forced_liquidation: '強制清算',

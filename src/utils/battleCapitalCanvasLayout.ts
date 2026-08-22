@@ -1,4 +1,5 @@
-export const BATTLE_CAPITAL_CANVAS_ROW_COUNTS = [5, 6, 6, 7] as const;
+/** Fixed SFC tray footprint measured from source frames. */
+export const BATTLE_CAPITAL_CANVAS_ROW_COUNTS = [4, 5, 5, 4] as const;
 // Fresh frame analysis measured the completed-page bank drop at roughly
 // 167ms. Keep one decisive 170ms movement, then start the rapid refill.
 export const BATTLE_CAPITAL_RACK_TWEEN_MS = 140;
@@ -92,13 +93,13 @@ export const resolveBattleCapitalHoardVerticalGeometry = ({
 
 // Keep every depth row on nearly the same coin pitch. The original trade
 // screen reads as one dense treasury block, not four unrelated fan shapes.
-const ROW_SPANS = [0.48, 0.61, 0.66, 0.8] as const;
+const ROW_SPANS = [0.48, 0.61, 0.66, 0.58] as const;
 const ROW_BASE_HEIGHT_SCALES = [1, 0.98, 0.96, 0.94] as const;
 const ROW_BOTTOMS = [
-  [24, 26, 27, 26, 24],
-  [16, 18, 19, 19, 18, 16],
-  [8, 10, 11, 11, 10, 8],
-  [0, 1, 2, 2, 2, 1, 0],
+  [24, 26, 26, 24],
+  [16, 18, 19, 18, 16],
+  [8, 10, 11, 10, 8],
+  [0, 2, 2, 0],
 ] as const;
 
 const clamp = (value: number, min: number, max: number) =>

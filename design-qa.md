@@ -1,3 +1,51 @@
+# Product Design QA — SFC序盤スケールと選択導線（2026-08-22）
+
+- final result: passed after independent fan-panel review findings were addressed
+- desktop viewport/state: 1440 × 900、通常キャンペーン開始時の都市マップとグリダニア対象一覧
+- mobile viewport/state: 390 × 844、同じセーブ・同じ対象一覧／企業連合未攻略
+- SFC reference: `tmp/rs3-analysis/01-stack-sequence.jpg`
+- baseline captures: `tmp/design-qa/01-market-selection-top-desktop.png`, `02-market-selection-mobile.png`, `03-alliance-before-desktop.png`, `04-alliance-before-mobile.png`
+- prototype captures: `tmp/design-qa/05-market-after-desktop.png`, `07-alliance-after-desktop.png`, `08-alliance-after-mobile.png`, `09-targets-after-desktop.png`, `10-targets-after-mobile.png`
+- combined comparisons: `tmp/design-qa/11-market-mobile-before-after.jpg`, `12-alliance-mobile-before-after.jpg`
+- final SFC battle captures: `tmp/design-qa/13-sfc-early-9-wave-wide.png`, `14-sfc-early-mobile-390x844.png`, `15-sfc-early-landscape-844x390.png`
+- final SFC reference comparison: `tmp/design-qa/16-sfc-reference-vs-current.jpg`
+
+## Full-view comparison evidence
+
+- The original target screen spent most of a 390 × 844 viewport on an expanded tutorial, tooltip and three filters before the first action. The revised screen fits the next recommendation, qualitative readiness, reward, brokerage fee and both opening targets in the same viewport.
+- The original alliance screen spent the first viewport repeating the same benefit across four single-column candidates. The revised two-column chooser keeps the four identities visible while bringing the rival objective and first primary action above the fold.
+- At desktop width the city map now uses one highlighted `ここから開始` marker and locked-city progression. Target cards keep only the decision layer visible; formulas, synergies, exact revenue and setting copy remain in disclosures.
+
+## Focused SFC and performance evidence
+
+- A 35% opening investment at a 2,000-gil asking price resolves to 18 persistent columns at four-to-five layers; the same ratio at a one-billion-gil asking price reaches at least seventeen layers. The 700-gil opening now uses nine partial-column waves at 99ms each (891ms pour, 1,089ms including preload/settle), preserving the early-game build-up without spending late-game height on chapter one.
+- Canvas2D remains the renderer because the scene is a fixed flat 18-column tray. Three.js would add a scene graph and WebGL bootstrap; Unity WebGL would add a runtime and much larger startup cost without reducing the present draw count.
+- Off-screen column bodies, seams and top ellipses are culled. Completed towers and their thousands of seam lines are cached once per authored wave; animation frames composite that cache and paint only falling rolls plus the two tray fronts. The terminal sample of each 99ms wave cannot repaint twice. The hidden casino backdrop references were removed, eliminating two generated WebP assets totaling 161,550 bytes.
+- 30fps remains the default with DPR capped at 1.5; 60fps retains a DPR 2 cap. The canvas is non-interactive, idle RAF stops, and production output still lazy-loads the battle chunk.
+
+## Iteration history
+
+1. Baseline screenshots exposed tutorial/filter dominance and the vertical alliance candidate wall.
+2. The campaign was changed to enter through the existing city map, with one start marker and collapsed guidance.
+3. Target cards were reduced to recommendation/readiness/reward/fee; detailed financial data moved into the existing disclosure pattern.
+4. Alliance candidates became a compact two-column chooser; each cartel now exposes one next action plus a collapsed full route.
+5. Combined before/after images were inspected at matched mobile state. No clipping, horizontal overflow, broken border radius or obscured CTA remained.
+6. An SFC-purist pass asked for a slower opening, larger rolls/trays and clearer late-game contrast. The opening became nine beats and the tray/coin geometry grew by roughly 15–20% while retaining four-to-five early layers.
+7. An accessibility pass found competing `aria-modal` surfaces and a focus escape. Only the active nested surface is now modal; closed disclosure descendants are excluded, summaries are keyboard reachable and focus cycles without returning to `BODY`.
+8. An FFXIV-lore pass found semantic job/action mismatches. Dark Knight and Black Mage now use visually verified matching assets; the enemy acceleration uses Black Mage `黒魔紋`, whose official effect shortens cast/recast time, while the player `疾風怒濤` remains the Romancing SaGa trade-technique homage without a false FFXIV job attribution.
+9. A performance pass identified late towers as the remaining low-end risk. The settled-field cache removes per-animation repaint of the completed seam wall; 390×844 and 844×390 still have no horizontal overflow.
+
+## Interaction, accessibility and console checks
+
+- City map → Gridania target list, filter disclosure, target detail disclosure and cartel full-route disclosure were exercised through the in-app browser.
+- Fresh page loads reported no current `error` or `warning` console entries. The temporary Vite HMR warning recorded while replacing a source file did not recur after a clean reload.
+- Primary controls retain at least 44px touch height; qualitative states are expressed with text as well as color. Locked cities remain disabled and labelled with their prerequisite.
+- The final preparation dialog exposes exactly one `aria-modal="true"`; keyboard focus starts on the strategy disclosure and cycles inside the dialog without reaching the document body.
+- Independent review was deliberately harsh: an RS3-purist, an FFXIV-lore fan, an AAA UX/accessibility reviewer and a low-end performance reviewer each returned public-release objections. Every P0/P1 code finding was fixed before the final gate; their P2 notes remain documented for future expansion rather than blocking this release.
+- `lint`, visual, balance, readiness, progression, 500-battle simulation, exact npm production build and `git diff --check` are rerun at the final release gate.
+
+---
+
 # Product Design QA — コイン投入の質量感とカジノ背景
 
 - final result: passed

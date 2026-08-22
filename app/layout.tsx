@@ -18,7 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: baseUrl,
     title: "タタルの大繁盛商店",
-    description: "自社と傘下企業のギルを積み、競合の防衛資金と所有率を押し切って都市を制覇する金融ゲーム。",
+    description: "スーパーファミコン時代のロマンシング サ・ガ3トレードゲームを、FF14の世界観で再現した非公式ファンゲーム。",
     manifest: "/manifest.webmanifest",
     icons: {
       icon: [
@@ -48,13 +48,13 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     openGraph: {
       title: "タタルの大繁盛商店",
-      description: "ギルを積み、風を読み、事業や交易契約を獲得。仲間と世界の交易路を広げよう。",
+      description: "ロマンシング サ・ガ3のトレードをFF14世界で。ギルを積み、仲間と世界の交易路を広げよう。",
       images: [new URL("/title-hero-v1.png", baseUrl).toString()],
     },
     twitter: {
       card: "summary_large_image",
       title: "タタルの大繁盛商店",
-      description: "ギルを積み、風を読み、事業や交易契約を獲得。仲間と世界の交易路を広げよう。",
+      description: "ロマンシング サ・ガ3のトレードをFF14世界で。ギルを積み、仲間と世界の交易路を広げよう。",
       images: [new URL("/title-hero-v1.png", baseUrl).toString()],
     },
   };

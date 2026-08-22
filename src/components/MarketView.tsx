@@ -85,7 +85,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
   const [selectedIndustry, setSelectedIndustry] = useState<string>('ALL');
   const [selectedCommunity, setSelectedCommunity] = useState<CommunityType | 'ALL'>(hasStartedCampaign ? 'ALL' : 'グリダニア');
   const [selectedOwnerFilter, setSelectedOwnerFilter] = useState<string>('ALL');
-  const [viewMode, setViewMode] = useState<'map' | 'targets'>(hasStartedCampaign ? 'map' : 'targets');
+  const [viewMode, setViewMode] = useState<'map' | 'targets'>('map');
   const [showGuide, setShowGuide] = useState(false);
   const [showOwnedProperties, setShowOwnedProperties] = useState(false);
   const ownedPropertyIds = useMemo(
@@ -162,6 +162,15 @@ export const MarketView: React.FC<MarketViewProps> = ({
   const ownedFilteredCount = filteredProperties.filter((property) => property.owner === 'player').length;
   const showOwnedCards = showOwnedProperties || selectedOwnerFilter === 'PLAYER';
   const visibleProperties = filteredProperties.filter((property) => showOwnedCards || property.owner !== 'player');
+  const recommendedTargetId = visibleProperties
+    .filter((property) => property.owner !== 'player')
+    .map((property) => ({ property, result: getStrengthComparison(property) }))
+    .sort(
+      (left, right) =>
+        READINESS_PRIORITY[right.result.grade] - READINESS_PRIORITY[left.result.grade] ||
+        right.result.assessmentRatio - left.result.assessmentRatio ||
+        left.property.marketPrice - right.property.marketPrice
+    )[0]?.property.id;
   const activeTargetCount = filteredProperties.length - ownedFilteredCount;
   const readinessSource =
     viewMode === 'targets'
@@ -290,6 +299,9 @@ export const MarketView: React.FC<MarketViewProps> = ({
                 <img src={getFankitJobArt(community.id)} alt="" aria-hidden="true" className="absolute -bottom-5 -right-4 h-24 w-24 object-contain opacity-20 transition-transform group-hover:scale-110" />
                 <span className="relative z-10 flex items-center gap-1 text-xs font-black text-slate-100">{!unlocked && <LockKeyhole className="h-3 w-3 text-slate-500" />}{community.id}</span>
                 <span className="relative z-10 mt-1 block text-[11px] text-cyan-300">{community.marketCharacter}</span>
+                {!hasStartedCampaign && community.id === 'グリダニア' && (
+                  <span className="campaign-city-card__start">ここから開始</span>
+                )}
                 <span className={`relative z-10 mt-2 inline-block rounded px-1.5 py-0.5 text-[11px] font-black ${community.conquered ? 'bg-emerald-400/20 text-emerald-200' : 'bg-slate-800 text-slate-300'}`}>
                   {community.conquered
                     ? campaignMode === 'savage'
@@ -321,7 +333,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
   return (
     <div className="market-screen-enter space-y-3 font-sans">
       {campaignMode === 'normal' && !hasStartedCampaign && (
-        <BeginnerGuide defaultOpen />
+        <BeginnerGuide />
       )}
       <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-500/20 bg-slate-900/90 p-3">
         <div>
@@ -360,8 +372,14 @@ export const MarketView: React.FC<MarketViewProps> = ({
         </div>
       )}
 
-      {/* Filters Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
+      {/* Filters stay collapsed until needed so the first actionable target remains above the fold. */}
+      <details className="group rounded-xl border border-slate-800 bg-slate-900/80">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-bold text-slate-300 marker:content-none">
+          <span className="flex items-center gap-2"><ListFilter className="h-4 w-4 text-amber-400" />絞り込み</span>
+          <span className="text-[10px] text-slate-500 group-open:hidden">必要なときだけ開く ▼</span>
+          <span className="hidden text-[10px] text-slate-500 group-open:inline">閉じる ▲</span>
+        </summary>
+        <div className="flex flex-col items-stretch justify-between gap-2 border-t border-slate-800 p-2.5 sm:flex-row sm:items-center">
         {/* Category Filters */}
         <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
           <select
@@ -407,7 +425,8 @@ export const MarketView: React.FC<MarketViewProps> = ({
             <option value="PLAYER">自社保有</option>
           </select>
         </div>
-      </div>
+        </div>
+      </details>
 
       {ownedFilteredCount > 0 && (
         <button
@@ -463,6 +482,9 @@ export const MarketView: React.FC<MarketViewProps> = ({
           const isBoss =
             campaignMode === 'savage' ||
             isNormalCityBoss(properties, prop);
+          const isRecommended = prop.id === recommendedTargetId && !isPlayerOwned;
+          const isSecondaryTarget =
+            !isPlayerOwned && !isRecommended && !!recommendedTargetId;
 
           // Owner badge styles
           let ownerBadgeColor = 'bg-slate-800 text-slate-300 border-slate-700';
@@ -481,7 +503,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
               key={prop.id}
               className={`trade-target-card ${
                 isPlayerOwned ? 'trade-target-card--owned' : ''
-              } ${prop.isCartelHQ ? 'trade-target-card--hq' : ''}`}
+              } ${prop.isCartelHQ ? 'trade-target-card--hq' : ''} ${isRecommended ? 'trade-target-card--recommended' : ''}`}
               data-grade={strengthComparison?.grade}
             >
               <img
@@ -517,6 +539,11 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       初心者向け
                     </span>
                   )}
+                  {isRecommended && (
+                    <span className="trade-target-card__badge trade-target-card__badge--recommended">
+                      次はここ
+                    </span>
+                  )}
                   {isExtreme && (
                     <span className="trade-target-card__badge trade-target-card__badge--hq">
                       極・再買収
@@ -534,36 +561,10 @@ export const MarketView: React.FC<MarketViewProps> = ({
                   )}
                 </h3>
 
-                {strengthComparison && (
-                  <StrengthComparison result={strengthComparison} compact summaryOnly />
-                )}
-
                 {!isPlayerOwned && (
-                  <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-950/25 px-3 py-2 text-[11px] text-emerald-100">
-                    <b className="block text-emerald-300">勝利すると強くなること</b>
-                    <span>この企業が人脈に加わり、毎秒収益が増える</span>
-                    {linkedSynergies.length > 0 && (
-                      <span className="mt-1 grid gap-1 text-cyan-100">
-                        <b className="text-[10px] text-cyan-300">有効な事業連携</b>
-                        <small className="grid gap-1">
-                          {linkedSynergies.map(({ synergy, ownedAfter, remaining }) => (
-                            <span
-                              key={synergy.id}
-                              className={`rounded border px-2 py-1 ${
-                                remaining === 0
-                                  ? 'border-amber-300/55 bg-amber-300/10 text-amber-100'
-                                  : 'border-cyan-400/25 bg-cyan-950/30'
-                              }`}
-                            >
-                              <b>{remaining === 0 ? 'この買収で連携完成' : '商流接続'}</b>
-                              {' · '}
-                              {synergy.name} {ownedAfter}/{synergy.requiredPropertyIds.length}
-                              {remaining > 0 ? `（あと${remaining}件）` : ''}
-                            </span>
-                          ))}
-                        </small>
-                      </span>
-                    )}
+                  <div className="trade-target-card__decision" data-grade={strengthComparison?.grade}>
+                    <b>{strengthComparison ? READINESS_PRESENTATION[strengthComparison.grade].label : '判定中'}</b>
+                    <span>勝利後：人脈＋収益</span>
                   </div>
                 )}
 
@@ -586,14 +587,16 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       title={HELP_TEXT.brokerageFee}
                       className={`trade-target-card__challenge ${
                         canAffordFee
-                          ? 'trade-target-card__challenge--ready'
+                          ? isSecondaryTarget
+                            ? 'trade-target-card__challenge--secondary'
+                            : 'trade-target-card__challenge--ready'
                           : 'trade-target-card__challenge--blocked'
                       }`}
                     >
                       {canAffordFee ? (
                         <>
                           <span className="trade-target-card__challenge-copy">
-                            <b>{campaignMode === 'savage' ? '零式へ挑戦' : isExtreme ? '再買収・極へ挑戦' : '商戦へ挑戦'}</b>
+                            <b>{isSecondaryTarget && isBoss ? '上級：それでも挑戦' : campaignMode === 'savage' ? '零式へ挑戦' : isExtreme ? '再買収・極へ挑戦' : '商戦へ挑戦'}</b>
                             <small>開始手数料 {formatCurrency(fee)}</small>
                           </span>
                           <ArrowRight className="w-4 h-4" />
@@ -610,11 +613,25 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
                 <details className="trade-target-card__details">
                   <summary>
-                    <span>事業・世界観を見る</span>
+                    <span>戦力内訳・勝利後を見る</span>
                     <span className="trade-target-card__details-open">開く ▼</span>
                     <span className="trade-target-card__details-close">畳む ▲</span>
                   </summary>
                   <div>
+                    {strengthComparison && (
+                      <StrengthComparison result={strengthComparison} compact summaryOnly />
+                    )}
+                    {!isPlayerOwned && linkedSynergies.length > 0 && (
+                      <p className="trade-target-card__synergies">
+                        {linkedSynergies.map(({ synergy, ownedAfter, remaining }) => (
+                          <span key={synergy.id}>
+                            <b>{remaining === 0 ? 'この買収で連携完成' : '商流接続'}</b>
+                            {' · '}{synergy.name} {ownedAfter}/{synergy.requiredPropertyIds.length}
+                            {remaining > 0 ? `（あと${remaining}件）` : ''}
+                          </span>
+                        ))}
+                      </p>
+                    )}
                     {propertyPresentation.tags.length > 0 && (
                       <p className="trade-target-card__tags">
                         {propertyPresentation.tags.map((tag) => (

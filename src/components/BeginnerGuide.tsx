@@ -21,9 +21,9 @@ export const BeginnerGuide: React.FC<BeginnerGuideProps> = ({
     <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 font-bold text-cyan-200 marker:content-none">
       <span className="flex items-center gap-2">
         <BookOpenCheck className="h-4 w-4 text-cyan-400" />
-        はじめての方へ：最初の買収まで
+        最初は「初心者向け」→ 全力投資
       </span>
-      <span className="text-xs font-normal text-slate-500 group-open:hidden">開く</span>
+      <span className="text-xs font-normal text-slate-500 group-open:hidden">詳しく</span>
       <span className="hidden text-xs font-normal text-slate-500 group-open:inline">閉じる</span>
     </summary>
 

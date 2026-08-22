@@ -413,27 +413,23 @@ class SoundEffects {
     const cached = this.capitalRapidFireLoopBuffers.get(cacheKey);
     if (cached) return cached;
 
-    // Direct measurements of the reference put the metallic supply clock at
-    // roughly 60–75ms. Build one reusable mono loop from the approved local
-    // tick so long investments keep a single AudioBufferSource voice on iOS.
-    // Fresh frame/audio measurements retain the fine coin chatter at about
-    // 65ms, while the recognisable major cascades recur around 400ms. Bake a
-    // strong landing every six microticks and retain the five lighter ticks
-    // between them, so the stream stays rapid without turning every sub-wave
-    // into an equally loud strike.
-    // reusable loop made only from the approved recorded tick.
+    // Source captures place the audible roll contacts on the same roughly
+    // 99ms clock as the three-frame falling sprites. Build one reusable mono
+    // loop from the approved local recording so long pours keep one source
+    // voice on mobile. Every fourth contact gets a small 396ms landing accent;
+    // there is no invented motor, tray thud or continuous 3D ambience.
     const loopDurationMs = 1_188;
     const tickOffsetsMs = [
-      0, 65, 131, 198, 264, 330, 396, 462, 528,
-      594, 660, 726, 792, 858, 924, 990, 1_056, 1_122,
+      0, 99, 198, 297, 396, 495,
+      594, 693, 792, 891, 990, 1_089,
     ] as const;
-    const accentEveryTicks = 6;
+    const accentEveryTicks = 4;
     const playbackRates = [
       0.985, 1.035, 1.015, 0.995, 1.025, 1.045,
       0.98, 1.03, 1.01,
     ] as const;
     const strongAccentGains = [1, 0.96, 1.03, 0.98, 1.01, 0.95] as const;
-    const weakMicrotickGains = [0.26, 0.2, 0.23, 0.18] as const;
+    const weakMicrotickGains = [0.34, 0.28, 0.31] as const;
     const output = ctx.createBuffer(
       1,
       Math.ceil(ctx.sampleRate * loopDurationMs / 1_000),
@@ -526,7 +522,7 @@ class SoundEffects {
     source.loopStart = 0;
     source.loopEnd = source.buffer.duration;
     master.gain.setValueAtTime(0.0001, now);
-    master.gain.linearRampToValueAtTime(0.14, now + 0.012);
+    master.gain.linearRampToValueAtTime(0.12, now + 0.012);
     if (panner) {
       panner.pan.setValueAtTime(
         session.side === 'player' ? -0.1 : 0.1,

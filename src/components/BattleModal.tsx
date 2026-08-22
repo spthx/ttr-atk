@@ -386,7 +386,7 @@ const ENEMY_SUPPORT_ACTOR_CLASS: Record<EnemySupportSkillId, string> = {
   drain: 'black-mage',
   drill: 'machinist',
   divination: 'astrologian',
-  rapid_assault: 'bard',
+  rapid_assault: 'black-mage',
   limit_break_3: 'limit-break',
   capital_reversal: 'astrologian',
   forced_liquidation: 'limit-break',
@@ -1929,12 +1929,19 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     const getFocusable = () =>
       Array.from(
         activeSurface.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+          'button:not(:disabled), summary, [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
         )
       ).filter(
-        (element) =>
-          !element.hasAttribute('hidden') &&
-          !element.closest('[inert]')
+        (element) => {
+          const closedDetails = element.closest('details:not([open])');
+          return (
+            !element.hasAttribute('hidden') &&
+            !element.closest('[inert]') &&
+            element.getClientRects().length > 0 &&
+            (!closedDetails ||
+              closedDetails.querySelector(':scope > summary') === element)
+          );
+        }
       );
     const focusTimer = window.setTimeout(() => {
       if (
@@ -5595,7 +5602,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.durationMs
       );
       setStatusText(
-        `疾風怒濤――${Math.round(
+        `黒魔紋――${Math.round(
           ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.durationMs / 1000
         )}秒間、競合の行動準備速度が約${ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.actionProgressMultiplier.toFixed(
           1
@@ -5610,7 +5617,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       );
       soundFx.playSkillImpact('FAST_ACTION', 'opponent');
       addLog(
-        `吟遊詩人が疾風怒濤を実行。競合の行動準備速度が${Math.round(
+        `黒魔道士が黒魔紋を展開。競合の行動準備速度が${Math.round(
           ENEMY_SUPPORT_SKILL_BALANCE.rapidAssault.durationMs / 1000
         )}秒間加速。`,
         'enemy'
@@ -8683,7 +8690,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       ref={rootDialogRef}
       className={`buyout-screen buyout-screen--phase-${battlePhase} buyout-screen--living-${livingDeadPhase} ${presentationPauseActive ? 'buyout-screen--ambient-paused' : ''} ${isTraining ? 'buyout-screen--training' : ''} ${isCruel ? 'buyout-screen--cruel' : ''} ${isKarma ? 'buyout-screen--karma' : ''} ${isExtremeBattle ? 'buyout-screen--extreme' : ''} ${isBossBattle ? `buyout-screen--boss buyout-screen--boss-${bossAbilityTier}` : ''} ${limitImpactActive ? 'buyout-screen--limit-impact' : ''} ${battleAnnouncement === 'limit' || limitImpactActive ? `buyout-screen--limit-tier-${displayedLimitBreakTier}` : ''} ${impactStop ? `buyout-screen--impact-${impactStop.phase} buyout-screen--impact-${impactStop.side} ${impactStop.heavy ? 'buyout-screen--impact-heavy' : ''}` : ''} ${capitalPresentationStage && activeCapitalTiming ? `buyout-screen--capital-commit buyout-screen--capital-${capitalPresentationStage} buyout-screen--capital-${activeCapitalTiming.tier}` : ''} ${skillCinematic ? `buyout-screen--skill-cinematic buyout-screen--skill-stage-${skillCinematic.stage} buyout-screen--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${isBurstTime ? 'buyout-screen--burst' : ''} ${decisiveBlow ? `buyout-screen--decisive buyout-screen--decisive-${decisiveBlow.winner}` : ''} ${terminalCinematicStage ? `buyout-screen--terminal-cinematic buyout-screen--terminal-${terminalCinematicStage}` : ''}`}
       role="dialog"
-      aria-modal="true"
+      aria-modal={
+        battlePhase === 'briefing' ||
+        battlePhase === 'result' ||
+        showHelp ||
+        showLog ||
+        panel !== 'capital'
+          ? undefined
+          : true
+      }
       aria-label={
         isTraining
           ? `${targetProperty.name}の木人訓練`
@@ -9304,8 +9319,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                     {enemyRapidAssaultRemaining > 0 && (
                       <span
                         role="img"
-                        aria-label={`疾風怒濤 残り${Math.ceil(enemyRapidAssaultRemaining / 1000)}秒`}
-                        title={`疾風怒濤 残り${Math.ceil(enemyRapidAssaultRemaining / 1000)}秒`}
+                        aria-label={`黒魔紋 残り${Math.ceil(enemyRapidAssaultRemaining / 1000)}秒`}
+                        title={`黒魔紋 残り${Math.ceil(enemyRapidAssaultRemaining / 1000)}秒`}
                       >
                         <Zap />
                         <b>{Math.ceil(enemyRapidAssaultRemaining / 1000)}</b>

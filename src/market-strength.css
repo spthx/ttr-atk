@@ -143,6 +143,21 @@
   content: '';
 }
 
+.campaign-city-card__start {
+  position: absolute;
+  top: .55rem;
+  right: .55rem;
+  z-index: 20;
+  padding: .2rem .42rem;
+  border: 1px solid rgba(253, 230, 138, .72);
+  border-radius: 999px;
+  color: #1c1917;
+  background: #fde68a;
+  box-shadow: 0 .25rem .9rem rgba(245, 158, 11, .24);
+  font-size: .7rem;
+  font-weight: 950;
+}
+
 .campaign-city-card__readiness {
   position: relative;
   z-index: 10;
@@ -234,6 +249,10 @@
 .trade-target-card[data-grade='danger'] { border-color: rgba(251, 113, 133, .3); }
 .trade-target-card--hq { box-shadow: inset 0 0 2rem rgba(136, 19, 55, .14), 0 .9rem 2.2rem rgba(2, 6, 23, .25); }
 .trade-target-card--owned { border-color: rgba(52, 211, 153, .28); }
+.trade-target-card--recommended {
+  border-color: rgba(253, 230, 138, .62);
+  box-shadow: inset 0 0 1.5rem rgba(245, 158, 11, .08), 0 .9rem 2.2rem rgba(2, 6, 23, .25);
+}
 
 .trade-target-card__art {
   position: absolute;
@@ -306,11 +325,12 @@
   padding: .16rem .4rem;
   border: 1px solid currentColor;
   border-radius: .35rem;
-  font-size: .62rem;
+  font-size: .68rem;
   font-weight: 900;
 }
 
 .trade-target-card__badge--starter { color: #67e8f9; background: rgba(8, 145, 178, .12); }
+.trade-target-card__badge--recommended { color: #1c1917; background: #fde68a; }
 .trade-target-card__badge--hq { color: #fecdd3; background: rgba(190, 24, 93, .18); }
 .trade-target-card__badge--optional { color: #ddd6fe; background: rgba(109, 40, 217, .14); }
 .trade-target-card__badge--boss {
@@ -331,6 +351,39 @@
 
 .trade-target-card__action {
   min-width: 0;
+}
+
+.trade-target-card__decision {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+  padding: .48rem .62rem;
+  border: 1px solid rgba(148, 163, 184, .2);
+  border-radius: .65rem;
+  background: rgba(2, 6, 23, .56);
+  font-size: .75rem;
+}
+
+.trade-target-card__decision b { color: #e2e8f0; font-size: .78rem; }
+.trade-target-card__decision span { color: #86efac; font-weight: 800; }
+.trade-target-card__decision[data-grade='advantage'] b { color: #86efac; }
+.trade-target-card__decision[data-grade='even'] b { color: #67e8f9; }
+.trade-target-card__decision[data-grade='challenge'] b { color: #fde68a; }
+.trade-target-card__decision[data-grade='danger'] b { color: #fda4af; }
+
+.trade-target-card__synergies {
+  display: grid;
+  gap: .35rem;
+  margin: .55rem 0 0;
+}
+
+.trade-target-card__synergies span {
+  padding: .42rem .5rem;
+  border: 1px solid rgba(34, 211, 238, .2);
+  border-radius: .5rem;
+  color: #cffafe;
+  background: rgba(8, 145, 178, .08);
 }
 
 .trade-target-card__strategy-note {
@@ -410,6 +463,18 @@
 .trade-target-card__challenge--ready:hover {
   filter: brightness(1.08);
   background-position: 100% 0;
+}
+
+.trade-target-card__challenge--secondary {
+  border-color: rgba(148, 163, 184, .34);
+  color: #cbd5e1;
+  background: rgba(30, 41, 59, .86);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .04);
+}
+
+.trade-target-card__challenge--secondary:hover {
+  border-color: rgba(251, 191, 36, .45);
+  color: #fde68a;
 }
 
 .trade-target-card__challenge--blocked {

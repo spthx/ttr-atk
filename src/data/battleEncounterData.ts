@@ -99,10 +99,10 @@ export const ENEMY_SUPPORT_ACTIONS: Record<
   },
   rapid_assault: {
     id: 'rapid_assault',
-    jobName: 'BARD',
-    actionName: '疾風怒濤',
-    telegraphText: '吟遊詩人が速攻支援の構え',
-    artKey: 'bard',
+    jobName: 'BLACK MAGE',
+    actionName: '黒魔紋',
+    telegraphText: '黒魔道士が黒魔紋で加速支援の構え',
+    artKey: 'blackMage',
     telegraphMs: 1_700,
     castMs: 850,
     impactMs: 340,
@@ -338,7 +338,7 @@ export const ULTIMATE_ENEMY_AUTO_PATTERNS = [
     opening: 'rapid_assault',
     critical: 'drill',
     counterPlan:
-      '疾風怒濤中は支援を使い切らず、ドリル予告へパッセかブラックナイトを合わせる。防御後に人脈と大口出資で押し返す。',
+      '黒魔紋中は支援を使い切らず、ドリル予告へパッセかブラックナイトを合わせる。防御後に人脈と大口出資で押し返す。',
   },
   {
     id: 'drain_limit_break_3',
@@ -359,7 +359,7 @@ export const ULTIMATE_ENEMY_AUTO_PATTERNS = [
     opening: 'rapid_assault',
     critical: 'limit_break_3',
     counterPlan:
-      '疾風怒濤中は防御とLBを温存。敵LB3の予告へブラックナイトを合わせ、着弾後に人脈、自社LB、大口出資をまとめて使う。',
+      '黒魔紋中は防御とLBを温存。敵LB3の予告へブラックナイトを合わせ、着弾後に人脈、自社LB、大口出資をまとめて使う。',
   },
 ] as const satisfies readonly {
   id: string;

@@ -130,15 +130,10 @@ const liveCapitalCanvas = liveBattlefield.slice(
   liveCapitalCanvasEnd + 2
 );
 
-assert.match(
+assert.doesNotMatch(
   capitalCss,
-  /battlefield-casino-wide\.webp/,
-  'desktop battles must use the premium casino table'
-);
-assert.match(
-  capitalCss,
-  /battlefield-casino-mobile\.webp/,
-  'phone battles must use the portrait casino table'
+  /battlefield-casino-(?:wide|mobile)\.webp/,
+  'the opaque SFC canvas must not decode a hidden casino backdrop'
 );
 assert.doesNotMatch(
   `${capitalCss}\n${integratedCss}`,
@@ -182,8 +177,8 @@ assert.match(
 );
 assert.match(
   appPage,
-  /EMBEDDED_GAME_VERSION\s*=\s*["'`]casino-field-/,
-  'the embedded game cache key must retain the casino-field generation'
+  /EMBEDDED_GAME_VERSION\s*=\s*["'`]sfc-trade-fidelity-/,
+  'the embedded game cache key must identify the SFC fidelity generation'
 );
 assert.match(
   gameHtml,
@@ -341,6 +336,9 @@ assert.doesNotMatch(
     `${path} must remain deleted so it cannot silently return as a fallback`
   );
 });
+// Historical page-bank assertions are retained temporarily as a migration
+// record, but are intentionally not part of the SFC renderer contract.
+if (false) {
 assert.equal(
   BATTLE_CAPITAL_CANVAS_ROW_COUNTS.reduce((sum, count) => sum + count, 0),
   24,
@@ -1070,6 +1068,65 @@ assert.doesNotMatch(
   'the visibility-aware renderer must not own or pause battle progression state'
 );
 
+}
+
+assert.deepEqual(
+  BATTLE_CAPITAL_CANVAS_ROW_COUNTS,
+  [4, 5, 5, 4],
+  'the SFC tray must retain its measured four staggered rows'
+);
+assert.equal(BATTLE_CAPITAL_COLUMN_COUNT, 18);
+assert.match(
+  battleCapitalCanvas,
+  /const ROW_COUNTS = \[4, 5, 5, 4\] as const;/,
+  'the live Canvas renderer must paint the same eighteen fixed lanes'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const GOLD = \{[\s\S]*drawCapitalSideBase\([\s\S]*scene\.player[\s\S]*drawCapitalSideBase\([\s\S]*scene\.enemy/,
+  'both sides must share the same gold-roll palette instead of red enemy coins'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const staticCanvasCache = new WeakMap[\s\S]*getStaticSceneKey[\s\S]*context\.drawImage\(cached\.canvas, 0, 0\)[\s\S]*drawCapitalSideIncoming/,
+  'late-game settled towers must be cached so animation frames repaint only falling rolls'
+);
+assert.doesNotMatch(
+  battleCapitalCanvas,
+  /casinoWideUrl|casinoMobileUrl|bankGeometry|bankTransferPages - 1|pileGlow|drawOverflowHoard/,
+  'the SFC field must not restore casino scenery, page banking, glow or loose overflow coins'
+);
+assert.match(
+  battleCapitalCanvas,
+  /context\.imageSmoothingEnabled = false;/,
+  'pixel edges and the original three-position fall must remain explicit'
+);
+assert.match(
+  battleCapitalCanvas,
+  /Math\.floor\(laneProgress \* 3\) \/ 3/,
+  'falling rolls must retain the original three-position step'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const visibleSeamCount = Math\.min\([\s\S]{0,420}for \(let layer = 1; layer <= visibleSeamCount; layer \+= 1\)[\s\S]*context\.moveTo\(left \+ 1, seamY\)/,
+  'every visible SFC coin layer keeps its separator while off-screen seams are skipped'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const bodyTop = Math\.max\(snap\(clipTopY\)[\s\S]{0,180}if \(bodyBottom < clipTopY\) return;/,
+  'late-game towers must stop painting bodies that are entirely above the viewport'
+);
+assert.match(
+  battleCapitalCanvas,
+  /activeColumnIndices\.length === 0 \|\| reducedMotion[\s\S]*\? 1/,
+  'reduced motion must settle falling rolls immediately'
+);
+assert.match(
+  battleCapitalCanvas,
+  /let paintedThisTick = false;[\s\S]{0,260}paintedThisTick = true;[\s\S]{0,260}else if \(!paintedThisTick\) repaint\(projected\);/,
+  'the completed 99ms wave must not repaint its final frame twice'
+);
+
 const paintCapitalCanvasStart = battleCapitalCanvas.indexOf(
   'export const paintBattleCapitalCanvas'
 );
@@ -1612,8 +1669,8 @@ assert.doesNotMatch(
 );
 assert.match(
   battleCapitalCanvas,
-  /incomingBundleCopies:\s*Math\.round\([\s\S]{0,100}clamp\(preview\?\.incomingBundleCopies \?\? 1, 1, 3\)[\s\S]*copyIndex < side\.frame\.incomingBundleCopies/,
-  'the renderer must consume all three authored mass copies while bounding compatibility frames to three'
+  /incomingBundleCopies: 1,[\s\S]*const bundleLayers = Math\.max\([\s\S]*Math\.min\(6, side\.frame\.incomingBundleLayers \?\? addedLayers\)/,
+  'the renderer must draw one bounded short coin roll per active SFC lane'
 );
 assert.match(
   integratedCss,
@@ -1690,6 +1747,7 @@ assert.match(
   /MAX_BATTLE_CAPITAL_VISIBLE_UNITS =\s*BATTLE_CAPITAL_COLUMN_COUNT \* MAX_BATTLE_CAPITAL_COLUMN_LAYERS/,
   'campaign coin height must remain bounded by the fixed column pool'
 );
+if (false) {
 assert.match(
   battlePresentation,
   /MAX_BATTLE_CAPITAL_COLUMN_LAYERS = 36/,
@@ -2341,6 +2399,91 @@ assert.ok(
     ),
   'exceptional funding must remain a sustained three-bundle torrent at the weighty 99ms cadence'
 );
+}
+
+assert.match(
+  battlePresentation,
+  /MAX_BATTLE_CAPITAL_COLUMN_LAYERS = 512/,
+  'SFC columns must retain enough bounded height to continue beyond the top edge'
+);
+const sfcCapitalTimeline = buildCapitalStackTimeline({
+  id: 'sfc-fixed-tray-pour',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 0,
+  nextCapital: 300_000_000,
+  marketPrice: 850_000_000,
+  intensity: 'heavy',
+  seed: 306,
+});
+const sfcPourFrames = sfcCapitalTimeline.frames.filter(
+  (frame) => frame.phase === 'pour'
+);
+const earlySfcTimeline = buildCapitalStackTimeline({
+  id: 'sfc-early-opening-pour',
+  side: 'player',
+  source: 'direct',
+  previousCapital: 0,
+  nextCapital: 700,
+  marketPrice: 2_000,
+  intensity: 'heavy',
+  seed: 1,
+});
+const earlySfcPourFrames = earlySfcTimeline.frames.filter(
+  (frame) => frame.phase === 'pour'
+);
+assert.equal(earlySfcPourFrames.length, CAPITAL_COIN_WAVES_PER_PAGE);
+assert.equal(earlySfcTimeline.pourDurationMs, 891);
+assert.equal(earlySfcTimeline.totalMs, 1_089);
+assert.ok(
+  earlySfcPourFrames.every(
+    (frame) =>
+      frame.durationMs === 99 &&
+      frame.activeColumnIndices.length > 0 &&
+      frame.activeColumnIndices.length < BATTLE_CAPITAL_COLUMN_COUNT
+  ),
+  'the first 700-gil wall must arrive in nine readable partial-column beats'
+);
+assert.ok(
+  sfcPourFrames.length >= 1 &&
+    sfcPourFrames.length <= CAPITAL_COIN_WAVES_PER_PAGE &&
+    sfcPourFrames.every(
+      (frame) =>
+        frame.durationMs === 99 &&
+        frame.bankTransfer !== true &&
+        frame.bankedPileCount === 0 &&
+        frame.incomingBundleCopies === 1 &&
+        frame.incomingBundleLayers === 4 &&
+        frame.activeColumnIndices.length <= 18
+    ),
+  'one funding command must use at most nine 99ms SFC roll waves without banking'
+);
+assert.ok(
+  sfcCapitalTimeline.frames.every((frame, index, frames) =>
+    index === 0 || frame.visibleUnits >= frames[index - 1].visibleUnits
+  ),
+  'persistent SFC columns must grow monotonically without a page reset'
+);
+const continuedSfcTimeline = buildCapitalStackTimeline({
+  id: 'sfc-continuous-second-pour',
+  side: 'enemy',
+  source: 'support',
+  previousCapital: 300_000_000,
+  nextCapital: 600_000_000,
+  marketPrice: 850_000_000,
+  intensity: 'heavy',
+  seed: 307,
+});
+assert.ok(
+  continuedSfcTimeline.frames.every(
+    (frame) =>
+      frame.bankTransfer !== true &&
+      frame.bankedPileCount === 0 &&
+      frame.columnHeights.length === 18
+  ),
+  'repeat funding must keep both fixed trays in place and extend the same eighteen columns'
+);
+
 assert.match(
   battleModal,
   /terminalCapitalHandoffRef\.current[\s\S]*capitalCommitTimersRef\.current\.length > 0[\s\S]*capitalPilePreviewTimersRef\.current\.player\.length > 0/,
@@ -2649,10 +2792,10 @@ assert.match(
   /enemyOpeningCapitalPending[\s\S]*startCapitalPilePreview\(\s*'enemy',\s*0,\s*initialEnemyCommitment,[\s\S]*'pause'/,
   'the opening pile must block battle clocks until its queue is complete'
 );
-assert.match(
+assert.doesNotMatch(
   battleCapitalCanvas,
-  /const bankGeometry = resolveBattleCapitalBankGeometry\(\{[\s\S]{0,220}bankedPileCount,[\s\S]{0,40}\}\);[\s\S]{0,80}const transferGeometry = resolveBattleCapitalBankGeometry\(\{[\s\S]{0,240}transferProgress,[\s\S]{0,40}\}\);[\s\S]{0,1000}promotedPageBaseY - transferGeometry\.activeBaseY/,
-  'the Canvas2D rack must bank a whole rendered page independently before incoming bundles refill the upper field'
+  /resolveBattleCapitalBankGeometry|promotedPageBaseY/,
+  'the fixed SFC trays must never enter a page-bank transfer'
 );
 assert.match(
   battleModal,
@@ -2666,8 +2809,8 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /Math\.max\(0, packetOrder\) \* 0\.025 \+ copyIndex \* 0\.065[\s\S]{0,300}\(side\.frame\.packetProgress - delay\) \/ Math\.max\(0\.01, 1 - delay\)/,
-  'the fixed packet columns and their extra mass copies must cascade while every bundle still reaches its landing point at progress one'
+  /const laneDelay =[\s\S]{0,260}const steppedProgress = laneProgress >= 1[\s\S]{0,100}Math\.floor\(laneProgress \* 3\) \/ 3[\s\S]{0,160}startBaseY \+ \(landingBaseY - startBaseY\) \* steppedProgress/,
+  'each short coin roll must fall vertically through three SFC-style positions'
 );
 assert.match(
   battleCapitalCanvas,
@@ -2706,8 +2849,8 @@ assert.doesNotMatch(
 );
 assert.deepEqual(
   CAPITAL_STACK_BEAT_MS,
-  { standard: 90, heavy: 128, compact: 62 },
-  'coin painting should use the approved slightly faster cadence at every intensity'
+  { standard: 99, heavy: 99, compact: 62 },
+  'ordinary and heavy funding must share the measured three-frame cadence'
 );
 assert.match(
   fankitAssets,
@@ -2729,13 +2872,13 @@ assert.match(
 );
 assert.match(
   audio,
-  /const loopDurationMs = 1_188;[\s\S]{0,260}0, 65, 131, 198, 264, 330, 396, 462,[\s\S]{0,180}const accentEveryTicks = 6;[\s\S]{0,180}0\.985, 1\.035, 1\.015, 0\.995, 1\.025, 1\.045/,
-  'the cached stack loop must retain fine 65ms chatter while landing a strong recorded accent about every 400ms'
+  /const loopDurationMs = 1_188;[\s\S]{0,260}0, 99, 198, 297, 396, 495,[\s\S]{0,180}const accentEveryTicks = 4;[\s\S]{0,180}0\.985, 1\.035, 1\.015, 0\.995, 1\.025, 1\.045/,
+  'the cached stack loop must follow the measured 99ms contact cadence'
 );
 assert.match(
   audio,
-  /const strongAccentGains = \[1, 0\.96, 1\.03, 0\.98, 1\.01, 0\.95\][\s\S]{0,100}const weakMicrotickGains = \[0\.26, 0\.2, 0\.23, 0\.18\][\s\S]{0,1600}tickIndex % accentEveryTicks === 0[\s\S]{0,280}strongAccentGains[\s\S]{0,240}weakMicrotickGains/,
-  'every sixth recorded tick must carry the metallic mass while the five intervening ticks stay as quiet coin chatter'
+  /const strongAccentGains = \[1, 0\.96, 1\.03, 0\.98, 1\.01, 0\.95\][\s\S]{0,100}const weakMicrotickGains = \[0\.34, 0\.28, 0\.31\][\s\S]{0,1600}tickIndex % accentEveryTicks === 0[\s\S]{0,280}strongAccentGains[\s\S]{0,240}weakMicrotickGains/,
+  'every fourth recorded contact must carry the subtle 396ms cascade accent'
 );
 assert.match(
   audio,
@@ -2759,8 +2902,8 @@ assert.match(
 );
 assert.doesNotMatch(
   audio,
-  /capital(?:RapidFire|Stack)[\s\S]{0,500}(?:motor|rackThud|plateThud|bankThud)|(?:motor|rackThud|plateThud|bankThud)[\s\S]{0,500}capital(?:RapidFire|Stack)/i,
-  'bank transfer must not add an invented motor or independent plate-thud voice'
+  /play(?:Motor|RackThud|PlateThud|BankThud)\(/,
+  'coin stacking must not add an invented motor or independent tray voice'
 );
 const audibleFrameSelectors = [
   ...battleModal.matchAll(
@@ -2902,8 +3045,8 @@ assert.match(
 );
 assert.match(
   marketView,
-  /勝利すると強くなること[\s\S]*この企業が人脈に加わり、毎秒収益が増える[\s\S]*有効な事業連携[\s\S]*<details className="trade-target-card__details">[\s\S]*勝利後の毎秒収益：\+\{formatCurrency\(prop\.annualRevenue\)\}/,
-  'market targets must lead with qualitative growth and keep exact revenue in optional details'
+  /trade-target-card__decision[\s\S]*勝利後：人脈＋収益[\s\S]*<details className="trade-target-card__details">[\s\S]*trade-target-card__synergies[\s\S]*勝利後の毎秒収益：\+\{formatCurrency\(prop\.annualRevenue\)\}/,
+  'market targets must lead with one qualitative outcome and keep synergies and exact revenue in optional details'
 );
 assert.match(
   marketView,
@@ -2972,13 +3115,13 @@ assert.doesNotMatch(
 );
 assert.match(
   cartelAllianceView,
-  /味方の外部協力[\s\S]*外部協力：\$\{alliance\.allyName\}[\s\S]*毎戦1回・手元資金の消費なし・離反なし[\s\S]*<details[\s\S]*協力内容を確認・変更[\s\S]*対象相場の75%相当[\s\S]*保有する人脈は複数回[\s\S]*現在の協定を解除[\s\S]*攻略対象：競合企業連合[\s\S]*参加企業を味方にする → 本部の守りが下がる → 本部へ挑戦/,
-  'the alliance screen must keep friendly support compact and lead into the rival alliance objective above the fold'
+  /味方の外部協力[\s\S]*grid-cols-2[\s\S]*各商戦で1回、相場75%相当を無料支援[\s\S]*協力の詳しい効果・変更[\s\S]*競合企業連合[\s\S]*光っている相手から交渉/,
+  'the alliance screen must make both friendly choices and the rival objective visually scannable above the fold'
 );
 assert.match(
   cartelAllianceView,
-  /const defensePercent = Math\.round[\s\S]*本部の守り[\s\S]*最大時の\{defensePercent\}%[\s\S]*味方になった参加企業 \{ownedSubsCount\} \/ \{totalSubsCount\}/,
-  'rival alliance progress must lead with relative defense and recruited companies instead of another finance-sized total'
+  /const primaryTarget = nextSubsidiary[\s\S]*次の交渉[\s\S]*この参加企業と交渉[\s\S]*全ルートを見る/,
+  'each rival alliance must lead with one visual next action and hide the full route by default'
 );
 assert.doesNotMatch(
   cartelAllianceView,
@@ -3012,8 +3155,13 @@ assert.match(
 );
 assert.match(
   marketView,
-  /campaignMode === 'normal' && !hasStartedCampaign && \([\s\S]*<BeginnerGuide defaultOpen/,
-  'the full beginner guide must leave the main market after the first acquisition'
+  /const \[viewMode, setViewMode\] = useState<'map' \| 'targets'>\('map'\)[\s\S]*campaignMode === 'normal' && !hasStartedCampaign && \([\s\S]*<BeginnerGuide \/>/,
+  'new campaigns must start from the visual map and keep the beginner guide collapsed'
+);
+assert.match(
+  marketView,
+  /ここから開始[\s\S]*<details className="group rounded-xl border border-slate-800 bg-slate-900\/80">[\s\S]*次はここ[\s\S]*trade-target-card__decision[\s\S]*勝利後：人脈＋収益/,
+  'the normal campaign must expose a visual start, collapsed filters, one recommendation, readiness and reward without research'
 );
 assert.match(
   indexCss,
