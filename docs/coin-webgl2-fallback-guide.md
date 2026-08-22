@@ -1,8 +1,10 @@
 # 商戦フィールド描画 WebGL2 フォールバック実装手引き
 
+> **2026-08-22更新:** 旧24列・99ms・active/banked page契約は廃止した。現在の正本は[`romasaga3-trade-reference.md`](./romasaga3-trade-reference.md)と[`rs3-trade-regression-baseline.json`](./rs3-trade-regression-baseline.json)であり、18アンカー `[4,5,5,4]`、最低8枚に見える束、165ms×最大9wave、SFC表示ではbankingなしを守る。本書のWebGL2案もこの現行sceneをそのまま投影する場合だけ有効である。
+
 ## 1. 目的
 
-現行React版は、両陣営の24列active/bankedコインpage・金額連続incoming wave・所有率前線・戦場背景・風・VSを共通1枚のCanvas2Dへ投影し、人物・固定台帳・テロップ・semantic progressbar・操作UIをDOMに残す構成を製品既定とする。対象実機でCanvas2D版がperformance gateを満たさない場合に限り、同じ描画sceneをWebGL2へ交換できるようにする。旧DOM/CSS列は比較基準であり、製品既定ではない。
+現行React版は、両陣営の18アンカーのsettled/incoming金貨束・厚い台座・所有率前線・戦場背景・風・VSを共通1枚のCanvas2Dへ投影し、人物・固定台帳・テロップ・semantic progressbar・操作UIをDOMに残す構成を製品既定とする。対象実機でCanvas2D版がperformance gateを満たさない場合に限り、同じ描画sceneをWebGL2へ交換できるようにする。旧DOM/CSS列は履歴比較用であり、製品の見た目の正本ではない。
 
 WebGL2化はゲームルール、投入額、所有率、AI、演出時間、音声予約、画面遷移を変更する理由にしてはならない。変更するのは、React側で確定した`BattleCapitalCanvasScene`と積載preview frameを画面へ投影するrendererだけである。
 
@@ -15,7 +17,7 @@ Canvas2DをCurrent、旧DOM/CSSをReference、WebGL2を候補として、次の�
 - 同一scene
 - 同一`CapitalStackEvent`
 - 同一seed
-- 同一active/banked page数／列高／incoming wave順
+- 同一18アンカー／列高／incoming wave順／最低束厚
 - 同一viewport、DPR、fps設定
 - 同一ブラウザとハードウェア
 - 同一録画・計測手順
@@ -26,7 +28,7 @@ WebGL2を採用する最低条件は次の三つを同時に満たすことで�
 
 1. Canvas2D製品既定版が対象実機のperformance gateを外れる。
 2. WebGL2版が同一条件で定量的に改善する。
-3. human blind A/Bでコインの物量感、active/banked pageの成長とtransfer、人物・金額・ゲージの可読性がCanvas2D Current以上になる。
+3. human blind A/Bでコイン束の物量感、長柱の連続成長、台座への接地、人物・金額・ゲージの可読性がCanvas2D Current以上になる。
 
 Canvas2Dが同じ条件をより小さい複雑性で満たす場合は、WebGL2を優先しない。
 
@@ -55,9 +57,9 @@ rendererはこれらを変更せず、コールバックで再計算も要求し
 - `CapitalStackTimelineFrame`
 - `buildCapitalStackTimeline(event)`
 
-rendererは`activeColumnIndices`、`columnHeights`、`bankedColumnHeights`、`bankedPileCount`、`bankTransferPages`、`incomingBundleCopies`、`incomingBundleLayers`、`packetSeed`、`atMs`、`durationMs`をそのまま消費する。相場35%の全力投入を満杯1pageとするpage work、金額に応じたwave数、page完了時の一括transfer、24列全面×3束×9層の走査順をrenderer側で乱数生成し直してはならない。通常設定は99msのwaveを使い、モーション低減時だけ1wave・1束へ圧縮する。
+rendererは`activeColumnIndices`、`columnHeights`、`settledAfterColumnHeights`、`incomingBundleLayers`、`packetSeed`、`atMs`、`durationMs`をそのまま消費する。互換型に残る`bankedColumnHeights`、`bankedPileCount`、`bankTransferPages`は現行SFC rendererでは常に中立値として扱い、表示へ復活させない。相場35%の全力投入を1つの視覚ページ基準とし、18アンカー全面、4論理層の落下束、最大9waveの走査順をrenderer側で乱数生成し直してはならない。通常設定は165msのwaveを使い、モーション低減時だけ1waveへ圧縮する。1以上の論理列高は表示上最低8枚の短い円柱束へ写像する。
 
-30fps／60fpsはtimelineを読む回数だけを変え、scene、seed、page work、wave数、開始・着地・transfer時刻、最終active/banked状態を変えない。
+30fps／60fpsはtimelineを読む回数だけを変え、scene、seed、page work、wave数、開始・着地時刻、最終settled状態を変えない。
 
 ## 4. renderer interface
 
@@ -117,17 +119,17 @@ scripts/coin-renderer-benchmark/
 
 ### 5.1 DOM/CSS（比較用Reference）
 
-- 24列active/banked pageの見た目と固定上限を比較契約として維持する。
+- 旧DOM/CSSは履歴比較にだけ使い、18アンカーの現行見た目の正本にしない。
 - 金額比例DOMを作らない。
-- incoming waveも同時24列×3束×9層の固定上限を維持する。
-- 現行版の見た目と操作を比較基準にする。
+- 現行版の操作と状態遷移だけを比較基準にする。
 - 製品画面でCanvas2Dと同時にlive mountしない。
 
 ### 5.2 Canvas2D
 
 - 現行製品は両陣営共通1枚のcanvasを使う。
-- 背景、所有率前線、圧力、左右24列のactive/banked page、24列×3束×9層のincoming wave、風、VSを同じsceneで描く。
-- banked pageは画面下で一部をclipしても量感を読める帯を残し、page transfer後に別のsinkを重ねて全体を隠さない。
+- 背景、所有率前線、圧力、左右18アンカーのsettled/incoming金貨束、厚い台座、風、VSを同じsceneで描く。
+- 長柱は同じ18アンカーを上へ伸ばしてfield上端でclipする。SFC rendererにbanked pageや台座下降を混在させない。
+- 透過金貨・台座素材はnearest-neighbourで描き、台座前壁を最後に重ねて束根元を隠す。1束でも背景の水平隙間を残さない。
 - idle時は`requestAnimationFrame`を回さない。active packet中だけ30/60fpsで更新し、`document.hidden`ではrendererの更新だけを止める。
 - CSS寸法は統合商戦フィールドへ一致させたまま、内部解像度だけを30fps時DPR 1.5、60fps時DPR 2までに制限する。高密度iPhoneで描画画素が過剰に増えるのを防ぎ、勝敗・入力・演出時間には触れない。
 - 固定台帳、テロップ、人物、semantic progressbar、操作UIはDOMのまま残す。
@@ -136,7 +138,7 @@ scripts/coin-renderer-benchmark/
 
 - 2D直交投影だけを使い、3Dカメラ、ライト、物理演算を入れない。
 - コインは固定上限のinstance bufferへ事前確保する。投入額に応じてbufferやオブジェクトを増やさない。
-- 上限の出発点は、陣営ごと24列×36層のactive、24列×36層のbanked、9層の短い束を24列×3束同時に落とすincomingを、両陣営分同時表示できる固定instance bufferとする。
+- 上限の出発点は、陣営ごと18アンカー×512論理層のsettled領域と、18アンカーへ短い束を同時に落とすincoming領域を、両陣営分固定確保する。ただし実測前にCanvas2Dより大きいGPU資源を常駐させない。
 - 1枚のtexture atlasと少数のdraw callを基本とする。
 - alphaはpremultipliedの有無をtexture、shader、blend設定で統一する。
 - `packetSeed`は位置、奥行き、微小な明暗差の決定論的参照にだけ使う。
@@ -151,11 +153,11 @@ scripts/coin-renderer-benchmark/
 1. `mount`時にWebGL2 context、program、VAO、固定instance buffer、texture atlasを一度だけ生成する。
 2. `ResizeObserver`でCSS寸法を受け、viewportとprojection matrixだけを更新する。
 3. timelineの絶対経過時間から現在frameを選ぶ。
-4. `columnHeights`と`bankedColumnHeights`をそれぞれの24列固定instance領域へ反映する。
-5. `activeColumnIndices`の24列すべてへ、各列3束×9層のincoming bundleを99msで同時に落とす。
-6. `bankTransferPages`が示す完了page数の下げ幅を先に計算し、active pageと受け皿を一度で画面下のbankへ移動する。transfer後の二次sinkは加えず、banked pageの可視clip帯を残す。
-7. incoming wave着地と同じframeでactive pageの列高を確定する。
-8. 最終frameを保持し、Reactから完了通知を受けるまで独自に消去しない。
+4. `columnHeights`を18アンカー固定instance領域へ反映する。1以上の列高は最低8枚に見える束へ写像する。
+5. `activeColumnIndices`へ4論理層のincoming bundleを165msで落とす。左右のXは鏡像にする。
+6. 台座背面、settled、incoming、台座前壁の順で描き、前列の根元を隠す。
+7. incoming wave着地と同じframeでsettled列高を確定する。
+8. 長柱は上端でclipし、最終frameをReactから完了通知を受けるまで独自に消去しない。
 
 描画側の補間は位置・不透明度・光だけに使う。`presentedCapital`、列高、packet順、phase境界を補間で飛び越えてはならない。
 
@@ -283,7 +285,7 @@ hardwareを取得できないブラウザでは推測せず`TBD`とする。`per
 - renderer変更でsimulation関数が一度も追加実行されない。
 - 0→35%、0→75%、酷開幕が必ず可視packetを持つ。
 - 飽和後の正の追加投入も最低1回の可視packetと音を持つ。
-- 開幕ブリーフィングで完成済み敵active/banked pageを先出ししない。
+- 開幕ブリーフィングで完成済みの敵資本山を先出ししない。
 - コインscene中の正の金額floaterを表示しない。
 - タタルはコイン積載時間に引きずられず早く元位置へ戻る。
 - 人物、固定金額、所有率、ゲージ、操作をコインが隠さない。
@@ -302,4 +304,4 @@ hardwareを取得できないブラウザでは推測せず`TBD`とする。`per
 2. human blind A/BでCurrentより改善する。
 3. 対象実機でperformance gateを満たす。
 
-WebGL2は目的ではなく、**同じコイン積み勝負を、重い端末でも欠落なく見せるための交換可能な描画手段**である。演出を軽くするためにコイン、音、wave数、page transfer、積載queueを減らすのではなく、rendererの責務と固定資源の使い方を改善する。
+WebGL2は目的ではなく、**同じコイン積み勝負を、重い端末でも欠落なく見せるための交換可能な描画手段**である。演出を軽くするためにコイン、音、wave数、接地、積載queueを減らすのではなく、rendererの責務と固定資源の使い方を改善する。

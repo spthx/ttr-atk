@@ -18,7 +18,8 @@
     "check:progression": "tsx scripts/check-progression-navigation.ts",
     "check:readiness": "tsx scripts/check-readiness-mechanics.ts",
     "check:simulations": "tsx scripts/check-battle-simulations.ts",
-    "check:visuals": "tsx scripts/check-visual-regressions.ts"
+    "check:visuals": "tsx scripts/check-visual-regressions.ts && npm run check:capital-contact",
+    "check:capital-contact": "tsx scripts/check-capital-contact.ts"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",

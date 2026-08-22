@@ -892,7 +892,7 @@ export const getBattleCapitalPageState = (
   const normalizedPrice = Math.max(1_000, marketPrice);
   // A page is a unit of visible action, not a lifetime-balance bucket. The
   // largest direct investment is 35% of the asking price, so one such command
-  // must build one complete 24x36 page at every campaign scale. The five
+  // must build one complete 18-column visual page at every campaign scale. The five
   // investment levels then occupy stable fractions of that same page and an
   // equal follow-up command can bank the old page and refill an equal one.
   const fullPageCapital =
@@ -1035,11 +1035,10 @@ export interface MechanicalCapitalColumnFrame {
 }
 
 export const CAPITAL_STACK_BEAT_MS = {
-  // Source-frame inspection shows the same roughly three-frame drop for both
-  // ordinary and large funding. Amount changes the number of rolls, not their
-  // gravity or cadence.
-  standard: 99,
-  heavy: 99,
+  // Two independent SFC captures place a complete nine-wave page between
+  // 1.40s and 1.55s. Five 30fps frames per wave gives 1.485s per page.
+  standard: 165,
+  heavy: 165,
   compact: 62,
 } as const;
 
@@ -1053,12 +1052,11 @@ export const CAPITAL_OVERFLOW_RESTACK_BEATS = {
 } as const;
 
 // Overflow still carries every authored sweep and every bounded mass copy.
-// The visual beat is deliberately slower than the 65ms audio microticks so a
-// full-width packet remains readable instead of vanishing after two frames.
-// Three frames at 30fps keeps each full-width coin wave readable and weighty.
-// Four visual waves also align with the recorded stream's 396ms strong accent.
-export const CAPITAL_OVERFLOW_RAPID_BEAT_MS = 99;
-/** Dense treasury pages land on the reviewed three-frame visual beat. */
+// SFC-authentic five-frame bundle cadence. The cached audio roll deliberately
+// remains denser than this outer visual clock, matching the many coin contacts
+// inside one falling cylindrical bundle.
+export const CAPITAL_OVERFLOW_RAPID_BEAT_MS = 165;
+/** Dense treasury pages land on the reviewed five-frame visual beat. */
 export const CAPITAL_COIN_WAVE_MS = CAPITAL_OVERFLOW_RAPID_BEAT_MS;
 export const CAPITAL_COIN_WAVES_PER_PAGE = 9;
 export const CAPITAL_COIN_WAVE_MIN_COLUMNS = BATTLE_CAPITAL_COLUMN_COUNT;
@@ -2078,8 +2076,8 @@ export const buildCapitalStackTimeline = (
 };
 
 /**
- * Structural depth beyond the drawable 24x36 rack. The first twenty-four
- * hidden layers preserve the three familiar visual grades. Beyond that point
+ * Structural depth beyond the drawable fixed rack. The first familiar visual
+ * grades remain continuous; beyond that point
  * the depth remains continuous and logarithmic, so another material funding
  * wave can lower the completed treasury again without creating an unbounded
  * amount-proportional particle system.

@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "researchDate": "2026-08-22",
+  "scope": "Romancing SaGa 3 trade coin/pedestal presentation",
+  "evidence": {
+    "sfcEarlyPrimary": {
+      "url": "https://www.youtube.com/watch?v=N48kVbGG2tE",
+      "firstVisibleSeconds": 146.316,
+      "fullySettledSeconds": 147.85,
+      "pageDurationSeconds": 1.534
+    },
+    "sfcEarlyCrosscheck": {
+      "url": "https://www.youtube.com/watch?v=2m0Y_8VCEQM",
+      "firstVisibleSeconds": 51.124,
+      "fullySettledSeconds": 52.524,
+      "pageDurationSeconds": 1.4
+    },
+    "sfcLate": {
+      "url": "https://www.youtube.com/watch?v=CaIiBp-zevM",
+      "commandWithResidualAnimationSeconds": 38.017,
+      "fundingConfirmedSeconds": 44.017,
+      "pageApproximatelySettledSeconds": 45.017,
+      "resultsSeconds": 80.97
+    },
+    "remasterHighLoad": {
+      "url": "https://www.youtube.com/watch?v=xdusHCc07dY",
+      "firstVisibleSeconds": 65.697,
+      "firstPageCompleteApproxSeconds": 66.198,
+      "descentBeforeSeconds": 66.631,
+      "descentAfterSeconds": 67.298
+    }
+  },
+  "geometry": {
+    "anchorCount": 18,
+    "rowsBackToFront": [4, 5, 5, 4],
+    "mirrorSides": true,
+    "visibleCoinSeparatorsMeasured": {
+      "min": 8,
+      "max": 10,
+      "classification": "M"
+    },
+    "implementationMinCoinsPerBundle": {
+      "value": 8,
+      "classification": "I"
+    },
+    "pedestalWidthInBundleWidths": {
+      "sourceMeasured": {
+        "min": 5.8,
+        "target": 6.5,
+        "max": 7.2,
+        "classification": "M"
+      },
+      "implementation": {
+        "min": 7.2,
+        "target": 7.45,
+        "max": 7.6,
+        "classification": "I"
+      }
+    }
+  },
+  "timingPresets": {
+    "sfc": {
+      "pageSecondsMin": 1.4,
+      "pageSecondsMax": 1.55,
+      "waveSecondsMinInferred": 0.15,
+      "waveSecondsMaxInferred": 0.17
+    },
+    "remaster": {
+      "pageSecondsMin": 0.52,
+      "pageSecondsMax": 0.68,
+      "waveSecondsMin": 0.055,
+      "waveSecondsMax": 0.075
+    },
+    "implementation": {
+      "wavesPerPage": 9,
+      "waveMilliseconds": 165,
+      "pageMilliseconds": 1485,
+      "classification": "I"
+    }
+  },
+  "contact": {
+    "backgroundGapMaxDevicePixels": 1,
+    "allowStableSingleThinCoin": false,
+    "allowStableLogicalBundleCountOne": true,
+    "fallingUnitMustHaveBundleHeight": true
+  },
+  "logicPresentationSeparation": {
+    "fundsIndependentOfAnimationDuration": true,
+    "ownershipIndependentOfAnimationDuration": true,
+    "winLossIndependentOfAnimationDuration": true,
+    "aiIndependentOfAnimationDuration": true,
+    "commandReadyIndependentOfResidualParticles": true
+  },
+  "responsiveViewports": {
+    "sourceAspectRatio": "4:3",
+    "preserveAnchorTopology": true,
+    "requiredDprSnapshots": [1, 1.25, 1.5, 2]
+  },
+  "inferencesNotYetCertified": [
+    "exactly nine emission waves of exactly two bundles",
+    "phase-two-specific visual differences",
+    "audio onset spacing and accent cycle",
+    "native SFC internal frame cadence"
+  ]
+}

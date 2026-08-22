@@ -1,4 +1,4 @@
-# タタルの大繁盛店
+# タタルの大繁盛商店
 
 ![タタルの大繁盛店――ギルによる買収戦](public/title-hero-v1.png)
 
@@ -17,6 +17,10 @@ FFXIVの主要都市を舞台に、ギルを積み合って民間事業・営業
 
 > このREADMEはプレイヤー向け説明書と、次にコードを扱うGPT・開発者向けの引き継ぎ資料を兼ねています。
 > 実装と説明が食い違う場合は、`src/components/BattleModal.tsx`、`src/App.tsx`、`src/data/`の順で実装を正としてください。
+
+原作映像から採寸したコイン、台座、進行テンポと判断根拠は
+[`docs/romasaga3-trade-reference.md`](docs/romasaga3-trade-reference.md)、独立した映像監査と将来の画像回帰条件は
+[`docs/romasaga3-trade-visual-reference.md`](docs/romasaga3-trade-visual-reference.md)を正本にします。
 
 ---
 
@@ -178,7 +182,7 @@ FFXIVの主要都市を舞台に、ギルを積み合って民間事業・営業
 
 ### 2.3 所有率ゲージ
 
-戦闘中は、所有率の前線、両陣営キャラクター、金貨山、実効資本、未投入資金／追加防衛枠、双方の行動タイマーを1枚の「統合商戦フィールド」へ重ねて表示します。金貨山へ描くのは実際に投入した資金だけで、手元の未投入資金は数値表示に分離します。金貨は24列×36層の上段active pageへ投入額に連続した波数で広く積まれ、相場35%の「全力」1回を満杯1pageの基準にします。通常設定の1waveは24列すべてへ各列3束×9層を99msのビートで落とし、1pageを9waveで満たします。満杯になると受け皿ごと画面下のbanked pageへ一気に送り、空いた上段へ再び大量に積み込みます。下段は画面下で一部をclipしても量感を読める帯を必ず残し、page transfer後に二度目の沈み込みを加えて全体を隠しません。モーション低減時だけ1wave・1束のcompact表示へ切り替えます。投入額が倍なら総page workも倍になり、単一の最大山で頭打ちにしません。背景の青赤境界は勝敗判定と同じ正規化所有率です。双方が同時に100%を超え得る累計投入率は一本のゲージへ混ぜず、それぞれの金貨山の近くへ別々に表示します。
+戦闘中は、所有率の前線、両陣営キャラクター、金貨山、実効資本、未投入資金／追加防衛枠、双方の行動タイマーを1枚の「統合商戦フィールド」へ重ねて表示します。金貨山へ描くのは実際に投入した資金だけで、手元の未投入資金は数値表示に分離します。金貨は原作映像から採寸した18アンカーを奥から`[4, 5, 5, 4]`に並べ、少量は前中央から、増資に応じて面を埋めた後に縦へ伸ばします。1論理unitでも薄い1枚にはせず、水平仕切りを読める最低8枚の短い束として台座前壁へ接地させます。SFC優先の標準速度は9wave×165ms＝1.485秒で、計算済みの資金・所有率・AI・勝敗を演出時間から分離します。大量時も同じ18位置から長い柱を作り、完成山を消してページ間を飛ばしません。モーション低減時だけ短縮経路を使います。背景の青赤境界は勝敗判定と同じ正規化所有率です。双方が同時に100%を超え得る累計投入率は一本のゲージへ混ぜず、それぞれの金貨山の近くへ別々に表示します。
 
 フィールド直下の細い操作帯には、ゲージを内包したLIMIT BREAK、公式ファンキットの商業アイコンで示す装備中の戦闘SYNERGY 1枠、主要スキル、資金源／全スキルを開くボタンをまとめています。未解放のLBと未装備のSYNERGYは表示しません。長いカンパニー名・交渉対象名は電光掲示板のように枠内をゆっくり往復し、戦局ログは直近1件だけ常時確認でき、全履歴はボトムシートで開きます。
 
@@ -533,7 +537,8 @@ INITIAL_PROPERTIES / INITIAL_SKILLS / INITIAL_GROUP_SYNERGIES
 | `src/components/LaunchIntro.tsx` | 起動時コンテンツ紹介とカンパニー名入力 |
 | `src/components/MarketView.tsx` | 都市マップ、対象一覧、価格変動、絞り込み |
 | `src/components/BattleModal.tsx` | 買収戦の本体。最重要ファイル |
-| `src/components/BattleCapitalCanvas.tsx` | 背景・所有率前線・圧力・両陣営の24列active/banked page・投入wave・風を共通1枚のCanvas2Dへ投影 |
+| `src/components/BattleCapitalCanvas.tsx` | 背景・所有率前線・両陣営の18アンカー、台座、settled/incoming束を共通1枚のCanvas2Dへ投影 |
+| `src/utils/battleCapitalCanvasLayout.ts` | `[4,5,5,4]`配置、最小8枚束、横長台座、縦横共通の接地幾何 |
 | `src/utils/battleCanvasQuality.ts` | Canvasの内部解像度を30fps=DPR 1.5、60fps=DPR 2までに抑え、高密度端末の描画画素を制限 |
 | `src/components/WindIndicator.tsx` | 5種類の風データと市場表示 |
 | `src/components/PortfolioView.tsx` | 保有資産と独立危険度管理 |
@@ -635,11 +640,12 @@ INITIAL_PROPERTIES / INITIAL_SKILLS / INITIAL_GROUP_SYNERGIES
 4. 市場表示の風と商戦ローカルの風を混同せず、商戦開始時に必ずCALMへ初期化されることを確認する
 5. 360px前後のスマホ幅で、コマンドと下端余白を確認する
 6. `npm run lint`
-7. `pnpm run check:balance`
-8. `pnpm run build`
-9. `public/game/`のハッシュ付きJS/CSSと`index.html`を一緒にコミットする
-10. 非公開デプロイ先のURL、アクセス範囲、アカウント情報を公開リポジトリへ記載しない
-11. 公開前にREADMEと引き継ぎ文書を検索し、非公開URLが混入していないことを確認する
+7. `npm run check:visuals && npm run check:balance && npm run check:readiness && npm run check:progression`
+8. `npm run check:simulations`（固定500戦）
+9. `npm run build`
+10. `public/game/`のハッシュ付きJS/CSSと`index.html`を一緒にコミットする
+11. 非公開デプロイ先のURL、アクセス範囲、アカウント情報を公開リポジトリへ記載しない
+12. 公開前にREADMEと引き継ぎ文書を検索し、非公開URLが混入していないことを確認する
 
 ---
 
@@ -648,12 +654,12 @@ INITIAL_PROPERTIES / INITIAL_SKILLS / INITIAL_GROUP_SYNERGIES
 ### 必要環境
 
 - Node.js 22.13以上
-- pnpm
+- npm（`package-lock.json`を正本にする）
 
 ### インストール
 
 ```bash
-pnpm install
+npm ci
 ```
 
 ### ローカル開発
@@ -661,13 +667,13 @@ pnpm install
 Sitesラッパーを含む開発サーバー:
 
 ```bash
-pnpm run dev
+npm run dev
 ```
 
 ゲーム単体:
 
 ```bash
-pnpm run dev:game
+npm run dev:game
 ```
 
 Windowsでは`start-game.bat`からゲーム単体の開発サーバーを起動できます。
@@ -675,16 +681,20 @@ Windowsでは`start-game.bat`からゲーム単体の開発サーバーを起動
 ### 検査
 
 ```bash
-pnpm run lint
-pnpm run check:balance
+npm run lint
+npm run check:visuals
+npm run check:balance
+npm run check:readiness
+npm run check:progression
+npm run check:simulations
 ```
 
-`lint`の実体は`tsc --noEmit`による型検査です。`check:balance`は都市別価格・収益、都市制覇対象、敵AIの代表判断、スキル解放、LIMIT BREAK実額を決定論的に検査します。
+`lint`の実体は`tsc --noEmit`による型検査です。`check:visuals`はコイン接地の専用検査を含み、18アンカー、最小8枚束、横長台座、1.485秒のSFC波、DPRごとのCanvas制約を固定します。残りは都市別価格・収益、進行導線、準備資本、敵AI、スキル、LIMIT BREAK、500戦の代表バランスを検査します。
 
 ### 本番ビルド
 
 ```bash
-pnpm run build
+npm run build
 ```
 
 ビルドは二段階です。

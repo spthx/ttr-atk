@@ -1,4 +1,41 @@
-# Product Design QA — SFC序盤スケールと選択導線（2026-08-22）
+# Product Design QA — SFC台座・最小束・縦横実戦（2026-08-22 最終）
+
+- final result: passed
+- source + implementation, same input comparison: `artifacts/capital-contact-audit/final/17-sfc-vs-implementation-v5.jpg`
+- original source state: SFC第一部初戦、低資本の片側山＋片側空台
+- implementation state: 通常キャンペーン初戦、片側158ギル＋片側空台
+- desktop evidence: `docs/evidence/capital-battle-wide.jpg`
+- minimum-bundle evidence: `docs/evidence/capital-contact-minimum-wide.jpg`
+- portrait evidence: `docs/evidence/capital-battle-portrait.jpg`
+- low-landscape result evidence: `docs/evidence/capital-result-landscape.jpg`
+- DPR 2 mirror evidence: `docs/evidence/capital-mirror-portrait-dpr2.png`
+- large landing/settled top match: `docs/evidence/capital-large-landing-match.png`
+
+## Final evidence and fixes
+
+1. 原作動画と現実装を同じ低資本状態で横並び比較した。左右曲面を変形せず中央64pxだけを12回反復する台座は、一枚の厚い基壇として見え、旧案の二枚皿の継ぎ目はない。
+2. 1論理unitは前中央の8枚束となり、前壁が根元を隠す。背景の水平隙間、単独薄板、空中停止はない。
+3. 台座占有率は1280×720で27.64%、844×390で22.98%。独立監査のwide 24〜32%、低背20%以上を満たす。
+4. 390×844ではプレイヤー人物を68×88pxで外縁へ置き、自社700ギルの前中央山を隠さない。敵人物も山の外縁に留まる。
+5. 844×390の結果確定CTAはy=313.375〜357.375、dialog bottom=366.975で全高がスクロール枠内に入る。
+6. 独立した前面ブラウザ2回で初戦開始から操作受付まで5.746秒／6.103秒。開始告知と9×165msのSFC積載を含み、20秒超停止は再現しない。357ms差はpage cadenceではなくブラウザ側の開始告知・描画予約の揺れ。
+7. 背景を焼き込んだImageGen台座2案と、二枚皿に見えた初期スライス案は採用前に破棄した。
+8. 独立監査で、相場2倍以上の巨額入力は落下束より着地後の柱が高くなるP1を発見。各列の実追加層を落下束へ反映し、72＋198 logical unitの着地時と270 unitのsettled山頂をブラウザで一致確認した。
+9. 1〜18unitの全中間段階、後方束の手前支持、左右全18アンカーの鏡像、DPR 1／1.25／1.5／2の丸め後接地を基準JSON直結の自動検査へ追加した。
+
+## Release gate
+
+- P0: 最小束接地、完成山保持、意味のない消失なし — fixed
+- P1: wide／portrait／low-landscape台座、人物遮蔽、結果CTA、巨額incoming→settled山頂ジャンプ — fixed
+- P2: 台座継ぎ目、コメント・README・回帰基準の旧24列／99ms記述 — fixed
+- static gate: `npm run check:capital-contact` passed
+- browser gate: source + implementation comparison and three responsive viewports passed
+
+---
+
+# Prior QA record — SFC序盤スケールと選択導線（2026-08-22）
+
+> 以下の99ms・旧描画器に関する記録は当時の履歴であり、現行契約ではない。現在の正本は冒頭の最終QAと `docs/romasaga3-trade-reference.md`（18アンカー、最低8枚束、165ms）とする。
 
 - final result: passed after independent fan-panel review findings were addressed
 - desktop viewport/state: 1440 × 900、通常キャンペーン開始時の都市マップとグリダニア対象一覧

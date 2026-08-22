@@ -23,7 +23,7 @@
 |中断復帰|`src/utils/battleSession.ts`|決着前のセッション。幻・商戦のブリーフィング取消では抽選相手と連勝数を維持|
 |音声再生|`src/utils/audio.ts`|単一AudioContext、遅延デコード|
 |商戦UIと演出順|`src/components/BattleModal.tsx`|データではなく実行器へ縮小していく|
-|商戦フィールド描画|`src/components/BattleCapitalCanvas.tsx`、`src/components/BattleCapitalCanvas.css`、`src/utils/battleCanvasQuality.ts`、`src/battle-capital-layer.css`|両陣営共通1枚のCanvas2D。背景・所有率前線・圧力・24列×2のactive/banked page・金額連続incoming wave・風・VSを同一sceneへ投影。30fpsはDPR 1.5、60fpsはDPR 2を内部解像度の上限とする|
+|商戦フィールド描画|`src/components/BattleCapitalCanvas.tsx`、`src/components/BattleCapitalCanvas.css`、`src/utils/battleCapitalCanvasLayout.ts`、`src/utils/battleCanvasQuality.ts`、`src/battle-capital-layer.css`|両陣営共通1枚のCanvas2D。原作準拠の18アンカー `[4,5,5,4]`、金貨束・厚い台座の透過PNG、settled/incoming、所有率前線・圧力・風・VSを同一sceneへ投影。現在のSFC表示はpage bankingを行わず、長柱を上端でclipする。30fpsはDPR 1.5、60fpsはDPR 2を内部解像度の上限とする|
 
 関連する設計基準:
 
@@ -82,18 +82,16 @@ ui.battle.commit
 
 ### 3.2 コイン画像
 
-コインは`BattleCapitalCanvas`のCanvas2Dへ決定論的に描き、左右それぞれ24列の再利用可能なactive page、完了分を画面下に一部clipしつつ量感を見せるbanked page、24列すべてへ各列3束×9層を99msで落とすincoming waveに分ける。相場35%の全力投入を満杯1pageとし、通常設定では1pageを9waveで満たし、モーション低減時だけ1wave・1束へ圧縮する。投入額はpage workとwave数へ連続的に変換するが、DOM nodeやCanvasの同時描画資源は金額に比例して増やさない。将来texture atlasへ差し替える際は、同じ論理キーで次を用意する。
+コインは`BattleCapitalCanvas`のCanvas2Dへ決定論的に描く。左右それぞれ18アンカーを奥から `[4,5,5,4]` に固定し、少額は前中央から連続して埋め、増資では同じ18本を縦へ伸ばす。現行SFC表示は完成山を下段へbankせず、長柱を画面上端でclipする。1論理unitも薄い1枚にはせず、最低8枚の仕切りが読める短い円柱束として描く。通常設定は最大9wave、1wave 165ms、落下側の論理束は4層で、省モーション時だけ単一の短縮waveへまとめる。金額は列高とwave数へ変換するが、DOM nodeやCanvasの同時描画資源は金額に比例して増やさない。
+
+正式な画像キーと実体:
 
 ```text
-coin_player_unit
-coin_enemy_unit
-coin_player_medallion
-coin_enemy_medallion
-coin_player_overflow
-coin_enemy_overflow
+capital_coin_sfc      -> src/assets/battle/capital-coin-sfc.png
+capital_pedestal_sfc  -> src/assets/battle/capital-pedestal-sfc.png
 ```
 
-画像側に大量のコインを描き込んだ段階スプライトを採用する場合も、24列active/banked pageと24列×3束×9層incoming waveの固定Canvas上限は変更しない。page transfer後に二度目のsinkを加えてbanked pageを全隠ししない。
+左右は同じ金貨素材と台座素材を使い、配置だけを鏡像にする。台座は曲面の左右capを変形せず、中央の直線stripだけを反復して横幅を作る。前壁を最後に重ね、前列の束根元を隠して接地を示す。素材やrendererを交換する場合も、18アンカー、最低8枚束、165ms×最大9wave、左右鏡像、背景ギャップ最大1 device pxを変更しない。詳細は[`romasaga3-trade-reference.md`](./romasaga3-trade-reference.md)と[`rs3-trade-regression-baseline.json`](./rs3-trade-regression-baseline.json)を正本とする。
 
 ## 4. 音声
 
@@ -167,7 +165,7 @@ npm run build
 - 開幕・窮地オートと通常枠が重複していない。
 - 敵アクションの割込区分が定義されている。
 - 無敵後の有限防御とナイト退場が検証されている。
-- active/banked各24列とincoming wave 24列×3束×9層の同時描画上限が固定され、banked pageの可視clip帯が残る。
+- 18アンカー `[4,5,5,4]`、最低8枚束、前中央からのfill、165ms×最大9wave、台座との1px以内の接地が固定され、縦持ち・低背横持ち・PC wideで同じ前後関係を保つ。
 - 1戦2分、30出資の上限をシミュレーションで確認した。
 - リザルトの黒字・赤字、タタル分析、ご祝儀、戦闘記録の順が保たれている。
 - セーブと中断復帰が二重精算を起こさない。

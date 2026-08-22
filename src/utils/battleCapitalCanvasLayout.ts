@@ -1,17 +1,129 @@
-/** Fixed SFC tray footprint measured from source frames. */
+/** Fixed SFC pedestal footprint measured from source frames. */
 export const BATTLE_CAPITAL_CANVAS_ROW_COUNTS = [4, 5, 5, 4] as const;
 /**
- * SFC tray baselines measured in rendered coin heights, rear to front.
- * Adjacent rows stay close enough to overlap as a supported mound; the front
- * row intersects the platter rim so a single visible coin cannot float.
+ * SFC row contact points measured down the visible pedestal sprite, rear to
+ * front. The front row sits just behind the front-wall split so even one coin
+ * is partially occluded and therefore reads as resting on the top plane.
  */
 export const BATTLE_CAPITAL_SFC_ROW_BASE_OFFSETS = [
-  2.6, 2.05, 1.5, 0.95,
+  0.34, 0.44, 0.54, 0.64,
 ] as const;
+export const BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT = 0.58;
+export const BATTLE_CAPITAL_SFC_COIN_ASPECT = 1847 / 710;
+/**
+ * The approved source sprite is assembled as two untouched curved caps with a
+ * narrow centre strip repeated between them. Every slice keeps its source
+ * aspect ratio while the complete dais matches the broad SFC silhouette.
+ */
+export const BATTLE_CAPITAL_SFC_PEDESTAL_ASPECT = 2372 / 631;
+/**
+ * Source frames show a short cylindrical roll with at least eight readable
+ * separators. One logical unit therefore never renders as one loose coin.
+ */
+export const BATTLE_CAPITAL_SFC_MINIMUM_RENDERED_COIN_LAYERS = 8;
+
+export const resolveBattleCapitalSfcRenderedCoinLayers = (
+  logicalLayers: number
+) => {
+  const normalized = Math.max(
+    0,
+    Math.round(Number.isFinite(logicalLayers) ? logicalLayers : 0)
+  );
+  return normalized <= 0
+    ? 0
+    : normalized + BATTLE_CAPITAL_SFC_MINIMUM_RENDERED_COIN_LAYERS - 1;
+};
+
+/** Exact logical height carried by one falling cylinder into an anchor. */
+export const resolveBattleCapitalSfcIncomingLogicalLayers = (
+  beforeLayers: number,
+  afterLayers: number,
+  maximumLayers = Number.MAX_SAFE_INTEGER
+) => {
+  const before = Math.max(
+    0,
+    Math.round(Number.isFinite(beforeLayers) ? beforeLayers : 0)
+  );
+  const after = Math.max(
+    before,
+    Math.round(Number.isFinite(afterLayers) ? afterLayers : before)
+  );
+  const maximum = Math.max(
+    0,
+    Math.round(Number.isFinite(maximumLayers) ? maximumLayers : 0)
+  );
+  return Math.min(maximum, after - before);
+};
+
+/** Top edge shared by a settled stack and its fully landed incoming delta. */
+export const resolveBattleCapitalSfcStackTopY = ({
+  baseY,
+  coinHeight,
+  layerStep,
+  logicalLayers,
+}: {
+  baseY: number;
+  coinHeight: number;
+  layerStep: number;
+  logicalLayers: number;
+}) => {
+  const renderedLayers = resolveBattleCapitalSfcRenderedCoinLayers(logicalLayers);
+  return renderedLayers <= 0
+    ? baseY
+    : baseY - (renderedLayers - 1) * Math.max(0, layerStep) -
+      Math.max(0, coinHeight);
+};
+
+export interface BattleCapitalSfcSideGeometry {
+  centerX: number;
+  pedestalWidth: number;
+  pedestalHeight: number;
+  pedestalTopY: number;
+  pedestalBottomY: number;
+  coinWidth: number;
+  coinHeight: number;
+  layerStep: number;
+}
+
+export const resolveBattleCapitalSfcSideGeometry = (
+  width: number,
+  height: number,
+  side: 'player' | 'enemy'
+): BattleCapitalSfcSideGeometry => {
+  const safeWidth = Math.max(1, Number.isFinite(width) ? width : 1);
+  const safeHeight = Math.max(1, Number.isFinite(height) ? height : 1);
+  const halfWidth = safeWidth / 2;
+  const centerX = side === 'player' ? halfWidth * 0.5 : halfWidth * 1.5;
+  const landscape = safeWidth / safeHeight >= 1.45;
+  const maximumPedestalWidth = Math.min(
+    halfWidth * 0.9,
+    safeHeight * 1.58
+  );
+  const coinWidth = clamp(
+    Math.min(maximumPedestalWidth / 7.45, safeHeight * 0.16),
+    9,
+    46
+  );
+  const pedestalWidth = Math.min(maximumPedestalWidth, coinWidth * 7.45);
+  const pedestalHeight = pedestalWidth / BATTLE_CAPITAL_SFC_PEDESTAL_ASPECT;
+  const pedestalBottomY = safeHeight * (landscape ? 0.95 : 0.94);
+  const pedestalTopY = pedestalBottomY - pedestalHeight;
+  const coinHeight = coinWidth / BATTLE_CAPITAL_SFC_COIN_ASPECT;
+  return {
+    centerX,
+    pedestalWidth,
+    pedestalHeight,
+    pedestalTopY,
+    pedestalBottomY,
+    coinWidth,
+    coinHeight,
+    layerStep: clamp(coinHeight * 0.34, 1.5, 4.8),
+  };
+};
 
 export const resolveBattleCapitalSfcRowBaseY = (
-  trayY: number,
-  coinHeight: number,
+  pedestalTopY: number,
+  pedestalHeight: number,
   depth: number
 ) => {
   const safeDepth = Math.max(
@@ -21,7 +133,7 @@ export const resolveBattleCapitalSfcRowBaseY = (
       Math.round(Number.isFinite(depth) ? depth : 0)
     )
   );
-  return trayY - Math.max(0, coinHeight) *
+  return pedestalTopY + Math.max(0, pedestalHeight) *
     BATTLE_CAPITAL_SFC_ROW_BASE_OFFSETS[safeDepth];
 };
 

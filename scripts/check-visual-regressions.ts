@@ -33,6 +33,8 @@ import {
 import {
   BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER,
   BATTLE_CAPITAL_CANVAS_ROW_COUNTS,
+  BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT,
+  BATTLE_CAPITAL_SFC_MINIMUM_RENDERED_COIN_LAYERS,
   BATTLE_CAPITAL_SFC_ROW_BASE_OFFSETS,
   BATTLE_CAPITAL_RACK_SETTLE_MS,
   BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS,
@@ -45,7 +47,9 @@ import {
   resolveBattleCapitalHoardVerticalGeometry,
   resolveBattleCapitalPacketStartBaseY,
   resolveBattleCapitalSfcColumnX,
+  resolveBattleCapitalSfcRenderedCoinLayers,
   resolveBattleCapitalSfcRowBaseY,
+  resolveBattleCapitalSfcSideGeometry,
   resolveBattleCapitalStackGeometry,
   resolveBattleCapitalVisualLayers,
 } from '../src/utils/battleCapitalCanvasLayout';
@@ -792,23 +796,59 @@ assert.equal(
   BATTLE_CAPITAL_CANVAS_ROW_COUNTS.length,
   'every SFC tray row must own an explicit supported baseline'
 );
-const sparseAuditTrayY = 240;
-const sparseAuditCoinHeight = 9;
+const sparseAuditPedestalTopY = 172;
+const sparseAuditPedestalHeight = 72;
+const sparseAuditCoinHeight = 11;
 const sparseAuditRowBases = BATTLE_CAPITAL_SFC_ROW_BASE_OFFSETS.map(
   (_, depth) => resolveBattleCapitalSfcRowBaseY(
-    sparseAuditTrayY,
-    sparseAuditCoinHeight,
+    sparseAuditPedestalTopY,
+    sparseAuditPedestalHeight,
     depth
   )
 );
 assert.ok(
-  sparseAuditTrayY - sparseAuditRowBases.at(-1)! <= sparseAuditCoinHeight,
-  'the front row must intersect the platter rim so one coin cannot float'
+  sparseAuditRowBases.at(-1)! >=
+    sparseAuditPedestalTopY +
+      sparseAuditPedestalHeight * BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT &&
+    sparseAuditRowBases.at(-1)! -
+      (sparseAuditPedestalTopY +
+        sparseAuditPedestalHeight * BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT) <=
+      sparseAuditCoinHeight * 0.5,
+  'the front row must pass slightly behind the pedestal wall so one coin cannot float'
 );
+assert.equal(
+  resolveBattleCapitalSfcRenderedCoinLayers(1),
+  BATTLE_CAPITAL_SFC_MINIMUM_RENDERED_COIN_LAYERS,
+  'one logical unit must render as a short cylindrical bundle, never one loose coin'
+);
+assert.equal(resolveBattleCapitalSfcRenderedCoinLayers(0), 0);
+for (const [width, height] of [[390, 320], [844, 220], [1280, 280]]) {
+  const playerGeometry = resolveBattleCapitalSfcSideGeometry(
+    width,
+    height,
+    'player'
+  );
+  const enemyGeometry = resolveBattleCapitalSfcSideGeometry(
+    width,
+    height,
+    'enemy'
+  );
+  assert.ok(
+    Math.abs(
+      playerGeometry.centerX + enemyGeometry.centerX - width
+    ) <= 1,
+    `${width}x${height} pedestals must remain mirrored`
+  );
+  assert.ok(
+    playerGeometry.pedestalBottomY <= height &&
+      playerGeometry.pedestalTopY >= 0,
+    `${width}x${height} pedestal must remain fully supported by the field`
+  );
+}
 for (let depth = 1; depth < sparseAuditRowBases.length; depth += 1) {
   assert.ok(
     sparseAuditRowBases[depth] - sparseAuditRowBases[depth - 1] <=
-      sparseAuditCoinHeight * 0.6,
+      sparseAuditPedestalHeight * 0.11,
     `SFC row ${depth} must overlap the nearer support row instead of floating`
   );
 }
@@ -1129,13 +1169,23 @@ assert.deepEqual(
 assert.equal(BATTLE_CAPITAL_COLUMN_COUNT, 18);
 assert.match(
   battleCapitalCanvas,
-  /const ROW_COUNTS = \[4, 5, 5, 4\] as const;/,
+  /BATTLE_CAPITAL_CANVAS_ROW_COUNTS,[\s\S]*const ROW_COUNTS = BATTLE_CAPITAL_CANVAS_ROW_COUNTS;/,
   'the live Canvas renderer must paint the same eighteen fixed lanes'
 );
 assert.match(
   battleCapitalCanvas,
-  /const GOLD = \{[\s\S]*drawCapitalSideBase\([\s\S]*scene\.player[\s\S]*drawCapitalSideBase\([\s\S]*scene\.enemy/,
-  'both sides must share the same gold-roll palette instead of red enemy coins'
+  /capitalCoinSpriteUrl[\s\S]*sprites\.coin[\s\S]*drawCapitalSideBase\([\s\S]*scene\.player, sprites\)[\s\S]*drawCapitalSideBase\([\s\S]*scene\.enemy, sprites\)/,
+  'both sides must share the same authored gold coin sprite instead of red enemy coins'
+);
+assert.match(
+  battleCapitalCanvas,
+  /capitalPedestalSpriteUrl[\s\S]*drawPedestalBack[\s\S]*drawPedestalFront[\s\S]*BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT/,
+  'the SFC dais must use one authored pedestal sprite whose front wall occludes the coin roots'
+);
+assert.doesNotMatch(
+  battleCapitalCanvas,
+  /drawTrayBack|drawTrayFront|context\.ellipse\([^\n]*tray|index < 12/,
+  'the renderer must not regress to a radial dinner plate or a code-drawn tray'
 );
 assert.match(
   battleCapitalCanvas,
@@ -1159,13 +1209,13 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const visibleSeamCount = Math\.min\([\s\S]{0,420}for \(let layer = 1; layer <= visibleSeamCount; layer \+= 1\)[\s\S]*context\.moveTo\(left \+ 1, seamY\)/,
-  'every visible SFC coin layer keeps its separator while off-screen seams are skipped'
+  /resolveBattleCapitalSfcRenderedCoinLayers\(layers\)[\s\S]{0,360}for \(let layer = 0; layer < renderedLayers; layer \+= 1\)[\s\S]{0,420}COIN_SPRITE_CROP[\s\S]{0,220}layerBottomY - coinHeight/,
+  'every visible SFC coin layer must be a separately tiled sprite with its own separator edge'
 );
 assert.match(
   battleCapitalCanvas,
-  /const bodyTop = Math\.max\(snap\(clipTopY\)[\s\S]{0,180}if \(bodyBottom < clipTopY\) return;/,
-  'late-game towers must stop painting bodies that are entirely above the viewport'
+  /context\.rect\(0, snap\(clipTopY\)[\s\S]{0,360}if \(layerBottomY < clipTopY\) continue;/,
+  'late-game towers must clip and skip coin sprites that are entirely above the viewport'
 );
 assert.match(
   battleCapitalCanvas,
@@ -1175,7 +1225,7 @@ assert.match(
 assert.match(
   battleCapitalCanvas,
   /let paintedThisTick = false;[\s\S]{0,260}paintedThisTick = true;[\s\S]{0,260}else if \(!paintedThisTick\) repaint\(projected\);/,
-  'the completed 99ms wave must not repaint its final frame twice'
+  'the completed 165ms wave must not repaint its final frame twice'
 );
 
 const paintCapitalCanvasStart = battleCapitalCanvas.indexOf(
@@ -1720,8 +1770,8 @@ assert.doesNotMatch(
 );
 assert.match(
   battleCapitalCanvas,
-  /incomingBundleCopies: 1,[\s\S]*const bundleLayers = Math\.max\([\s\S]*Math\.min\([\s\S]*6,[\s\S]*addedLayers,[\s\S]*side\.frame\.incomingBundleLayers \?\? addedLayers/,
-  'the renderer must draw one bounded short roll that cannot collapse after landing'
+  /incomingBundleCopies: 1,[\s\S]*resolveBattleCapitalSfcIncomingLogicalLayers\([\s\S]{0,180}before,[\s\S]{0,80}after,[\s\S]{0,120}MAX_BATTLE_CAPITAL_COLUMN_LAYERS[\s\S]{0,420}const bundleLayers = addedLayers/,
+  'the renderer must carry each exact active-column delta so a large roll cannot grow after landing'
 );
 assert.match(
   integratedCss,
@@ -2191,10 +2241,10 @@ assert.ok(
     .every((frame) => frame.durationMs === CAPITAL_COIN_WAVE_MS),
   'post-drop repeated funding must keep each full-width coin wave visible for the reviewed weighty cadence'
 );
-assert.equal(CAPITAL_COIN_WAVE_MS, 99);
+assert.equal(CAPITAL_COIN_WAVE_MS, 165);
 assert.equal(CAPITAL_COIN_WAVE_MIN_COLUMNS, BATTLE_CAPITAL_COLUMN_COUNT);
 assert.equal(CAPITAL_COIN_WAVE_MAX_COLUMNS, BATTLE_CAPITAL_COLUMN_COUNT);
-assert.equal(CAPITAL_COIN_WAVE_BUNDLE_LAYERS, 9);
+assert.equal(CAPITAL_COIN_WAVE_BUNDLE_LAYERS, 4);
 assert.equal(repeatedFundingTimeline.frames.at(-1)?.bankedPileCount, 1);
 const repeatedFundingCurtain = repeatedFundingTimeline.frames.filter(
   (frame) => frame.phase === 'pour' && frame.activeColumnIndices.length > 0
@@ -2208,7 +2258,7 @@ assert.ok(
       frame.incomingBundleCopies === 3 &&
       frame.incomingBundleLayers === CAPITAL_COIN_WAVE_BUNDLE_LAYERS
   ),
-  'each normal treasury page must arrive as nine rapid twenty-four-column waves with three nine-layer rolls per column'
+  'each normal treasury page must arrive as nine five-frame eighteen-anchor waves with four logical layers per roll'
 );
 for (const frame of repeatedFundingCurtain) {
   const frameIndex = repeatedFundingTimeline.frames.indexOf(frame);
@@ -2229,7 +2279,7 @@ assert.equal(
     (height) => height === 36
   ),
   true,
-  'the ninth wave must settle into one level twenty-four-column wall'
+  'the ninth wave must settle into one level eighteen-anchor wall'
 );
 assert.ok(
   firstTrueOverflowTimeline.frames
@@ -2423,9 +2473,9 @@ assert.deepEqual(
   'the enemy sweep must mirror the player path from its own inner edge'
 );
 assert.ok(
-  CAPITAL_STACK_BEAT_MS.heavy > CAPITAL_STACK_BEAT_MS.standard &&
-    CAPITAL_STACK_BEAT_MS.heavy >= 100,
-  'large capital must keep every bundle visible across at least three 30fps samples'
+  CAPITAL_STACK_BEAT_MS.heavy === CAPITAL_STACK_BEAT_MS.standard &&
+    CAPITAL_STACK_BEAT_MS.heavy === 165,
+  'ordinary and large capital must share the measured five-frame SFC cadence'
 );
 assert.ok(
   buildCapitalStackTimeline({
@@ -2448,7 +2498,7 @@ assert.ok(
         frame.incomingBundleCopies === 3 &&
         frame.incomingBundleLayers === CAPITAL_COIN_WAVE_BUNDLE_LAYERS
     ),
-  'exceptional funding must remain a sustained three-bundle torrent at the weighty 99ms cadence'
+  'exceptional funding must remain a sustained three-bundle torrent at the SFC 165ms cadence'
 );
 }
 
@@ -2484,12 +2534,12 @@ const earlySfcPourFrames = earlySfcTimeline.frames.filter(
   (frame) => frame.phase === 'pour'
 );
 assert.equal(earlySfcPourFrames.length, CAPITAL_COIN_WAVES_PER_PAGE);
-assert.equal(earlySfcTimeline.pourDurationMs, 891);
-assert.equal(earlySfcTimeline.totalMs, 1_089);
+assert.equal(earlySfcTimeline.pourDurationMs, 1_485);
+assert.equal(earlySfcTimeline.totalMs, 1_815);
 assert.ok(
   earlySfcPourFrames.every(
     (frame) =>
-      frame.durationMs === 99 &&
+      frame.durationMs === 165 &&
       frame.activeColumnIndices.length > 0 &&
       frame.activeColumnIndices.length < BATTLE_CAPITAL_COLUMN_COUNT
   ),
@@ -2500,14 +2550,14 @@ assert.ok(
     sfcPourFrames.length <= CAPITAL_COIN_WAVES_PER_PAGE &&
     sfcPourFrames.every(
       (frame) =>
-        frame.durationMs === 99 &&
+        frame.durationMs === 165 &&
         frame.bankTransfer !== true &&
         frame.bankedPileCount === 0 &&
         frame.incomingBundleCopies === 1 &&
         frame.incomingBundleLayers === 4 &&
         frame.activeColumnIndices.length <= 18
     ),
-  'one funding command must use at most nine 99ms SFC roll waves without banking'
+  'one funding command must use at most nine 165ms SFC roll waves without banking'
 );
 assert.ok(
   sfcCapitalTimeline.frames.every((frame, index, frames) =>
@@ -2900,8 +2950,8 @@ assert.doesNotMatch(
 );
 assert.deepEqual(
   CAPITAL_STACK_BEAT_MS,
-  { standard: 99, heavy: 99, compact: 62 },
-  'ordinary and heavy funding must share the measured three-frame cadence'
+  { standard: 165, heavy: 165, compact: 62 },
+  'ordinary and heavy funding must share the measured five-frame SFC cadence'
 );
 assert.match(
   fankitAssets,
@@ -2924,7 +2974,7 @@ assert.match(
 assert.match(
   audio,
   /const loopDurationMs = 1_188;[\s\S]{0,260}0, 99, 198, 297, 396, 495,[\s\S]{0,180}const accentEveryTicks = 4;[\s\S]{0,180}0\.985, 1\.035, 1\.015, 0\.995, 1\.025, 1\.045/,
-  'the cached stack loop must follow the measured 99ms contact cadence'
+  'the cached stack loop must retain dense 99ms subcontacts inside each 165ms bundle beat'
 );
 assert.match(
   audio,

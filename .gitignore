@@ -3,6 +3,7 @@ dist/
 coverage/
 .wrangler/
 tmp/
+artifacts/
 .DS_Store
 *.log
 tsconfig.tsbuildinfo

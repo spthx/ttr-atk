@@ -1339,7 +1339,7 @@
 
 /*
  * Legacy fixed-node fallback formations. The live Canvas uses reusable
- * active/banked pages and bounded incoming waves; these decorative nodes stay
+ * legacy page-bank states and bounded incoming waves; these decorative nodes stay
  * amount-independent and do not animate while idle.
  */
 .integrated-battlefield .gil-tower {
@@ -2905,7 +2905,7 @@
 
 /*
  * Post-Ultimate CRUEL presentation. This recolours the existing fixed
- * twenty-four-column rack; it does not add amount-proportional nodes or an idle
+ * fixed-column rack; it does not add amount-proportional nodes or an idle
  * animation. The warning card is one transient, readable decision surface.
  */
 .integrated-battlefield--cruel {
@@ -3494,7 +3494,7 @@
 }
 
 /*
- * Fixed twenty-four-column active-page capital field.
+ * Legacy fixed-column active-page capital field.
  *
  * The portrait-phone composition is the source of truth: the actor owns the
  * outside edge while the centre of each independent column group sits toward
@@ -3540,7 +3540,7 @@
   transition: translate 280ms cubic-bezier(.24, .02, .42, 1);
 }
 
-/* A completed page reuses the fixed twenty-four columns as a lowered banked
+/* A completed page reuses the legacy fixed columns as a lowered banked
  * tray. The upper page moves down before the bounded incoming waves refill it;
  * amount growth changes timeline work, never the number of rendered nodes. */
 .integrated-battlefield
@@ -3908,7 +3908,7 @@
 
 /* Tablet landscape has room for a broad treasury rack. Keep the phone
  * portrait composition unchanged, but use the same wide slot spread here so
- * twenty-four fixed columns fill the available half-field instead of huddling
+ * fixed columns fill the available half-field instead of huddling
  * around its centre. DOM count and battle state remain identical. */
 @media (orientation: landscape) and (min-width: 900px) and (min-height: 600px) {
   .integrated-battlefield .gil-column-field {
@@ -4385,7 +4385,7 @@
 }
 
 /* Final mobile-first page placement: actors stay on the outer edge and each
- * independent twenty-four-column field keeps its centre visible toward mid-screen. */
+ * independent eighteen-anchor field keeps its centre visible toward mid-screen. */
 .integrated-battlefield .capital-visual-row .gil-tower--player .gil-tower__chips {
   top: -1.35rem;
   right: -4%;
@@ -4413,5 +4413,35 @@
     right: 20%;
     bottom: .48rem;
     left: -10%;
+  }
+
+  /* The SFC field gives the capital mound priority. Keep Tataru as a readable
+   * outer-edge witness without letting her portrait cover the front-centre
+   * anchor where the first and smallest bundle lands. */
+  .integrated-battlefield
+    .capital-visual-row
+    .ownership-fighter--player {
+    bottom: .35rem;
+    left: -.45rem;
+    width: 4.25rem;
+    height: 5.5rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  /* Keep the result confirmation wholly visible inside the short dialog. The
+   * report remains scrollable behind it, but the user never has to hunt for
+   * the one action that exits the result state. */
+  .buyout-screen .buyout-result {
+    overscroll-behavior: contain;
+    scroll-padding-block-end: 3.6rem;
+  }
+
+  .buyout-screen .buyout-result .result-return-map {
+    position: sticky;
+    z-index: 8;
+    bottom: .3rem;
+    min-height: 2.75rem !important;
+    margin-bottom: .3rem;
   }
 }

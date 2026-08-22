@@ -413,11 +413,11 @@ class SoundEffects {
     const cached = this.capitalRapidFireLoopBuffers.get(cacheKey);
     if (cached) return cached;
 
-    // Source captures place the audible roll contacts on the same roughly
-    // 99ms clock as the three-frame falling sprites. Build one reusable mono
-    // loop from the approved local recording so long pours keep one source
-    // voice on mobile. Every fourth contact gets a small 396ms landing accent;
-    // there is no invented motor, tray thud or continuous 3D ambience.
+    // A falling SFC unit is a multi-coin cylinder, so its audible contacts are
+    // intentionally denser than the outer 165ms bundle cadence. Build one
+    // reusable mono loop from the approved local recording so long pours keep
+    // one source voice on mobile. Every fourth contact gets a small 396ms
+    // accent; there is no invented motor, tray thud or 3D ambience.
     const loopDurationMs = 1_188;
     const tickOffsetsMs = [
       0, 99, 198, 297, 396, 495,
