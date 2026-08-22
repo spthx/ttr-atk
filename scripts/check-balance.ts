@@ -328,6 +328,7 @@ import {
   SAVAGE_LAYER_BUDGET_MULTIPLIERS,
   SAVAGE_SERIES_BUDGET_MULTIPLIERS,
   ULTIMATE_ENEMY_BUDGET_MULTIPLIER,
+  CRUEL_ENEMY_BUDGET_MULTIPLIER,
   getEnemyDifficultyLevel,
   getBlackestNightDarkWaveGaugeDelta,
   getBlackestNightDisplayPercent,
@@ -4746,7 +4747,7 @@ assert.equal(
   REPEATED_NETWORK_SUPPORT_BALANCE.minimumMultiplier
 );
 assert.equal(SAVAGE_NETWORK_SUPPORT_LIMIT, 18);
-assert.equal(ULTIMATE_NETWORK_SUPPORT_LIMIT, 8);
+assert.equal(ULTIMATE_NETWORK_SUPPORT_LIMIT, 10);
 assert.equal(ULTIMATE_LIMIT_BREAK_LIMIT, 1);
 assert.equal(ULTIMATE_APPRAISAL_LIMIT_MS, 108_000);
 assert.equal(SAVAGE_NETWORK_SUPPORT_FLOOR_RATIO, 0.5);
@@ -4795,8 +4796,8 @@ assert.equal(
 );
 assert.equal(canRequestLimitedNetworkSupport(17, SAVAGE_NETWORK_SUPPORT_LIMIT), true);
 assert.equal(canRequestLimitedNetworkSupport(18, SAVAGE_NETWORK_SUPPORT_LIMIT), false);
-assert.equal(canRequestLimitedNetworkSupport(7, ULTIMATE_NETWORK_SUPPORT_LIMIT), true);
-assert.equal(canRequestLimitedNetworkSupport(8, ULTIMATE_NETWORK_SUPPORT_LIMIT), false);
+assert.equal(canRequestLimitedNetworkSupport(9, ULTIMATE_NETWORK_SUPPORT_LIMIT), true);
+assert.equal(canRequestLimitedNetworkSupport(10, ULTIMATE_NETWORK_SUPPORT_LIMIT), false);
 
 const extremeBaseProperty = {
   ...INITIAL_PROPERTIES.find((property) => property.id === 'prop_coffee_aurora')!,
@@ -5087,6 +5088,23 @@ assert.equal(
 );
 assert.ok(ultimateBudget > absoluteSavageBudgets.at(-1)!);
 assert.equal(getEnemyDifficultyLevel(ultimateProperty, false, false, true), 6);
+const phantomGradeBudget = calculateEnemyBudget({
+  targetProperty: savageBudgetTarget,
+  industryInfluence: noInfluence,
+  regionalInfluence: noInfluence,
+  isTutorial: false,
+  isUltimate: true,
+});
+assert.equal(
+  phantomGradeBudget,
+  Math.round(
+    savageBudgetTarget.marketPrice *
+      1.05 *
+      ENEMY_BALANCE_FACTOR.advanced *
+      CRUEL_ENEMY_BUDGET_MULTIPLIER
+  ),
+  'Phantom reuses Ultimate mechanics without inheriting the standalone Ultimate budget reduction'
+);
 
 const baseAiContext: EnemyDecisionContext = {
   enemyOwnership: 50,

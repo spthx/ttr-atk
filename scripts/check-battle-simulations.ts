@@ -147,6 +147,10 @@ interface SimulationScenario {
   manualAllianceSupportRatio?: number;
   openingPlayerPassage?: boolean;
   playerPassageOnLimitBreak?: boolean;
+  /** Models the recommended critical AUTO Living Dead recovery contract. */
+  playerCriticalLivingDead?: boolean;
+  /** Uses the authored Ultimate counter plan while an enemy action is telegraphing. */
+  ultimateAdaptiveResponses?: boolean;
   influenceBonus?: number;
   supportSources?: readonly Property[];
   supportAfterDirectActions?: (supportIndex: number, seed: number) => number;
@@ -479,6 +483,7 @@ const simulateBattle = (
   let manualAllianceSupportUsed = false;
   const supportUseCounts: Record<string, number> = {};
   let wallSeconds = 0;
+  let simulationElapsedSeconds = 0;
   let enemyBlackestNightRemainingSeconds = 0;
   let enemyBlackestNightCapacity = 0;
   let capitalReversalRemainingSeconds = 0;
@@ -494,6 +499,8 @@ const simulateBattle = (
   let playerPassageCapacity = scenario.openingPlayerPassage
     ? TACTICAL_SKILL_BALANCE.cover.gaugeCapacity
     : 0;
+  let playerLivingDeadUsed = false;
+  let playerLivingDeadRecoveryRemainingSeconds = 0;
   let divinationRemainingSeconds = 0;
   let rapidAssaultRemainingSeconds = 0;
   let enemyLimitBreakHoldRemainingSeconds = 0;
@@ -531,6 +538,7 @@ const simulateBattle = (
   let ultimateCriticalGateConsumed = false;
   let timedCapitalBuffUsed = false;
   let preparedLimitBreakUsed = false;
+  let adaptiveDefenseUsed = false;
   let timedCapitalBuffRemainingSeconds = 0;
   let timedCapitalBuffActivations = 0;
   const usedEnemySupportSkills = new Set(
@@ -738,6 +746,21 @@ const simulateBattle = (
       };
     }
     if (!isTraining && gauge >= 100) {
+      if (
+        scenario.playerCriticalLivingDead &&
+        !playerLivingDeadUsed
+      ) {
+        playerLivingDeadUsed = true;
+        playerLivingDeadRecoveryRemainingSeconds =
+          TACTICAL_SKILL_BALANCE.livingDead.recoveryDurationMs / 1_000;
+        gauge = 98;
+        commandProgress = 100;
+        return null;
+      }
+      if (playerLivingDeadRecoveryRemainingSeconds > 0) {
+        gauge = 98;
+        return null;
+      }
       return {
         winner: 'opponent',
         wallSeconds,
@@ -885,11 +908,91 @@ const simulateBattle = (
     );
   };
 
-  while (wallSeconds < (scenario.maxSeconds ?? MAX_SECONDS)) {
-    wallSeconds += STEP_SECONDS;
+  const scenarioLimitSeconds = scenario.maxSeconds ?? MAX_SECONDS;
+  while (
+    wallSeconds < scenarioLimitSeconds &&
+    simulationElapsedSeconds < scenarioLimitSeconds * 4
+  ) {
+    simulationElapsedSeconds += STEP_SECONDS;
+    const ultimateAppraisalPaused =
+      isUltimate &&
+      (pendingEnemySupport !== null || presentationLockSeconds > 0);
+    if (!ultimateAppraisalPaused) {
+      wallSeconds += STEP_SECONDS;
+    }
 
     let interactiveCruelCountdown = false;
     if (pendingEnemySupport) {
+      if (
+        scenario.ultimateAdaptiveResponses &&
+        !pendingEnemySupport.impacted &&
+        commandProgress >= 100
+      ) {
+        const telegraphedSkill = pendingEnemySupport.skill;
+        if (
+          telegraphedSkill === 'divination' &&
+          scenario.timedCapitalBuff &&
+          !timedCapitalBuffUsed
+        ) {
+          timedCapitalBuffUsed = true;
+          timedCapitalBuffActivations += 1;
+          timedCapitalBuffRemainingSeconds =
+            scenario.timedCapitalBuff.durationSeconds;
+          applyPlayerGaugeCandidate(
+            gauge - scenario.timedCapitalBuff.ownershipPush * 2
+          );
+          commandProgress = 100;
+          lastPlayerAction = 'SYNERGY';
+          pendingEnemySupport = null;
+          const terminal = finish();
+          if (terminal) return terminal;
+          continue;
+        }
+        if (
+          (telegraphedSkill === 'drill' ||
+            telegraphedSkill === 'limit_break_3') &&
+          playerPassageRemainingSeconds <= 0 &&
+          playerPassageCapacity <= 0 &&
+          !adaptiveDefenseUsed
+        ) {
+          adaptiveDefenseUsed = true;
+          playerPassageRemainingSeconds =
+            TACTICAL_SKILL_BALANCE.cover.durationMs / 1_000;
+          playerPassageCapacity = TACTICAL_SKILL_BALANCE.cover.gaugeCapacity;
+          commandProgress = 0;
+          lastPlayerAction = null;
+          reactionDelaySeconds = getScenarioReactionDelay(
+            scenario,
+            seed,
+            directActions + supportActions + manualOpeningActions
+          );
+        } else if (telegraphedSkill === 'drain') {
+          const investment = getAffordableInvestment(playerCash, marketPrice);
+          if (investment) {
+            const amount = Math.max(
+              10,
+              Math.round(marketPrice * investment.ratio)
+            );
+            playerCash -= amount;
+            playerInvested += amount;
+            earnedLimitBreakCharge += calculateLimitBreakChargeGain(
+              amount,
+              marketPrice
+            );
+            directActions += 1;
+            commandProgress = 0;
+            lastPlayerAction = investment.action;
+            lastPlayerCapitalAction = investment.action;
+            reactionDelaySeconds = getScenarioReactionDelay(
+              scenario,
+              seed,
+              directActions + supportActions + manualOpeningActions
+            );
+            const terminal = finish();
+            if (terminal) return terminal;
+          }
+        }
+      }
       pendingEnemySupport.impactRemainingSeconds -= STEP_SECONDS;
       pendingEnemySupport.completeRemainingSeconds -= STEP_SECONDS;
       if (
@@ -997,6 +1100,21 @@ const simulateBattle = (
       );
       if (playerPassageRemainingSeconds <= 0) {
         playerPassageCapacity = 0;
+      }
+    }
+    if (playerLivingDeadRecoveryRemainingSeconds > 0) {
+      playerLivingDeadRecoveryRemainingSeconds = Math.max(
+        0,
+        playerLivingDeadRecoveryRemainingSeconds - STEP_SECONDS
+      );
+      if (
+        playerLivingDeadRecoveryRemainingSeconds <= 0 &&
+        (100 - gauge) / 2 <
+          TACTICAL_SKILL_BALANCE.livingDead.recoveryOwnership
+      ) {
+        gauge = 100;
+        const terminal = finish();
+        if (terminal) return terminal;
       }
     }
     if (rapidAssaultRemainingSeconds > 0) {
@@ -1873,6 +1991,10 @@ const summarize = (
       results.map((result) => result.wallSeconds),
       0.9
     ),
+    medianFinalOwnership: percentile(
+      results.map((result) => result.finalOwnership),
+      0.5
+    ),
     medianDirectActions: percentile(
       results.map((result) => result.directActions),
       0.5
@@ -2603,6 +2725,10 @@ const preparedUltimateSupportRotation = [...INITIAL_PROPERTIES].sort(
     calculateSubsidiarySupportAmount(right) -
     calculateSubsidiarySupportAmount(left)
 );
+const preparedUltimateOneTapSupport = Array.from(
+  { length: ULTIMATE_NETWORK_SUPPORT_LIMIT },
+  () => preparedUltimateSupportRotation[0]
+);
 const highDifficultySupportRotation = [
   ...highDifficultySupportSources,
   ...highDifficultySupportSources,
@@ -2823,11 +2949,12 @@ const ultimateManualPreparedScenarioBase = {
   playerBaselineCash: ultimateSanityTarget.marketPrice,
   preferDirectInvestmentActions: 4,
   openingPlayerPassage: true,
+  playerCriticalLivingDead: true,
   timedCapitalBuff: {
     ...eraWindBurst,
     triggerAfterSupportActions: 8,
   },
-  supportSources: preparedUltimateSupportRotation,
+  supportSources: preparedUltimateOneTapSupport,
   preparedLimitBreak: {
     tier: 3,
     triggerAfterSupportActions: 8,
@@ -2844,6 +2971,26 @@ const ultimatePreparedPatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
       },
       5,
       9_700 + patternIndex * 20
+    )
+);
+/**
+ * A player who follows the briefing instead of repeating one fixed rotation:
+ * answer Drain with direct capital, cancel Divination with Era Wind, and
+ * reserve a manual defense for Drill/LB3.
+ * This audit is supplemental so the historical fixed-500 sample remains stable.
+ */
+const ultimateAdaptivePatternReports = ULTIMATE_ENEMY_AUTO_PATTERNS.map(
+  (pattern, patternIndex) =>
+    summarize(
+      {
+        ...ultimateManualPreparedScenarioBase,
+        id: `ultimate_adaptive_${pattern.id}`,
+        ultimateAutoPatternIndex: patternIndex,
+        ultimateAdaptiveResponses: true,
+        playerPassageOnLimitBreak: false,
+      },
+      10,
+      10_200 + patternIndex * 20
     )
 );
 const ultimateHumanReadinessReports = ULTIMATE_ENEMY_AUTO_PATTERNS.flatMap(
@@ -3120,6 +3267,18 @@ const reportById = Object.fromEntries(
 );
 console.log(JSON.stringify({
   ultimateTuningSummary: {
+    adaptive: ultimateAdaptivePatternReports.map((report) => ({
+      id: report.id,
+      battles: report.battles,
+      wins: report.wins,
+      losses: report.losses,
+      timeouts: report.timeouts,
+      medianSeconds: report.medianSeconds,
+      p90Seconds: report.p90Seconds,
+      medianFinalOwnership: report.medianFinalOwnership,
+      medianDirectActions: report.medianDirectActions,
+      medianSupportActions: report.medianSupportActions,
+    })),
     prepared: ultimatePreparedPatternReports.map((report) => ({
       id: report.id,
       battles: report.battles,
@@ -3208,6 +3367,14 @@ console.log(JSON.stringify({
       0
     ),
     reports: ultimateReports,
+  },
+  ultimateAdaptiveAudit: {
+    includedInFixed500: false,
+    totalBattles: ultimateAdaptivePatternReports.reduce(
+      (total, report) => total + report.battles,
+      0
+    ),
+    reports: ultimateAdaptivePatternReports,
   },
   ultimateHumanReadinessAudit: {
     totalBattles: ultimateHumanReadinessReports.reduce(
@@ -4024,8 +4191,29 @@ assert.ok(
   'every prepared Ultimate pattern must sample multiple seeds and execute ぶんどる plus external alliance through the command lane'
 );
 assert.ok(
-  ultimatePreparedWinRate >= 0.25 && ultimatePreparedWinRate <= 0.4,
-  `the runtime-shaped prepared Ultimate route must clear 25-40% of attempts (actual ${(ultimatePreparedWinRate * 100).toFixed(1)}%)`
+  ultimatePreparedWinRate >= 0.9,
+  `the runtime-shaped prepared Ultimate route must clear at least 90% of attempts once appraisal pauses and critical AUTO are modeled (actual ${(ultimatePreparedWinRate * 100).toFixed(1)}%)`
+);
+const ultimateAdaptiveWins = ultimateAdaptivePatternReports.reduce(
+  (total, report) => total + report.wins,
+  0
+);
+const ultimateAdaptiveBattles = ultimateAdaptivePatternReports.reduce(
+  (total, report) => total + report.battles,
+  0
+);
+assert.ok(
+  ultimateAdaptiveWins / Math.max(1, ultimateAdaptiveBattles) >= 0.95,
+  'a player following the disclosed Ultimate counters must clear at least 95% across all six patterns'
+);
+assert.ok(
+  ultimateAdaptivePatternReports.every(
+    (report) =>
+      report.battles >= 10 &&
+      report.winRate >= 0.8 &&
+      report.p90Seconds <= ULTIMATE_APPRAISAL_LIMIT_MS / 1_000 + STEP_SECONDS
+  ),
+  'every authored Ultimate pattern must have a counter-driven route that clears at least 80% of its sampled attempts inside appraisal'
 );
 const ultimateNoRecoveryReports = ultimateHumanReadinessReports.filter(
   (report) => report.id.endsWith('_no_recovery')

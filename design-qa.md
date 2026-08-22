@@ -243,3 +243,15 @@ The transition capture shows separate completed-pile and incoming-bundle layers:
 4. The repeated 66ms tick scheduler was replaced by one cached loop voice with measured 60–75ms micro-cadence and a short stop fade. No P0/P1/P2 findings remained in that pass.
 
 final result: passed
+
+---
+
+# Ultimate long-play balance audit — 2026-08-23
+
+- The old fixed route counted enemy telegraphs, impact cinematics, and capital-pile presentation against the 108-second appraisal even though the live battle pauses that clock. The simulator now separates elapsed presentation time from appraisal time.
+- The prepared route now includes the briefing's actual stable loadout: opening AUTO Passé, critical AUTO Living Dead, manual capital boost, external alliance, eight one-tap requests to the strongest current contact, Era Wind, and one LB III.
+- Telegraph-aware supplemental coverage executes 60 battles across all six authored patterns. It answers Drain with direct investment, cancels Divination with Era Wind, and places a finite manual defense on Drill or enemy LB III.
+- Ultimate's enemy-budget multiplier was reduced from 2.75 to 2.37 and its finite one-tap network allowance increased from 8 to 10. Phantom, Cruel, and Karma retain the former 2.75 multiplier, so their challenge does not become easier as a side effect.
+- Acceptance gates require at least 95% aggregate wins for the counter-driven route, at least 80% for every individual pattern, and p90 resolution inside the 108-second appraisal. The deliberately careless +2-second route and the no-recovery route must still fail, preserving the need to read warnings and use cash recovery.
+- The Ultimate briefing now surfaces the rolled opening/critical pair, its counter plan, and six preflight checks before the fold. The full strategy panel opens by default for Ultimate, and the start call-to-action explicitly asks the player to confirm counters.
+- A real Edge 151 render was captured at 1440×1000 DPR 1 and 390×844 DPR 2. Both layouts showed the full two-action pattern, all six readiness chips, expanded strategy summary, and sticky start action with zero horizontal overflow; evidence is retained under `tmp/ultimate-ui-audit-2026-08-23/` in the development workspace.

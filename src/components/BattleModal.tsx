@@ -1238,6 +1238,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   );
   const [showLog, setShowLog] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [briefingDetailsOpen, setBriefingDetailsOpen] = useState(isUltimate);
   const [floaters, setFloaters] = useState<FloatingGil[]>([]);
   const [logs, setLogs] = useState<BattleLog[]>([
     {
@@ -9951,7 +9952,33 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 <dd>{formatCurrency(initialBattleCashRef.current)}</dd>
               </div>
             </dl>
-            <details className="briefing-advanced-details">
+            {isUltimate && ultimateEnemyPattern && (
+              <section className="briefing-ultimate-preflight" aria-label="絶商戦の開始前確認">
+                <div className="briefing-ultimate-preflight__pattern">
+                  <small>今回の2大予告</small>
+                  <strong>{ultimateOpeningActionName}</strong>
+                  <span aria-hidden="true">→</span>
+                  <strong>{ultimateCriticalActionName}</strong>
+                </div>
+                <p>{ultimateEnemyPattern.counterPlan}</p>
+                <ul aria-label="推奨装備の確認">
+                  <li data-ready={openingAutoSkill ? 'true' : 'false'}>開幕AUTO {openingAutoSkill?.name ?? '未設定'}</li>
+                  <li data-ready={criticalAutoSkill ? 'true' : 'false'}>瀕死AUTO {criticalAutoSkill?.name ?? '未設定'}</li>
+                  <li data-ready={equippedCapitalBoostSkill ? 'true' : 'false'}>ぶんどる {equippedCapitalBoostSkill ? 'あり' : 'なし'}</li>
+                  <li data-ready={manualDefenseNames.length > 0 ? 'true' : 'false'}>短時間防御 {manualDefenseNames.join('・') || 'なし'}</li>
+                  <li data-ready={limitBreakTier >= 3 ? 'true' : 'false'}>LB {limitBreakTier || 0}</li>
+                  <li data-ready={selectedBattleSynergy?.battleEffect?.countersMarketWind ? 'true' : 'false'}>
+                    市場風対策 {selectedBattleSynergy?.battleEffect?.countersMarketWind ? selectedBattleSynergy.name : 'なし'}
+                  </li>
+                </ul>
+                <small>この2技のほか、資本逆転・強制清算などの共通ギミックも発生します。</small>
+              </section>
+            )}
+            <details
+              className="briefing-advanced-details"
+              open={briefingDetailsOpen}
+              onToggle={(event) => setBriefingDetailsOpen(event.currentTarget.open)}
+            >
               <summary>
                 <ScrollText />
                 <span>攻略の要点を見る</span>
@@ -10048,7 +10075,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
                 : isCruel
                   ? `酷商戦を開始（${battleReadiness.symbol}${battleReadiness.label}）`
                 : isUltimate
-                ? `絶商戦を開始（${battleReadiness.symbol}${battleReadiness.label}）`
+                ? `対策を確認して絶商戦を開始（${battleReadiness.symbol}${battleReadiness.label}）`
                 : isSavage
                   ? `零式レイド開始（${battleReadiness.symbol}${battleReadiness.label}）`
                   : isExtremeBattle

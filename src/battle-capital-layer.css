@@ -1255,6 +1255,91 @@
   margin-bottom: .5rem;
 }
 
+.briefing-ultimate-preflight {
+  display: grid;
+  gap: .42rem;
+  margin: 0 0 .58rem;
+  padding: .62rem;
+  border: 1px solid rgba(251, 113, 133, .52);
+  border-radius: .62rem;
+  background:
+    linear-gradient(135deg, rgba(76, 5, 25, .78), rgba(15, 23, 42, .9) 58%),
+    #070d18;
+  box-shadow: inset 0 0 22px rgba(251, 113, 133, .08);
+}
+
+.briefing-ultimate-preflight__pattern {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: .35rem;
+  text-align: center;
+}
+
+.briefing-ultimate-preflight__pattern small {
+  grid-column: 1 / -1;
+  color: #fda4af;
+  font-size: .56rem;
+  font-weight: 1000;
+  letter-spacing: .12em;
+}
+
+.briefing-ultimate-preflight__pattern strong {
+  min-width: 0;
+  padding: .38rem .3rem;
+  border: 1px solid rgba(253, 164, 175, .34);
+  border-radius: .42rem;
+  color: #fff1f2;
+  background: rgba(136, 19, 55, .3);
+  font-size: .67rem;
+  overflow-wrap: anywhere;
+}
+
+.briefing-ultimate-preflight__pattern > span {
+  color: #fde68a;
+  font-weight: 1000;
+}
+
+.briefing-ultimate-preflight p,
+.briefing-ultimate-preflight > small {
+  margin: 0;
+  color: #dbeafe;
+  font-size: .59rem;
+  line-height: 1.45;
+}
+
+.briefing-ultimate-preflight > small {
+  color: #94a3b8;
+}
+
+.briefing-ultimate-preflight ul {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.briefing-ultimate-preflight li {
+  min-width: 0;
+  padding: .3rem .36rem;
+  border: 1px solid rgba(148, 163, 184, .24);
+  border-radius: .38rem;
+  color: #fecdd3;
+  background: rgba(15, 23, 42, .72);
+  font-size: .54rem;
+  font-weight: 900;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.briefing-ultimate-preflight li[data-ready='true'] {
+  border-color: rgba(52, 211, 153, .38);
+  color: #a7f3d0;
+  background: rgba(6, 78, 59, .26);
+}
+
 .briefing-advanced-details {
   margin: 0 0 .65rem;
   overflow: clip;
@@ -1305,6 +1390,10 @@
 }
 
 @media (max-width: 639px) {
+  .briefing-ultimate-preflight ul {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .buyout-main {
     overflow-y: auto;
     overscroll-behavior-y: contain;

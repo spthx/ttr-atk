@@ -39,7 +39,8 @@ export const ENEMY_INITIAL_COMMITMENT_RATIO = 0.25;
 export const SAVAGE_ENEMY_BUDGET_MULTIPLIER = 1.58;
 export const SAVAGE_LAYER_BUDGET_MULTIPLIERS = [1, 1.08, 1.18, 1.25] as const;
 export const SAVAGE_SERIES_BUDGET_MULTIPLIERS = [1, 1.035, 1.075] as const;
-export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 2.75;
+export const ULTIMATE_ENEMY_BUDGET_MULTIPLIER = 2.37;
+export const CRUEL_ENEMY_BUDGET_MULTIPLIER = 2.75;
 export const LIMIT_BREAK_CHARGE_PER_BAR = 100;
 export const LIMIT_BREAK_MAX_BARS = 3;
 
@@ -922,7 +923,7 @@ export const REPEATED_NETWORK_SUPPORT_BALANCE = {
  * Cruel keeps its separate assessment tuning.
  */
 export const SAVAGE_NETWORK_SUPPORT_LIMIT = 18;
-export const ULTIMATE_NETWORK_SUPPORT_LIMIT = 8;
+export const ULTIMATE_NETWORK_SUPPORT_LIMIT = 10;
 export const ULTIMATE_LIMIT_BREAK_LIMIT = 1;
 export const ULTIMATE_APPRAISAL_LIMIT_MS = 108_000;
 
@@ -1755,11 +1756,18 @@ export const calculateEnemyBudget = ({
           ? 1.04
           : 1.02;
 
+  // Phantom reuses Ultimate-grade combat mechanics, but only the standalone
+  // Ultimate duty receives its dedicated budget tuning. Phantom, Cruel and
+  // Karma retain the authored 2.75 advanced baseline.
+  const isStandaloneUltimate =
+    isUltimate && targetProperty.id === 'ultimate_starwide_trade';
   const calculatedBudget = Math.round(
     baseBudget * balanceFactor * cityBossBudgetMultiplier *
     authoredNormalBudgetMultiplier *
-    (isUltimate || isCruel || isKarma
+    (isStandaloneUltimate
       ? ULTIMATE_ENEMY_BUDGET_MULTIPLIER
+      : isUltimate || isCruel || isKarma
+        ? CRUEL_ENEMY_BUDGET_MULTIPLIER
       : isSavage
         ? SAVAGE_ENEMY_BUDGET_MULTIPLIER *
           getSavageLayerBudgetMultiplier(targetProperty) *
