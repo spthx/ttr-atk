@@ -15,9 +15,12 @@ import {
 import { resolveBattleCanvasDpr } from '../utils/battleCanvasQuality';
 import {
   BATTLE_CAPITAL_CANVAS_ROW_COUNTS,
+  BATTLE_CAPITAL_SFC_COIN_SPRITE_CROP,
+  BATTLE_CAPITAL_SFC_COLUMN_PITCH_IN_COIN_WIDTHS,
   BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT,
   resolveBattleCapitalSfcColumnX,
   resolveBattleCapitalSfcIncomingLogicalLayers,
+  resolveBattleCapitalSfcPacketSteppedProgress,
   resolveBattleCapitalSfcRenderedCoinLayers,
   resolveBattleCapitalSfcRowBaseY,
   resolveBattleCapitalSfcSideGeometry,
@@ -146,12 +149,7 @@ const staticCanvasCache = new WeakMap<HTMLCanvasElement, StaticCanvasCacheEntry>
 const ROW_COUNTS = BATTLE_CAPITAL_CANVAS_ROW_COUNTS;
 // Crop away generated transparent padding before each sprite is scaled. This
 // keeps the same measured SFC proportions on every viewport and DPR.
-const COIN_SPRITE_CROP = {
-  x: 130,
-  y: 37,
-  width: 1847,
-  height: 710,
-} as const;
+const COIN_SPRITE_CROP = BATTLE_CAPITAL_SFC_COIN_SPRITE_CROP;
 const PEDESTAL_SPRITE_CROP = {
   x: 313,
   y: 59,
@@ -360,7 +358,8 @@ const buildColumnLayout = (
   const columns: CoinColumnLayout[] = [];
   let index = 0;
   ROW_COUNTS.forEach((count, depth) => {
-    const pitch = geometry.coinWidth * 0.9;
+    const pitch =
+      geometry.coinWidth * BATTLE_CAPITAL_SFC_COLUMN_PITCH_IN_COIN_WIDTHS;
     const rowBaseY = resolveBattleCapitalSfcRowBaseY(
       geometry.pedestalTopY,
       geometry.pedestalHeight,
@@ -515,9 +514,14 @@ const drawCapitalSideBase = (
   sprites: BattleCapitalCanvasSprites
 ) => {
   const geometry = buildColumnLayout(width, height, side.side);
+  const active = new Set(side.frame.activeColumnIndices);
   drawPedestalBack(context, geometry, sprites.pedestal);
 
   geometry.columns.forEach((column) => {
+    // Active columns are painted dynamically. This lets the exact committed
+    // `after` stack replace before+incoming at contact, avoiding doubled alpha
+    // seams in the final animation frame.
+    if (active.has(column.index)) return;
     drawCoinStack(
       context,
       sprites.coin,
@@ -550,6 +554,30 @@ const drawCapitalSideIncoming = (
       MAX_BATTLE_CAPITAL_COLUMN_LAYERS
     );
     if (addedLayers <= 0) return;
+    const rawProgress = clamp(side.frame.packetProgress, 0, 1);
+    if (rawProgress >= 1) {
+      drawCoinStack(
+        context,
+        sprites.coin,
+        column.x,
+        column.baseY,
+        geometry.coinWidth,
+        geometry.coinHeight,
+        geometry.layerStep,
+        after
+      );
+      return;
+    }
+    drawCoinStack(
+      context,
+      sprites.coin,
+      column.x,
+      column.baseY,
+      geometry.coinWidth,
+      geometry.coinHeight,
+      geometry.layerStep,
+      before
+    );
     // Match the falling cylinder to the exact committed height delta. The
     // timeline's four-layer hint is the normal case, but large support actions
     // can add more than four layers to one anchor in a single authored wave.
@@ -562,16 +590,11 @@ const drawCapitalSideIncoming = (
     );
     // The SFC animation exposes three coarse positions at 30fps rather than a
     // smooth physics arc. Keep the final sample exact so rolls merge cleanly.
-    const rawProgress = clamp(side.frame.packetProgress, 0, 1);
-    const laneDelay = ((column.index + side.frame.packetSeed) % 3) * 0.08;
-    const laneProgress = clamp(
-      (rawProgress - laneDelay) / Math.max(0.01, 1 - laneDelay),
-      0,
-      1
-    );
-    const steppedProgress = laneProgress >= 1
-      ? 1
-      : Math.floor(laneProgress * 3) / 3;
+    const steppedProgress = resolveBattleCapitalSfcPacketSteppedProgress({
+      rawProgress,
+      columnIndex: column.index,
+      packetSeed: side.frame.packetSeed,
+    });
     const packetBaseY =
       startBaseY + (landingBaseY - startBaseY) * steppedProgress;
     drawCoinStack(
@@ -611,6 +634,8 @@ const getStaticSceneKey = (
     spriteSet: sprites ? 'sfc-pedestal-v3-wide-bundled' : 'pending',
     player: scene.player.frame.columnHeights,
     enemy: scene.enemy.frame.columnHeights,
+    playerActive: scene.player.frame.activeColumnIndices,
+    enemyActive: scene.enemy.frame.activeColumnIndices,
   });
 
 const getCanvasCssSize = (

@@ -1,4 +1,39 @@
-# Product Design QA — SFC台座・最小束・縦横実戦（2026-08-22 最終）
+# Product Design QA — SFCピクセル投影・着地同一性（2026-08-22 継続監査）
+
+- final result: passed; browser comparison and full release gate completed
+- source + implementation, same comparison input: `artifacts/capital-pixel-audit-2026-08-22/14-source-vs-implementation-pixel-study.jpg`
+- source state: SFC第一部 02:28.091前後、18アンカー着地後
+- implementation state: `capital-contact-audit.html?units=18`、同じ18アンカー1巡
+- minimum bundle: `docs/evidence/capital-pixel-minimum-v2.png`
+- wide pyramid: `docs/evidence/capital-pixel-pyramid-wide.png`
+- portrait mirror: `docs/evidence/capital-pixel-pyramid-portrait-dpr2.png`
+- large landing: `docs/evidence/capital-pixel-large-landing-v2.png`
+- real beginner battle: `docs/evidence/capital-pixel-game-beginner-ready.png`
+- real first investment: `docs/evidence/capital-pixel-game-beginner-first-invest.png`
+
+## Current evidence and fixes
+
+1. SFCの18束は低い直方体ではなく、奥から`[4,5,5,4]`が大きな縦段差を持つ疑似立体ピラミッド。旧row base`[0.34,0.44,0.54,0.64]`を`[-0.62,-0.20,0.22,0.64]`へ改めた。
+2. 金貨PNGのα=128 bboxは`135,167,1837,397`。透明余白を含むcropを廃止し、見える輪郭で幅高比、段間隔、接地を計算する。
+3. 最低8枚束の束高/束幅を原作測定0.78〜0.95へ合わせ、実装0.82〜0.90に固定した。
+4. 台座幅を旧7.45束から原作中央値6.5束へ戻し、横pitchを1.05束へ固定した。
+5. active列を静止キャッシュから除外。落下中はbefore+incoming、進捗1ではsettledと同じafter山を一度だけ描き、最終フレームの二重αと次フレームの輪郭ジャンプを解消した。
+6. 30fps・165msで空中3姿勢＋着地が各1フレーム以上露出することを数値検査した。
+7. 1280×720のfixture、390×844・DPR2鏡像、巨額72+198→270、実ゲームのグリダニア初心者戦を新規撮影。背景隙間、薄い単独コイン、台からの浮遊、左右崩れは見つからない。
+8. 都市マップ→グリダニア→初心者向け物件→準備→開幕→初回700ギル投入を実操作。次行動、手数料、勝利後報酬が先に見え、詳細フィルタと戦力式は折りたたまれている。
+
+## Current priority gate
+
+- P0: 実αcrop、前壁接地、着地最終フレームの二重描画 — fixed
+- P1: 18アンカー奥行き、束高、台座比率、横pitch、縦持ち鏡像 — fixed
+- P2: 第2部、音声限界、ピクセル測定の文書共有 — fixed
+- static gate: lint、visual/capital-contact、balance、readiness、progression、500戦simulation — passed
+- production gate: exact outer `npm run build` and `git diff --check` — passed
+- evidence limit: 公開動画は640×360再圧縮。ROM内ドット、OAM、無加工60Hz、原音周期は未認証として分離
+
+---
+
+# Prior QA — SFC台座・最小束・縦横実戦（2026-08-22 最終）
 
 - final result: passed
 - source + implementation, same input comparison: `artifacts/capital-contact-audit/final/17-sfc-vs-implementation-v5.jpg`

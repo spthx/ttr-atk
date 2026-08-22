@@ -1204,7 +1204,17 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /Math\.floor\(laneProgress \* 3\) \/ 3/,
+  /resolveBattleCapitalSfcPacketSteppedProgress\(\{[\s\S]{0,220}rawProgress,[\s\S]{0,220}columnIndex: column\.index/,
+  'falling rolls must use the shared stepped-position resolver'
+);
+assert.match(
+  battleCapitalCanvasLayout,
+  /BATTLE_CAPITAL_SFC_PACKET_POSITION_STEPS = 3/,
+  'the SFC fall must keep three airborne position buckets'
+);
+assert.match(
+  battleCapitalCanvasLayout,
+  /Math\.floor\(laneProgress \* BATTLE_CAPITAL_SFC_PACKET_POSITION_STEPS\) \/[\s\S]{0,80}BATTLE_CAPITAL_SFC_PACKET_POSITION_STEPS/,
   'falling rolls must retain the original three-position step'
 );
 assert.match(
@@ -1770,8 +1780,18 @@ assert.doesNotMatch(
 );
 assert.match(
   battleCapitalCanvas,
-  /incomingBundleCopies: 1,[\s\S]*resolveBattleCapitalSfcIncomingLogicalLayers\([\s\S]{0,180}before,[\s\S]{0,80}after,[\s\S]{0,120}MAX_BATTLE_CAPITAL_COLUMN_LAYERS[\s\S]{0,420}const bundleLayers = addedLayers/,
+  /incomingBundleCopies: 1,[\s\S]*resolveBattleCapitalSfcIncomingLogicalLayers\([\s\S]{0,180}before,[\s\S]{0,80}after,[\s\S]{0,120}MAX_BATTLE_CAPITAL_COLUMN_LAYERS/,
   'the renderer must carry each exact active-column delta so a large roll cannot grow after landing'
+);
+assert.match(
+  battleCapitalCanvas,
+  /const after = side\.frame\.settledAfterColumnHeights\[column\.index\][\s\S]{0,420}if \(rawProgress >= 1\) \{[\s\S]{0,320}geometry\.layerStep,[\s\S]{0,60}after[\s\S]{0,80}return;/,
+  'the landing sample must replace the moving packet with the exact settled stack'
+);
+assert.match(
+  battleCapitalCanvas,
+  /drawCoinStack\([\s\S]{0,260}geometry\.layerStep,[\s\S]{0,60}before[\s\S]{0,420}const bundleLayers = addedLayers/,
+  'an airborne packet must be drawn on top of the exact pre-action stack'
 );
 assert.match(
   integratedCss,
@@ -2909,9 +2929,14 @@ assert.match(
   'Tataru must return to the fixed origin early while the remaining coin packets continue'
 );
 assert.match(
-  battleCapitalCanvas,
-  /const laneDelay =[\s\S]{0,260}const steppedProgress = laneProgress >= 1[\s\S]{0,100}Math\.floor\(laneProgress \* 3\) \/ 3[\s\S]{0,160}startBaseY \+ \(landingBaseY - startBaseY\) \* steppedProgress/,
+  battleCapitalCanvasLayout,
+  /const delay =[\s\S]{0,260}const laneProgress = clamp\([\s\S]{0,260}return laneProgress >= 1[\s\S]{0,180}Math\.floor\(laneProgress \* BATTLE_CAPITAL_SFC_PACKET_POSITION_STEPS\)[\s\S]{0,100}BATTLE_CAPITAL_SFC_PACKET_POSITION_STEPS/,
   'each short coin roll must fall vertically through three SFC-style positions'
+);
+assert.match(
+  battleCapitalCanvas,
+  /resolveBattleCapitalSfcPacketSteppedProgress\([\s\S]{0,260}startBaseY \+ \(landingBaseY - startBaseY\) \* steppedProgress/,
+  'the Canvas renderer must apply the shared stepped packet position to vertical travel'
 );
 assert.match(
   battleCapitalCanvas,

@@ -43,6 +43,24 @@
       "value": 8,
       "classification": "I"
     },
+    "visibleCoinSprite": {
+      "alphaThreshold": 128,
+      "crop": { "x": 135, "y": 167, "width": 1837, "height": 397 },
+      "aspectRatio": 4.6272040302267,
+      "classification": "M"
+    },
+    "minimumBundleHeightInBundleWidths": {
+      "sourceMeasured": { "min": 0.78, "target": 0.86, "max": 0.95, "classification": "M" },
+      "implementation": { "min": 0.82, "target": 0.86, "max": 0.9, "classification": "I" }
+    },
+    "columnPitchInBundleWidths": {
+      "sourceMeasured": { "min": 0.95, "target": 1.05, "max": 1.1, "classification": "M" },
+      "implementation": { "target": 1.05, "classification": "I" }
+    },
+    "rowBaseOffsetsInPedestalHeights": {
+      "implementation": [-0.62, -0.2, 0.22, 0.64],
+      "classification": "I"
+    },
     "pedestalWidthInBundleWidths": {
       "sourceMeasured": {
         "min": 5.8,
@@ -51,9 +69,9 @@
         "classification": "M"
       },
       "implementation": {
-        "min": 7.2,
-        "target": 7.45,
-        "max": 7.6,
+        "min": 6.45,
+        "target": 6.5,
+        "max": 6.55,
         "classification": "I"
       }
     }

@@ -20,7 +20,8 @@ FFXIVの主要都市を舞台に、ギルを積み合って民間事業・営業
 
 原作映像から採寸したコイン、台座、進行テンポと判断根拠は
 [`docs/romasaga3-trade-reference.md`](docs/romasaga3-trade-reference.md)、独立した映像監査と将来の画像回帰条件は
-[`docs/romasaga3-trade-visual-reference.md`](docs/romasaga3-trade-visual-reference.md)を正本にします。
+[`docs/romasaga3-trade-visual-reference.md`](docs/romasaga3-trade-visual-reference.md)、金貨・台座・18アンカーのピクセル測定は
+[`docs/romasaga3-trade-pixel-study.md`](docs/romasaga3-trade-pixel-study.md)を正本にします。
 
 ---
 

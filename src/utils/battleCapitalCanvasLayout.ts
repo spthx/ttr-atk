@@ -1,15 +1,29 @@
 /** Fixed SFC pedestal footprint measured from source frames. */
 export const BATTLE_CAPITAL_CANVAS_ROW_COUNTS = [4, 5, 5, 4] as const;
 /**
- * SFC row contact points measured down the visible pedestal sprite, rear to
- * front. The front row sits just behind the front-wall split so even one coin
- * is partially occluded and therefore reads as resting on the top plane.
+ * SFC row contact points measured against the complete pedestal sprite, rear
+ * to front. The original uses a deliberately exaggerated faux-isometric fan:
+ * rear rows rise above the literal ellipse so all eighteen rolls remain read-
+ * able, while the front row stays behind the front wall.
  */
 export const BATTLE_CAPITAL_SFC_ROW_BASE_OFFSETS = [
-  0.34, 0.44, 0.54, 0.64,
+  -0.62, -0.2, 0.22, 0.64,
 ] as const;
 export const BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT = 0.58;
-export const BATTLE_CAPITAL_SFC_COIN_ASPECT = 1847 / 710;
+/** Alpha-128 bounds of the approved coin sprite, not its transparent canvas. */
+export const BATTLE_CAPITAL_SFC_COIN_SPRITE_CROP = {
+  x: 135,
+  y: 167,
+  width: 1837,
+  height: 397,
+} as const;
+export const BATTLE_CAPITAL_SFC_COIN_ASPECT =
+  BATTLE_CAPITAL_SFC_COIN_SPRITE_CROP.width /
+  BATTLE_CAPITAL_SFC_COIN_SPRITE_CROP.height;
+/** Measured SFC footprint targets. */
+export const BATTLE_CAPITAL_SFC_PEDESTAL_TO_COIN_RATIO = 6.5;
+export const BATTLE_CAPITAL_SFC_COLUMN_PITCH_IN_COIN_WIDTHS = 1.05;
+export const BATTLE_CAPITAL_SFC_PACKET_POSITION_STEPS = 3;
 /**
  * The approved source sprite is assembled as two untouched curved caps with a
  * narrow centre strip repeated between them. Every slice keeps its source
@@ -100,11 +114,17 @@ export const resolveBattleCapitalSfcSideGeometry = (
     safeHeight * 1.58
   );
   const coinWidth = clamp(
-    Math.min(maximumPedestalWidth / 7.45, safeHeight * 0.16),
+    Math.min(
+      maximumPedestalWidth / BATTLE_CAPITAL_SFC_PEDESTAL_TO_COIN_RATIO,
+      safeHeight * 0.16
+    ),
     9,
-    46
+    58
   );
-  const pedestalWidth = Math.min(maximumPedestalWidth, coinWidth * 7.45);
+  const pedestalWidth = Math.min(
+    maximumPedestalWidth,
+    coinWidth * BATTLE_CAPITAL_SFC_PEDESTAL_TO_COIN_RATIO
+  );
   const pedestalHeight = pedestalWidth / BATTLE_CAPITAL_SFC_PEDESTAL_ASPECT;
   const pedestalBottomY = safeHeight * (landscape ? 0.95 : 0.94);
   const pedestalTopY = pedestalBottomY - pedestalHeight;
@@ -117,8 +137,36 @@ export const resolveBattleCapitalSfcSideGeometry = (
     pedestalBottomY,
     coinWidth,
     coinHeight,
-    layerStep: clamp(coinHeight * 0.34, 1.5, 4.8),
+    layerStep: clamp(coinHeight * 0.43, 1.5, 5.6),
   };
+};
+
+/**
+ * Quantizes one packet into the SFC-like three airborne positions plus the
+ * exact landing sample. Lane delays stagger neighbouring rolls without ever
+ * changing their destination.
+ */
+export const resolveBattleCapitalSfcPacketSteppedProgress = ({
+  rawProgress,
+  columnIndex,
+  packetSeed,
+}: {
+  rawProgress: number;
+  columnIndex: number;
+  packetSeed: number;
+}) => {
+  const progress = clamp(rawProgress, 0, 1);
+  const delay = ((Math.round(columnIndex) + Math.round(packetSeed)) % 3 + 3) % 3 *
+    0.08;
+  const laneProgress = clamp(
+    (progress - delay) / Math.max(0.01, 1 - delay),
+    0,
+    1
+  );
+  return laneProgress >= 1
+    ? 1
+    : Math.floor(laneProgress * BATTLE_CAPITAL_SFC_PACKET_POSITION_STEPS) /
+      BATTLE_CAPITAL_SFC_PACKET_POSITION_STEPS;
 };
 
 export const resolveBattleCapitalSfcRowBaseY = (
