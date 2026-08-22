@@ -33,6 +33,7 @@ import {
 import {
   BATTLE_CAPITAL_OVERFLOW_LAYERS_PER_TIER,
   BATTLE_CAPITAL_CANVAS_ROW_COUNTS,
+  BATTLE_CAPITAL_SFC_ROW_BASE_OFFSETS,
   BATTLE_CAPITAL_RACK_SETTLE_MS,
   BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS,
   BATTLE_CAPITAL_RACK_TWEEN_MS,
@@ -43,6 +44,8 @@ import {
   resolveBattleCapitalCanvasLayout,
   resolveBattleCapitalHoardVerticalGeometry,
   resolveBattleCapitalPacketStartBaseY,
+  resolveBattleCapitalSfcColumnX,
+  resolveBattleCapitalSfcRowBaseY,
   resolveBattleCapitalStackGeometry,
   resolveBattleCapitalVisualLayers,
 } from '../src/utils/battleCapitalCanvasLayout';
@@ -783,6 +786,54 @@ for (const fixture of [
         fixture.fieldHeight * 0.08 - 1e-9,
     'late incoming rolls must retain a measurable downward path in both orientations'
   );
+}
+assert.equal(
+  BATTLE_CAPITAL_SFC_ROW_BASE_OFFSETS.length,
+  BATTLE_CAPITAL_CANVAS_ROW_COUNTS.length,
+  'every SFC tray row must own an explicit supported baseline'
+);
+const sparseAuditTrayY = 240;
+const sparseAuditCoinHeight = 9;
+const sparseAuditRowBases = BATTLE_CAPITAL_SFC_ROW_BASE_OFFSETS.map(
+  (_, depth) => resolveBattleCapitalSfcRowBaseY(
+    sparseAuditTrayY,
+    sparseAuditCoinHeight,
+    depth
+  )
+);
+assert.ok(
+  sparseAuditTrayY - sparseAuditRowBases.at(-1)! <= sparseAuditCoinHeight,
+  'the front row must intersect the platter rim so one coin cannot float'
+);
+for (let depth = 1; depth < sparseAuditRowBases.length; depth += 1) {
+  assert.ok(
+    sparseAuditRowBases[depth] - sparseAuditRowBases[depth - 1] <=
+      sparseAuditCoinHeight * 0.6,
+    `SFC row ${depth} must overlap the nearer support row instead of floating`
+  );
+}
+for (const count of BATTLE_CAPITAL_CANVAS_ROW_COUNTS) {
+  for (let column = 0; column < count; column += 1) {
+    const playerX = resolveBattleCapitalSfcColumnX({
+      centerX: 100,
+      pitch: 12,
+      count,
+      column,
+      mirrored: false,
+    });
+    const enemyX = resolveBattleCapitalSfcColumnX({
+      centerX: 300,
+      pitch: 12,
+      count,
+      column,
+      mirrored: true,
+    });
+    assert.equal(
+      playerX - 100,
+      -(enemyX - 300),
+      `SFC row ${count} column ${column} must mirror around the opposing tray centre`
+    );
+  }
 }
 for (const [label, width, height] of [
   ['attached desktop', 1520, 278],
@@ -1669,8 +1720,8 @@ assert.doesNotMatch(
 );
 assert.match(
   battleCapitalCanvas,
-  /incomingBundleCopies: 1,[\s\S]*const bundleLayers = Math\.max\([\s\S]*Math\.min\(6, side\.frame\.incomingBundleLayers \?\? addedLayers\)/,
-  'the renderer must draw one bounded short coin roll per active SFC lane'
+  /incomingBundleCopies: 1,[\s\S]*const bundleLayers = Math\.max\([\s\S]*Math\.min\([\s\S]*6,[\s\S]*addedLayers,[\s\S]*side\.frame\.incomingBundleLayers \?\? addedLayers/,
+  'the renderer must draw one bounded short roll that cannot collapse after landing'
 );
 assert.match(
   integratedCss,

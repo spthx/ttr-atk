@@ -817,10 +817,15 @@ export const MAX_BATTLE_CAPITAL_VISIBLE_UNITS =
 export const BATTLE_CAPITAL_FULL_PAGE_MARKET_RATIO = 0.35;
 
 const CAPITAL_SHOWCASE_FILL_ORDER = [
-  // Rear-to-front stagger measured from the SFC 4/5/5/4 tray. Each pass
-  // touches every fixed roll before any roll gains another visible seam.
-  0, 13, 4, 9, 17, 3, 8, 12, 14,
-  1, 5, 10, 16, 2, 7, 11, 15, 6,
+  // Build a compact mound from the front-centre of the SFC 4/5/5/4 tray.
+  // Every rear roll is introduced only after a nearer, horizontally
+  // overlapping roll exists, so one or two visible coins can never hang in
+  // the empty rear of the platter. A complete pass still touches all eighteen
+  // fixed rolls before any roll gains another visible seam.
+  15, 16, 14, 17,
+  11, 10, 12, 9, 13,
+  6, 5, 7, 4, 8,
+  1, 2, 0, 3,
 ] as const;
 
 // Screen-space order for the eighteen persistent columns. Presentation uses
@@ -974,7 +979,7 @@ export const getCapitalIncomingBundleCopies = (
   );
 };
 
-/** Same amount always produces the same monotonic twenty-four-stack showcase. */
+/** Same amount always produces the same monotonic eighteen-stack showcase. */
 export const getCapitalColumnHeights = (visibleUnits: number) => {
   const normalizedUnits = Math.max(
     0,

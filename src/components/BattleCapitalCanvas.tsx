@@ -13,6 +13,10 @@ import {
   type MechanicalCapitalColumnFrame,
 } from '../utils/battlePresentation';
 import { resolveBattleCanvasDpr } from '../utils/battleCanvasQuality';
+import {
+  resolveBattleCapitalSfcColumnX,
+  resolveBattleCapitalSfcRowBaseY,
+} from '../utils/battleCapitalCanvasLayout';
 import './BattleCapitalCanvas.css';
 
 export type BattleCapitalCanvasSide = 'player' | 'enemy';
@@ -367,14 +371,22 @@ const buildColumnLayout = (
   let index = 0;
   ROW_COUNTS.forEach((count, depth) => {
     const pitch = geometry.coinWidth * 0.93;
-    const rowWidth = pitch * (count - 1);
-    const rowBaseY =
-      geometry.trayY - geometry.coinHeight * (5.9 - depth * 1.65);
+    const rowBaseY = resolveBattleCapitalSfcRowBaseY(
+      geometry.trayY,
+      geometry.coinHeight,
+      depth
+    );
     for (let column = 0; column < count; column += 1) {
       columns.push({
         index,
         depth,
-        x: geometry.centerX - rowWidth / 2 + column * pitch,
+        x: resolveBattleCapitalSfcColumnX({
+          centerX: geometry.centerX,
+          pitch,
+          count,
+          column,
+          mirrored: side === 'enemy',
+        }),
         baseY: rowBaseY,
       });
       index += 1;
@@ -558,9 +570,16 @@ const drawCapitalSideIncoming = (
     const before = side.frame.columnHeights[column.index] ?? 0;
     const after = side.frame.settledAfterColumnHeights[column.index] ?? before;
     const addedLayers = Math.max(1, after - before);
+    // Never let a decorative short roll contain more layers than will remain
+    // after landing. A one-coin addition must not arrive as three coins and
+    // visibly collapse to one on the next frame.
     const bundleLayers = Math.max(
-      3,
-      Math.min(6, side.frame.incomingBundleLayers ?? addedLayers)
+      1,
+      Math.min(
+        6,
+        addedLayers,
+        side.frame.incomingBundleLayers ?? addedLayers
+      )
     );
     const landingBaseY = column.baseY - before * geometry.layerStep;
     const startBaseY = Math.min(

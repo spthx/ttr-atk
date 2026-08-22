@@ -1896,6 +1896,107 @@ const lateColumnUnits = getBattleCapitalVisibleUnits(
 );
 const earlyColumnHeights = getCapitalColumnHeights(earlyColumnUnits);
 const lateColumnHeights = getCapitalColumnHeights(lateColumnUnits);
+
+// A sparse SFC tray must read as one supported mound, not as isolated coins
+// hanging in a rear row. Keep these checks geometric rather than pinning the
+// exact authored fill sequence: implementations may choose either centre coin
+// first and may interleave supported rows, provided growth stays compact,
+// monotonic, and visually balanced.
+const sparseCapitalRows = [
+  [0, 1, 2, 3],
+  [4, 5, 6, 7, 8],
+  [9, 10, 11, 12, 13],
+  [14, 15, 16, 17],
+] as const;
+const getSparseColumnX = (row: readonly number[], columnIndex: number) => {
+  const position = row.indexOf(columnIndex);
+  return position / Math.max(1, row.length - 1) - 0.5;
+};
+const sparseCapitalViolations: string[] = [];
+let previousSparseHeights = getCapitalColumnHeights(0);
+for (let units = 1; units <= BATTLE_CAPITAL_COLUMN_COUNT; units += 1) {
+  const heights = getCapitalColumnHeights(units);
+  const total = heights.reduce((sum, height) => sum + height, 0);
+  if (total !== units) {
+    sparseCapitalViolations.push(
+      `${units}: visible-unit total was ${total}`
+    );
+  }
+
+  const deltas = heights.map(
+    (height, columnIndex) => height - previousSparseHeights[columnIndex]
+  );
+  if (
+    deltas.some((delta) => delta < 0) ||
+    deltas.reduce((sum, delta) => sum + delta, 0) !== 1
+  ) {
+    sparseCapitalViolations.push(
+      `${units}: growth was not one monotonic added unit (${deltas.join(',')})`
+    );
+  }
+
+  sparseCapitalRows.forEach((row, depth) => {
+    row.forEach((columnIndex, position) => {
+      if (heights[columnIndex] <= 0) return;
+
+      const distanceFromCentre = Math.abs(
+        position - (row.length - 1) / 2
+      );
+      const skippedInnerColumn = row.some((innerColumnIndex, innerPosition) =>
+        Math.abs(innerPosition - (row.length - 1) / 2) < distanceFromCentre &&
+        heights[innerColumnIndex] <= 0
+      );
+      if (skippedInnerColumn) {
+        sparseCapitalViolations.push(
+          `${units}: row ${depth} occupied outer column ${columnIndex} before its centre`
+        );
+      }
+
+      if (depth < sparseCapitalRows.length - 1) {
+        const nearerRow = sparseCapitalRows[depth + 1];
+        const x = getSparseColumnX(row, columnIndex);
+        const hasNearerSupport = nearerRow.some((supportColumnIndex) =>
+          heights[supportColumnIndex] > 0 &&
+          Math.abs(getSparseColumnX(nearerRow, supportColumnIndex) - x) <= 0.26
+        );
+        if (!hasNearerSupport) {
+          sparseCapitalViolations.push(
+            `${units}: column ${columnIndex} had no nearer supporting coin`
+          );
+        }
+      }
+    });
+
+    for (let left = 0; left < Math.floor(row.length / 2); left += 1) {
+      const right = row.length - 1 - left;
+      if (Math.abs(heights[row[left]] - heights[row[right]]) > 1) {
+        sparseCapitalViolations.push(
+          `${units}: row ${depth} mirror pair ${row[left]}/${row[right]} differed by more than one`
+        );
+      }
+    }
+  });
+
+  if (units === 1) {
+    const frontRow = sparseCapitalRows.at(-1)!;
+    const occupiedFrontCentre = frontRow.some((columnIndex, position) =>
+      heights[columnIndex] > 0 &&
+      Math.abs(position - (frontRow.length - 1) / 2) === 0.5
+    );
+    if (!occupiedFrontCentre) {
+      sparseCapitalViolations.push(
+        '1: the first coin did not start at either front-centre position'
+      );
+    }
+  }
+
+  previousSparseHeights = heights;
+}
+assert.deepEqual(
+  sparseCapitalViolations,
+  [],
+  `visible units 1-${BATTLE_CAPITAL_COLUMN_COUNT} must grow as a supported, centre-out mound on the tray`
+);
 assert.ok(
   lateColumnUnits > earlyColumnUnits,
   'the same relative offer becomes a taller treasury in later chapters'

@@ -1,5 +1,49 @@
 /** Fixed SFC tray footprint measured from source frames. */
 export const BATTLE_CAPITAL_CANVAS_ROW_COUNTS = [4, 5, 5, 4] as const;
+/**
+ * SFC tray baselines measured in rendered coin heights, rear to front.
+ * Adjacent rows stay close enough to overlap as a supported mound; the front
+ * row intersects the platter rim so a single visible coin cannot float.
+ */
+export const BATTLE_CAPITAL_SFC_ROW_BASE_OFFSETS = [
+  2.6, 2.05, 1.5, 0.95,
+] as const;
+
+export const resolveBattleCapitalSfcRowBaseY = (
+  trayY: number,
+  coinHeight: number,
+  depth: number
+) => {
+  const safeDepth = Math.max(
+    0,
+    Math.min(
+      BATTLE_CAPITAL_SFC_ROW_BASE_OFFSETS.length - 1,
+      Math.round(Number.isFinite(depth) ? depth : 0)
+    )
+  );
+  return trayY - Math.max(0, coinHeight) *
+    BATTLE_CAPITAL_SFC_ROW_BASE_OFFSETS[safeDepth];
+};
+
+/** Mirrors enemy columns around its own tray so sparse piles face each other. */
+export const resolveBattleCapitalSfcColumnX = ({
+  centerX,
+  pitch,
+  count,
+  column,
+  mirrored,
+}: {
+  centerX: number;
+  pitch: number;
+  count: number;
+  column: number;
+  mirrored: boolean;
+}) => {
+  const safeCount = Math.max(1, Math.round(count));
+  const safeColumn = Math.max(0, Math.min(safeCount - 1, Math.round(column)));
+  const visualColumn = mirrored ? safeCount - 1 - safeColumn : safeColumn;
+  return centerX - pitch * (safeCount - 1) / 2 + visualColumn * pitch;
+};
 // Fresh frame analysis measured the completed-page bank drop at roughly
 // 167ms. Keep one decisive 170ms movement, then start the rapid refill.
 export const BATTLE_CAPITAL_RACK_TWEEN_MS = 140;
