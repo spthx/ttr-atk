@@ -102,6 +102,15 @@
     "allowStableLogicalBundleCountOne": true,
     "fallingUnitMustHaveBundleHeight": true
   },
+  "overflowPaging": {
+    "enabled": true,
+    "moveCompletedPileAndPedestalTogether": true,
+    "preserveFixedUpperActiveBaseline": true,
+    "continueIncomingDuringDescent": true,
+    "maximumRelativeDriftCssPixels": 1,
+    "preserveVisiblePerCoinSeparators": true,
+    "requiredDprSnapshots": [1, 1.25, 1.5, 2]
+  },
   "logicPresentationSeparation": {
     "fundsIndependentOfAnimationDuration": true,
     "ownershipIndependentOfAnimationDuration": true,

@@ -23,7 +23,7 @@
 |中断復帰|`src/utils/battleSession.ts`|決着前のセッション。幻・商戦のブリーフィング取消では抽選相手と連勝数を維持|
 |音声再生|`src/utils/audio.ts`|単一AudioContext、遅延デコード|
 |商戦UIと演出順|`src/components/BattleModal.tsx`|データではなく実行器へ縮小していく|
-|商戦フィールド描画|`src/components/BattleCapitalCanvas.tsx`、`src/components/BattleCapitalCanvas.css`、`src/utils/battleCapitalCanvasLayout.ts`、`src/utils/battleCanvasQuality.ts`、`src/battle-capital-layer.css`|両陣営共通1枚のCanvas2D。原作準拠の18アンカー `[4,5,5,4]`、金貨束・厚い台座の透過PNG、settled/incoming、所有率前線・圧力・風・VSを同一sceneへ投影。現在のSFC表示はpage bankingを行わず、長柱を上端でclipする。30fpsはDPR 1.5、60fpsはDPR 2を内部解像度の上限とする|
+|商戦フィールド描画|`src/components/BattleCapitalCanvas.tsx`、`src/components/BattleCapitalCanvas.css`、`src/utils/battleCapitalCanvasLayout.ts`、`src/utils/battleCanvasQuality.ts`、`src/battle-capital-layer.css`|両陣営共通1枚のCanvas2D。原作準拠の18アンカー `[4,5,5,4]`、金貨束・厚い台座の透過PNG、active/banked/incoming、所有率前線・圧力・風・VSを同一sceneへ投影。過積載時は完成柱と物理台座を一体下降させ、上段への補充と下段柱の一枚刻み表示を続ける。30fpsはDPR 1.5、60fpsはDPR 2を内部解像度の上限とする|
 
 関連する設計基準:
 
@@ -82,7 +82,7 @@ ui.battle.commit
 
 ### 3.2 コイン画像
 
-コインは`BattleCapitalCanvas`のCanvas2Dへ決定論的に描く。左右それぞれ18アンカーを奥から `[4,5,5,4]` に固定し、少額は前中央から連続して埋め、増資では同じ18本を縦へ伸ばす。現行SFC表示は完成山を下段へbankせず、長柱を画面上端でclipする。1論理unitも薄い1枚にはせず、最低8枚の仕切りが読める短い円柱束として描く。通常設定は最大9wave、1wave 165ms、落下側の論理束は4層で、省モーション時だけ単一の短縮waveへまとめる。金額は列高とwave数へ変換するが、DOM nodeやCanvasの同時描画資源は金額に比例して増やさない。所有率の矢印帯は直接描画し、透明な完成山キャッシュを後から合成するため、10Hzの所有率更新だけでは重い金貨仕切りを再生成しない。
+コインは`BattleCapitalCanvas`のCanvas2Dへ決定論的に描く。左右それぞれ18アンカーを奥から `[4,5,5,4]` に固定し、少額は前中央から連続して埋め、増資では同じ18本を縦へ伸ばす。過積載時は完成山と物理台座を同じ移動体として一定量下段へ送り、上段active基準線は固定したまま次の束を補充する。banked柱も一枚刻みの仕切りを残し、暗い連続面や数値だけへ置換しない。1論理unitも薄い1枚にはせず、最低8枚の仕切りが読める短い円柱束として描く。通常設定は最大9wave、1wave 165ms、落下側の論理束は4層で、省モーション時だけ単一の短縮waveへまとめる。金額は列高とwave数へ変換するが、DOM nodeやCanvasの同時描画資源は金額に比例して増やさない。所有率の矢印帯は直接描画し、透明な完成山キャッシュを後から合成するため、10Hzの所有率更新だけでは重い金貨仕切りを再生成しない。
 
 正式な画像キーと実体:
 
@@ -91,7 +91,7 @@ capital_coin_sfc      -> src/assets/battle/capital-coin-sfc.png
 capital_pedestal_sfc  -> src/assets/battle/capital-pedestal-sfc.png
 ```
 
-左右は同じ金貨素材と台座素材を使い、配置だけを鏡像にする。台座は曲面の左右capを変形せず、中央の直線stripだけを反復して横幅を作る。前壁を最後に重ね、前列の束根元を隠して接地を示す。素材やrendererを交換する場合も、18アンカー、最低8枚束、165ms×最大9wave、左右鏡像、背景ギャップ最大1 device pxを変更しない。詳細は[`romasaga3-trade-reference.md`](./romasaga3-trade-reference.md)と[`rs3-trade-regression-baseline.json`](./rs3-trade-regression-baseline.json)を正本とする。
+左右は同じ金貨素材と台座素材を使い、配置だけを鏡像にする。台座は曲面の左右capを変形せず、中央の直線stripだけを反復して横幅を作る。前壁を最後に重ね、前列の束根元を隠して接地を示す。素材やrendererを交換する場合も、18アンカー、最低8枚束、165ms×最大9wave、左右鏡像、背景ギャップ最大1 device px、完成柱と物理台座の同期下降を変更しない。詳細は[`romasaga3-trade-reference.md`](./romasaga3-trade-reference.md)と[`rs3-trade-regression-baseline.json`](./rs3-trade-regression-baseline.json)を正本とする。
 
 ## 4. 音声
 

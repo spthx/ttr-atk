@@ -101,8 +101,35 @@ const baseline = JSON.parse(
     };
   };
   contact: { backgroundGapMaxDevicePixels: number };
+  overflowPaging: {
+    enabled: true;
+    moveCompletedPileAndPedestalTogether: true;
+    preserveFixedUpperActiveBaseline: true;
+    continueIncomingDuringDescent: true;
+    maximumRelativeDriftCssPixels: number;
+    preserveVisiblePerCoinSeparators: true;
+    requiredDprSnapshots: number[];
+  };
   responsiveViewports: { requiredDprSnapshots: number[] };
 };
+
+assert.equal(baseline.overflowPaging.enabled, true);
+assert.equal(
+  baseline.overflowPaging.moveCompletedPileAndPedestalTogether,
+  true
+);
+assert.equal(baseline.overflowPaging.preserveFixedUpperActiveBaseline, true);
+assert.equal(baseline.overflowPaging.continueIncomingDuringDescent, true);
+assert.ok(
+  baseline.overflowPaging.maximumRelativeDriftCssPixels <= 1,
+  'the completed pile and physical pedestal may drift by at most 1 CSS px'
+);
+assert.equal(baseline.overflowPaging.preserveVisiblePerCoinSeparators, true);
+assert.deepEqual(
+  baseline.overflowPaging.requiredDprSnapshots,
+  baseline.responsiveViewports.requiredDprSnapshots,
+  'overflow descent must be audited at every required DPR'
+);
 
 assert.equal(BATTLE_CAPITAL_COLUMN_COUNT, baseline.geometry.anchorCount);
 assert.deepEqual(

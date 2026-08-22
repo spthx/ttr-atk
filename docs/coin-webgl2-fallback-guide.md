@@ -1,6 +1,6 @@
 # 商戦フィールド描画 WebGL2 フォールバック実装手引き
 
-> **2026-08-22更新:** 旧24列・99ms・active/banked page契約は廃止した。現在の正本は[`romasaga3-trade-reference.md`](./romasaga3-trade-reference.md)と[`rs3-trade-regression-baseline.json`](./rs3-trade-regression-baseline.json)であり、18アンカー `[4,5,5,4]`、最低8枚に見える束、165ms×最大9wave、SFC表示ではbankingなしを守る。本書のWebGL2案もこの現行sceneをそのまま投影する場合だけ有効である。
+> **2026-08-23更新:** 現在の正本は[`romasaga3-trade-reference.md`](./romasaga3-trade-reference.md)と[`rs3-trade-regression-baseline.json`](./rs3-trade-regression-baseline.json)であり、18アンカー `[4,5,5,4]`、最低8枚に見える束、165ms×最大9wave、過積載時の完成柱＋物理台座の一体下降を守る。本書のWebGL2案もこの現行sceneをそのまま投影する場合だけ有効である。
 
 ## 1. 目的
 
@@ -57,7 +57,7 @@ rendererはこれらを変更せず、コールバックで再計算も要求し
 - `CapitalStackTimelineFrame`
 - `buildCapitalStackTimeline(event)`
 
-rendererは`activeColumnIndices`、`columnHeights`、`settledAfterColumnHeights`、`incomingBundleLayers`、`packetSeed`、`atMs`、`durationMs`をそのまま消費する。互換型に残る`bankedColumnHeights`、`bankedPileCount`、`bankTransferPages`は現行SFC rendererでは常に中立値として扱い、表示へ復活させない。相場35%の全力投入を1つの視覚ページ基準とし、18アンカー全面、4論理層の落下束、最大9waveの走査順をrenderer側で乱数生成し直してはならない。通常設定は165msのwaveを使い、モーション低減時だけ1waveへ圧縮する。1以上の論理列高は表示上最低8枚の短い円柱束へ写像する。
+rendererは`activeColumnIndices`、`columnHeights`、`settledAfterColumnHeights`、`incomingBundleLayers`、`packetSeed`、`atMs`、`durationMs`に加え、`bankedColumnHeights`、`bankedPileCount`、`bankTransferPages`をそのまま消費する。bank移送では完成柱と物理台座を同じdelta Yで下降させ、上段active基準線は固定し、下降中もincomingを補充する。相場35%の全力投入を1つの視覚ページ基準とし、18アンカー全面、4論理層の落下束、最大9waveの走査順をrenderer側で乱数生成し直してはならない。通常設定は165msのwaveを使い、モーション低減時だけ1waveへ圧縮する。1以上の論理列高は表示上最低8枚の短い円柱束へ写像する。
 
 30fps／60fpsはtimelineを読む回数だけを変え、scene、seed、page work、wave数、開始・着地時刻、最終settled状態を変えない。
 
@@ -128,7 +128,7 @@ scripts/coin-renderer-benchmark/
 
 - 現行製品は両陣営共通1枚のcanvasを使う。
 - 背景、所有率前線、圧力、左右18アンカーのsettled/incoming金貨束、厚い台座、風、VSを同じsceneで描く。
-- 長柱は同じ18アンカーを上へ伸ばしてfield上端でclipする。SFC rendererにbanked pageや台座下降を混在させない。
+- 長柱は同じ18アンカーを上へ伸ばし、上限超過時はbanked完成柱と物理台座を一体下降させる。上段は固定位置で補充を継続し、下段柱の一枚刻みの仕切りを維持する。
 - 透過金貨・台座素材はnearest-neighbourで描き、台座前壁を最後に重ねて束根元を隠す。1束でも背景の水平隙間を残さない。
 - idle時は`requestAnimationFrame`を回さない。active packet中だけ30/60fpsで更新し、`document.hidden`ではrendererの更新だけを止める。
 - CSS寸法は統合商戦フィールドへ一致させたまま、内部解像度だけを30fps時DPR 1.5、60fps時DPR 2までに制限する。高密度iPhoneで描画画素が過剰に増えるのを防ぎ、勝敗・入力・演出時間には触れない。
@@ -157,7 +157,7 @@ scripts/coin-renderer-benchmark/
 5. `activeColumnIndices`へ4論理層のincoming bundleを165msで落とす。左右のXは鏡像にする。
 6. 台座背面、settled、incoming、台座前壁の順で描き、前列の根元を隠す。
 7. incoming wave着地と同じframeでsettled列高を確定する。
-8. 長柱は上端でclipし、最終frameをReactから完了通知を受けるまで独自に消去しない。
+8. 長柱は上端でclipし、上限超過時は完成柱と物理台座を同じdelta Yで下段へ送る。上段active基準線を固定し、最終frameをReactから完了通知を受けるまで独自に消去しない。
 
 描画側の補間は位置・不透明度・光だけに使う。`presentedCapital`、列高、packet順、phase境界を補間で飛び越えてはならない。
 
