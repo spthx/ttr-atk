@@ -105,7 +105,11 @@
   "overflowPaging": {
     "enabled": true,
     "moveCompletedPileAndPedestalTogether": true,
-    "preserveFixedUpperActiveBaseline": true,
+    "preserveFixedUpperLoadingWindow": true,
+    "implementationMode": "rigid-viewport-scroll",
+    "upperWindowFraction": 0.15,
+    "stepHeightFraction": 0.24,
+    "allowPedestalViewportClipping": true,
     "continueIncomingDuringDescent": true,
     "maximumRelativeDriftCssPixels": 1,
     "preserveVisiblePerCoinSeparators": true,

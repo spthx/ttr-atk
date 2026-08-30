@@ -1174,7 +1174,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /capitalCoinSpriteUrl[\s\S]*sprites\.coin[\s\S]*drawCapitalSideBase\([\s\S]*scene\.player,[\s\S]{0,80}sprites,[\s\S]{0,80}playerGeometry[\s\S]*drawCapitalSideBase\([\s\S]*scene\.enemy,[\s\S]{0,80}sprites,[\s\S]{0,80}enemyGeometry/,
+  /capitalCoinSpriteUrl[\s\S]*sprites\.coin[\s\S]*drawCapitalSideBase\(target,side,sprites,geometry,resources\)[\s\S]*paintSide\(cacheContext, scene\.player,[\s\S]*paintSide\(cacheContext, scene\.enemy,/,
   'both sides must share the same authored gold coin sprite instead of red enemy coins'
 );
 assert.match(
@@ -1189,8 +1189,8 @@ assert.doesNotMatch(
 );
 assert.match(
   battleCapitalCanvas,
-  /const staticCanvasCache = new WeakMap[\s\S]*getStaticSceneKey[\s\S]*getContext\('2d', \{ alpha: true \}\)[\s\S]*drawPixelArrowBands\(context,[\s\S]{0,120}context\.drawImage\(cached\.canvas, 0, 0\)[\s\S]*drawCapitalSideIncoming/,
-  'late-game settled towers must be cached so animation frames repaint only falling rolls'
+  /const staticCanvasCache = new WeakMap[\s\S]*getStaticSceneKey[\s\S]*getContext\('2d', \{ alpha: true \}\)[\s\S]*drawPixelArrowBands\(context,[\s\S]{0,220}context\.drawImage\(cached\.canvas, 0, 0\)/,
+  'settled scenes must retain their transparent cache for ownership-only updates'
 );
 assert.doesNotMatch(
   battleCapitalCanvas,
@@ -1202,16 +1202,25 @@ assert.equal(
   2,
   'column geometry must be built once per side and shared by every paint layer'
 );
-assert.equal(
-  battleCapitalCanvas.match(/PEDESTAL_SPRITE_SOURCE_SLICES/g)?.length,
-  2,
-  'the fourteen authored pedestal slices must be allocated once instead of per paint'
+assert.match(
+  battleCapitalCanvas,
+  /const themeSlices = new WeakMap[\s\S]*getPedestalSlices\(theme\)\.forEach/,
+  'authored pedestal slices must be cached per theme instead of per paint'
 );
 assert.doesNotMatch(
   battleCapitalCanvas,
   /casinoWideUrl|casinoMobileUrl|bankGeometry|bankTransferPages - 1|pileGlow|drawOverflowHoard/,
-  'the SFC field must not restore casino scenery, page banking, glow or loose overflow coins'
+  'the field must not restore the legacy bank renderer, casino scenery, glow or loose coins'
 );
+assert.match(
+  battleCapitalCanvas,
+  /target\.translate\(0,offset\);[\s\S]{0,500}drawCapitalSideBase[\s\S]{0,200}drawCapitalSideIncoming[\s\S]{0,200}drawCapitalSidePedestalFront/,
+  'the live renderer must move the physical tray, pillars and foreground mask together'
+);
+assert.match(battleCapitalCanvas, /resolveCapitalViewportScroll\(\{/,
+  'the live SFC renderer must consume the executable viewport descent contract');
+assert.match(battleCapitalCanvas, /drawCachedCapitalStack\(context,coin,resources,/,
+  'active columns must use the same bounded bitmap cache as settled columns');
 assert.match(
   battleCapitalCanvas,
   /context\.imageSmoothingEnabled = false;/,
@@ -1233,14 +1242,14 @@ assert.match(
   'falling rolls must retain the original three-position step'
 );
 assert.match(
-  battleCapitalCanvas,
-  /resolveBattleCapitalSfcRenderedCoinLayers\(layers\)[\s\S]{0,360}for \(let layer = 0; layer < renderedLayers; layer \+= 1\)[\s\S]{0,420}COIN_SPRITE_CROP[\s\S]{0,220}layerBottomY - coinHeight/,
+  readSource('src/utils/capitalCachedStack.ts'),
+  /resolveBattleCapitalSfcRenderedCoinLayers\(layers\)[\s\S]*for \(let layer = 0; layer < count; layer\+\+\)[\s\S]*c\.drawImage\(coin,crop\.x,crop\.y,crop\.width,crop\.height/,
   'every visible SFC coin layer must be a separately tiled sprite with its own separator edge'
 );
 assert.match(
   battleCapitalCanvas,
-  /context\.rect\(0, snap\(clipTopY\)[\s\S]{0,360}if \(layerBottomY < clipTopY\) continue;/,
-  'late-game towers must clip and skip coin sprites that are entirely above the viewport'
+  /new CapitalBitmapCache\(\(frameRate === 30 \? 16 : 32\)\*1024\*1024\)/,
+  'long-column images must use a bounded backing-store cache instead of unbounded per-funding resources'
 );
 assert.match(
   battleCapitalCanvas,
@@ -2955,7 +2964,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const reducedMotion =[\s\S]{0,120}prefers-reduced-motion: reduce[\s\S]*packetProgress:[\s\S]{0,180}activeColumnIndices\.length === 0 \|\| reducedMotion[\s\S]{0,80}\? 1/,
+  /projectCapitalSceneAtTime[\s\S]*packetProgress:[\s\S]{0,180}activeColumnIndices\.length === 0 \|\| reducedMotion[\s\S]{0,80}\? 1[\s\S]*prefers-reduced-motion: reduce/,
   'reduced motion must settle Canvas2D packets without starting a falling animation'
 );
 assert.match(

@@ -23,6 +23,11 @@ FFXIVの主要都市を舞台に、ギルを積み合って民間事業・営業
 [`docs/romasaga3-trade-visual-reference.md`](docs/romasaga3-trade-visual-reference.md)、金貨・台座・18アンカーのピクセル測定は
 [`docs/romasaga3-trade-pixel-study.md`](docs/romasaga3-trade-pixel-study.md)を正本にします。
 
+2026-08-30の描画軽量化・一体下降・テーマ交換と実画像検査は
+[`docs/renderer-upgrade-2026-08-30.md`](docs/renderer-upgrade-2026-08-30.md)に記録しています。
+将来のオリジナル販売版に必要な素材・権利・配布・品質仕様は
+[`docs/commercial-edition-readiness.md`](docs/commercial-edition-readiness.md)を参照してください。現行fan版の販売を許可・認証するものではありません。
+
 ---
 
 ## 1. ゲーム説明書

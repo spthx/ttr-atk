@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   type CSSProperties,
 } from 'react';
@@ -13,9 +14,12 @@ import {
   type MechanicalCapitalColumnFrame,
 } from '../utils/battlePresentation';
 import { resolveBattleCanvasDpr } from '../utils/battleCanvasQuality';
+import { CapitalBitmapCache } from '../utils/capitalBitmapCache';
+import { drawCachedCapitalStack, type CapitalStackPaintResources } from '../utils/capitalCachedStack';
+import { resolveCapitalViewportScroll } from '../utils/capitalViewportScroll';
+import { createBattleVisualTheme, getBattleVisualThemeCacheKey, validateBattleVisualTheme, type BattleVisualTheme } from '../data/battleVisualTheme';
 import {
   BATTLE_CAPITAL_CANVAS_ROW_COUNTS,
-  BATTLE_CAPITAL_SFC_COIN_SPRITE_CROP,
   BATTLE_CAPITAL_SFC_COLUMN_PITCH_IN_COIN_WIDTHS,
   BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT,
   resolveBattleCapitalSfcColumnX,
@@ -68,6 +72,7 @@ export interface BattleCapitalCanvasProps {
   className?: string;
   style?: CSSProperties;
   devicePixelRatio?: number;
+  theme?: BattleVisualTheme;
 }
 
 interface NormalizedCapitalFrame {
@@ -113,6 +118,13 @@ export interface BattleCapitalCanvasMetrics {
   cssHeight: number;
   devicePixelRatio: number;
   backingPixels: number;
+  bitmapCacheBytes: number;
+  bitmapCacheLimitBytes: number;
+  bitmapCacheEntries: number;
+  bitmapBuilds: number;
+  bitmapHits: number;
+  playerScrollPx: number;
+  enemyScrollPx: number;
 }
 
 export interface BattleCapitalCanvasCssSize {
@@ -142,44 +154,34 @@ interface StaticCanvasCacheEntry {
 export interface BattleCapitalCanvasSprites {
   coin: HTMLImageElement;
   pedestal: HTMLImageElement;
+  theme?: BattleVisualTheme;
 }
 
 const staticCanvasCache = new WeakMap<HTMLCanvasElement, StaticCanvasCacheEntry>();
+const bitmapCaches = new WeakMap<HTMLCanvasElement, {
+  key: string;
+  coin: HTMLImageElement;
+  pedestal: HTMLImageElement;
+  resources: CapitalStackPaintResources;
+}>();
+export const DEFAULT_BATTLE_VISUAL_THEME = createBattleVisualTheme({
+  coin: capitalCoinSpriteUrl, pedestal: capitalPedestalSpriteUrl,
+});
 
 const ROW_COUNTS = BATTLE_CAPITAL_CANVAS_ROW_COUNTS;
-// Crop away generated transparent padding before each sprite is scaled. This
-// keeps the same measured SFC proportions on every viewport and DPR.
-const COIN_SPRITE_CROP = BATTLE_CAPITAL_SFC_COIN_SPRITE_CROP;
-const PEDESTAL_SPRITE_CROP = {
-  x: 313,
-  y: 59,
-  width: 1668,
-  height: 631,
-} as const;
-// Preserve every source pixel's aspect ratio while making the pedestal as
-// broad as the SFC dais. Only a narrow straight centre strip repeats between
-// the untouched curved caps; no visible slice is non-uniformly stretched.
-const PEDESTAL_SPRITE_CENTER_WIDTH = 64;
-const PEDESTAL_SPRITE_CAP_WIDTH =
-  (PEDESTAL_SPRITE_CROP.width - PEDESTAL_SPRITE_CENTER_WIDTH) / 2;
-const PEDESTAL_SPRITE_CENTER_TILE_COUNT = 12;
-const PEDESTAL_SPRITE_SOURCE_SLICES = [
-  {
-    x: PEDESTAL_SPRITE_CROP.x,
-    width: PEDESTAL_SPRITE_CAP_WIDTH,
-  },
-  ...Array.from({ length: PEDESTAL_SPRITE_CENTER_TILE_COUNT }, () => ({
-    x: PEDESTAL_SPRITE_CROP.x + PEDESTAL_SPRITE_CAP_WIDTH,
-    width: PEDESTAL_SPRITE_CENTER_WIDTH,
-  })),
-  {
-    x:
-      PEDESTAL_SPRITE_CROP.x +
-      PEDESTAL_SPRITE_CAP_WIDTH +
-      PEDESTAL_SPRITE_CENTER_WIDTH,
-    width: PEDESTAL_SPRITE_CAP_WIDTH,
-  },
-] as const;
+const themeSlices = new WeakMap<BattleVisualTheme, Array<{x:number;width:number}>>();
+const getPedestalSlices = (theme: BattleVisualTheme) => {
+  let slices = themeSlices.get(theme);
+  if (!slices) {
+    const {crop,centerTileWidth,centerTileCount} = theme.pedestal;
+    const cap=(crop.width-centerTileWidth)/2;
+    slices=[{x:crop.x,width:cap},
+      ...Array.from({length:centerTileCount},()=>({x:crop.x+cap,width:centerTileWidth})),
+      {x:crop.x+cap+centerTileWidth,width:cap}];
+    themeSlices.set(theme,slices);
+  }
+  return slices;
+};
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
 
@@ -234,8 +236,8 @@ const normalizeSide = (
       visibleUnits,
       columnHeights,
       settledAfterColumnHeights,
-      // Compatibility fields stay neutral. The SFC display never banks pages
-      // and never lowers either tray; tall columns simply clip at the top.
+      // Legacy page counts stay neutral. Viewport scrolling is projected from
+      // these continuous column heights, not from game-state banking counters.
       bankedColumnHeights: Array(BATTLE_CAPITAL_COLUMN_COUNT).fill(0),
       bankedPileCount: 0,
       bankTransfer: false,
@@ -298,19 +300,38 @@ export const getBattleCapitalCanvasSceneKey = (
   scene: BattleCapitalCanvasScene
 ) => JSON.stringify(scene);
 
-const getCapitalPacketAnimationKey = (side: NormalizedCapitalSide) =>
+export const getCapitalPacketAnimationKey = (side: NormalizedCapitalSide) =>
   side.frame.activeColumnIndices.length > 0
     ? `${side.frame.presentationSerial}:${side.frame.packetSeed}:${side.frame.incomingBundleLayers ?? 0}:${side.frame.activeColumnIndices.join(',')}`
     : '';
+
+/** All repaint triggers share this clock, including image load and resize. */
+export const projectCapitalSceneAtTime = (
+  scene: BattleCapitalCanvasScene,
+  clocks: Record<BattleCapitalCanvasSide, CapitalPacketClock>,
+  now: number,
+  reducedMotion: boolean
+): BattleCapitalCanvasScene => {
+  const projectSide = (side: NormalizedCapitalSide): NormalizedCapitalSide => {
+    const clock=clocks[side.side];
+    const elapsed=clock.key === getCapitalPacketAnimationKey(side) ? now-clock.startedAt : 0;
+    return {...side,frame:{...side.frame,
+      packetProgress:side.frame.activeColumnIndices.length === 0 || reducedMotion
+        ? 1 : clamp(elapsed/side.frame.beatDurationMs,0,1),
+    }};
+  };
+  return {...scene,player:projectSide(scene.player),enemy:projectSide(scene.enemy)};
+};
 
 const drawPixelArrowBands = (
   context: CanvasRenderingContext2D,
   width: number,
   height: number,
-  scene: BattleCapitalCanvasScene
+  scene: BattleCapitalCanvasScene,
+  theme: BattleVisualTheme
 ) => {
   context.globalCompositeOperation = 'copy';
-  context.fillStyle = '#b6ad91';
+  context.fillStyle = theme.palette.background;
   context.fillRect(0, 0, width, height);
   context.globalCompositeOperation = 'source-over';
 
@@ -319,7 +340,7 @@ const drawPixelArrowBands = (
   context.globalAlpha = 0.62;
   for (let x = -chevronWidth; x < width + chevronWidth; x += chevronWidth) {
     const stripe = Math.floor((x + chevronWidth) / chevronWidth);
-    context.fillStyle = stripe % 2 === 0 ? '#91ad91' : '#c4a4a1';
+    context.fillStyle = stripe % 2 === 0 ? theme.palette.stripeA : theme.palette.stripeB;
     context.beginPath();
     context.moveTo(x, 0);
     context.lineTo(x + chevronWidth * 0.58, 0);
@@ -337,7 +358,7 @@ const drawPixelArrowBands = (
   for (let lane = 0; lane < 6; lane += 1) {
     const y = height * (0.1 + lane * 0.135);
     const playerLane = lane % 2 === 1;
-    context.fillStyle = playerLane ? '#a91e2f' : '#244f83';
+    context.fillStyle = playerLane ? theme.palette.player : theme.palette.enemy;
     context.beginPath();
     if (playerLane) {
       context.moveTo(0, y);
@@ -355,7 +376,7 @@ const drawPixelArrowBands = (
     context.closePath();
     context.fill();
     context.globalAlpha = 0.48;
-    context.fillStyle = '#f2e5b7';
+    context.fillStyle = theme.palette.edge;
     context.fillRect(
       playerLane ? 0 : boundary,
       snap(y + 1),
@@ -408,13 +429,14 @@ const drawWidePedestalSlice = (
   sourceY: number,
   sourceHeight: number,
   destinationY: number,
-  destinationHeight: number
+  destinationHeight: number,
+  theme: BattleVisualTheme
 ) => {
-  const scale = geometry.pedestalHeight / PEDESTAL_SPRITE_CROP.height;
+  const scale = geometry.pedestalHeight / theme.pedestal.crop.height;
   const destinationLeft = geometry.centerX - geometry.pedestalWidth / 2;
   let sourceOffset = 0;
 
-  PEDESTAL_SPRITE_SOURCE_SLICES.forEach((slice) => {
+  getPedestalSlices(theme).forEach((slice) => {
     const left = snap(destinationLeft + sourceOffset * scale);
     sourceOffset += slice.width;
     const right = snap(destinationLeft + sourceOffset * scale);
@@ -435,27 +457,30 @@ const drawWidePedestalSlice = (
 const drawPedestalBack = (
   context: CanvasRenderingContext2D,
   geometry: ReturnType<typeof buildColumnLayout>,
-  pedestal: HTMLImageElement
+  pedestal: HTMLImageElement,
+  theme: BattleVisualTheme
 ) => {
   drawWidePedestalSlice(
     context,
     pedestal,
     geometry,
-    PEDESTAL_SPRITE_CROP.y,
-    PEDESTAL_SPRITE_CROP.height,
+    theme.pedestal.crop.y,
+    theme.pedestal.crop.height,
     geometry.pedestalTopY,
-    geometry.pedestalHeight
+    geometry.pedestalHeight,
+    theme
   );
 };
 
 const drawPedestalFront = (
   context: CanvasRenderingContext2D,
   geometry: ReturnType<typeof buildColumnLayout>,
-  pedestal: HTMLImageElement
+  pedestal: HTMLImageElement,
+  theme: BattleVisualTheme
 ) => {
-  const sourceY = PEDESTAL_SPRITE_CROP.y +
-    PEDESTAL_SPRITE_CROP.height * BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT;
-  const sourceHeight = PEDESTAL_SPRITE_CROP.height *
+  const sourceY = theme.pedestal.crop.y +
+    theme.pedestal.crop.height * BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT;
+  const sourceHeight = theme.pedestal.crop.height *
     (1 - BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT);
   const destinationY = geometry.pedestalTopY +
     geometry.pedestalHeight * BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT;
@@ -468,7 +493,8 @@ const drawPedestalFront = (
     sourceY,
     sourceHeight,
     destinationY,
-    destinationHeight
+    destinationHeight,
+    theme
   );
 };
 
@@ -481,41 +507,22 @@ const drawCoinStack = (
   coinHeight: number,
   layerStep: number,
   layers: number,
-  clipTopY = 0
+  resources: CapitalStackPaintResources
 ) => {
-  const renderedLayers = resolveBattleCapitalSfcRenderedCoinLayers(layers);
-  if (renderedLayers <= 0) return;
-
-  context.save();
-  context.beginPath();
-  context.rect(0, snap(clipTopY), context.canvas.width, context.canvas.height);
-  context.clip();
-  for (let layer = 0; layer < renderedLayers; layer += 1) {
-    const layerBottomY = baseY - layer * layerStep;
-    if (layerBottomY < clipTopY) continue;
-    context.drawImage(
-      coin,
-      COIN_SPRITE_CROP.x,
-      COIN_SPRITE_CROP.y,
-      COIN_SPRITE_CROP.width,
-      COIN_SPRITE_CROP.height,
-      snap(x - width / 2),
-      snap(layerBottomY - coinHeight),
-      Math.max(1, snap(width)),
-      Math.max(1, snap(coinHeight))
-    );
-  }
-  context.restore();
+  drawCachedCapitalStack(context,coin,resources,x,baseY,width,coinHeight,layerStep,layers);
 };
 
 const drawCapitalSideBase = (
   context: CanvasRenderingContext2D,
   side: NormalizedCapitalSide,
   sprites: BattleCapitalCanvasSprites,
-  geometry: ReturnType<typeof buildColumnLayout>
+  geometry: ReturnType<typeof buildColumnLayout>,
+  resources: CapitalStackPaintResources
 ) => {
   const active = new Set(side.frame.activeColumnIndices);
-  drawPedestalBack(context, geometry, sprites.pedestal);
+  drawPedestalBack(context, geometry, sprites.pedestal, sprites.theme ?? DEFAULT_BATTLE_VISUAL_THEME);
+  // During motion, paint every column in one rear-to-front pass below.
+  if (active.size > 0) return;
 
   geometry.columns.forEach((column) => {
     // Active columns are painted dynamically. This lets the exact committed
@@ -530,7 +537,8 @@ const drawCapitalSideBase = (
       geometry.coinWidth,
       geometry.coinHeight,
       geometry.layerStep,
-      side.frame.columnHeights[column.index] ?? 0
+      side.frame.columnHeights[column.index] ?? 0,
+      resources
     );
   });
 };
@@ -540,11 +548,19 @@ const drawCapitalSideIncoming = (
   height: number,
   side: NormalizedCapitalSide,
   sprites: BattleCapitalCanvasSprites,
-  geometry: ReturnType<typeof buildColumnLayout>
+  geometry: ReturnType<typeof buildColumnLayout>,
+  resources: CapitalStackPaintResources,
+  scrollOffset: number,
+  reducedEffects: boolean
 ) => {
   const active = new Set(side.frame.activeColumnIndices);
   geometry.columns.forEach((column) => {
-    if (!active.has(column.index)) return;
+    if (!active.has(column.index)) {
+      if (active.size > 0) drawCoinStack(context,sprites.coin,column.x,column.baseY,
+        geometry.coinWidth,geometry.coinHeight,geometry.layerStep,
+        side.frame.columnHeights[column.index] ?? 0,resources);
+      return;
+    }
     const before = side.frame.columnHeights[column.index] ?? 0;
     const after = side.frame.settledAfterColumnHeights[column.index] ?? before;
     const addedLayers = resolveBattleCapitalSfcIncomingLogicalLayers(
@@ -563,7 +579,8 @@ const drawCapitalSideIncoming = (
         geometry.coinWidth,
         geometry.coinHeight,
         geometry.layerStep,
-        after
+        after,
+        resources
       );
       return;
     }
@@ -575,7 +592,8 @@ const drawCapitalSideIncoming = (
       geometry.coinWidth,
       geometry.coinHeight,
       geometry.layerStep,
-      before
+      before,
+      resources
     );
     // Match the falling cylinder to the exact committed height delta. The
     // timeline's four-layer hint is the normal case, but large support actions
@@ -584,7 +602,7 @@ const drawCapitalSideIncoming = (
     const bundleLayers = addedLayers;
     const landingBaseY = column.baseY - before * geometry.layerStep;
     const startBaseY = Math.min(
-      -geometry.coinHeight,
+      -geometry.coinHeight - scrollOffset,
       landingBaseY - height * 0.22 - bundleLayers * geometry.layerStep
     );
     // The SFC animation exposes three coarse positions at 30fps rather than a
@@ -600,12 +618,28 @@ const drawCapitalSideIncoming = (
       context,
       sprites.coin,
       column.x,
-      packetBaseY,
+      snap(packetBaseY),
       geometry.coinWidth,
       geometry.coinHeight,
       geometry.layerStep,
-      bundleLayers
+      bundleLayers,
+      resources
     );
+    // Short, local metallic trails, never a full-screen flash or loose coins.
+    // Their count is bounded by anchors; tiny opening bids remain unadorned.
+    if (!reducedEffects && bundleLayers >= 4 && column.index % 3 === 0 &&
+        rawProgress > 0.12 && rawProgress < 0.94) {
+      const topY = snap(packetBaseY - geometry.coinHeight -
+        (resolveBattleCapitalSfcRenderedCoinLayers(bundleLayers)-1)*geometry.layerStep);
+      context.save();
+      context.globalAlpha = 0.45 * Math.sin(rawProgress * Math.PI);
+      context.fillStyle = (sprites.theme ?? DEFAULT_BATTLE_VISUAL_THEME).palette.impact;
+      for (const direction of [-1,1]) {
+        context.fillRect(snap(column.x + direction*geometry.coinWidth*0.36),
+          topY-Math.max(2,snap(geometry.coinHeight)),1,Math.max(2,snap(geometry.coinHeight)));
+      }
+      context.restore();
+    }
   });
 };
 
@@ -614,7 +648,7 @@ const drawCapitalSidePedestalFront = (
   sprites: BattleCapitalCanvasSprites,
   geometry: ReturnType<typeof buildColumnLayout>
 ) => {
-  drawPedestalFront(context, geometry, sprites.pedestal);
+  drawPedestalFront(context, geometry, sprites.pedestal, sprites.theme ?? DEFAULT_BATTLE_VISUAL_THEME);
 };
 
 const getStaticSceneKey = (
@@ -622,7 +656,7 @@ const getStaticSceneKey = (
   sprites: BattleCapitalCanvasSprites | null
 ) =>
   JSON.stringify({
-    spriteSet: sprites ? 'sfc-pedestal-v3-wide-bundled' : 'pending',
+    spriteSet: sprites ? getBattleVisualThemeCacheKey(sprites.theme ?? DEFAULT_BATTLE_VISUAL_THEME) : 'pending',
     player: scene.player.frame.columnHeights,
     enemy: scene.enemy.frame.columnHeights,
     playerActive: scene.player.frame.activeColumnIndices,
@@ -680,24 +714,64 @@ export const paintBattleCapitalCanvas = (
     desynchronized: true,
   });
   if (!context) return null;
+  const theme = sprites?.theme ?? DEFAULT_BATTLE_VISUAL_THEME;
+  const resourceKey = `${frameRate}:${backingWidth}:${backingHeight}:${width}:${height}:${getBattleVisualThemeCacheKey(theme)}`;
+  let bitmapEntry = bitmapCaches.get(canvas);
+  if (sprites && (!bitmapEntry || bitmapEntry.key !== resourceKey ||
+      bitmapEntry.coin !== sprites.coin || bitmapEntry.pedestal !== sprites.pedestal)) {
+    const validation = validateBattleVisualTheme(theme, {
+      coin: {width:sprites.coin.naturalWidth,height:sprites.coin.naturalHeight},
+      pedestal: {width:sprites.pedestal.naturalWidth,height:sprites.pedestal.naturalHeight},
+    });
+    if (!validation.valid) throw new Error(validation.errors.join(' '));
+    bitmapEntry?.resources.cache.clear();
+    staticCanvasCache.delete(canvas);
+    bitmapEntry = {key:resourceKey,coin:sprites.coin,pedestal:sprites.pedestal,resources:{
+      cache:new CapitalBitmapCache((frameRate === 30 ? 16 : 32)*1024*1024),
+      scaleX:backingWidth/width,scaleY:backingHeight/height,crop:theme.coin.crop,
+    }};
+    bitmapCaches.set(canvas,bitmapEntry);
+  }
+  const resources=bitmapEntry?.resources;
   const playerGeometry = sprites
     ? buildColumnLayout(width, height, scene.player.side)
     : null;
   const enemyGeometry = sprites
     ? buildColumnLayout(width, height, scene.enemy.side)
     : null;
+  const scrollFor = (side:NormalizedCapitalSide,g:ReturnType<typeof buildColumnLayout>|null) =>
+    g ? resolveCapitalViewportScroll({height,coinHeight:g.coinHeight,layerStep:g.layerStep,
+      rowBases:g.columns.map(c=>c.baseY),before:side.frame.columnHeights,
+      after:side.frame.settledAfterColumnHeights,progress:side.frame.packetProgress}).offsetPx : 0;
+  const playerScroll = Math.round(scrollFor(scene.player,playerGeometry)*(backingHeight/height))/(backingHeight/height);
+  const enemyScroll = Math.round(scrollFor(scene.enemy,enemyGeometry)*(backingHeight/height))/(backingHeight/height);
+  const paintSide = (target:CanvasRenderingContext2D, side:NormalizedCapitalSide,
+    geometry:ReturnType<typeof buildColumnLayout>, offset:number) => {
+    if (!resources || !sprites) return;
+    target.save();
+    // One rigid camera transform owns the pedestal, pillar roots and front mask.
+    target.translate(0,offset);
+    drawCapitalSideBase(target,side,sprites,geometry,resources);
+    drawCapitalSideIncoming(target,height,side,sprites,geometry,resources,offset,scene.compact);
+    drawCapitalSidePedestalFront(target,sprites,geometry);
+    target.restore();
+  };
+  const moving = scene.player.frame.activeColumnIndices.length > 0 ||
+    scene.enemy.frame.activeColumnIndices.length > 0;
   const staticKey = getStaticSceneKey(scene, sprites);
   let cached = staticCanvasCache.get(canvas);
-  if (
+  if (moving || (
     !cached ||
     cached.key !== staticKey ||
     cached.backingWidth !== backingWidth ||
     cached.backingHeight !== backingHeight
-  ) {
+  )) {
     const cacheCanvas =
       cached?.canvas ?? canvas.ownerDocument.createElement('canvas');
-    cacheCanvas.width = backingWidth;
-    cacheCanvas.height = backingHeight;
+    if (cacheCanvas.width !== backingWidth || cacheCanvas.height !== backingHeight) {
+      cacheCanvas.width = backingWidth;
+      cacheCanvas.height = backingHeight;
+    }
     const cacheContext = cacheCanvas.getContext('2d', { alpha: true });
     if (!cacheContext) return null;
     cacheContext.setTransform(1, 0, 0, 1, 0, 0);
@@ -712,8 +786,8 @@ export const paintBattleCapitalCanvas = (
     );
     cacheContext.imageSmoothingEnabled = false;
     if (sprites && playerGeometry && enemyGeometry) {
-      drawCapitalSideBase(cacheContext, scene.player, sprites, playerGeometry);
-      drawCapitalSideBase(cacheContext, scene.enemy, sprites, enemyGeometry);
+      paintSide(cacheContext, scene.player, playerGeometry, playerScroll);
+      paintSide(cacheContext, scene.enemy, enemyGeometry, enemyScroll);
     }
     cached = {
       canvas: cacheCanvas,
@@ -729,27 +803,10 @@ export const paintBattleCapitalCanvas = (
   // pile cache so a 10Hz gauge update cannot rebuild thousands of coin seams.
   context.setTransform(backingWidth / width, 0, 0, backingHeight / height, 0, 0);
   context.imageSmoothingEnabled = false;
-  drawPixelArrowBands(context, width, height, scene);
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.drawImage(cached.canvas, 0, 0);
-  context.setTransform(backingWidth / width, 0, 0, backingHeight / height, 0, 0);
-  if (sprites && playerGeometry && enemyGeometry) {
-    drawCapitalSideIncoming(
-      context,
-      height,
-      scene.player,
-      sprites,
-      playerGeometry
-    );
-    drawCapitalSideIncoming(
-      context,
-      height,
-      scene.enemy,
-      sprites,
-      enemyGeometry
-    );
-    drawCapitalSidePedestalFront(context, sprites, playerGeometry);
-    drawCapitalSidePedestalFront(context, sprites, enemyGeometry);
+  drawPixelArrowBands(context, width, height, scene, theme);
+  if (cached) {
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.drawImage(cached.canvas, 0, 0);
   }
 
   const renderDpr = dpr.toFixed(2);
@@ -763,6 +820,13 @@ export const paintBattleCapitalCanvas = (
     cssHeight: height,
     devicePixelRatio: dpr,
     backingPixels: backingWidth * backingHeight,
+    bitmapCacheBytes: resources?.cache.bytes ?? 0,
+    bitmapCacheLimitBytes: resources?.cache.maxBytes ?? 0,
+    bitmapCacheEntries: resources?.cache.size ?? 0,
+    bitmapBuilds: resources?.cache.builds ?? 0,
+    bitmapHits: resources?.cache.hits ?? 0,
+    playerScrollPx:playerScroll,
+    enemyScrollPx:enemyScroll,
   };
 };
 
@@ -778,10 +842,12 @@ export const BattleCapitalCanvas = ({
   className = '',
   style,
   devicePixelRatio,
+  theme = DEFAULT_BATTLE_VISUAL_THEME,
 }: BattleCapitalCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasSizeRef = useRef<BattleCapitalCanvasCssSize | null>(null);
   const spritesRef = useRef<BattleCapitalCanvasSprites | null>(null);
+  const themeKey = useMemo(()=>getBattleVisualThemeCacheKey(theme),[theme]);
   const scene = createBattleCapitalCanvasScene({
     player,
     enemy,
@@ -799,8 +865,13 @@ export const BattleCapitalCanvas = ({
   });
   sceneRef.current = scene;
 
+  const projectCurrent = useCallback(() => projectCapitalSceneAtTime(
+    sceneRef.current,packetClockRef.current,performance.now(),
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  ),[]);
+
   const repaint = useCallback((sceneToPaint: BattleCapitalCanvasScene) => {
-    if (!canvasRef.current) return;
+    if (!canvasRef.current || document.hidden) return;
     paintBattleCapitalCanvas(canvasRef.current, sceneToPaint, {
       devicePixelRatio,
       frameRate,
@@ -818,21 +889,21 @@ export const BattleCapitalCanvas = ({
     const finish = () => {
       if (disposed || !coin.complete || !pedestal.complete) return;
       if (coin.naturalWidth <= 0 || pedestal.naturalWidth <= 0) return;
-      spritesRef.current = { coin, pedestal };
+      spritesRef.current = { coin, pedestal, theme };
       if (canvasRef.current) staticCanvasCache.delete(canvasRef.current);
-      repaint(sceneRef.current);
+      repaint(projectCurrent());
     };
     coin.addEventListener('load', finish);
     pedestal.addEventListener('load', finish);
-    coin.src = capitalCoinSpriteUrl;
-    pedestal.src = capitalPedestalSpriteUrl;
+    coin.src = theme.coin.url;
+    pedestal.src = theme.pedestal.url;
     finish();
     return () => {
       disposed = true;
       coin.removeEventListener('load', finish);
       pedestal.removeEventListener('load', finish);
     };
-  }, [repaint]);
+  }, [repaint,themeKey,projectCurrent]);
 
   useEffect(() => {
     let animationFrame = 0;
@@ -848,31 +919,13 @@ export const BattleCapitalCanvas = ({
       }
     }
 
-    const project = (now: number): BattleCapitalCanvasScene => {
-      const projectSide = (side: NormalizedCapitalSide): NormalizedCapitalSide => ({
-        ...side,
-        frame: {
-          ...side.frame,
-          packetProgress:
-            side.frame.activeColumnIndices.length === 0 || reducedMotion
-              ? 1
-              : clamp(
-                  (now - packetClockRef.current[side.side].startedAt) /
-                    side.frame.beatDurationMs,
-                  0,
-                  1
-                ),
-        },
-      });
-      return {
-        ...scene,
-        player: projectSide(scene.player),
-        enemy: projectSide(scene.enemy),
-      };
-    };
+    const project = (now: number) => projectCapitalSceneAtTime(
+      scene,packetClockRef.current,now,reducedMotion
+    );
 
     const tick = (now: number) => {
-      if (disposed) return;
+      animationFrame = 0;
+      if (disposed || document.hidden) return;
       const projected = project(now);
       let paintedThisTick = false;
       if (now - lastPaintAt >= 1_000 / frameRate - 0.5) {
@@ -886,6 +939,10 @@ export const BattleCapitalCanvas = ({
       if (active) animationFrame = window.requestAnimationFrame(tick);
       else if (!paintedThisTick) repaint(projected);
     };
+    const resumeVisible = () => {
+      if (!document.hidden && !disposed && !animationFrame) tick(performance.now());
+    };
+    document.addEventListener('visibilitychange',resumeVisible);
     repaint(project(effectStartedAt));
     if (!reducedMotion && (['player', 'enemy'] as const).some(
       (side) => scene[side].frame.activeColumnIndices.length > 0
@@ -894,9 +951,22 @@ export const BattleCapitalCanvas = ({
     }
     return () => {
       disposed = true;
+      document.removeEventListener('visibilitychange',resumeVisible);
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
     };
   }, [repaint, sceneKey]);
+
+  useEffect(() => {
+    const canvas=canvasRef.current;
+    return () => {
+      if (!canvas) return;
+      bitmapCaches.get(canvas)?.resources.cache.clear();
+      bitmapCaches.delete(canvas);
+      const snapshot=staticCanvasCache.get(canvas);
+      if (snapshot) {snapshot.canvas.width=1;snapshot.canvas.height=1;}
+      staticCanvasCache.delete(canvas);
+    };
+  },[]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -907,7 +977,7 @@ export const BattleCapitalCanvas = ({
         width: Math.max(1, bounds.width),
         height: Math.max(1, bounds.height),
       };
-      repaint(sceneRef.current);
+      repaint(projectCurrent());
     };
     updateSize();
     if (typeof ResizeObserver === 'undefined') {
@@ -917,7 +987,7 @@ export const BattleCapitalCanvas = ({
     const observer = new ResizeObserver(updateSize);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [repaint]);
+  }, [repaint,projectCurrent]);
 
   return (
     <canvas

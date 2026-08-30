@@ -18,7 +18,9 @@
     "check:progression": "tsx scripts/check-progression-navigation.ts",
     "check:readiness": "tsx scripts/check-readiness-mechanics.ts",
     "check:simulations": "tsx scripts/check-battle-simulations.ts",
-    "check:visuals": "tsx scripts/check-visual-regressions.ts && npm run check:capital-contact",
+    "check:visuals": "tsx scripts/check-visual-regressions.ts && npm run check:capital-contact && npm run check:capital-rendering && npm run check:visual-theme",
+    "check:capital-rendering": "tsx scripts/check-capital-rendering.ts",
+    "check:visual-theme": "tsx scripts/check-battle-visual-theme.ts",
     "check:capital-contact": "tsx scripts/check-capital-contact.ts"
   },
   "dependencies": {

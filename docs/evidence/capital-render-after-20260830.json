@@ -1,0 +1,341 @@
+{
+  "note": "Edge headless, CPU submission timing in a deterministic loop; not GPU duration, real-device FPS, power or touch latency.",
+  "results": [
+    {
+      "name": "portrait",
+      "css": {
+        "width": 378,
+        "height": 366
+      },
+      "dpr": 1,
+      "cpuSubmissionMs": {
+        "p50": 0.7000000029802322,
+        "p95": 1.2999999970197678
+      },
+      "drawImageCalls": {
+        "p50": 129,
+        "p95": 129
+      },
+      "metrics": {
+        "cssWidth": 378,
+        "cssHeight": 366,
+        "devicePixelRatio": 1,
+        "backingPixels": 138348,
+        "bitmapCacheBytes": 97136,
+        "bitmapCacheEntries": 9,
+        "bitmapBuilds": 9,
+        "bitmapHits": 7011,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0
+      }
+    },
+    {
+      "name": "portrait",
+      "css": {
+        "width": 378,
+        "height": 366
+      },
+      "dpr": 1.25,
+      "cpuSubmissionMs": {
+        "p50": 0.7000000029802322,
+        "p95": 1.0999999940395355
+      },
+      "drawImageCalls": {
+        "p50": 129,
+        "p95": 129
+      },
+      "metrics": {
+        "cssWidth": 378,
+        "cssHeight": 366,
+        "devicePixelRatio": 1.25,
+        "backingPixels": 216634,
+        "bitmapCacheBytes": 154968,
+        "bitmapCacheEntries": 9,
+        "bitmapBuilds": 9,
+        "bitmapHits": 7011,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0
+      }
+    },
+    {
+      "name": "portrait",
+      "css": {
+        "width": 378,
+        "height": 366
+      },
+      "dpr": 1.5,
+      "cpuSubmissionMs": {
+        "p50": 0.7999999970197678,
+        "p95": 1.1000000089406967
+      },
+      "drawImageCalls": {
+        "p50": 129,
+        "p95": 129
+      },
+      "metrics": {
+        "cssWidth": 378,
+        "cssHeight": 366,
+        "devicePixelRatio": 1.5,
+        "backingPixels": 311283,
+        "bitmapCacheBytes": 218556,
+        "bitmapCacheEntries": 9,
+        "bitmapBuilds": 9,
+        "bitmapHits": 7011,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0
+      }
+    },
+    {
+      "name": "portrait",
+      "css": {
+        "width": 378,
+        "height": 366
+      },
+      "dpr": 2,
+      "cpuSubmissionMs": {
+        "p50": 0.7999999970197678,
+        "p95": 1.2999999970197678
+      },
+      "drawImageCalls": {
+        "p50": 129,
+        "p95": 129
+      },
+      "metrics": {
+        "cssWidth": 378,
+        "cssHeight": 366,
+        "devicePixelRatio": 2,
+        "backingPixels": 553392,
+        "bitmapCacheBytes": 388544,
+        "bitmapCacheEntries": 9,
+        "bitmapBuilds": 9,
+        "bitmapHits": 7011,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0
+      }
+    },
+    {
+      "name": "landscape",
+      "css": {
+        "width": 824,
+        "height": 159
+      },
+      "dpr": 1,
+      "cpuSubmissionMs": {
+        "p50": 0.5,
+        "p95": 1.1000000089406967
+      },
+      "drawImageCalls": {
+        "p50": 129,
+        "p95": 129
+      },
+      "metrics": {
+        "cssWidth": 824,
+        "cssHeight": 159,
+        "devicePixelRatio": 1,
+        "backingPixels": 131016,
+        "bitmapCacheBytes": 90200,
+        "bitmapCacheEntries": 9,
+        "bitmapBuilds": 9,
+        "bitmapHits": 7011,
+        "playerScrollPx": 76,
+        "enemyScrollPx": 76
+      }
+    },
+    {
+      "name": "landscape",
+      "css": {
+        "width": 824,
+        "height": 159
+      },
+      "dpr": 1.25,
+      "cpuSubmissionMs": {
+        "p50": 0.5,
+        "p95": 1
+      },
+      "drawImageCalls": {
+        "p50": 129,
+        "p95": 129
+      },
+      "metrics": {
+        "cssWidth": 824,
+        "cssHeight": 159,
+        "devicePixelRatio": 1.25,
+        "backingPixels": 204970,
+        "bitmapCacheBytes": 145152,
+        "bitmapCacheEntries": 9,
+        "bitmapBuilds": 9,
+        "bitmapHits": 7011,
+        "playerScrollPx": 75.90452261306532,
+        "enemyScrollPx": 75.90452261306532
+      }
+    },
+    {
+      "name": "landscape",
+      "css": {
+        "width": 824,
+        "height": 159
+      },
+      "dpr": 1.5,
+      "cpuSubmissionMs": {
+        "p50": 0.5,
+        "p95": 0.9000000059604645
+      },
+      "drawImageCalls": {
+        "p50": 129,
+        "p95": 129
+      },
+      "metrics": {
+        "cssWidth": 824,
+        "cssHeight": 159,
+        "devicePixelRatio": 1.5,
+        "backingPixels": 295404,
+        "bitmapCacheBytes": 206720,
+        "bitmapCacheEntries": 9,
+        "bitmapBuilds": 9,
+        "bitmapHits": 7011,
+        "playerScrollPx": 75.84100418410041,
+        "enemyScrollPx": 75.84100418410041
+      }
+    },
+    {
+      "name": "landscape",
+      "css": {
+        "width": 824,
+        "height": 159
+      },
+      "dpr": 2,
+      "cpuSubmissionMs": {
+        "p50": 0.5,
+        "p95": 1
+      },
+      "drawImageCalls": {
+        "p50": 129,
+        "p95": 129
+      },
+      "metrics": {
+        "cssWidth": 824,
+        "cssHeight": 159,
+        "devicePixelRatio": 2,
+        "backingPixels": 524064,
+        "bitmapCacheBytes": 360800,
+        "bitmapCacheEntries": 9,
+        "bitmapBuilds": 9,
+        "bitmapHits": 7011,
+        "playerScrollPx": 76,
+        "enemyScrollPx": 76
+      }
+    },
+    {
+      "name": "wide",
+      "css": {
+        "width": 1190,
+        "height": 276
+      },
+      "dpr": 1,
+      "cpuSubmissionMs": {
+        "p50": 0.5999999940395355,
+        "p95": 1.2999999970197678
+      },
+      "drawImageCalls": {
+        "p50": 129,
+        "p95": 129
+      },
+      "metrics": {
+        "cssWidth": 1190,
+        "cssHeight": 276,
+        "devicePixelRatio": 1,
+        "backingPixels": 328440,
+        "bitmapCacheBytes": 277200,
+        "bitmapCacheEntries": 9,
+        "bitmapBuilds": 9,
+        "bitmapHits": 7011,
+        "playerScrollPx": 132,
+        "enemyScrollPx": 132
+      }
+    },
+    {
+      "name": "wide",
+      "css": {
+        "width": 1190,
+        "height": 276
+      },
+      "dpr": 1.25,
+      "cpuSubmissionMs": {
+        "p50": 0.5999999940395355,
+        "p95": 1.1000000089406967
+      },
+      "drawImageCalls": {
+        "p50": 129,
+        "p95": 129
+      },
+      "metrics": {
+        "cssWidth": 1190,
+        "cssHeight": 276,
+        "devicePixelRatio": 1.25,
+        "backingPixels": 513360,
+        "bitmapCacheBytes": 441728,
+        "bitmapCacheEntries": 9,
+        "bitmapBuilds": 9,
+        "bitmapHits": 7011,
+        "playerScrollPx": 132,
+        "enemyScrollPx": 132
+      }
+    },
+    {
+      "name": "wide",
+      "css": {
+        "width": 1190,
+        "height": 276
+      },
+      "dpr": 1.5,
+      "cpuSubmissionMs": {
+        "p50": 0.5999999940395355,
+        "p95": 1.4000000059604645
+      },
+      "drawImageCalls": {
+        "p50": 129,
+        "p95": 129
+      },
+      "metrics": {
+        "cssWidth": 1190,
+        "cssHeight": 276,
+        "devicePixelRatio": 1.5,
+        "backingPixels": 738990,
+        "bitmapCacheBytes": 624360,
+        "bitmapCacheEntries": 9,
+        "bitmapBuilds": 9,
+        "bitmapHits": 7011,
+        "playerScrollPx": 132,
+        "enemyScrollPx": 132
+      }
+    },
+    {
+      "name": "wide",
+      "css": {
+        "width": 1190,
+        "height": 276
+      },
+      "dpr": 2,
+      "cpuSubmissionMs": {
+        "p50": 0.5999999940395355,
+        "p95": 1.4000000059604645
+      },
+      "drawImageCalls": {
+        "p50": 129,
+        "p95": 129
+      },
+      "metrics": {
+        "cssWidth": 1190,
+        "cssHeight": 276,
+        "devicePixelRatio": 2,
+        "backingPixels": 1313760,
+        "bitmapCacheBytes": 1108800,
+        "bitmapCacheEntries": 9,
+        "bitmapBuilds": 9,
+        "bitmapHits": 7011,
+        "playerScrollPx": 132,
+        "enemyScrollPx": 132
+      }
+    }
+  ]
+}

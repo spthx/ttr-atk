@@ -2,6 +2,8 @@
 
 ## 1. 正本一覧
 
+商戦フィールドの画像・crop・配色の交換境界は`src/data/battleVisualTheme.ts`。2026-08-30のcache／同期下降は[描画更新記録](./renderer-upgrade-2026-08-30.md)、独自販売版の全コンテンツ交換範囲は[商用版準備仕様](./commercial-edition-readiness.md)を参照する。
+
 |種類|正本|備考|
 |---|---|---|
 |共通型|`src/types.ts`|Property、Skill、Synergy、BattleResult等|

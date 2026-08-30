@@ -1,0 +1,770 @@
+[
+  {
+    "width": 378,
+    "height": 366,
+    "dpr": 1,
+    "landing": [
+      {
+        "before": 1,
+        "after": 2,
+        "differences": 0
+      },
+      {
+        "before": 2,
+        "after": 5,
+        "differences": 0
+      },
+      {
+        "before": 8,
+        "after": 12,
+        "differences": 0
+      },
+      {
+        "before": 18,
+        "after": 19,
+        "differences": 0
+      },
+      {
+        "before": 72,
+        "after": 73,
+        "differences": 0
+      },
+      {
+        "before": 648,
+        "after": 720,
+        "differences": 0
+      },
+      {
+        "before": 9000,
+        "after": 9216,
+        "differences": 0
+      }
+    ],
+    "scroll": {
+      "first": 1458,
+      "dy": 9,
+      "checked": 3424,
+      "match": 1
+    },
+    "huge": {
+      "cssWidth": 378,
+      "cssHeight": 366,
+      "devicePixelRatio": 1,
+      "backingPixels": 138348,
+      "bitmapCacheBytes": 1760512,
+      "bitmapCacheLimitBytes": 33554432,
+      "bitmapCacheEntries": 64,
+      "bitmapBuilds": 337,
+      "bitmapHits": 3123,
+      "playerScrollPx": 1056,
+      "enemyScrollPx": 1056
+    },
+    "lowPowerCacheLimit": 16777216,
+    "warmCacheBuilds": 0,
+    "sceneUnchanged": true
+  },
+  {
+    "width": 378,
+    "height": 366,
+    "dpr": 1.25,
+    "landing": [
+      {
+        "before": 1,
+        "after": 2,
+        "differences": 0
+      },
+      {
+        "before": 2,
+        "after": 5,
+        "differences": 0
+      },
+      {
+        "before": 8,
+        "after": 12,
+        "differences": 0
+      },
+      {
+        "before": 18,
+        "after": 19,
+        "differences": 0
+      },
+      {
+        "before": 72,
+        "after": 73,
+        "differences": 0
+      },
+      {
+        "before": 648,
+        "after": 720,
+        "differences": 0
+      },
+      {
+        "before": 9000,
+        "after": 9216,
+        "differences": 0
+      }
+    ],
+    "scroll": {
+      "first": 1458,
+      "dy": 11,
+      "checked": 5722,
+      "match": 1
+    },
+    "huge": {
+      "cssWidth": 378,
+      "cssHeight": 366,
+      "devicePixelRatio": 1.25,
+      "backingPixels": 216634,
+      "bitmapCacheBytes": 2801040,
+      "bitmapCacheLimitBytes": 33554432,
+      "bitmapCacheEntries": 64,
+      "bitmapBuilds": 337,
+      "bitmapHits": 3123,
+      "playerScrollPx": 1055.6462882096068,
+      "enemyScrollPx": 1055.6462882096068
+    },
+    "lowPowerCacheLimit": 16777216,
+    "warmCacheBuilds": 0,
+    "sceneUnchanged": true
+  },
+  {
+    "width": 378,
+    "height": 366,
+    "dpr": 1.5,
+    "landing": [
+      {
+        "before": 1,
+        "after": 2,
+        "differences": 0
+      },
+      {
+        "before": 2,
+        "after": 5,
+        "differences": 0
+      },
+      {
+        "before": 8,
+        "after": 12,
+        "differences": 0
+      },
+      {
+        "before": 18,
+        "after": 19,
+        "differences": 0
+      },
+      {
+        "before": 72,
+        "after": 73,
+        "differences": 0
+      },
+      {
+        "before": 648,
+        "after": 720,
+        "differences": 0
+      },
+      {
+        "before": 9000,
+        "after": 9216,
+        "differences": 0
+      }
+    ],
+    "scroll": {
+      "first": 1458,
+      "dy": 14,
+      "checked": 8248,
+      "match": 1
+    },
+    "huge": {
+      "cssWidth": 378,
+      "cssHeight": 366,
+      "devicePixelRatio": 1.5,
+      "backingPixels": 311283,
+      "bitmapCacheBytes": 3963648,
+      "bitmapCacheLimitBytes": 33554432,
+      "bitmapCacheEntries": 64,
+      "bitmapBuilds": 337,
+      "bitmapHits": 3123,
+      "playerScrollPx": 1056,
+      "enemyScrollPx": 1056
+    },
+    "lowPowerCacheLimit": 16777216,
+    "warmCacheBuilds": 0,
+    "sceneUnchanged": true
+  },
+  {
+    "width": 378,
+    "height": 366,
+    "dpr": 2,
+    "landing": [
+      {
+        "before": 1,
+        "after": 2,
+        "differences": 0
+      },
+      {
+        "before": 2,
+        "after": 5,
+        "differences": 0
+      },
+      {
+        "before": 8,
+        "after": 12,
+        "differences": 0
+      },
+      {
+        "before": 18,
+        "after": 19,
+        "differences": 0
+      },
+      {
+        "before": 72,
+        "after": 73,
+        "differences": 0
+      },
+      {
+        "before": 648,
+        "after": 720,
+        "differences": 0
+      },
+      {
+        "before": 9000,
+        "after": 9216,
+        "differences": 0
+      }
+    ],
+    "scroll": {
+      "first": 1458,
+      "dy": 18,
+      "checked": 14611,
+      "match": 1
+    },
+    "huge": {
+      "cssWidth": 378,
+      "cssHeight": 366,
+      "devicePixelRatio": 2,
+      "backingPixels": 553392,
+      "bitmapCacheBytes": 7042048,
+      "bitmapCacheLimitBytes": 33554432,
+      "bitmapCacheEntries": 64,
+      "bitmapBuilds": 337,
+      "bitmapHits": 3123,
+      "playerScrollPx": 1056,
+      "enemyScrollPx": 1056
+    },
+    "lowPowerCacheLimit": 16777216,
+    "warmCacheBuilds": 0,
+    "sceneUnchanged": true
+  },
+  {
+    "width": 824,
+    "height": 159,
+    "dpr": 1,
+    "landing": [
+      {
+        "before": 1,
+        "after": 2,
+        "differences": 0
+      },
+      {
+        "before": 2,
+        "after": 5,
+        "differences": 0
+      },
+      {
+        "before": 8,
+        "after": 12,
+        "differences": 0
+      },
+      {
+        "before": 18,
+        "after": 19,
+        "differences": 0
+      },
+      {
+        "before": 72,
+        "after": 73,
+        "differences": 0
+      },
+      {
+        "before": 648,
+        "after": 720,
+        "differences": 0
+      },
+      {
+        "before": 9000,
+        "after": 9216,
+        "differences": 0
+      }
+    ],
+    "scroll": {
+      "first": 288,
+      "dy": 4,
+      "checked": 3491,
+      "match": 1
+    },
+    "huge": {
+      "cssWidth": 824,
+      "cssHeight": 159,
+      "devicePixelRatio": 1,
+      "backingPixels": 131016,
+      "bitmapCacheBytes": 734400,
+      "bitmapCacheLimitBytes": 33554432,
+      "bitmapCacheEntries": 64,
+      "bitmapBuilds": 77,
+      "bitmapHits": 1043,
+      "playerScrollPx": 1178,
+      "enemyScrollPx": 1178
+    },
+    "lowPowerCacheLimit": 16777216,
+    "warmCacheBuilds": 0,
+    "sceneUnchanged": true
+  },
+  {
+    "width": 824,
+    "height": 159,
+    "dpr": 1.25,
+    "landing": [
+      {
+        "before": 1,
+        "after": 2,
+        "differences": 0
+      },
+      {
+        "before": 2,
+        "after": 5,
+        "differences": 0
+      },
+      {
+        "before": 8,
+        "after": 12,
+        "differences": 0
+      },
+      {
+        "before": 18,
+        "after": 19,
+        "differences": 0
+      },
+      {
+        "before": 72,
+        "after": 73,
+        "differences": 0
+      },
+      {
+        "before": 648,
+        "after": 720,
+        "differences": 0
+      },
+      {
+        "before": 9000,
+        "after": 9216,
+        "differences": 0
+      }
+    ],
+    "scroll": {
+      "first": 288,
+      "dy": 5,
+      "checked": 5544,
+      "match": 0.9981962481962482
+    },
+    "huge": {
+      "cssWidth": 824,
+      "cssHeight": 159,
+      "devicePixelRatio": 1.25,
+      "backingPixels": 204970,
+      "bitmapCacheBytes": 1181056,
+      "bitmapCacheLimitBytes": 33554432,
+      "bitmapCacheEntries": 64,
+      "bitmapBuilds": 77,
+      "bitmapHits": 1043,
+      "playerScrollPx": 1177.7185929648242,
+      "enemyScrollPx": 1177.7185929648242
+    },
+    "lowPowerCacheLimit": 16777216,
+    "warmCacheBuilds": 0,
+    "sceneUnchanged": true
+  },
+  {
+    "width": 824,
+    "height": 159,
+    "dpr": 1.5,
+    "landing": [
+      {
+        "before": 1,
+        "after": 2,
+        "differences": 0
+      },
+      {
+        "before": 2,
+        "after": 5,
+        "differences": 0
+      },
+      {
+        "before": 8,
+        "after": 12,
+        "differences": 0
+      },
+      {
+        "before": 18,
+        "after": 19,
+        "differences": 0
+      },
+      {
+        "before": 72,
+        "after": 73,
+        "differences": 0
+      },
+      {
+        "before": 648,
+        "after": 720,
+        "differences": 0
+      },
+      {
+        "before": 9000,
+        "after": 9216,
+        "differences": 0
+      }
+    ],
+    "scroll": {
+      "first": 288,
+      "dy": 6,
+      "checked": 7863,
+      "match": 0.9991097545466107
+    },
+    "huge": {
+      "cssWidth": 824,
+      "cssHeight": 159,
+      "devicePixelRatio": 1.5,
+      "backingPixels": 295404,
+      "bitmapCacheBytes": 1683704,
+      "bitmapCacheLimitBytes": 33554432,
+      "bitmapCacheEntries": 64,
+      "bitmapBuilds": 77,
+      "bitmapHits": 1043,
+      "playerScrollPx": 1178.1966527196653,
+      "enemyScrollPx": 1178.1966527196653
+    },
+    "lowPowerCacheLimit": 16777216,
+    "warmCacheBuilds": 0,
+    "sceneUnchanged": true
+  },
+  {
+    "width": 824,
+    "height": 159,
+    "dpr": 2,
+    "landing": [
+      {
+        "before": 1,
+        "after": 2,
+        "differences": 0
+      },
+      {
+        "before": 2,
+        "after": 5,
+        "differences": 0
+      },
+      {
+        "before": 8,
+        "after": 12,
+        "differences": 0
+      },
+      {
+        "before": 18,
+        "after": 19,
+        "differences": 0
+      },
+      {
+        "before": 72,
+        "after": 73,
+        "differences": 0
+      },
+      {
+        "before": 648,
+        "after": 720,
+        "differences": 0
+      },
+      {
+        "before": 9000,
+        "after": 9216,
+        "differences": 0
+      }
+    ],
+    "scroll": {
+      "first": 288,
+      "dy": 8,
+      "checked": 14179,
+      "match": 1
+    },
+    "huge": {
+      "cssWidth": 824,
+      "cssHeight": 159,
+      "devicePixelRatio": 2,
+      "backingPixels": 524064,
+      "bitmapCacheBytes": 2937600,
+      "bitmapCacheLimitBytes": 33554432,
+      "bitmapCacheEntries": 64,
+      "bitmapBuilds": 77,
+      "bitmapHits": 1043,
+      "playerScrollPx": 1178,
+      "enemyScrollPx": 1178
+    },
+    "lowPowerCacheLimit": 16777216,
+    "warmCacheBuilds": 0,
+    "sceneUnchanged": true
+  },
+  {
+    "width": 1190,
+    "height": 276,
+    "dpr": 1,
+    "landing": [
+      {
+        "before": 1,
+        "after": 2,
+        "differences": 0
+      },
+      {
+        "before": 2,
+        "after": 5,
+        "differences": 0
+      },
+      {
+        "before": 8,
+        "after": 12,
+        "differences": 0
+      },
+      {
+        "before": 18,
+        "after": 19,
+        "differences": 0
+      },
+      {
+        "before": 72,
+        "after": 73,
+        "differences": 0
+      },
+      {
+        "before": 648,
+        "after": 720,
+        "differences": 0
+      },
+      {
+        "before": 9000,
+        "after": 9216,
+        "differences": 0
+      }
+    ],
+    "scroll": {
+      "first": 288,
+      "dy": 7,
+      "checked": 10528,
+      "match": 1
+    },
+    "huge": {
+      "cssWidth": 1190,
+      "cssHeight": 276,
+      "devicePixelRatio": 1,
+      "backingPixels": 328440,
+      "bitmapCacheBytes": 2257728,
+      "bitmapCacheLimitBytes": 33554432,
+      "bitmapCacheEntries": 64,
+      "bitmapBuilds": 77,
+      "bitmapHits": 1043,
+      "playerScrollPx": 2046,
+      "enemyScrollPx": 2046
+    },
+    "lowPowerCacheLimit": 16777216,
+    "warmCacheBuilds": 0,
+    "sceneUnchanged": true
+  },
+  {
+    "width": 1190,
+    "height": 276,
+    "dpr": 1.25,
+    "landing": [
+      {
+        "before": 1,
+        "after": 2,
+        "differences": 0
+      },
+      {
+        "before": 2,
+        "after": 5,
+        "differences": 0
+      },
+      {
+        "before": 8,
+        "after": 12,
+        "differences": 0
+      },
+      {
+        "before": 18,
+        "after": 19,
+        "differences": 0
+      },
+      {
+        "before": 72,
+        "after": 73,
+        "differences": 0
+      },
+      {
+        "before": 648,
+        "after": 720,
+        "differences": 0
+      },
+      {
+        "before": 9000,
+        "after": 9216,
+        "differences": 0
+      }
+    ],
+    "scroll": {
+      "first": 288,
+      "dy": 9,
+      "checked": 15815,
+      "match": 0.997533986721467
+    },
+    "huge": {
+      "cssWidth": 1190,
+      "cssHeight": 276,
+      "devicePixelRatio": 1.25,
+      "backingPixels": 513360,
+      "bitmapCacheBytes": 3593632,
+      "bitmapCacheLimitBytes": 33554432,
+      "bitmapCacheEntries": 64,
+      "bitmapBuilds": 77,
+      "bitmapHits": 1043,
+      "playerScrollPx": 2046.4,
+      "enemyScrollPx": 2046.4
+    },
+    "lowPowerCacheLimit": 16777216,
+    "warmCacheBuilds": 0,
+    "sceneUnchanged": true
+  },
+  {
+    "width": 1190,
+    "height": 276,
+    "dpr": 1.5,
+    "landing": [
+      {
+        "before": 1,
+        "after": 2,
+        "differences": 0
+      },
+      {
+        "before": 2,
+        "after": 5,
+        "differences": 0
+      },
+      {
+        "before": 8,
+        "after": 12,
+        "differences": 0
+      },
+      {
+        "before": 18,
+        "after": 19,
+        "differences": 0
+      },
+      {
+        "before": 72,
+        "after": 73,
+        "differences": 0
+      },
+      {
+        "before": 648,
+        "after": 720,
+        "differences": 0
+      },
+      {
+        "before": 9000,
+        "after": 9216,
+        "differences": 0
+      }
+    ],
+    "scroll": {
+      "first": 288,
+      "dy": 10,
+      "checked": 23592,
+      "match": 0.999618514750763
+    },
+    "huge": {
+      "cssWidth": 1190,
+      "cssHeight": 276,
+      "devicePixelRatio": 1.5,
+      "backingPixels": 738990,
+      "bitmapCacheBytes": 5083848,
+      "bitmapCacheLimitBytes": 33554432,
+      "bitmapCacheEntries": 64,
+      "bitmapBuilds": 77,
+      "bitmapHits": 1043,
+      "playerScrollPx": 2046,
+      "enemyScrollPx": 2046
+    },
+    "lowPowerCacheLimit": 16777216,
+    "warmCacheBuilds": 0,
+    "sceneUnchanged": true
+  },
+  {
+    "width": 1190,
+    "height": 276,
+    "dpr": 2,
+    "landing": [
+      {
+        "before": 1,
+        "after": 2,
+        "differences": 0
+      },
+      {
+        "before": 2,
+        "after": 5,
+        "differences": 0
+      },
+      {
+        "before": 8,
+        "after": 12,
+        "differences": 0
+      },
+      {
+        "before": 18,
+        "after": 19,
+        "differences": 0
+      },
+      {
+        "before": 72,
+        "after": 73,
+        "differences": 0
+      },
+      {
+        "before": 648,
+        "after": 720,
+        "differences": 0
+      },
+      {
+        "before": 9000,
+        "after": 9216,
+        "differences": 0
+      }
+    ],
+    "scroll": {
+      "first": 288,
+      "dy": 14,
+      "checked": 41554,
+      "match": 1
+    },
+    "huge": {
+      "cssWidth": 1190,
+      "cssHeight": 276,
+      "devicePixelRatio": 2,
+      "backingPixels": 1313760,
+      "bitmapCacheBytes": 9030912,
+      "bitmapCacheLimitBytes": 33554432,
+      "bitmapCacheEntries": 64,
+      "bitmapBuilds": 77,
+      "bitmapHits": 1043,
+      "playerScrollPx": 2046,
+      "enemyScrollPx": 2046
+    },
+    "lowPowerCacheLimit": 16777216,
+    "warmCacheBuilds": 0,
+    "sceneUnchanged": true
+  }
+]

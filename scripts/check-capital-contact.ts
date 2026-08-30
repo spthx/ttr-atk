@@ -3,6 +3,8 @@ import { readFileSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
+import { DEFAULT_BATTLE_VISUAL_THEME_METADATA } from '../src/data/battleVisualTheme';
+import { CAPITAL_SCROLL_TOP_FRACTION, CAPITAL_SCROLL_STEP_FRACTION } from '../src/utils/capitalViewportScroll';
 import {
   BATTLE_CAPITAL_COLUMN_COUNT,
   CAPITAL_COIN_WAVE_MS,
@@ -104,7 +106,9 @@ const baseline = JSON.parse(
   overflowPaging: {
     enabled: true;
     moveCompletedPileAndPedestalTogether: true;
-    preserveFixedUpperActiveBaseline: true;
+    preserveFixedUpperLoadingWindow: true;
+    upperWindowFraction: number;
+    stepHeightFraction: number;
     continueIncomingDuringDescent: true;
     maximumRelativeDriftCssPixels: number;
     preserveVisiblePerCoinSeparators: true;
@@ -118,7 +122,9 @@ assert.equal(
   baseline.overflowPaging.moveCompletedPileAndPedestalTogether,
   true
 );
-assert.equal(baseline.overflowPaging.preserveFixedUpperActiveBaseline, true);
+assert.equal(baseline.overflowPaging.preserveFixedUpperLoadingWindow, true);
+assert.equal(baseline.overflowPaging.upperWindowFraction,CAPITAL_SCROLL_TOP_FRACTION);
+assert.equal(baseline.overflowPaging.stepHeightFraction,CAPITAL_SCROLL_STEP_FRACTION);
 assert.equal(baseline.overflowPaging.continueIncomingDuringDescent, true);
 assert.ok(
   baseline.overflowPaging.maximumRelativeDriftCssPixels <= 1,
@@ -486,19 +492,20 @@ const renderer = readFileSync(
 );
 assert.doesNotMatch(renderer, /drawTrayBack|drawTrayFront|radial dinner plate/);
 assert.match(renderer, /drawPedestalBack[\s\S]*drawPedestalFront/);
-assert.match(renderer, /resolveBattleCapitalSfcRenderedCoinLayers\(layers\)/);
+const cachedStack = readFileSync(resolve(root, 'src/utils/capitalCachedStack.ts'), 'utf8');
+assert.match(cachedStack, /resolveBattleCapitalSfcRenderedCoinLayers\(layers\)/);
 assert.match(
   renderer,
   /resolveBattleCapitalSfcIncomingLogicalLayers\([\s\S]{0,1200}const bundleLayers = addedLayers;/
 );
 assert.match(
   renderer,
-  /if \(active\.has\(column\.index\)\) return;[\s\S]{0,1800}if \(rawProgress >= 1\) \{[\s\S]{0,500}after/
+  /if \(rawProgress >= 1\) \{[\s\S]{0,500}after/
 );
 assert.match(renderer, /mirrored: side === 'enemy'/);
 assert.match(renderer, /capital-coin-sfc\.png/);
 assert.match(renderer, /capital-pedestal-sfc\.png/);
-assert.match(renderer, /PEDESTAL_SPRITE_CENTER_TILE_COUNT = 12/);
+assert.equal(DEFAULT_BATTLE_VISUAL_THEME_METADATA.pedestal.centerTileCount,12);
 assert.match(renderer, /drawWidePedestalSlice/);
 
 const fixture = readFileSync(resolve(root, 'capital-contact-audit.html'), 'utf8');

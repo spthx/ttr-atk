@@ -144,3 +144,9 @@ const repaint = () => {
 const observer = new ResizeObserver(repaint);
 observer.observe(canvas);
 repaint();
+
+// Development-only entry point: deterministic evidence uses the real renderer,
+// never a second approximation of its drawing code.
+Object.assign(window, {
+  capitalAudit: { canvas, scene, sprites, paintBattleCapitalCanvas, createBattleCapitalCanvasScene, getCapitalColumnHeights },
+});

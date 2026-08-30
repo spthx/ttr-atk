@@ -4,6 +4,8 @@
 
 ## 1. 目的
 
+**現行実装の追補（2026-08-30）:** [描画更新記録](./renderer-upgrade-2026-08-30.md)を優先する。18列の連続列高を消費し、`capitalViewportScroll.ts`の共通下降を投影する。旧`banked*` DTOは中立値のままであり、これを資金計算へ戻さない。素材は`BattleVisualTheme`、柱画像は上限付きLRU、台の下端clipを含む一体下降は実画像で検査する。
+
 現行React版は、両陣営の18アンカーのsettled/incoming金貨束・厚い台座・所有率前線・戦場背景・風・VSを共通1枚のCanvas2Dへ投影し、人物・固定台帳・テロップ・semantic progressbar・操作UIをDOMに残す構成を製品既定とする。対象実機でCanvas2D版がperformance gateを満たさない場合に限り、同じ描画sceneをWebGL2へ交換できるようにする。旧DOM/CSS列は履歴比較用であり、製品の見た目の正本ではない。
 
 WebGL2化はゲームルール、投入額、所有率、AI、演出時間、音声予約、画面遷移を変更する理由にしてはならない。変更するのは、React側で確定した`BattleCapitalCanvasScene`と積載preview frameを画面へ投影するrendererだけである。
