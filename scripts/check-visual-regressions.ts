@@ -106,6 +106,11 @@ const audio = readSource('src/utils/audio.ts');
 const fankitAssets = readSource('src/data/fankitAssets.ts');
 const pagesWorkflow = readSource('.github/workflows/deploy-pages.yml');
 
+assert.match(indexCss, /@import "tailwindcss" source\(none\);/,
+  'production CSS must not scan docs, build archives or temporary workspaces');
+assert.match(indexCss, /@source "\.\/";[\s\S]*@source "\.\.\/index\.html";/,
+  'all game source classes and the entry HTML must be explicitly included');
+
 const liveBattlefieldStart = battleModal.indexOf(
   '<main className="buyout-main">'
 );

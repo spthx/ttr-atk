@@ -61,6 +61,8 @@ CPU値は決定論的な描画呼出ループで測ったsubmission時間。GPU�
 
 Sites向け梱包は`node scripts/package-site.mjs PROJECT_DIR ARCHIVE.tar`。現行vinextのserver/clientとhosting設定のみを許可し、古いPages用`dist/assets`やソース、node_modules、QA profileを混ぜない。共有npm＋package-lockでclean buildしてから、そのcommitをpushし同じ成果物を保存・deployする。
 
+Tailwindの自動探索は停止し、`src/`とゲームentry HTMLだけを明示する。クリーン環境で資料・一時フォルダ由来の不要CSSが増えたための対策で、販売用buildの再現性と配布サイズを守る。[Tailwind公式のsource指定](https://tailwindcss.com/docs/detecting-classes-in-source-files)
+
 `createBattleVisualTheme({coin,pedestal}, metadata)`で新しいテーマを生成し、`BattleCapitalCanvas`の`theme`へ渡す。id/version/URL/crop/paletteの変更はcacheを無効化する。URLを変えず画像だけ更新するときはversionとHTTP側のcache keyも更新する。
 
 これは商戦フィールドの交換境界の第一段階。人物、全世界データ、台詞、音、UIロゴ、保存ID、font、販促素材、配布許可リストは別途交換が必要。`commercialReady`は現段階で常にfalse。販売先の契約や申請は行っていない。

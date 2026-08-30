@@ -1,5 +1,7 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 @import "./ending.css";
+@source "./";
+@source "../index.html";
 
 :root {
   --game-safe-top: env(safe-area-inset-top, 0px);
