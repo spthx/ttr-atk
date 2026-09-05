@@ -982,13 +982,13 @@ export const getCapitalIncomingBundleCopies = (
 export const getCapitalColumnHeights = (visibleUnits: number) => {
   const normalizedUnits = Math.max(
     0,
-    Math.min(MAX_BATTLE_CAPITAL_VISIBLE_UNITS, Math.round(visibleUnits))
+    Math.min(MAX_BATTLE_CAPITAL_VISIBLE_UNITS, Math.round(visibleUnits) || 0)
   );
-  const heights = Array<number>(BATTLE_CAPITAL_COLUMN_COUNT).fill(0);
-  for (let unit = 0; unit < normalizedUnits; unit += 1) {
-    const columnIndex =
-      CAPITAL_SHOWCASE_FILL_ORDER[unit % CAPITAL_SHOWCASE_FILL_ORDER.length];
-    heights[columnIndex] += 1;
+  const heights = Array<number>(BATTLE_CAPITAL_COLUMN_COUNT).fill(
+    Math.floor(normalizedUnits / BATTLE_CAPITAL_COLUMN_COUNT)
+  );
+  for (let unit = 0; unit < normalizedUnits % BATTLE_CAPITAL_COLUMN_COUNT; unit += 1) {
+    heights[CAPITAL_SHOWCASE_FILL_ORDER[unit]] += 1;
   }
   return heights;
 };
@@ -999,6 +999,10 @@ export interface MechanicalCapitalColumnFrame {
   columnHeights: number[];
   /** Settled upper-field shape after the current incoming wave lands. */
   settledAfterColumnHeights?: number[];
+  /** Overlapping roll flights, relative to this beat (negative start = in flight). */
+  incomingLaneTimings?: Array<{ columnIndex: number; startMs: number; durationMs: number }>;
+  viewportBeforeColumnHeights?: number[];
+  viewportAfterColumnHeights?: number[];
   /**
    * The most recently completed upper page after it has been banked below the
    * field divider. Older pages are represented by `bankedPileCount`; renderers
@@ -1944,9 +1948,40 @@ const buildPageCapitalStackTimeline = (
 
 /**
  * Builds the SFC-style capital pour: one fixed 4/5/5/4 tray, one short gold
- * roll per active lane and no page banking. Tall piles remain continuous and
- * naturally clip above the viewport, exactly as late-game source captures do.
+ * rolls in pairs with overlapping flights. The renderer scrolls the treasury
+ * as one rigid group; the game clock and the final capital stay independent.
  */
+export const getCapitalCommandRechargeWorkMs = (event: CapitalStackEvent) => {
+  const compact=event.intensity==='compact', heavy=event.intensity==='heavy';
+  const from=getBattleCapitalVisibleUnits(event.previousCapital,event.marketPrice);
+  const to=getBattleCapitalVisibleUnits(event.nextCapital,event.marketPrice);
+  const groupSize=compact?6:heavy?5:4;
+  const maxFrames=compact?4:heavy?24:22;
+  const requested=getCapitalOverflowPassCount(event.previousCapital,event.nextCapital,event.marketPrice,heavy);
+  const passes=Math.min(3,from===to&&event.nextCapital>event.previousCapital?Math.max(1,requested):requested);
+  const before=getCapitalColumnHeights(from), after=getCapitalColumnHeights(to);
+  const order=event.side==='player'?[...CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER].reverse():CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER;
+  const groups=getCapitalSweepGroups(order,groupSize);
+  const changedGroups=groups.filter(group=>group.some(column=>before[column]!==after[column])).length;
+  const growth=from===to?0:Math.max(changedGroups,Math.min(30,maxFrames,Math.ceil(Math.abs(to-from)/groupSize)));
+  const reloadBeats=Math.min(groups.length*2,CAPITAL_OVERFLOW_RESTACK_BEATS[event.intensity]);
+  const beatMs=CAPITAL_STACK_BEAT_MS[event.intensity];
+  return growth===0&&passes===0?beatMs:
+    growth*beatMs+passes*(BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS+(reloadBeats+1)*beatMs);
+};
+
+export const CAPITAL_ROLL_MAX_LOGICAL_LAYERS = 32;
+
+/** Missing presentations do not clamp a slower-than-real-time work rate to 1. */
+export const resolveCapitalCommandRechargeScale = (
+  frames: readonly ({commandRechargeScale?: number} | null | undefined)[]
+) => {
+  const scales=frames.filter(frame=>frame!=null).map(frame=>
+    Number.isFinite(frame.commandRechargeScale) ? Math.max(0,frame.commandRechargeScale!) : 1
+  );
+  return scales.length ? Math.max(...scales) : 1;
+};
+
 export const buildCapitalStackTimeline = (
   event: CapitalStackEvent
 ): CapitalStackTimeline => {
@@ -1963,6 +1998,19 @@ export const buildCapitalStackTimeline = (
     event.marketPrice
   );
   const distance = Math.max(0, targetUnits - previousUnits);
+  const initialHeights = getCapitalColumnHeights(previousUnits);
+  const targetHeights = getCapitalColumnHeights(targetUnits);
+  const changedColumns = CAPITAL_SHOWCASE_FILL_ORDER.filter(
+    column => targetHeights[column] > initialHeights[column]
+  );
+  const rolls:Array<{columnIndex:number;layers:number}>=[];
+  const remaining=targetHeights.map((height,column)=>height-initialHeights[column]);
+  while(remaining.some(value=>value>0)){
+    changedColumns.forEach(columnIndex=>{
+      const layers=Math.min(compact?MAX_BATTLE_CAPITAL_COLUMN_LAYERS:CAPITAL_ROLL_MAX_LOGICAL_LAYERS,remaining[columnIndex]);
+      if(layers>0){rolls.push({columnIndex,layers});remaining[columnIndex]-=layers;}
+    });
+  }
   // The original's early bids are readable because even a small first wall is
   // built as a sequence, not as one broad pop. Keep nine authored beats for a
   // normal bid (one page), while tiny sub-nine-unit corrections still resolve
@@ -1971,15 +2019,8 @@ export const buildCapitalStackTimeline = (
     ? 0
     : compact
       ? 1
-      : Math.min(CAPITAL_COIN_WAVES_PER_PAGE, Math.max(1, distance));
-  const legacyTimeline = buildLegacyCapitalStackTimeline(event);
-  const legacyPourDurationMs = legacyTimeline.frames
-    .filter((frame) => frame.phase === 'pour')
-    .reduce(
-      (total, frame) =>
-        total + frame.durationMs * frame.commandRechargeScale,
-      0
-    );
+      : Math.max(Math.ceil(rolls.length/2),Math.min(CAPITAL_COIN_WAVES_PER_PAGE, Math.max(1, distance)));
+  const legacyPourDurationMs = getCapitalCommandRechargeWorkMs(event);
   const authoredPourDurationMs = waveCount * beatMs;
   const commandRechargeScale = authoredPourDurationMs > 0
     ? Math.max(1, legacyPourDurationMs) / authoredPourDurationMs
@@ -2005,22 +2046,42 @@ export const buildCapitalStackTimeline = (
   };
 
   let atMs = preloadMs;
+  // Recorded SFC footage shows several successive pairs in the air together.
+  // This is a bounded presentation model, not a claim about the ROM's OAM.
+  const flightMs = compact ? beatMs : Math.min(330, authoredPourDurationMs);
+  const pairCount = Math.ceil(rolls.length / 2);
+  const launchGapMs = pairCount > 1
+    ? (authoredPourDurationMs - flightMs) / (pairCount - 1) : 0;
+  const flights = rolls.map((roll, index) => ({
+    ...roll, startMs: compact ? 0 : Math.floor(index / 2) * launchGapMs,
+    durationMs: flightMs,
+  }));
+  const viewportHeightsAt = (time: number) => {
+    const heights=[...initialHeights];
+    flights.forEach(flight=>{
+      const progress=Math.min(1,Math.max(0,(time-flight.startMs)/flight.durationMs));
+      heights[flight.columnIndex]+=flight.layers*progress;
+    });
+    return heights;
+  };
   const pourFrames = Array.from(
     { length: waveCount },
     (_, index): CapitalStackTimelineFrame => {
       const beforeProgress = index / Math.max(1, waveCount);
-      const afterProgress = (index + 1) / Math.max(1, waveCount);
-      const beforeUnits = Math.round(
-        previousUnits + distance * beforeProgress
+      const beatStart = index * beatMs;
+      const beforeHeights = [...initialHeights];
+      flights.forEach(flight => {
+        if (flight.startMs + flight.durationMs <= beatStart + 1e-7)
+          beforeHeights[flight.columnIndex] += flight.layers;
+      });
+      const activeFlights = flights.filter(flight =>
+        flight.startMs < beatStart + beatMs &&
+        flight.startMs + flight.durationMs > beatStart + 1e-7
       );
-      const afterUnits = Math.round(
-        previousUnits + distance * afterProgress
-      );
-      const beforeHeights = getCapitalColumnHeights(beforeUnits);
-      const afterHeights = getCapitalColumnHeights(afterUnits);
-      const activeColumnIndices = CAPITAL_COLUMN_LEFT_TO_RIGHT_ORDER.filter(
-        (columnIndex) => afterHeights[columnIndex] > beforeHeights[columnIndex]
-      );
+      const activeColumnIndices = activeFlights.map(flight => flight.columnIndex);
+      const afterHeights = [...beforeHeights];
+      activeFlights.forEach(flight => {afterHeights[flight.columnIndex] += flight.layers;});
+      const beforeUnits = beforeHeights.reduce((sum,value)=>sum+value,0);
       const frame: CapitalStackTimelineFrame = {
         phase: 'pour',
         atMs,
@@ -2029,6 +2090,11 @@ export const buildCapitalStackTimeline = (
         visibleUnits: beforeUnits,
         columnHeights: beforeHeights,
         settledAfterColumnHeights: afterHeights,
+        incomingLaneTimings: activeFlights.map(flight=>({
+          ...flight, startMs:flight.startMs-beatStart,
+        })),
+        viewportBeforeColumnHeights:viewportHeightsAt(beatStart),
+        viewportAfterColumnHeights:viewportHeightsAt(beatStart+beatMs),
         bankedColumnHeights: emptyHeights,
         bankedPileCount: 0,
         activeColumnIndices,

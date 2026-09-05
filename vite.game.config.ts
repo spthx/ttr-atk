@@ -13,6 +13,11 @@ export default defineConfig({
   root: projectRoot,
   base: './',
   publicDir: 'public',
+  server: {
+    watch: {
+      ignored: ['**/tmp/**', '**/dist/**', '**/public/game/**'],
+    },
+  },
   build: {
     copyPublicDir: false,
   },

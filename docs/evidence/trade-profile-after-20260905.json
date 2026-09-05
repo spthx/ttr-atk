@@ -1,0 +1,74 @@
+{
+  "note": "Local Edge headless CPU submission, 5 real authored timelines at 60Hz; not GPU duration or device FPS",
+  "results": [
+    {
+      "name": "opening",
+      "timelineMs": 0.02050000011920929,
+      "drawCalls": 15825,
+      "samples": 545,
+      "zeroDrawFrames": 340,
+      "p95CpuMs": 0.30000001192092896,
+      "metrics": {
+        "cssWidth": 1190,
+        "cssHeight": 276,
+        "devicePixelRatio": 2,
+        "backingPixels": 1313760,
+        "bitmapCacheBytes": 720896,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 8,
+        "bitmapBuilds": 8,
+        "bitmapHits": 4052,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0,
+        "compositions": 205,
+        "skippedPaints": 340
+      }
+    },
+    {
+      "name": "late",
+      "timelineMs": 0.017000000178813934,
+      "drawCalls": 22687,
+      "samples": 545,
+      "zeroDrawFrames": 310,
+      "p95CpuMs": 0.30000001192092896,
+      "metrics": {
+        "cssWidth": 1190,
+        "cssHeight": 276,
+        "devicePixelRatio": 2,
+        "backingPixels": 1313760,
+        "bitmapCacheBytes": 1892352,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 21,
+        "bitmapBuilds": 21,
+        "bitmapHits": 13109,
+        "playerScrollPx": 66,
+        "enemyScrollPx": 66,
+        "compositions": 440,
+        "skippedPaints": 650
+      }
+    },
+    {
+      "name": "overflow",
+      "timelineMs": 0.6504999998211861,
+      "drawCalls": 521436,
+      "samples": 7230,
+      "zeroDrawFrames": 3545,
+      "p95CpuMs": 0.7000000476837158,
+      "metrics": {
+        "cssWidth": 1190,
+        "cssHeight": 276,
+        "devicePixelRatio": 2,
+        "backingPixels": 1313760,
+        "bitmapCacheBytes": 5767168,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 64,
+        "bitmapBuilds": 667,
+        "bitmapHits": 307863,
+        "playerScrollPx": 2046,
+        "enemyScrollPx": 2046,
+        "compositions": 4125,
+        "skippedPaints": 4195
+      }
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 export async function connectCapitalAudit(port=9356) {
   const tabs=await fetch(`http://127.0.0.1:${port}/json/list`).then(r=>r.json());
-  const tab=tabs.find(t=>t.type==='page' && (t.url==='about:blank' || t.url.startsWith('http://127.0.0.1:3130/')));
+  const tab=tabs.find(t=>t.type==='page' && (t.url==='about:blank' ||
+    ['http://127.0.0.1:3130/','http://127.0.0.1:4140/'].some(base=>t.url.startsWith(base))));
   if(!tab) throw new Error('Launch an isolated Edge profile on the audit port first.');
   const ws=new WebSocket(tab.webSocketDebuggerUrl);
   await new Promise((ok,fail)=>{ws.onopen=ok;ws.onerror=fail});

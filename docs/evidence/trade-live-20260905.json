@@ -1,0 +1,23 @@
+{
+  "stats": {
+    "drawImage": 6402,
+    "longTasks": [],
+    "backgroundMutations": 0,
+    "animations": 4,
+    "marketObserved": true,
+    "overflow": false
+  },
+  "metrics": {
+    "LayoutDuration": 0.108293,
+    "RecalcStyleDuration": 0.681609,
+    "ScriptDuration": 0.272714,
+    "TaskDuration": 2.107679
+  },
+  "final": {
+    "text": "資金\n19.34K ギル\n+40 ギル/秒\n1/22\n0/10\n交易市場\n保有事業・契約 (1)\nアビリティ・事業連携\n都市マップへ戻る\nグリダニアの交渉対象\n交渉対象 1件\n\n表示中の相手。余力あり0件、接戦1件、要工夫0件、準備不足0件。\n\n絞り込み\n必要なときだけ開く ▼\n取得済み事業・契約 1件\n開く ▼\nグリダニア ・ 木材・農園\n独立物件\n黒衣森製材商会\nBOSS\n次はここ\n接戦\n勝利後：人脈＋収益\n商戦へ挑戦\n開始手数料 450 ギル\n戦力内訳・勝利後を見る\n開く ▼\n動作フレームレート\n演出・背景・コイン量は共通。30fpsは発熱を抑え、60fpsは商戦ゲージを滑らかにします。\n30 FPS\n省電力\n60 FPS\nなめらか\nシステム運営ログ\n最新 1件・タップして開く\n本作は非公式ファンサイト／ファンゲームです。 Unofficial fan site/game.\nFFXIV公式ファンキット\n著作物利用条件\nMaterials Usage License\n© SQUARE ENIX\nFINAL FANTASY is a registered trademark of Square Enix Holdings Co., Ltd.",
+    "canvasCount": 0,
+    "overflow": false,
+    "focusTag": "BODY"
+  },
+  "note": "One real initial battle and six-second active window, isolated Edge guest; no fabricated save or resources."
+}

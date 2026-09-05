@@ -312,7 +312,7 @@ assert.match(
 );
 assert.match(
   appSource,
-  /persistPendingBattleSession\('normal', property, \{ normalOrigin: origin \}\)[\s\S]*onStartBuyout=\{\(property\) =>[\s\S]*handleStartBuyout\(property, 'cartels'\)/,
+  /persistPendingBattleSession\('normal', property, \{ normalOrigin: origin \}\)[\s\S]*const handleStartAllianceBuyout = useAppEvent\([\s\S]{0,160}handleStartBuyout\(property, 'cartels'\)[\s\S]*onStartBuyout=\{handleStartAllianceBuyout\}/,
   'Alliance battles must persist their explicit screen origin instead of inferring it from a shared property ID.'
 );
 assert.match(

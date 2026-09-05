@@ -28,6 +28,9 @@ FFXIVの主要都市を舞台に、ギルを積み合って民間事業・営業
 将来のオリジナル販売版に必要な素材・権利・配布・品質仕様は
 [`docs/commercial-edition-readiness.md`](docs/commercial-edition-readiness.md)を参照してください。現行fan版の販売を許可・認証するものではありません。
 
+2026-09-05の原作風の連続金貨束、画面外の柱の生成抑制、背面UI更新の削減、依存更新は
+[`docs/trade-polish-2026-09-05.md`](docs/trade-polish-2026-09-05.md)に記録しています。
+
 ---
 
 ## 1. ゲーム説明書

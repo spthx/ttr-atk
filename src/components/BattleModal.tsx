@@ -74,6 +74,7 @@ import {
   ENEMY_SUPPORT_POST_PILE_GRACE_MS,
   advanceEnemySupportTelegraphClock,
   buildCapitalStackTimeline,
+  resolveCapitalCommandRechargeScale,
   canConfirmBattleResult,
   enqueueBattleStatusMessage,
   getBattleHitStopTiming,
@@ -2706,11 +2707,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     capitalPreviewStage?.commandRecharge !== 'pause' &&
     playerCapitalPilePreviewStage?.commandRecharge !== 'pause' &&
     enemyCapitalPilePreviewStage?.commandRecharge !== 'pause';
-  const capitalPresentationCommandRechargeScale = Math.max(
-    capitalPreviewStage?.commandRechargeScale ?? 1,
-    playerCapitalPilePreviewStage?.commandRechargeScale ?? 1,
-    enemyCapitalPilePreviewStage?.commandRechargeScale ?? 1
-  );
+  const capitalPresentationCommandRechargeScale = resolveCapitalCommandRechargeScale([
+    capitalPreviewStage,
+    playerCapitalPilePreviewStage,
+    enemyCapitalPilePreviewStage,
+  ]);
   const presentationLocked =
     !!battleAnnouncement ||
     !!conditionAnnouncement ||

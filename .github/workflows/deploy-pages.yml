@@ -17,24 +17,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          node-version: 24
+          cache: npm
+      - run: npm ci
       - name: Verify types, balance, simulations, and visual budgets
         run: |
-          pnpm run lint
-          pnpm run check:balance
-          pnpm run check:simulations
-          pnpm run check:visuals
+          npm run lint
+          npm run check:balance
+          npm run check:readiness
+          npm run check:progression
+          npm run check:simulations
+          npm run check:visuals
       - name: Build game for project Pages path
         env:
           VITE_PUBLIC_BASE: /ttr-atk/
-        run: pnpm run build:pages
+        run: npm run build:pages
       - name: Copy audio, fan-kit, manifest, and title assets
         run: |
           cp -R public/ff14-fankit dist/ff14-fankit

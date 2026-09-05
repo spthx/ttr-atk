@@ -1,0 +1,68 @@
+{
+  "note": "Local Edge headless CPU submission, 5 real authored timelines at 60Hz; not GPU duration or device FPS",
+  "results": [
+    {
+      "name": "opening",
+      "timelineMs": 0.03949999988079071,
+      "drawCalls": 46917,
+      "samples": 545,
+      "zeroDrawFrames": 0,
+      "p95CpuMs": 0.3999999761581421,
+      "metrics": {
+        "cssWidth": 1190,
+        "cssHeight": 276,
+        "devicePixelRatio": 2,
+        "backingPixels": 1313760,
+        "bitmapCacheBytes": 572352,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 18,
+        "bitmapBuilds": 18,
+        "bitmapHits": 20702,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0
+      }
+    },
+    {
+      "name": "late",
+      "timelineMs": 0.04549999982118606,
+      "drawCalls": 57287,
+      "samples": 545,
+      "zeroDrawFrames": 0,
+      "p95CpuMs": 0.5,
+      "metrics": {
+        "cssWidth": 1190,
+        "cssHeight": 276,
+        "devicePixelRatio": 2,
+        "backingPixels": 1313760,
+        "bitmapCacheBytes": 3168000,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 58,
+        "bitmapBuilds": 58,
+        "bitmapHits": 51082,
+        "playerScrollPx": 66,
+        "enemyScrollPx": 66
+      }
+    },
+    {
+      "name": "overflow",
+      "timelineMs": 0.2909999999403954,
+      "drawCalls": 116922,
+      "samples": 545,
+      "zeroDrawFrames": 0,
+      "p95CpuMs": 3.5,
+      "metrics": {
+        "cssWidth": 1190,
+        "cssHeight": 276,
+        "devicePixelRatio": 2,
+        "backingPixels": 1313760,
+        "bitmapCacheBytes": 33417472,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 36,
+        "bitmapBuilds": 270,
+        "bitmapHits": 81290,
+        "playerScrollPx": 2046,
+        "enemyScrollPx": 2046
+      }
+    }
+  ]
+}

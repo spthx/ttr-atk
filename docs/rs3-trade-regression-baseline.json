@@ -102,6 +102,17 @@
     "allowStableLogicalBundleCountOne": true,
     "fallingUnitMustHaveBundleHeight": true
   },
+  "rollStream": {
+    "classification": "I",
+    "pairSize": 2,
+    "flightMilliseconds": 330,
+    "maximumLogicalLayersPerRoll": 32,
+    "maximumWavesForExtremeFunding": 144,
+    "maximumAirborneColumns": 6,
+    "standardPourMilliseconds": 1485,
+    "continuousAcrossBeatBoundaries": true,
+    "extraLightTrails": false
+  },
   "overflowPaging": {
     "enabled": true,
     "moveCompletedPileAndPedestalTogether": true,

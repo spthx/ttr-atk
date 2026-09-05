@@ -1233,7 +1233,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /resolveBattleCapitalSfcPacketSteppedProgress\(\{[\s\S]{0,220}rawProgress,[\s\S]{0,220}columnIndex: column\.index/,
+  /resolveCapitalRollStep\(rawProgress,column\.index,[\s\S]{0,160}side\.frame\.packetSeed/,
   'falling rolls must use the shared stepped-position resolver'
 );
 assert.match(
@@ -1248,7 +1248,7 @@ assert.match(
 );
 assert.match(
   readSource('src/utils/capitalCachedStack.ts'),
-  /resolveBattleCapitalSfcRenderedCoinLayers\(layers\)[\s\S]*for \(let layer = 0; layer < count; layer\+\+\)[\s\S]*c\.drawImage\(coin,crop\.x,crop\.y,crop\.width,crop\.height/,
+  /resolveBattleCapitalSfcRenderedCoinLayers\(layers\)[\s\S]*for\(let layer=firstLayer;layer<=lastLayer;layer\+\+\)[\s\S]*c\.drawImage\(coin,crop\.x,crop\.y,crop\.width,crop\.height/,
   'every visible SFC coin layer must be a separately tiled sprite with its own separator edge'
 );
 assert.match(
@@ -2964,7 +2964,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /resolveBattleCapitalSfcPacketSteppedProgress\([\s\S]{0,260}startBaseY \+ \(landingBaseY - startBaseY\) \* steppedProgress/,
+  /resolveCapitalRollStep\([\s\S]{0,260}startBaseY \+ \(landingBaseY - startBaseY\) \* steppedProgress/,
   'the Canvas renderer must apply the shared stepped packet position to vertical travel'
 );
 assert.match(
