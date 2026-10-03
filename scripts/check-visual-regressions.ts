@@ -1248,7 +1248,7 @@ assert.match(
 );
 assert.match(
   readSource('src/utils/capitalCachedStack.ts'),
-  /resolveBattleCapitalSfcRenderedCoinLayers\(layers\)[\s\S]*for\(let layer=firstLayer;layer<=lastLayer;layer\+\+\)[\s\S]*c\.drawImage\(coin,crop\.x,crop\.y,crop\.width,crop\.height/,
+  /resolveBattleCapitalSfcRenderedCoinLayers\(layers\)[\s\S]*getCapitalSpriteRaster\(coin, resources\.crop,[\s\S]*for\(let layer=firstLayer;layer<=lastLayer;layer\+\+\)[\s\S]*c\.drawImage\(stamp/,
   'every visible SFC coin layer must be a separately tiled sprite with its own separator edge'
 );
 assert.match(
@@ -1814,7 +1814,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /const after = side\.frame\.settledAfterColumnHeights\[column\.index\][\s\S]{0,420}if \(rawProgress >= 1\) \{[\s\S]{0,320}geometry\.layerStep,[\s\S]{0,60}after[\s\S]{0,80}return;/,
+  /const after = side\.frame\.settledAfterColumnHeights\[column\.index\][\s\S]{0,700}if \(rawProgress >= 1\) \{[\s\S]{0,320}geometry\.layerStep,[\s\S]{0,60}after[\s\S]{0,80}return;/,
   'the landing sample must replace the moving packet with the exact settled stack'
 );
 assert.match(

@@ -1,0 +1,66 @@
+# 2026-10-03 金貨描画リメイク
+
+基準: `4e5500fbb7e0b1f15e5e0b313d5612c231649a90`。作業の正本は `D:\Desktop\tataru-trade`。
+
+## 採用した方式
+
+金貨の描画を、毎回Canvasで完成盤面を合成する方式から、GPUに保持した小さな画像をまとめて描くWebGL2の2Dバッチへ変更した。Three.jsの立体シーンやUnityのランタイムを追加していない。新たな依存パッケージもない。
+
+- `capitalGpuBatch.ts`: 128×256pxの固定64枠のアトラス（8MiB）、512枚分の固定バッファ（16KiB）。見える柱の帯だけを送る。金額に比例するDOM・物理オブジェクトを作らない。
+- `BattleCapitalCanvas.tsx`: 同じ積み位置、落下束、台座の背面・前壁をCanvas版と共有。皿・柱・前壁を一つの座標移動で下げ、頂上への補充を続ける。
+- `capitalSpriteRaster.ts`: PNGの元解像度を一度だけ読み、最近傍の小型画像を作る。元画像ごとに64枚／2MiB以内で再利用し、同じサイズへ戻した時の金貨の細線を安定させる。Canvas版にも適用し、繰り返しのPNG縮小を取り除いた。元PNGと配色は変更しない。
+- 所有率の背景は値が変わったときだけ更新する。静止盤面では描画を省略し、非表示中は描画ループを止める。
+- GPU非対応・初期化失敗・context lossでは新しいCanvasへ切り替える。既存の演出時計を継続し、出資、音、ゲーム計算をやり直さない。
+- 同じcanvasでGPU contextが復元された場合も、無効になったGPU資源を再生成する。
+
+2D描画の再利用と少数の描画命令を優先する判断は、[MDNのCanvas最適化](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas)と[WebGLの推奨事項](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_best_practices)を参照した。採用理由の実測は下記。
+
+## 原作表現とゲーム内容
+
+ファンサイトキットの画像、既存の金貨・台座PNG、場所、スキル、音源は変更していない。18位置 `[4,5,5,4]`、少額の最低8枚束、前中央からの積載、重なる2個ずつの落下、SFC優先の165ms×9波、皿ごとの段階的下降を維持する。参照映像の観察とROM内部実装の断定は区別する。元の採寸は[原作再現基準](./romasaga3-trade-reference.md)を参照。
+
+[任天堂の会社経営説明](https://www.nintendo.co.jp/wii/vc/vc_rs3/vc_rs3_12.html)で説明される、自社資金・物件・グループ・かけひき・同盟による資金調達と、背景の押し合いを引き続き中心にする。
+
+## 一緒に修正した表示欠落
+
+従来は `700→701` のように同じ表示単位へ丸められる出資や、表示上限後の追加出資に落下演出がなかった。正の出資には補充の束を作り、既存山の最上段へ接触した時点で同じ輪郭へ合流させる。永続表示の高さ・金額を架空に増やす処理ではない。表示の量子化上限自体は維持し、上限後も追加投入のフィードバックを必ず出す。
+
+pourなしを例外にしていた回帰検査を修正し、追加投入のコマンド回復仕事量も従来値との一致を必須にした。小数入力を整数表示へ丸めた際に一瞬だけ前の金額を下回る経路も、出資前後の範囲へ制限した。
+
+## 計測条件と結果
+
+Windows / 隔離Edge headless / RTX 4060 / 1190×276 CSS px / DPR 2 / 60Hz相当の同じ実投入timelineを5巡した。値はJavaScriptからのCPU描画命令発行時間であり、GPU完了時間やスマートフォンのFPSではない。
+
+| 条件 | 変更前Canvas CPU p95 | 改修後Canvas | GPU版 | 変更前 `drawImage` | GPU版の帯生成用 `drawImage` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 初回700 / 相場2000 | 0.5ms | 0.3ms | 0.1ms | 15,825 | 80 |
+| 終盤30億 / 相場60億 | 0.3ms | 0.3ms | 0.2ms | 22,687 | 222 |
+| 巨大4兆 / 相場60億 | 0.7ms | 0.5ms | 0.2ms | 521,436 | 15,991 |
+
+GPU版の列は全GPU命令数ではない。画像生成が初回と更新時へ移ったことを示す。描画器全体のGPU命令数と資源量は独立ハーネスで検査する。
+
+製品ビルドの初戦では、新旧両方式とも計測6秒間のlong task（50ms超）0、背面市場のDOM変更0。ScriptDurationはCanvas約0.137秒、最終GPU版約0.110秒だった。初戦全体の大幅高速化とは主張しない。差が大きいのは金貨描画単体・大量投入時の合成処理である。
+
+GPU喪失を初回出資中に起こした試験と、最初からWebGL2を利用できない試験で、出資700ギルが一度だけ計上されること、操作解除、3画面比への回転、勝利・分析・買収結果確定・描画器撤去まで確認した。
+
+## 独立ピクセル検査
+
+GPT-6.1 Sol・mediumが専用Edgeで検査した。3画面比×DPR 1/1.25/1.5/2、少額・通常・大量、実timeline全境界を含む4,080件でCanvasとの最大色差1階調、20階調超の差0。左右の変化領域bbox120件は全一致。GPU内の着地・波の境界1,992件と、上限後等の補充144件はRGBA完全一致。
+
+resize往復、テーマ往復、dispose後再初期化、context復旧の画像も完全一致し、GPU texture/bufferの解放漏れ0。最大GPU描画命令数は全比較21、補充試験24。GPU textureの計上量は最大13,978,880 bytes、固定VBO16KiB。これはブラウザ全体のVRAMではない。元画像のRGBAと小型画像は別途CPU側で保持し、例示のDPR2計測では計13,065,960 bytes。コンポーネント終了時に解放対象へ戻す。
+
+最初のGPU版では分数DPRの最悪例で34%の画素に20階調超の差があり、画面回転後にも細線が変化した。旧Canvasでもresize後に変化することを再現し、PNGの繰り返し縮小を整数画素の共通stampへ置換して修正した。速さだけを採用基準にせず、この不一致を解消してから公開する。
+
+保存済み証跡: [変更前描画計測](./evidence/gpu-remake-baseline-20261003.json)、[最終GPU計測](./evidence/gpu-remake-profile-20261003.json)、[独立画像・資源検査](./evidence/gpu-remake-verification-20261003.json)、[GPU喪失／非対応の実操作](./evidence/gpu-remake-runtime-20261003.json)、[製品版初戦](./evidence/gpu-remake-playthrough-20261003.json)、[横持ち](./evidence/gpu-remake-landscape-20261003.png)、[大量投入](./evidence/gpu-remake-overflow-20261003.png)。
+
+## 再実行
+
+既存のlint、visual、balance、readiness、progression、500戦simulationに加え、次を使う。
+
+- `scripts/profile-trade-scene.mjs`: 同じsceneのCPU描画測定。`CAPITAL_RENDERER=webgl2` で新方式を選ぶ。
+- `scripts/verify-capital-gpu.mjs 9360`: GPT-6.1 Sol・medium担当の独立ピクセル／資源／復旧検査。`--smoke` は最悪例と復旧だけを検査。
+- `scripts/verify-capital-runtime.mjs 9357`: 製品版4140でGPU喪失・非対応を実操作検査。専用ブラウザのlocalhostセーブだけを初期化する。
+- `scripts/live-trade-qa.mjs`: 実操作の初戦、結果確定、回転。`CAPITAL_RENDERER=canvas2d` と `CAPITAL_QA_FRESH=1` で隔離ブラウザの同条件比較を再現する。
+- `scripts/record-capital-remake.mjs`: 同じ描画器で序盤、終盤、巨額、上限後の補充を録画する。コインだけの音声なしfixture動画であり、通しプレイ動画ではない。
+
+検証中の証跡は `tmp/remake-20261003/`、独立検査は `tmp/sol-remake-audit-20261003/`。実在するファンへの依頼やスマートフォン実機試験は行っていない。AI担当による検証をファン本人の感想として扱わない。

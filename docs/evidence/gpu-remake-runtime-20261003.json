@@ -1,0 +1,39 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "mode": "context-loss",
+      "before": {
+        "renderer": "webgl2",
+        "capital": "投入総額。自社0 ギル、競合158 ギル",
+        "overflow": false,
+        "canvases": 1
+      },
+      "after": {
+        "renderer": "canvas2d",
+        "capital": "投入総額。自社700 ギル、競合158 ギル",
+        "overflow": false,
+        "canvases": 1
+      },
+      "rotation": true,
+      "settled": true
+    },
+    {
+      "mode": "unavailable",
+      "before": {
+        "renderer": "canvas2d",
+        "capital": "投入総額。自社0 ギル、競合158 ギル",
+        "overflow": false,
+        "canvases": 1
+      },
+      "after": {
+        "renderer": "canvas2d",
+        "capital": "投入総額。自社700 ギル、競合158 ギル",
+        "overflow": false,
+        "canvases": 1
+      },
+      "rotation": true,
+      "settled": true
+    }
+  ]
+}

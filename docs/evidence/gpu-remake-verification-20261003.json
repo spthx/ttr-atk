@@ -1,0 +1,381 @@
+{
+  "status": "measured",
+  "summary": {
+    "cases": 4080,
+    "canvasGpuComparisons": 4080,
+    "canvasGpuExact": 573,
+    "maxColorDelta": 1,
+    "maxOver20Ratio": 0,
+    "strictGpuComparisons": 1992,
+    "strictGpuFailures": 0,
+    "metricViolations": 0,
+    "renderFailures": 0,
+    "lifecycleFailures": 0
+  },
+  "api": {
+    "paint": "function",
+    "dispose": "function"
+  },
+  "resources": {
+    "paints": 8083,
+    "missingMetrics": [],
+    "peak": {
+      "gpuDrawCalls": 21,
+      "textureBytes": 13978880,
+      "bufferBytes": 16384
+    },
+    "peakObservedDrawCalls": 21,
+    "violations": [],
+    "first": {
+      "metrics": {
+        "cssWidth": 378,
+        "cssHeight": 366,
+        "devicePixelRatio": 1,
+        "backingPixels": 138348,
+        "bitmapCacheBytes": 13312,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 1,
+        "bitmapBuilds": 1,
+        "bitmapHits": 1,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0,
+        "compositions": 2,
+        "skippedPaints": 0,
+        "renderer": "webgl2",
+        "drawCalls": 2,
+        "textureBytes": 8942000,
+        "textureUploads": 10,
+        "bufferBytes": 16384,
+        "gpuDrawCalls": 2
+      },
+      "observedDrawCalls": 2,
+      "tracker": {
+        "observedDrawCalls": 12,
+        "liveTextures": 2,
+        "liveBuffers": 1,
+        "createdTextures": 2,
+        "deletedTextures": 0,
+        "createdBuffers": 1,
+        "deletedBuffers": 0
+      }
+    },
+    "last": {
+      "metrics": {
+        "cssWidth": 378,
+        "cssHeight": 366,
+        "devicePixelRatio": 1,
+        "backingPixels": 138348,
+        "bitmapCacheBytes": 53248,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 4,
+        "bitmapBuilds": 4,
+        "bitmapHits": 32,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0,
+        "compositions": 1,
+        "skippedPaints": 0,
+        "renderer": "webgl2",
+        "drawCalls": 13,
+        "textureBytes": 8942000,
+        "textureUploads": 13,
+        "bufferBytes": 16384,
+        "gpuDrawCalls": 13
+      },
+      "observedDrawCalls": 13,
+      "tracker": {
+        "observedDrawCalls": 20992,
+        "liveTextures": 4,
+        "liveBuffers": 2,
+        "createdTextures": 54,
+        "deletedTextures": 50,
+        "createdBuffers": 19,
+        "deletedBuffers": 17
+      }
+    }
+  },
+  "lifecycle": [
+    {
+      "test": "init",
+      "passed": true,
+      "metrics": {
+        "cssWidth": 378,
+        "cssHeight": 366,
+        "devicePixelRatio": 1,
+        "backingPixels": 138348,
+        "bitmapCacheBytes": 53248,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 4,
+        "bitmapBuilds": 4,
+        "bitmapHits": 32,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0,
+        "compositions": 1,
+        "skippedPaints": 0,
+        "renderer": "webgl2",
+        "drawCalls": 13,
+        "textureBytes": 8942000,
+        "textureUploads": 13,
+        "bufferBytes": 16384,
+        "gpuDrawCalls": 13
+      },
+      "attributes": {
+        "alpha": false,
+        "antialias": false,
+        "depth": false,
+        "desynchronized": false,
+        "failIfMajorPerformanceCaveat": false,
+        "powerPreference": "low-power",
+        "premultipliedAlpha": true,
+        "preserveDrawingBuffer": false,
+        "stencil": false,
+        "xrCompatible": false
+      }
+    },
+    {
+      "test": "resize-and-back",
+      "passed": true,
+      "diff": {
+        "differingPixels": 0,
+        "differingChannels": 0,
+        "differingRatio": 0,
+        "over20Pixels": 0,
+        "over20Ratio": 0,
+        "maxChannelDelta": 0,
+        "meanAbsoluteChannelDelta": 0,
+        "differenceBBox": null
+      },
+      "before": {
+        "cssWidth": 378,
+        "cssHeight": 366,
+        "devicePixelRatio": 1,
+        "backingPixels": 138348,
+        "bitmapCacheBytes": 53248,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 4,
+        "bitmapBuilds": 4,
+        "bitmapHits": 32,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0,
+        "compositions": 1,
+        "skippedPaints": 0,
+        "renderer": "webgl2",
+        "drawCalls": 13,
+        "textureBytes": 8942000,
+        "textureUploads": 13,
+        "bufferBytes": 16384,
+        "gpuDrawCalls": 13
+      },
+      "after": {
+        "cssWidth": 378,
+        "cssHeight": 366,
+        "devicePixelRatio": 1,
+        "backingPixels": 138348,
+        "bitmapCacheBytes": 53248,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 4,
+        "bitmapBuilds": 4,
+        "bitmapHits": 32,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0,
+        "compositions": 1,
+        "skippedPaints": 0,
+        "renderer": "webgl2",
+        "drawCalls": 13,
+        "textureBytes": 8942000,
+        "textureUploads": 13,
+        "bufferBytes": 16384,
+        "gpuDrawCalls": 13
+      }
+    },
+    {
+      "test": "theme-and-back",
+      "passed": true,
+      "themeChange": {
+        "differingPixels": 114343,
+        "differingChannels": 342401,
+        "differingRatio": 0.8264882759418278,
+        "over20Pixels": 112221,
+        "over20Ratio": 0.8111501431173562,
+        "maxChannelDelta": 174,
+        "meanAbsoluteChannelDelta": 52.964459189869025,
+        "differenceBBox": {
+          "x": 0,
+          "y": 0,
+          "width": 378,
+          "height": 366
+        }
+      },
+      "canvasGpu": {
+        "differingPixels": 104,
+        "differingChannels": 133,
+        "differingRatio": 0.0007517275276838118,
+        "over20Pixels": 0,
+        "over20Ratio": 0,
+        "maxChannelDelta": 1,
+        "meanAbsoluteChannelDelta": 0.00024033596437968022,
+        "differenceBBox": {
+          "x": 16,
+          "y": 287,
+          "width": 340,
+          "height": 54
+        }
+      },
+      "restored": {
+        "differingPixels": 0,
+        "differingChannels": 0,
+        "differingRatio": 0,
+        "over20Pixels": 0,
+        "over20Ratio": 0,
+        "maxChannelDelta": 0,
+        "meanAbsoluteChannelDelta": 0,
+        "differenceBBox": null
+      },
+      "before": {
+        "cssWidth": 378,
+        "cssHeight": 366,
+        "devicePixelRatio": 1,
+        "backingPixels": 138348,
+        "bitmapCacheBytes": 53248,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 4,
+        "bitmapBuilds": 4,
+        "bitmapHits": 32,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0,
+        "compositions": 1,
+        "skippedPaints": 0,
+        "renderer": "webgl2",
+        "drawCalls": 13,
+        "textureBytes": 8942000,
+        "textureUploads": 13,
+        "bufferBytes": 16384,
+        "gpuDrawCalls": 13
+      },
+      "after": {
+        "cssWidth": 378,
+        "cssHeight": 366,
+        "devicePixelRatio": 1,
+        "backingPixels": 138348,
+        "bitmapCacheBytes": 53248,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 4,
+        "bitmapBuilds": 4,
+        "bitmapHits": 32,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0,
+        "compositions": 1,
+        "skippedPaints": 0,
+        "renderer": "webgl2",
+        "drawCalls": 13,
+        "textureBytes": 8942000,
+        "textureUploads": 13,
+        "bufferBytes": 16384,
+        "gpuDrawCalls": 13
+      }
+    },
+    {
+      "test": "dispose",
+      "passed": true,
+      "before": {
+        "observedDrawCalls": 20966,
+        "liveTextures": 2,
+        "liveBuffers": 1,
+        "createdTextures": 50,
+        "deletedTextures": 48,
+        "createdBuffers": 17,
+        "deletedBuffers": 16
+      },
+      "after": {
+        "observedDrawCalls": 20966,
+        "liveTextures": 0,
+        "liveBuffers": 0,
+        "createdTextures": 50,
+        "deletedTextures": 50,
+        "createdBuffers": 17,
+        "deletedBuffers": 17
+      }
+    },
+    {
+      "test": "dispose-idempotent",
+      "passed": true
+    },
+    {
+      "test": "reinit",
+      "passed": true,
+      "diff": {
+        "differingPixels": 0,
+        "differingChannels": 0,
+        "differingRatio": 0,
+        "over20Pixels": 0,
+        "over20Ratio": 0,
+        "maxChannelDelta": 0,
+        "meanAbsoluteChannelDelta": 0,
+        "differenceBBox": null
+      },
+      "metrics": {
+        "cssWidth": 378,
+        "cssHeight": 366,
+        "devicePixelRatio": 1,
+        "backingPixels": 138348,
+        "bitmapCacheBytes": 53248,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 4,
+        "bitmapBuilds": 4,
+        "bitmapHits": 32,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0,
+        "compositions": 1,
+        "skippedPaints": 0,
+        "renderer": "webgl2",
+        "drawCalls": 13,
+        "textureBytes": 8942000,
+        "textureUploads": 13,
+        "bufferBytes": 16384,
+        "gpuDrawCalls": 13
+      }
+    },
+    {
+      "test": "context-lost-paint",
+      "passed": true,
+      "lost": true,
+      "lostResult": null
+    },
+    {
+      "test": "context-restore",
+      "passed": true,
+      "restoredEvent": true,
+      "diff": {
+        "differingPixels": 0,
+        "differingChannels": 0,
+        "differingRatio": 0,
+        "over20Pixels": 0,
+        "over20Ratio": 0,
+        "maxChannelDelta": 0,
+        "meanAbsoluteChannelDelta": 0,
+        "differenceBBox": null
+      },
+      "metrics": {
+        "cssWidth": 378,
+        "cssHeight": 366,
+        "devicePixelRatio": 1,
+        "backingPixels": 138348,
+        "bitmapCacheBytes": 53248,
+        "bitmapCacheLimitBytes": 33554432,
+        "bitmapCacheEntries": 4,
+        "bitmapBuilds": 4,
+        "bitmapHits": 32,
+        "playerScrollPx": 0,
+        "enemyScrollPx": 0,
+        "compositions": 1,
+        "skippedPaints": 0,
+        "renderer": "webgl2",
+        "drawCalls": 13,
+        "textureBytes": 8942000,
+        "textureUploads": 13,
+        "bufferBytes": 16384,
+        "gpuDrawCalls": 13
+      }
+    }
+  ],
+  "errors": []
+}

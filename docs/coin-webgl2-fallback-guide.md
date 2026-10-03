@@ -1,5 +1,7 @@
 # 商戦フィールド描画 WebGL2 フォールバック実装手引き
 
+> **2026-10-03追補:** WebGL2の2D常駐バッチを実装した。現在の採用判断・測定・Canvasフォールバックは[GPUリメイク記録](./gpu-trade-remake-2026-10-03.md)を優先する。以下の「将来」やCanvas製品既定という記述は、実装前の設計履歴である。
+
 > **2026-08-23更新:** 現在の正本は[`romasaga3-trade-reference.md`](./romasaga3-trade-reference.md)と[`rs3-trade-regression-baseline.json`](./rs3-trade-regression-baseline.json)であり、18アンカー `[4,5,5,4]`、最低8枚に見える束、165ms×最大9wave、過積載時の完成柱＋物理台座の一体下降を守る。本書のWebGL2案もこの現行sceneをそのまま投影する場合だけ有効である。
 
 ## 1. 目的

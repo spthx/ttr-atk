@@ -3,6 +3,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
 } from 'react';
 import {
@@ -15,7 +16,9 @@ import {
 } from '../utils/battlePresentation';
 import { resolveBattleCanvasDpr } from '../utils/battleCanvasQuality';
 import { CapitalBitmapCache } from '../utils/capitalBitmapCache';
-import { drawCachedCapitalStack, type CapitalStackPaintResources } from '../utils/capitalCachedStack';
+import { CapitalGpuBatch } from '../utils/capitalGpuBatch';
+import { getCapitalSpriteRaster, getCapitalSpriteRasterBytes, releaseCapitalSpriteRaster } from '../utils/capitalSpriteRaster';
+import { drawCachedCapitalStack, type CapitalStackPaintResources, type CapitalSpriteContext } from '../utils/capitalCachedStack';
 import { resolveCapitalViewportScroll } from '../utils/capitalViewportScroll';
 import { resolveCapitalRollProgress, resolveCapitalRollStep } from '../utils/capitalRollMotion';
 import { createBattleVisualTheme, getBattleVisualThemeCacheKey, validateBattleVisualTheme, type BattleVisualTheme } from '../data/battleVisualTheme';
@@ -129,6 +132,12 @@ export interface BattleCapitalCanvasMetrics {
   enemyScrollPx: number;
   compositions: number;
   skippedPaints: number;
+  renderer?: 'canvas2d' | 'webgl2';
+  drawCalls?: number;
+  textureBytes?: number;
+  textureUploads?: number;
+  bufferBytes?: number;
+  spriteRasterBytes?: number;
 }
 
 export interface BattleCapitalCanvasCssSize {
@@ -348,7 +357,7 @@ const drawPixelArrowBands = (
   width: number,
   height: number,
   scene: BattleCapitalCanvasScene,
-  theme: BattleVisualTheme
+  theme: BattleVisualTheme,
 ) => {
   context.globalCompositeOperation = 'copy';
   context.fillStyle = theme.palette.background;
@@ -442,15 +451,21 @@ const buildColumnLayout = (
   return { ...geometry, columns };
 };
 
+const buildCapitalLayouts = (width: number, height: number) => ({
+  player: buildColumnLayout(width, height, 'player'),
+  enemy: buildColumnLayout(width, height, 'enemy'),
+});
+
 const drawWidePedestalSlice = (
-  context: CanvasRenderingContext2D,
+  context: CapitalSpriteContext,
   pedestal: HTMLImageElement,
   geometry: ReturnType<typeof buildColumnLayout>,
   sourceY: number,
   sourceHeight: number,
   destinationY: number,
   destinationHeight: number,
-  theme: BattleVisualTheme
+  theme: BattleVisualTheme,
+  resources: CapitalStackPaintResources,
 ) => {
   const scale = geometry.pedestalHeight / theme.pedestal.crop.height;
   const destinationLeft = geometry.centerX - geometry.pedestalWidth / 2;
@@ -460,25 +475,23 @@ const drawWidePedestalSlice = (
     const left = snap(destinationLeft + sourceOffset * scale);
     sourceOffset += slice.width;
     const right = snap(destinationLeft + sourceOffset * scale);
-    context.drawImage(
-      pedestal,
-      slice.x,
-      sourceY,
-      slice.width,
-      sourceHeight,
-      left,
-      snap(destinationY),
-      Math.max(1, right - left),
-      Math.max(1, snap(destinationHeight))
-    );
+    const pixelLeft = Math.round(left * resources.scaleX);
+    const pixelWidth = Math.max(1, Math.round(right * resources.scaleX) - pixelLeft);
+    const pixelHeight = Math.max(1, Math.round(snap(destinationHeight) * resources.scaleY));
+    const stamp = getCapitalSpriteRaster(pedestal,
+      {x: slice.x, y: sourceY, width: slice.width, height: sourceHeight}, pixelWidth, pixelHeight);
+    context.drawImage(stamp, pixelLeft / resources.scaleX,
+      Math.round(snap(destinationY) * resources.scaleY) / resources.scaleY,
+      pixelWidth / resources.scaleX, pixelHeight / resources.scaleY);
   });
 };
 
 const drawPedestalBack = (
-  context: CanvasRenderingContext2D,
+  context: CapitalSpriteContext,
   geometry: ReturnType<typeof buildColumnLayout>,
   pedestal: HTMLImageElement,
-  theme: BattleVisualTheme
+  theme: BattleVisualTheme,
+  resources: CapitalStackPaintResources,
 ) => {
   drawWidePedestalSlice(
     context,
@@ -488,15 +501,17 @@ const drawPedestalBack = (
     theme.pedestal.crop.height,
     geometry.pedestalTopY,
     geometry.pedestalHeight,
-    theme
+    theme,
+    resources
   );
 };
 
 const drawPedestalFront = (
-  context: CanvasRenderingContext2D,
+  context: CapitalSpriteContext,
   geometry: ReturnType<typeof buildColumnLayout>,
   pedestal: HTMLImageElement,
-  theme: BattleVisualTheme
+  theme: BattleVisualTheme,
+  resources: CapitalStackPaintResources,
 ) => {
   const sourceY = theme.pedestal.crop.y +
     theme.pedestal.crop.height * BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT;
@@ -514,12 +529,13 @@ const drawPedestalFront = (
     sourceHeight,
     destinationY,
     destinationHeight,
-    theme
+    theme,
+    resources
   );
 };
 
 const drawCoinStack = (
-  context: CanvasRenderingContext2D,
+  context: CapitalSpriteContext,
   coin: HTMLImageElement,
   x: number,
   baseY: number,
@@ -533,14 +549,14 @@ const drawCoinStack = (
 };
 
 const drawCapitalSideBase = (
-  context: CanvasRenderingContext2D,
+  context: CapitalSpriteContext,
   side: NormalizedCapitalSide,
   sprites: BattleCapitalCanvasSprites,
   geometry: ReturnType<typeof buildColumnLayout>,
   resources: CapitalStackPaintResources
 ) => {
   const active = new Set(side.frame.activeColumnIndices);
-  drawPedestalBack(context, geometry, sprites.pedestal, sprites.theme ?? DEFAULT_BATTLE_VISUAL_THEME);
+  drawPedestalBack(context, geometry, sprites.pedestal, sprites.theme ?? DEFAULT_BATTLE_VISUAL_THEME, resources);
   // During motion, paint every column in one rear-to-front pass below.
   if (active.size > 0) return;
 
@@ -564,7 +580,7 @@ const drawCapitalSideBase = (
 };
 
 const drawCapitalSideIncoming = (
-  context: CanvasRenderingContext2D,
+  context: CapitalSpriteContext,
   height: number,
   side: NormalizedCapitalSide,
   sprites: BattleCapitalCanvasSprites,
@@ -582,7 +598,8 @@ const drawCapitalSideIncoming = (
     }
     const before = side.frame.columnHeights[column.index] ?? 0;
     const after = side.frame.settledAfterColumnHeights[column.index] ?? before;
-    const addedLayers = resolveBattleCapitalSfcIncomingLogicalLayers(
+    const replenishLayers = side.frame.incomingLaneTimings?.find(lane => lane.columnIndex === column.index)?.replenishLayers ?? 0;
+    const addedLayers = replenishLayers || resolveBattleCapitalSfcIncomingLogicalLayers(
       before,
       after,
       MAX_BATTLE_CAPITAL_COLUMN_LAYERS
@@ -620,7 +637,7 @@ const drawCapitalSideIncoming = (
     // Capping that case makes the settled tower jump upward on contact.
     const bundleLayers = addedLayers;
     if (rawProgress <= 0) return;
-    const landingBaseY = column.baseY - before * geometry.layerStep;
+    const landingBaseY = column.baseY - (before - (replenishLayers || 0)) * geometry.layerStep;
     const startBaseY = Math.min(
       -geometry.coinHeight - scrollOffset,
       landingBaseY - height * 0.22 - bundleLayers * geometry.layerStep
@@ -646,11 +663,12 @@ const drawCapitalSideIncoming = (
 };
 
 const drawCapitalSidePedestalFront = (
-  context: CanvasRenderingContext2D,
+  context: CapitalSpriteContext,
   sprites: BattleCapitalCanvasSprites,
-  geometry: ReturnType<typeof buildColumnLayout>
+  geometry: ReturnType<typeof buildColumnLayout>,
+  resources: CapitalStackPaintResources,
 ) => {
-  drawPedestalFront(context, geometry, sprites.pedestal, sprites.theme ?? DEFAULT_BATTLE_VISUAL_THEME);
+  drawPedestalFront(context, geometry, sprites.pedestal, sprites.theme ?? DEFAULT_BATTLE_VISUAL_THEME, resources);
 };
 
 const getStaticSceneKey = (
@@ -744,7 +762,7 @@ export const paintBattleCapitalCanvas = (
   const layoutKey=`${width}:${height}`;
   let layout=layoutCache.get(canvas);
   if (!layout || layout.key!==layoutKey) {
-    layout={key:layoutKey,player:buildColumnLayout(width,height,'player'),enemy:buildColumnLayout(width,height,'enemy')};
+    layout={key:layoutKey,...buildCapitalLayouts(width,height)};
     layoutCache.set(canvas,layout);
   }
   const playerGeometry = sprites ? layout.player : null;
@@ -763,7 +781,7 @@ export const paintBattleCapitalCanvas = (
     target.translate(0,offset);
     drawCapitalSideBase(target,side,sprites,geometry,resources);
     drawCapitalSideIncoming(target,height,side,sprites,geometry,resources,offset);
-    drawCapitalSidePedestalFront(target,sprites,geometry);
+    drawCapitalSidePedestalFront(target,sprites,geometry,resources);
     target.restore();
   };
   const staticKey = `${getStaticSceneKey(scene, sprites)}:${playerScroll}:${enemyScroll}`;
@@ -848,6 +866,111 @@ export const paintBattleCapitalCanvas = (
   };
 };
 
+interface GpuCapitalEntry {
+  key: string;
+  sprites: BattleCapitalCanvasSprites;
+  batch: CapitalGpuBatch;
+  resources: CapitalStackPaintResources;
+  player: ReturnType<typeof buildColumnLayout>;
+  enemy: ReturnType<typeof buildColumnLayout>;
+  paintKey: string;
+  compositions: number;
+  skippedPaints: number;
+}
+const gpuCapitalEntries = new WeakMap<HTMLCanvasElement, GpuCapitalEntry>();
+
+export const disposeBattleCapitalGpuCanvas = (canvas: HTMLCanvasElement) => {
+  const entry = gpuCapitalEntries.get(canvas);
+  entry?.batch.dispose(); entry?.resources.cache.clear();
+  gpuCapitalEntries.delete(canvas);
+};
+
+/** Same SFC painter, retained GPU sprites; no full-field pile recomposition. */
+export const paintBattleCapitalGpuCanvas = (
+  canvas: HTMLCanvasElement,
+  scene: BattleCapitalCanvasScene,
+  {devicePixelRatio, frameRate = 30, sprites = null, cssSize = null}:
+    Parameters<typeof paintBattleCapitalCanvas>[2] = {},
+): BattleCapitalCanvasMetrics | null => {
+  if (!sprites) return null;
+  const {width, height} = getCanvasCssSize(canvas, cssSize);
+  const dpr = resolveBattleCanvasDpr({
+    requestedDpr: devicePixelRatio ?? window.devicePixelRatio ?? 1, frameRate,
+  });
+  const backingWidth = Math.max(1, Math.round(width * dpr));
+  const backingHeight = Math.max(1, Math.round(height * dpr));
+  const theme = sprites.theme ?? DEFAULT_BATTLE_VISUAL_THEME;
+  const key = `${backingWidth}:${backingHeight}:${width}:${height}:${frameRate}:${themeCacheKey(theme)}`;
+  let entry = gpuCapitalEntries.get(canvas);
+  if (entry?.batch.gl.isContextLost()) return null;
+  if (!entry || entry.batch.needsRebuild || entry.key !== key || entry.sprites.coin !== sprites.coin || entry.sprites.pedestal !== sprites.pedestal) {
+    disposeBattleCapitalGpuCanvas(canvas);
+    const validation = validateBattleVisualTheme(theme, {
+      coin: {width: sprites.coin.naturalWidth, height: sprites.coin.naturalHeight},
+      pedestal: {width: sprites.pedestal.naturalWidth, height: sprites.pedestal.naturalHeight},
+    });
+    if (!validation.valid) throw new Error(validation.errors.join(' '));
+    canvas.width = backingWidth; canvas.height = backingHeight;
+    entry = {
+      key, sprites, batch: new CapitalGpuBatch(canvas),
+      resources: {
+        cache: new CapitalBitmapCache((frameRate === 30 ? 16 : 32) * 1024 * 1024),
+        scaleX: backingWidth / width, scaleY: backingHeight / height, crop: theme.coin.crop,
+      },
+      ...buildCapitalLayouts(width, height),
+      paintKey: '', compositions: 0, skippedPaints: 0,
+    };
+    gpuCapitalEntries.set(canvas, entry);
+  }
+  const scrollFor = (side: NormalizedCapitalSide, g: ReturnType<typeof buildColumnLayout>) => {
+    const offset = resolveCapitalViewportScroll({
+      height, coinHeight: g.coinHeight, layerStep: g.layerStep,
+      rowBases: g.columns.map(column => column.baseY),
+      before: side.frame.viewportBeforeColumnHeights ?? side.frame.columnHeights,
+      after: side.frame.viewportAfterColumnHeights ?? side.frame.settledAfterColumnHeights,
+      progress: side.frame.packetProgress,
+    }).offsetPx;
+    return Math.round(offset * entry!.resources.scaleY) / entry!.resources.scaleY;
+  };
+  const playerScroll = scrollFor(scene.player, entry.player);
+  const enemyScroll = scrollFor(scene.enemy, entry.enemy);
+  const paintKey = `${getStaticSceneKey(scene, sprites)}:${playerScroll}:${enemyScroll}:${scene.ownershipPercent}`;
+  let drawCalls = 0;
+  if (entry.paintKey !== paintKey) {
+    if (!entry.batch.begin(width, height, `${key}:${scene.ownershipPercent}`,
+      context => drawPixelArrowBands(context, width, height, scene, theme))) return null;
+    const paintSide = (side: NormalizedCapitalSide, geometry: ReturnType<typeof buildColumnLayout>, offset: number) => {
+      const context = entry!.batch.context;
+      context.save(); context.translate(0, offset);
+      drawCapitalSideBase(context, side, sprites, geometry, entry!.resources);
+      drawCapitalSideIncoming(context, height, side, sprites, geometry, entry!.resources, offset);
+      drawCapitalSidePedestalFront(context, sprites, geometry, entry!.resources);
+      context.restore();
+    };
+    paintSide(scene.player, entry.player, playerScroll);
+    paintSide(scene.enemy, entry.enemy, enemyScroll);
+    entry.batch.flush();
+    entry.paintKey = paintKey; entry.compositions++;
+    drawCalls = entry.batch.drawCalls;
+  } else entry.skippedPaints++;
+  canvas.dataset.renderer = 'webgl2';
+  canvas.dataset.renderDpr = dpr.toFixed(2);
+  canvas.dataset.backingPixels = String(backingWidth * backingHeight);
+  return {
+    cssWidth: width, cssHeight: height, devicePixelRatio: dpr,
+    backingPixels: backingWidth * backingHeight,
+    bitmapCacheBytes: entry.resources.cache.bytes,
+    bitmapCacheLimitBytes: entry.resources.cache.maxBytes,
+    bitmapCacheEntries: entry.resources.cache.size,
+    bitmapBuilds: entry.resources.cache.builds, bitmapHits: entry.resources.cache.hits,
+    playerScrollPx: playerScroll, enemyScrollPx: enemyScroll,
+    compositions: entry.compositions, skippedPaints: entry.skippedPaints,
+    renderer: 'webgl2', drawCalls, textureBytes: entry.batch.textureBytes,
+    textureUploads: entry.batch.uploads, bufferBytes: entry.batch.bufferBytes,
+    spriteRasterBytes: getCapitalSpriteRasterBytes(sprites.coin) + getCapitalSpriteRasterBytes(sprites.pedestal),
+  };
+};
+
 export const BattleCapitalCanvas = ({
   player,
   enemy,
@@ -862,6 +985,9 @@ export const BattleCapitalCanvas = ({
   devicePixelRatio,
   theme = DEFAULT_BATTLE_VISUAL_THEME,
 }: BattleCapitalCanvasProps) => {
+  const [renderer, setRenderer] = useState<'webgl2' | 'canvas2d'>(() =>
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('coin-renderer') === 'canvas2d'
+      ? 'canvas2d' : 'webgl2');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasSizeRef = useRef<BattleCapitalCanvasCssSize | null>(null);
   const spritesRef = useRef<BattleCapitalCanvasSprites | null>(null);
@@ -889,13 +1015,26 @@ export const BattleCapitalCanvas = ({
 
   const repaint = useCallback((sceneToPaint: BattleCapitalCanvasScene) => {
     if (!canvasRef.current || document.hidden) return;
-    paintBattleCapitalCanvas(canvasRef.current, sceneToPaint, {
+    const options = {
       devicePixelRatio,
       frameRate,
       sprites: spritesRef.current,
       cssSize: canvasSizeRef.current,
-    });
-  }, [devicePixelRatio, frameRate]);
+    };
+    if (renderer === 'webgl2') {
+      if (!spritesRef.current) return;
+      try {
+        if (!paintBattleCapitalGpuCanvas(canvasRef.current, sceneToPaint, options)) setRenderer('canvas2d');
+      } catch {
+        // A new DOM canvas is required: a WebGL canvas cannot obtain a 2D context.
+        // Packet clocks stay above this boundary, so fallback never replays bids.
+        setRenderer('canvas2d');
+      }
+    } else {
+      paintBattleCapitalCanvas(canvasRef.current, sceneToPaint, options);
+      canvasRef.current.dataset.renderer = 'canvas2d';
+    }
+  }, [devicePixelRatio, frameRate, renderer]);
   const repaintRef=useRef(repaint);
   repaintRef.current=repaint;
   const wakeRendererRef=useRef<()=>void>(()=>{});
@@ -974,8 +1113,12 @@ export const BattleCapitalCanvas = ({
 
   useEffect(() => {
     const canvas=canvasRef.current;
+    const onContextLost = (event: Event) => { event.preventDefault(); setRenderer('canvas2d'); };
+    canvas?.addEventListener('webglcontextlost', onContextLost);
     return () => {
       if (!canvas) return;
+      canvas.removeEventListener('webglcontextlost', onContextLost);
+      disposeBattleCapitalGpuCanvas(canvas);
       bitmapCaches.get(canvas)?.resources.cache.clear();
       bitmapCaches.delete(canvas);
       layoutCache.delete(canvas);
@@ -983,7 +1126,15 @@ export const BattleCapitalCanvas = ({
       if (snapshot) {snapshot.canvas.width=1;snapshot.canvas.height=1;}
       staticCanvasCache.delete(canvas);
     };
-  },[]);
+  },[renderer]);
+
+  useEffect(() => () => {
+    const loaded = spritesRef.current;
+    if (loaded) {
+      releaseCapitalSpriteRaster(loaded.coin);
+      releaseCapitalSpriteRaster(loaded.pedestal);
+    }
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1008,6 +1159,7 @@ export const BattleCapitalCanvas = ({
 
   return (
     <canvas
+      key={renderer}
       ref={canvasRef}
       className={`battle-capital-canvas ${className}`.trim()}
       style={style}

@@ -3,6 +3,8 @@ import capitalPedestalSpriteUrl from './assets/battle/capital-pedestal-sfc.png';
 import {
   createBattleCapitalCanvasScene,
   paintBattleCapitalCanvas,
+  paintBattleCapitalGpuCanvas,
+  disposeBattleCapitalGpuCanvas,
   type BattleCapitalCanvasSprites,
 } from './components/BattleCapitalCanvas';
 import {
@@ -148,5 +150,5 @@ repaint();
 // Development-only entry point: deterministic evidence uses the real renderer,
 // never a second approximation of its drawing code.
 Object.assign(window, {
-  capitalAudit: { canvas, scene, sprites, paintBattleCapitalCanvas, createBattleCapitalCanvasScene, getCapitalColumnHeights },
+  capitalAudit: { canvas, scene, sprites, paintBattleCapitalCanvas, paintBattleCapitalGpuCanvas, disposeBattleCapitalGpuCanvas, createBattleCapitalCanvasScene, getCapitalColumnHeights },
 });

@@ -9,8 +9,14 @@ const button=async prefix=>c.evaluate(`(()=>{const p=${JSON.stringify(prefix)};c
 const until=async predicate=>{for(let i=0;i<150;i++){if(await predicate())return;await wait(200)}throw new Error('UI condition did not become ready')};
 const shot=async name=>{const r=await c.send('Page.captureScreenshot',{format:'png'});await writeFile(resolve(dir,name+'.png'),Buffer.from(r.data,'base64'))};
 try{
+ const navigation=new URL(base+'/');
+ if(process.env.CAPITAL_RENDERER)navigation.searchParams.set('coin-renderer',process.env.CAPITAL_RENDERER);
+ if(process.env.CAPITAL_QA_FRESH==='1'){
+  if(navigation.hostname!=='127.0.0.1')throw new Error('Fresh QA storage reset is local-only');
+  await c.send('Storage.clearDataForOrigin',{origin:navigation.origin,storageTypes:'local_storage'});
+ }
  await c.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1.5,mobile:false});
- await c.send('Page.navigate',{url:base+'/'});
+ await c.send('Page.navigate',{url:navigation.href});
  await until(()=>c.evaluate('document.querySelectorAll("button").length>0'));
  for(let i=0;i<4;i++){await button('次へ');await button('この名で開店する');await button('わかった！');await wait(500)}
  await until(()=>button('グリダニア'));
@@ -23,7 +29,10 @@ try{
  await c.send('Performance.enable');
  const before=await c.send('Performance.getMetrics');
  const stats=await c.evaluate(`(async()=>{
-  const stats={drawImage:0,longTasks:[],backgroundMutations:0,animations:document.getAnimations().filter(a=>a.playState==='running').length};
+  const stats={renderer:document.querySelector('.battle-capital-canvas')?.dataset.renderer,drawImage:0,longTasks:[],backgroundMutations:0,animations:document.getAnimations().filter(a=>a.playState==='running').length};
+  const intervals=[];let previous=performance.now(),raf=0,active=true;
+  const tick=now=>{intervals.push(now-previous);previous=now;if(active)raf=requestAnimationFrame(tick)};
+  raf=requestAnimationFrame(tick);
   const original=CanvasRenderingContext2D.prototype.drawImage;
   CanvasRenderingContext2D.prototype.drawImage=function(...args){stats.drawImage++;return original.apply(this,args)};
   const observer=new PerformanceObserver(list=>stats.longTasks.push(...list.getEntries().map(e=>e.duration)));
@@ -31,8 +40,9 @@ try{
   const market=document.querySelector('main[data-app-main]')??document.querySelector('.game-app-shell > main');
   const mutations=new MutationObserver(list=>stats.backgroundMutations+=list.length);
   if(market)mutations.observe(market,{subtree:true,childList:true,attributes:true,characterData:true});
-  try{await new Promise(ok=>setTimeout(ok,6000))}finally{CanvasRenderingContext2D.prototype.drawImage=original;observer.disconnect();mutations.disconnect()}
-  return {...stats,marketObserved:!!market,overflow:document.documentElement.scrollWidth>innerWidth};
+  try{await new Promise(ok=>setTimeout(ok,6000))}finally{active=false;cancelAnimationFrame(raf);CanvasRenderingContext2D.prototype.drawImage=original;observer.disconnect();mutations.disconnect()}
+  intervals.shift();intervals.sort((a,b)=>a-b);
+  return {...stats,rafSamples:intervals.length,rafP95Ms:intervals[Math.floor(intervals.length*.95)],rafOver50:intervals.filter(x=>x>50).length,marketObserved:!!market,overflow:document.documentElement.scrollWidth>innerWidth};
  })()`);
  const after=await c.send('Performance.getMetrics');
  const metrics=Object.fromEntries(after.metrics.filter(m=>['ScriptDuration','LayoutDuration','RecalcStyleDuration','TaskDuration'].includes(m.name)).map(m=>[m.name,m.value-(before.metrics.find(b=>b.name===m.name)?.value??0)]));

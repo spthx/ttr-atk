@@ -38,9 +38,24 @@ for(const price of [2000,8e5,6e9])for(const ratio of [0.02,0.35,2,100,600])for(c
  for(const col of pours.at(-1)?.activeColumnIndices??[])
    assert.equal(resolveCapitalRollProgress({...pours.at(-1)!,packetProgress:1,beatDurationMs:165},col),1,'all final rolls must land, including fractional launch gaps');
  const actualRecharge=pours.reduce((sum,f)=>sum+f.durationMs*resolveCapitalCommandRechargeScale([f,null,undefined]),0);
- assert.ok(Math.abs(actualRecharge-getCapitalCommandRechargeWorkMs(event))<1e-7 || pours.length===0,
+ assert.ok(Math.abs(actualRecharge-getCapitalCommandRechargeWorkMs(event))<1e-7,
    'live receiver must preserve total recharge work even below multiplier 1');
  if(visited.size===18)assert.ok(overlap,'full trays need overlapping pairs, not isolated turns');
+}
+// Positive bids smaller than one display unit, including a saturated treasury,
+// still receive a real audible/contact frame and retain the recharge contract.
+for (const [previousCapital,nextCapital] of [[700,701],[700.1,700.2],[21399511,21400211],[4e12,4e12+1e9]]) {
+ for (const intensity of ['standard','heavy','compact'] as const) {
+  const event={id:'quantized',side:'player' as const,source:'direct' as const,previousCapital,nextCapital,marketPrice:2000,intensity,seed:42};
+  const t=buildCapitalStackTimeline(event),pours=t.frames.filter(f=>f.phase==='pour');
+  assert.ok(pours.some(f=>f.activeColumnIndices.length>0),'every positive bid has visible incoming rolls');
+  assert.equal(t.frames.at(-1)!.presentedCapital,nextCapital);
+  assert.deepEqual(t.frames.at(-1)!.columnHeights,getCapitalColumnHeights(getBattleCapitalVisibleUnits(nextCapital,2000)));
+  assert.ok(t.totalMs<=24090 && t.frames.length<=146,'presentation work has a fixed bound');
+  assert.ok(Math.abs(pours.reduce((sum,f)=>sum+f.durationMs*resolveCapitalCommandRechargeScale([f]),0)-getCapitalCommandRechargeWorkMs(event))<1e-7);
+  let previous=previousCapital;
+  for(const frame of t.frames){assert.ok(frame.presentedCapital>=previous && frame.presentedCapital<=nextCapital);previous=frame.presentedCapital;}
+ }
 }
 assert.equal(resolveCapitalCommandRechargeScale([null,undefined]),1);
 assert.equal(resolveCapitalCommandRechargeScale([{commandRechargeScale:.25},null,undefined]),.25);

@@ -1,5 +1,9 @@
 import { CapitalBitmapCache } from './capitalBitmapCache';
 import { resolveBattleCapitalSfcRenderedCoinLayers } from './battleCapitalCanvasLayout';
+import { getCapitalSpriteRaster } from './capitalSpriteRaster';
+
+export type CapitalSpriteContext = Pick<CanvasRenderingContext2D,
+  'canvas' | 'save' | 'restore' | 'translate' | 'getTransform' | 'drawImage'>;
 
 export interface CapitalStackPaintResources {
   cache: CapitalBitmapCache;
@@ -10,7 +14,7 @@ export interface CapitalStackPaintResources {
 
 /** Rasterize only visible, non-overlapping 128px bands of a long column. */
 export function drawCachedCapitalStack(
-  context: CanvasRenderingContext2D,
+  context: CapitalSpriteContext,
   coin: HTMLImageElement,
   resources: CapitalStackPaintResources,
   x: number, baseY: number, width: number, coinHeight: number,
@@ -23,6 +27,8 @@ export function drawCachedCapitalStack(
   const top = Math.round(phase - (count - 1) * layerStep - coinHeight);
   const bottom = Math.round(phase - coinHeight) + Math.max(1, Math.round(coinHeight));
   const bitmapWidth = Math.max(1, Math.ceil(Math.round(width) * resources.scaleX));
+  const stamp = getCapitalSpriteRaster(coin, resources.crop, bitmapWidth,
+    Math.max(1, Math.round(Math.round(coinHeight) * resources.scaleY)));
   const transform=context.getTransform();
   const viewTop=-transform.f/transform.d-anchor;
   const viewBottom=(context.canvas.height-transform.f)/transform.d-anchor;
@@ -44,17 +50,16 @@ export function drawCachedCapitalStack(
       bitmap=context.canvas.ownerDocument.createElement('canvas');
       bitmap.width=bitmapWidth;bitmap.height=bandPixels;
       const c=bitmap.getContext('2d');if(!c)return;
-      c.setTransform(resources.scaleX,0,0,resources.scaleY,0,0);
       c.imageSmoothingEnabled=false;
-      const crop=resources.crop;
       for(let layer=firstLayer;layer<=lastLayer;layer++){
-        c.drawImage(coin,crop.x,crop.y,crop.width,crop.height,
-          0,Math.round(phase-layer*layerStep-coinHeight)-bandTop,
-          Math.max(1,Math.round(width)),Math.max(1,Math.round(coinHeight)));
+        c.drawImage(stamp, 0,
+          Math.round((Math.round(phase-layer*layerStep-coinHeight)-bandTop)*resources.scaleY));
       }
       resources.cache.put(key,bitmap);
     }
-    context.drawImage(bitmap,Math.round(x-width/2),anchor+bandTop,
+    context.drawImage(bitmap,
+      Math.round(Math.round(x-width/2)*resources.scaleX)/resources.scaleX,
+      Math.round((anchor+bandTop)*resources.scaleY)/resources.scaleY,
       bitmap.width/resources.scaleX,bitmap.height/resources.scaleY);
   }
 }

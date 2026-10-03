@@ -1000,7 +1000,11 @@ export interface MechanicalCapitalColumnFrame {
   /** Settled upper-field shape after the current incoming wave lands. */
   settledAfterColumnHeights?: number[];
   /** Overlapping roll flights, relative to this beat (negative start = in flight). */
-  incomingLaneTimings?: Array<{ columnIndex: number; startMs: number; durationMs: number }>;
+  incomingLaneTimings?: Array<{
+    columnIndex: number; startMs: number; durationMs: number;
+    /** A subpixel/at-cap bid replenishes an existing top roll without inventing settled money. */
+    replenishLayers?: number;
+  }>;
   viewportBeforeColumnHeights?: number[];
   viewportAfterColumnHeights?: number[];
   /**
@@ -2011,11 +2015,20 @@ export const buildCapitalStackTimeline = (
       if(layers>0){rolls.push({columnIndex,layers});remaining[columnIndex]-=layers;}
     });
   }
+  const replenishing = distance === 0 && event.nextCapital > event.previousCapital;
+  if (replenishing) {
+    // Quantization must never swallow a positive action. Refill the existing
+    // canopy: its footprint remains truthful, while this bid still has a roll,
+    // a contact and the same recharge work. Large capped bids sweep all lanes.
+    const lanes = CAPITAL_SHOWCASE_FILL_ORDER.filter(column => initialHeights[column] > 0);
+    const limit = event.nextCapital - event.previousCapital >= event.marketPrice * 0.18 ? 18 : 1;
+    lanes.slice(0, limit).forEach(columnIndex => rolls.push({columnIndex, layers: Math.min(4, initialHeights[columnIndex])}));
+  }
   // The original's early bids are readable because even a small first wall is
   // built as a sequence, not as one broad pop. Keep nine authored beats for a
   // normal bid (one page), while tiny sub-nine-unit corrections still resolve
   // one visible unit at a time. Compact/reduced-motion remains a single beat.
-  const waveCount = distance <= 0
+  const waveCount = distance <= 0 && !replenishing
     ? 0
     : compact
       ? 1
@@ -2060,7 +2073,7 @@ export const buildCapitalStackTimeline = (
     const heights=[...initialHeights];
     flights.forEach(flight=>{
       const progress=Math.min(1,Math.max(0,(time-flight.startMs)/flight.durationMs));
-      heights[flight.columnIndex]+=flight.layers*progress;
+      if (!replenishing) heights[flight.columnIndex]+=flight.layers*progress;
     });
     return heights;
   };
@@ -2071,7 +2084,7 @@ export const buildCapitalStackTimeline = (
       const beatStart = index * beatMs;
       const beforeHeights = [...initialHeights];
       flights.forEach(flight => {
-        if (flight.startMs + flight.durationMs <= beatStart + 1e-7)
+        if (!replenishing && flight.startMs + flight.durationMs <= beatStart + 1e-7)
           beforeHeights[flight.columnIndex] += flight.layers;
       });
       const activeFlights = flights.filter(flight =>
@@ -2080,7 +2093,7 @@ export const buildCapitalStackTimeline = (
       );
       const activeColumnIndices = activeFlights.map(flight => flight.columnIndex);
       const afterHeights = [...beforeHeights];
-      activeFlights.forEach(flight => {afterHeights[flight.columnIndex] += flight.layers;});
+      if (!replenishing) activeFlights.forEach(flight => {afterHeights[flight.columnIndex] += flight.layers;});
       const beforeUnits = beforeHeights.reduce((sum,value)=>sum+value,0);
       const frame: CapitalStackTimelineFrame = {
         phase: 'pour',
@@ -2092,6 +2105,7 @@ export const buildCapitalStackTimeline = (
         settledAfterColumnHeights: afterHeights,
         incomingLaneTimings: activeFlights.map(flight=>({
           ...flight, startMs:flight.startMs-beatStart,
+          ...(replenishing ? {replenishLayers: flight.layers} : {}),
         })),
         viewportBeforeColumnHeights:viewportHeightsAt(beatStart),
         viewportAfterColumnHeights:viewportHeightsAt(beatStart+beatMs),
@@ -2103,9 +2117,10 @@ export const buildCapitalStackTimeline = (
         stackBeat: index + 1,
         rackDepth: 0,
         stackDepth: 0,
-        presentedCapital: Math.round(
-          event.previousCapital + capitalDistance * beforeProgress
-        ),
+        presentedCapital: Math.max(Math.min(event.previousCapital, event.nextCapital),
+          Math.min(Math.max(event.previousCapital, event.nextCapital), Math.round(
+            event.previousCapital + capitalDistance * beforeProgress
+          ))),
         packetSeed: seed + (index + 1) * 7_919,
       };
       atMs += beatMs;
