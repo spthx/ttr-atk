@@ -47,6 +47,30 @@ export interface BattleSettlementSummary {
   outcome: 'profit' | 'loss' | 'balanced';
 }
 
+/** An initiated normal acquisition refunds direct company funds on failure.
+ * The brokerage fee and battle-time losses remain payable; fictional raid
+ * modes retain their own authored risk contract.
+ */
+export const calculateDirectInvestmentSettlementCost = ({
+  companyCapitalAtRisk,
+  winner,
+  isRecordOnlyBattle,
+  isHighEndRaid,
+  isInitiatedAcquisition,
+}: {
+  companyCapitalAtRisk: number;
+  winner: 'player' | 'opponent';
+  isRecordOnlyBattle: boolean;
+  isHighEndRaid: boolean;
+  isInitiatedAcquisition: boolean;
+}) => {
+  if (isRecordOnlyBattle) return 0;
+  if (winner === 'opponent' && !isHighEndRaid && isInitiatedAcquisition) return 0;
+  if (winner === 'opponent' && !isHighEndRaid) return Math.round(Math.max(0,companyCapitalAtRisk));
+  return Math.round(Math.max(0,companyCapitalAtRisk) *
+    (winner === 'player' ? 0.35 : 0.75));
+};
+
 /**
  * Keeps the result headline tied to the battle itself. Liquidation proceeds
  * are reported separately so a profitable asset sale cannot disguise a

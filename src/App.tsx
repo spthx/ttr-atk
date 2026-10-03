@@ -1628,7 +1628,8 @@ export default function App() {
     const liquidationCashback = appliesPersistentLoyaltySettlement
       ? calculateLiquidationCashback(rebelledProperties)
       : 0;
-    // 仲介手数料に加え、直接出資の一部が買収費用・撤退損として確定する。
+    // 仲介手数料は常に支払う。通常の仕掛け買収が失敗した場合、
+    // 自社直接出資は返還され、別系統の敵ドレイン損だけ残る。
     const settledTotalFunds = Math.max(
       0,
       totalFunds +

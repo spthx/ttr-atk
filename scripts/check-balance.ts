@@ -6,6 +6,7 @@ import {
   INITIAL_SKILLS,
 } from '../src/data/initialData';
 import { ALLIANCE_CANDIDATES, GRAND_COMPANY_NAMES } from '../src/data/allianceData';
+import { HELP_TEXT } from '../src/data/helpText';
 import { COMMUNITY_CAMPAIGN_ORDER } from '../src/data/worldData';
 import {
   CAMPAIGN_ENCOUNTER_DEFINITIONS,
@@ -27,6 +28,7 @@ import {
   applyNormalBattlePropertyUpdates,
   calculateAtLeastOneDepartureProbability,
   calculateBattleSettlementSummary,
+  calculateDirectInvestmentSettlementCost,
   calculateLiquidationCashback,
   getVictoryProfitAllocationChoices,
   normalizeDepartureProbabilityMultiplier,
@@ -5950,6 +5952,25 @@ assert.equal(
   2_000,
   'liquidation cashback is calculated outside React state updaters and deduplicated'
 );
+for (const companyCapitalAtRisk of [0, 700, 28_000]) {
+  assert.equal(calculateDirectInvestmentSettlementCost({
+    companyCapitalAtRisk,winner:'opponent',isRecordOnlyBattle:false,isHighEndRaid:false,isInitiatedAcquisition:true,
+  }),0,'an initiated normal acquisition refunds company investment on failure');
+  assert.equal(calculateDirectInvestmentSettlementCost({
+    companyCapitalAtRisk,winner:'player',isRecordOnlyBattle:false,isHighEndRaid:false,isInitiatedAcquisition:true,
+  }),Math.round(companyCapitalAtRisk*0.35),'normal victory keeps its acquisition cost');
+  assert.equal(calculateDirectInvestmentSettlementCost({
+    companyCapitalAtRisk,winner:'opponent',isRecordOnlyBattle:false,isHighEndRaid:true,isInitiatedAcquisition:true,
+  }),Math.round(companyCapitalAtRisk*0.75),'fictional high-end defeat keeps its risk contract');
+  assert.equal(calculateDirectInvestmentSettlementCost({
+    companyCapitalAtRisk,winner:'opponent',isRecordOnlyBattle:true,isHighEndRaid:false,isInitiatedAcquisition:true,
+  }),0,'record-only battles never settle real company funds');
+  assert.equal(calculateDirectInvestmentSettlementCost({
+    companyCapitalAtRisk,winner:'opponent',isRecordOnlyBattle:false,isHighEndRaid:false,isInitiatedAcquisition:false,
+  }),Math.round(companyCapitalAtRisk),'future defender losses must not inherit attacker refunds');
+}
+assert.match(HELP_TEXT.directInvestment,/敗北・撤退時の直接出資は戻ります/,
+  'the in-game help must explain the normal acquisition refund');
 assert.deepEqual(
   calculateBattleSettlementSummary({
     victoryReward: 5_000,

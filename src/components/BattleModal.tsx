@@ -63,6 +63,7 @@ import {
 import { calculateBattleReadiness } from '../utils/battleReadiness';
 import {
   calculateBattleSettlementSummary,
+  calculateDirectInvestmentSettlementCost,
   getVictoryProfitAllocationChoices,
   resolvePostVictoryLoyalty,
 } from '../utils/battleSettlement';
@@ -8169,11 +8170,14 @@ export const BattleModal: React.FC<BattleModalProps> = ({
 
   const companyCapitalAtRisk =
     companyInvested + reflectedCompanyInvested;
-  const resultSettlementCost = isRecordOnlyBattle
-    ? 0
-    : Math.round(
-        companyCapitalAtRisk * (winner === 'player' ? 0.35 : 0.75)
-      );
+  const resultSettlementCost = calculateDirectInvestmentSettlementCost({
+    companyCapitalAtRisk,
+    winner: winner ?? 'opponent',
+    isRecordOnlyBattle,
+    isHighEndRaid,
+    // Every current normal encounter is selected by the player in the market.
+    isInitiatedAcquisition: true,
+  });
   const resultVictoryReward = isRecordOnlyBattle
     ? 0
     : calculateBattleVictoryReward(

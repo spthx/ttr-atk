@@ -3464,7 +3464,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const \[companyInvested, setCompanyInvested\] = useState\(0\);[\s\S]*const \[reflectedCompanyInvested, setReflectedCompanyInvested\][\s\S]*const totalPlayerInvested = companyInvested \+ demandInvested;[\s\S]*commitPlayerCapital\('company', retainedCapital\);[\s\S]*setReflectedCompanyInvested\([\s\S]*current \+ reflectedCapital[\s\S]*const companyCapitalAtRisk =[\s\S]*companyInvested \+ reflectedCompanyInvested;[\s\S]*const resultSettlementCost = isRecordOnlyBattle[\s\S]*companyCapitalAtRisk \* \(winner === 'player' \? 0\.35 : 0\.75\)[\s\S]*companyFundsInvested: isRecordOnlyBattle \? 0 : companyCapitalAtRisk/,
+  /const \[companyInvested, setCompanyInvested\] = useState\(0\);[\s\S]*const \[reflectedCompanyInvested, setReflectedCompanyInvested\][\s\S]*const totalPlayerInvested = companyInvested \+ demandInvested;[\s\S]*commitPlayerCapital\('company', retainedCapital\);[\s\S]*setReflectedCompanyInvested\([\s\S]*current \+ reflectedCapital[\s\S]*const companyCapitalAtRisk =[\s\S]*companyInvested \+ reflectedCompanyInvested;[\s\S]*const resultSettlementCost = calculateDirectInvestmentSettlementCost\(\{[\s\S]*companyCapitalAtRisk,[\s\S]*isRecordOnlyBattle,[\s\S]*isHighEndRaid,[\s\S]*isInitiatedAcquisition: true,[\s\S]*companyFundsInvested: isRecordOnlyBattle \? 0 : companyCapitalAtRisk/,
   'capital reflected to the enemy must stay out of player pressure, remain settlement risk in economic battles, and stay isolated from record-only results'
 );
 assert.doesNotMatch(
@@ -3834,7 +3834,7 @@ assert.match(
 );
 assert.match(
   battleModal,
-  /const resultSettlementCost = isRecordOnlyBattle[\s\S]*const resultVictoryReward = isRecordOnlyBattle[\s\S]*brokerageFee: isRecordOnlyBattle \? 0 : brokerageFee[\s\S]*battleCashDelta: isRecordOnlyBattle \? 0 : -enemyDrainStolen[\s\S]*rebelledProperties: isRecordOnlyBattle \? \[\] : rebelled[\s\S]*survivingRiskUpdates: isRecordOnlyBattle/,
+  /const resultSettlementCost = calculateDirectInvestmentSettlementCost\(\{[\s\S]*isRecordOnlyBattle,[\s\S]*const resultVictoryReward = isRecordOnlyBattle[\s\S]*brokerageFee: isRecordOnlyBattle \? 0 : brokerageFee[\s\S]*battleCashDelta: isRecordOnlyBattle \? 0 : -enemyDrainStolen[\s\S]*rebelledProperties: isRecordOnlyBattle \? \[\] : rebelled[\s\S]*survivingRiskUpdates: isRecordOnlyBattle/,
   'Phantom returns an economy-neutral, loyalty-neutral BattleResult even before the App settlement guard'
 );
 assert.match(
