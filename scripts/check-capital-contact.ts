@@ -496,8 +496,12 @@ const cachedStack = readFileSync(resolve(root, 'src/utils/capitalCachedStack.ts'
 assert.match(cachedStack, /resolveBattleCapitalSfcRenderedCoinLayers\(layers\)/);
 assert.match(
   renderer,
-  /resolveBattleCapitalSfcIncomingLogicalLayers\([\s\S]{0,1200}const bundleLayers = addedLayers;/
+  /const burst = replenishLayers \? null : resolveCapitalBurstPackets\(addedLayers,rawProgress,flightMs\);/
 );
+assert.match(renderer,/before\+\(burst\?\.settledLayers \?\? 0\)/,
+  'heavy visual packets must keep already-landed mass attached to the existing column');
+assert.match(renderer,/const bundleLayers = addedLayers;/,
+  'ordinary and reduced-motion rolls must keep their exact original falling mass');
 assert.match(
   renderer,
   /if \(rawProgress >= 1\) \{[\s\S]{0,500}after/

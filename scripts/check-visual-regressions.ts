@@ -1823,9 +1823,13 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /drawCoinStack\([\s\S]{0,260}geometry\.layerStep,[\s\S]{0,60}before[\s\S]{0,420}const bundleLayers = addedLayers/,
-  'an airborne packet must be drawn on top of the exact pre-action stack'
+  /before\+\(burst\?\.settledLayers \?\? 0\)/,
+  'heavy rolls must accumulate settled packets while sparse rolls retain the exact pre-action stack'
 );
+assert.match(battleCapitalCanvas,/if\(burst\)\{/,
+  'large rolls must use bounded consecutive packets');
+assert.match(battleCapitalCanvas,/const bundleLayers = addedLayers;/,
+  'ordinary rolls must retain the exact original incoming mass');
 assert.match(
   integratedCss,
   /ownership-fighter--enemy:not\(\.ownership-fighter--boss-party\)[\s\S]*\.ownership-avatar--enemy[\s\S]*width: 68%;[\s\S]*height: 72%/,

@@ -1,9 +1,35 @@
 import assert from 'node:assert/strict';
 import {buildCapitalStackTimeline,getBattleCapitalVisibleUnits,getCapitalColumnHeights,getCapitalCommandRechargeWorkMs,getMechanicalCapitalColumnFrames,getCapitalOverflowPassCount,CAPITAL_OVERFLOW_RESTACK_BEATS,CAPITAL_STACK_BEAT_MS} from '../src/utils/battlePresentation';
 import {BATTLE_CAPITAL_RACK_SHIFT_FRAME_MS} from '../src/utils/battleCapitalCanvasLayout';
-import {resolveCapitalRollProgress} from '../src/utils/capitalRollMotion';
+import {resolveCapitalBurstPackets,resolveCapitalRollProgress} from '../src/utils/capitalRollMotion';
 import {resolveCapitalCommandRechargeScale} from '../src/utils/battlePresentation';
 import {readFileSync} from 'node:fs';
+
+assert.equal(resolveCapitalBurstPackets(8,.5,330),null,'opening rolls keep their original motion');
+assert.equal(resolveCapitalBurstPackets(32,.5,62),null,'compact rolls never gain extra airborne work');
+for(const layers of [12,16,24,32]){
+ const initial=resolveCapitalBurstPackets(layers,0,330)!;
+ assert.equal(initial.settledLayers,0);
+ assert.equal(initial.airborne.length,0);
+ assert.equal(resolveCapitalBurstPackets(layers,1,330)!.settledLayers,layers,
+   'every visual packet must merge into the exact authored final mass');
+ let previousSettled=0;
+ for(let tick=0;tick<=330;tick+=5){
+  const burst=resolveCapitalBurstPackets(layers,tick/330,330)!;
+  assert.ok(burst.airborne.length<=3,'burst must keep GPU work bounded');
+  assert.ok(burst.settledLayers>=previousSettled,'settled mass never moves backward');
+  assert.ok(burst.settledLayers+burst.airborne.reduce((sum,packet)=>sum+packet.layers,0)<=layers);
+  previousSettled=burst.settledLayers;
+ }
+}
+assert.equal(resolveCapitalBurstPackets(32,66/330,330)!.airborne.length,2,
+  'dense capital should launch a second roll before the first reaches the tray');
+const heavyBurstTimeline=buildCapitalStackTimeline({id:'burst-wiring',side:'player',source:'direct',
+  previousCapital:0,nextCapital:4e12,marketPrice:6e9,intensity:'heavy',seed:42});
+assert.ok(heavyBurstTimeline.frames.some(frame=>frame.phase==='pour' &&
+  frame.incomingLaneTimings?.some(lane=>lane.durationMs===330 &&
+    frame.settledAfterColumnHeights![lane.columnIndex]-frame.columnHeights[lane.columnIndex]===32)),
+  'a real large bid must reach the bounded four-packet path');
 
 for(const price of [2000,8e5,6e9])for(const ratio of [0.02,0.35,2,100,600])for(const previousRatio of [0,0.2,2]){
  const event={id:'stream',side:'player' as const,source:'direct' as const,previousCapital:price*previousRatio,nextCapital:price*(previousRatio+ratio),marketPrice:price,intensity:'heavy' as const,seed:42};

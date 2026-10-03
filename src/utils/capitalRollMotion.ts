@@ -21,3 +21,29 @@ export const resolveCapitalRollStep = (progress: number, columnIndex: number, se
   resolveBattleCapitalSfcPacketSteppedProgress({
     rawProgress:progress,columnIndex:authoredFlight?0:columnIndex,packetSeed:authoredFlight?0:seed,
   });
+
+/** Heavy authored rolls become a bounded succession of short cylinders.
+ * This changes only presentation: the timeline still owns the exact ledger,
+ * final height and 330ms flight. Early and reduced-motion rolls stay intact.
+ */
+export const resolveCapitalBurstPackets = (
+  logicalLayers: number,
+  progress: number,
+  flightMs: number,
+) => {
+  if (logicalLayers < 12 || flightMs < 260) return null;
+  const count=Math.min(4,Math.ceil(logicalLayers/8));
+  const launchGapMs=65;
+  const fallMs=flightMs-launchGapMs*(count-1);
+  if (fallMs<90) return null;
+  const elapsed=Math.max(0,Math.min(1,progress))*flightMs;
+  let settledLayers=0;
+  const airborne:Array<{layers:number;settledLayers:number;progress:number}>=[];
+  for(let index=0;index<count;index++){
+    const layers=Math.floor(logicalLayers/count)+(index<logicalLayers%count?1:0);
+    const local=(elapsed-index*launchGapMs)/fallMs;
+    if(local>=1) settledLayers+=layers;
+    else if(local>0) airborne.push({layers,settledLayers:Math.floor(logicalLayers/count)*index+Math.min(index,logicalLayers%count),progress:local*local});
+  }
+  return {settledLayers,airborne};
+};

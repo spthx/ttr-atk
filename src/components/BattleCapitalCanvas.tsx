@@ -21,7 +21,7 @@ import { getCapitalSpriteRaster, getCapitalSpriteRasterBytes, releaseCapitalSpri
 import { paintCapitalCasinoPlate, paintCapitalPressureLight, selectCapitalCasinoImage, type CapitalCasinoImages } from '../utils/capitalCasinoBackdrop';
 import { drawCachedCapitalStack, type CapitalStackPaintResources, type CapitalSpriteContext } from '../utils/capitalCachedStack';
 import { resolveCapitalViewportScroll } from '../utils/capitalViewportScroll';
-import { resolveCapitalRollProgress, resolveCapitalRollStep } from '../utils/capitalRollMotion';
+import { resolveCapitalBurstPackets, resolveCapitalRollProgress, resolveCapitalRollStep } from '../utils/capitalRollMotion';
 import { createBattleVisualTheme, getBattleVisualThemeCacheKey, validateBattleVisualTheme, type BattleVisualTheme } from '../data/battleVisualTheme';
 import {
   BATTLE_CAPITAL_CANVAS_ROW_COUNTS,
@@ -573,6 +573,9 @@ const drawCapitalSideIncoming = (
       );
       return;
     }
+    const flightMs = side.frame.incomingLaneTimings?.find(lane=>lane.columnIndex===column.index)?.durationMs
+      ?? side.frame.beatDurationMs;
+    const burst = replenishLayers ? null : resolveCapitalBurstPackets(addedLayers,rawProgress,flightMs);
     drawCoinStack(
       context,
       sprites.coin,
@@ -581,9 +584,26 @@ const drawCapitalSideIncoming = (
       geometry.coinWidth,
       geometry.coinHeight,
       geometry.layerStep,
-      before,
+      before+(burst?.settledLayers ?? 0),
       resources
     );
+    if(burst){
+      for(const packet of burst.airborne){
+        // The first roll roots a bare tray. Later rolls show only the new
+        // separators; the already-settled column supplies their lower body.
+        const onExistingStack=before+packet.settledLayers>0;
+        const visualLayers=onExistingStack?Math.max(1,packet.layers-7):packet.layers;
+        const landingBaseY=column.baseY-(before+packet.settledLayers+(onExistingStack?7:0))*geometry.layerStep;
+        // Heavy rolls enter on-screen, so successive launches are visible
+        // together instead of disappearing above the casino until touchdown.
+        const startBaseY=Math.max(geometry.coinHeight+(visualLayers+6)*geometry.layerStep+height*0.04-scrollOffset,
+          landingBaseY-height*0.42);
+        drawCoinStack(context,sprites.coin,column.x,
+          snap(startBaseY+(landingBaseY-startBaseY)*packet.progress),
+          geometry.coinWidth,geometry.coinHeight,geometry.layerStep,visualLayers,resources);
+      }
+      return;
+    }
     // Match the falling cylinder to the exact committed height delta. The
     // timeline's four-layer hint is the normal case, but large support actions
     // can add more than four layers to one anchor in a single authored wave.
@@ -638,6 +658,11 @@ const getStaticSceneKey = (
     enemyActive: scene.enemy.frame.activeColumnIndices,
     steps: [scene.player,scene.enemy].map(side=>side.frame.activeColumnIndices.map(column=>{
       const p=resolveCapitalRollProgress(side.frame,column);
+      const before=side.frame.columnHeights[column]??0;
+      const after=side.frame.settledAfterColumnHeights[column]??before;
+      const lane=side.frame.incomingLaneTimings?.find(item=>item.columnIndex===column);
+      if(!lane?.replenishLayers && resolveCapitalBurstPackets(after-before,p,lane?.durationMs??side.frame.beatDurationMs))
+        return Math.round(p*(lane?.durationMs??side.frame.beatDurationMs));
       return p<=0?-1:p>=1?4:resolveCapitalRollStep(p,column,side.frame.packetSeed,Boolean(side.frame.incomingLaneTimings));
     })),
   });

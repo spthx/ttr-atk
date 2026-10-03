@@ -28,6 +28,7 @@ const clampUnits = (value: number, fallback: number) => Math.max(
 const requestedUnits = Number(
   query.get('units') ?? '1'
 );
+const burstLayers = Math.max(0, Math.min(32, Math.round(Number(query.get('burst') ?? '0'))));
 const visibleUnits = clampUnits(requestedUnits, 1);
 const landingComparison = query.has('before') && query.has('after');
 const playerVisibleUnits = landingComparison
@@ -48,6 +49,10 @@ const auditDpr = Number.isFinite(requestedDpr) && requestedDpr > 0
   ? requestedDpr
   : window.devicePixelRatio;
 const frameRate = query.get('fps') === '60' ? 60 : 30;
+const useGpu = query.get('renderer') === 'gpu';
+const settledBurst = query.get('settled') === '1';
+const auditWidth = Math.max(0,Math.min(1190,Math.round(Number(query.get('width') ?? '0'))));
+const auditHeight = Math.max(0,Math.min(600,Math.round(Number(query.get('height') ?? '0'))));
 
 document.documentElement.style.colorScheme = 'dark';
 document.body.style.margin = '0';
@@ -61,7 +66,7 @@ root.innerHTML = `
       <h1 style="margin:0 0 6px;font-size:clamp(18px,4vw,28px)">コイン接地監査：${landingComparison ? `自社${playerVisibleUnits}＋落下${playerTargetUnits - playerVisibleUnits}／競合${enemyVisibleUnits}着地後` : `自社${visibleUnits}／競合${enemyVisibleUnits}`} logical unit</h1>
       <p style="margin:0 0 12px;color:#b8c0cc;font-size:13px">前中央から積み、台の前壁が根元を隠すこと。背景がコイン下へ抜けたら不合格。</p>
       <p style="margin:0 0 12px;color:#8fa0b8;font-size:12px">要求DPR ${auditDpr}／${frameRate}fps。1 logical unitも最低8枚に見える短い束として描画。</p>
-      <canvas id="capital-contact-canvas" style="display:block;width:100%;height:clamp(240px,52vw,420px);border:1px solid #5c4b2c"></canvas>
+      <canvas id="capital-contact-canvas" style="display:block;width:${auditWidth?`${auditWidth}px`:'100%'};height:${auditHeight?`${auditHeight}px`:'clamp(240px,52vw,420px)'};max-width:100%;border:1px solid #5c4b2c"></canvas>
       <nav aria-label="監査状態" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
         ${[
           ['1', '1束（最低8枚表示）'],
@@ -104,6 +109,7 @@ const sprites: BattleCapitalCanvasSprites = {
 
 const columnHeights = getCapitalColumnHeights(playerVisibleUnits);
 const settledAfterColumnHeights = getCapitalColumnHeights(playerTargetUnits);
+if (burstLayers > 0) settledAfterColumnHeights[15] = columnHeights[15] + burstLayers;
 const activeColumnIndices = columnHeights.flatMap((height, index) =>
   settledAfterColumnHeights[index] > height ? [index] : []
 );
@@ -113,9 +119,13 @@ const scene = createBattleCapitalCanvasScene({
     marketPrice: 2_000,
     previewFrame: {
       visibleUnits: playerVisibleUnits,
-      columnHeights,
+      columnHeights: settledBurst ? settledAfterColumnHeights : columnHeights,
       settledAfterColumnHeights,
-      activeColumnIndices: landingComparison ? activeColumnIndices : [],
+      activeColumnIndices: !settledBurst && (landingComparison || burstLayers > 0) ? activeColumnIndices : [],
+      ...(burstLayers > 0 ? {
+        incomingLaneTimings: [{columnIndex:15,startMs:0,durationMs:330}],
+        beatDurationMs:330,
+      } : {}),
     },
   },
   enemy: {
@@ -129,7 +139,7 @@ const scene = createBattleCapitalCanvasScene({
   },
   ownershipPercent: 50,
 });
-if (landingComparison) {
+if (landingComparison || burstLayers > 0) {
   scene.player.frame.packetProgress = Math.max(
     0,
     Math.min(1, Number(query.get('progress') ?? '1'))
@@ -138,7 +148,7 @@ if (landingComparison) {
 
 const repaint = () => {
   const bounds = canvas.getBoundingClientRect();
-  paintBattleCapitalCanvas(canvas, scene, {
+  (useGpu ? paintBattleCapitalGpuCanvas : paintBattleCapitalCanvas)(canvas, scene, {
     cssSize: {
       width: Math.max(1, Math.round(bounds.width)),
       height: Math.max(1, Math.round(bounds.height)),
