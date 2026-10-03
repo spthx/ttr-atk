@@ -31,8 +31,15 @@ const results=await c.evaluate(`(async()=>{
   const landing=[];
   for(const [b,f] of [[1,2],[2,5],[8,12],[18,19],[72,73],[648,720],[9000,9216]]){
     paint(b,f,1);const moving=pixels();paint(f,f,1,true);const stable=pixels();
-    let differences=0;for(let i=0;i<moving.length;i+=4)if(moving[i]!==stable[i]||moving[i+1]!==stable[i+1]||moving[i+2]!==stable[i+2])differences++;
-    landing.push({before:b,after:f,differences});
+    let differences=0,roundingPixels=0,maxChannelDelta=0;
+    for(let i=0;i<moving.length;i+=4){
+      const delta=Math.max(Math.abs(moving[i]-stable[i]),Math.abs(moving[i+1]-stable[i+1]),Math.abs(moving[i+2]-stable[i+2]));
+      maxChannelDelta=Math.max(maxChannelDelta,delta);
+      // Smooth screen-blended light may round by one 8-bit level between
+      // Canvas backing surfaces. Record it; any larger change still fails.
+      if(delta>1)differences++;else if(delta===1)roundingPixels++;
+    }
+    landing.push({before:b,after:f,differences,roundingPixels,maxChannelDelta});
   }
   let first=18;while(first<9216&&paint(first,first,1).playerScrollPx===0)first+=18;
   const before=first-18;

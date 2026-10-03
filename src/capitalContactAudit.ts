@@ -1,5 +1,7 @@
 import capitalCoinSpriteUrl from './assets/battle/capital-coin-sfc.png';
 import capitalPedestalSpriteUrl from './assets/battle/capital-pedestal-sfc.png';
+import casinoWideUrl from './assets/battle/battlefield-casino-wide.webp';
+import casinoPortraitUrl from './assets/battle/battlefield-casino-mobile.webp';
 import {
   createBattleCapitalCanvasScene,
   paintBattleCapitalCanvas,
@@ -94,6 +96,10 @@ const loadImage = (url: string) => new Promise<HTMLImageElement>(
 const sprites: BattleCapitalCanvasSprites = {
   coin: await loadImage(capitalCoinSpriteUrl),
   pedestal: await loadImage(capitalPedestalSpriteUrl),
+  backgrounds: {
+    wide: await loadImage(casinoWideUrl),
+    portrait: await loadImage(casinoPortraitUrl),
+  },
 };
 
 const columnHeights = getCapitalColumnHeights(playerVisibleUnits);

@@ -25,7 +25,7 @@ try{
  await until(()=>button('この条件で争奪戦開始'));
  await until(()=>c.evaluate(`Boolean([...document.querySelectorAll('button')].find(b=>!b.disabled&&(b.getAttribute('aria-label')||'').startsWith('投資実行。')))`));
  await shot('02-ready');
- await button('投資実行。');await wait(600);await shot('03-first-rolls');
+ await button('投資実行。');await wait(Number(process.env.CAPITAL_QA_ROLL_SHOT_MS??600));await shot('03-first-rolls');
  await c.send('Performance.enable');
  const before=await c.send('Performance.getMetrics');
  const stats=await c.evaluate(`(async()=>{
@@ -49,6 +49,7 @@ try{
  await c.send('Emulation.setDeviceMetricsOverride',{width:844,height:390,deviceScaleFactor:1.25,mobile:false});
  await wait(300);await shot('04-rotate');
  await c.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:2,mobile:false});
+ await wait(300);await shot('04b-wide');
  for(let i=0;i<90;i++){
   if(await button('分析へ'))break;
   await button('投資実行。');await wait(750);

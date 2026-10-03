@@ -73,8 +73,8 @@ export interface BattleVisualThemeValidation {
  */
 export const DEFAULT_BATTLE_VISUAL_THEME_METADATA: BattleVisualThemeMetadata =
   Object.freeze({
-    id: 'sfc-pedestal-v3-wide-bundled',
-    version: 1,
+    id: 'casino-gilt-smooth-medals',
+    version: 2,
     coin: Object.freeze({
       crop: Object.freeze({ x: 135, y: 167, width: 1837, height: 397 }),
     }),
@@ -85,11 +85,11 @@ export const DEFAULT_BATTLE_VISUAL_THEME_METADATA: BattleVisualThemeMetadata =
       frontSplit: 0.58,
     }),
     palette: Object.freeze({
-      background: '#b6ad91',
-      stripeA: '#91ad91',
-      stripeB: '#c4a4a1',
-      player: '#a91e2f',
-      enemy: '#244f83',
+      background: '#08261e',
+      stripeA: '#12372d',
+      stripeB: '#173229',
+      player: '#59d8ff',
+      enemy: '#ff7185',
       edge: '#f2e5b7',
       // Reserved for lightweight effects; current Canvas has no impact paint.
       impact: '#f2e5b7',

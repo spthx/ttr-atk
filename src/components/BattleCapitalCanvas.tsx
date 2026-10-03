@@ -18,6 +18,7 @@ import { resolveBattleCanvasDpr } from '../utils/battleCanvasQuality';
 import { CapitalBitmapCache } from '../utils/capitalBitmapCache';
 import { CapitalGpuBatch } from '../utils/capitalGpuBatch';
 import { getCapitalSpriteRaster, getCapitalSpriteRasterBytes, releaseCapitalSpriteRaster } from '../utils/capitalSpriteRaster';
+import { paintCapitalCasinoPlate, paintCapitalPressureLight, selectCapitalCasinoImage, type CapitalCasinoImages } from '../utils/capitalCasinoBackdrop';
 import { drawCachedCapitalStack, type CapitalStackPaintResources, type CapitalSpriteContext } from '../utils/capitalCachedStack';
 import { resolveCapitalViewportScroll } from '../utils/capitalViewportScroll';
 import { resolveCapitalRollProgress, resolveCapitalRollStep } from '../utils/capitalRollMotion';
@@ -33,6 +34,8 @@ import {
 } from '../utils/battleCapitalCanvasLayout';
 import capitalCoinSpriteUrl from '../assets/battle/capital-coin-sfc.png';
 import capitalPedestalSpriteUrl from '../assets/battle/capital-pedestal-sfc.png';
+import casinoWideUrl from '../assets/battle/battlefield-casino-wide.webp';
+import casinoPortraitUrl from '../assets/battle/battlefield-casino-mobile.webp';
 import './BattleCapitalCanvas.css';
 
 export type BattleCapitalCanvasSide = 'player' | 'enemy';
@@ -171,6 +174,7 @@ export interface BattleCapitalCanvasSprites {
   coin: HTMLImageElement;
   pedestal: HTMLImageElement;
   theme?: BattleVisualTheme;
+  backgrounds?: CapitalCasinoImages;
 }
 
 const staticCanvasCache = new WeakMap<HTMLCanvasElement, StaticCanvasCacheEntry>();
@@ -352,68 +356,17 @@ export const projectCapitalSceneAtTime = (
   return {...scene,player:projectSide(scene.player),enemy:projectSide(scene.enemy)};
 };
 
-const drawPixelArrowBands = (
+const drawCasinoBattlefield = (
   context: CanvasRenderingContext2D,
   width: number,
   height: number,
   scene: BattleCapitalCanvasScene,
   theme: BattleVisualTheme,
+  image: HTMLImageElement | null,
 ) => {
-  context.globalCompositeOperation = 'copy';
-  context.fillStyle = theme.palette.background;
-  context.fillRect(0, 0, width, height);
-  context.globalCompositeOperation = 'source-over';
-
-  const boundary = clamp(width * scene.ownershipPercent / 100, 0, width);
-  const chevronWidth = Math.max(22, snap(width / 10));
-  context.globalAlpha = 0.62;
-  for (let x = -chevronWidth; x < width + chevronWidth; x += chevronWidth) {
-    const stripe = Math.floor((x + chevronWidth) / chevronWidth);
-    context.fillStyle = stripe % 2 === 0 ? theme.palette.stripeA : theme.palette.stripeB;
-    context.beginPath();
-    context.moveTo(x, 0);
-    context.lineTo(x + chevronWidth * 0.58, 0);
-    context.lineTo(x + chevronWidth, height / 2);
-    context.lineTo(x + chevronWidth * 0.58, height);
-    context.lineTo(x, height);
-    context.lineTo(x + chevronWidth * 0.42, height / 2);
-    context.closePath();
-    context.fill();
-  }
-  context.globalAlpha = 1;
-
-  const laneHeight = Math.max(5, snap(height * 0.035));
-  const arrowHead = Math.max(8, snap(width * 0.018));
-  for (let lane = 0; lane < 6; lane += 1) {
-    const y = height * (0.1 + lane * 0.135);
-    const playerLane = lane % 2 === 1;
-    context.fillStyle = playerLane ? theme.palette.player : theme.palette.enemy;
-    context.beginPath();
-    if (playerLane) {
-      context.moveTo(0, y);
-      context.lineTo(boundary, y);
-      context.lineTo(Math.min(width, boundary + arrowHead), y + laneHeight / 2);
-      context.lineTo(boundary, y + laneHeight);
-      context.lineTo(0, y + laneHeight);
-    } else {
-      context.moveTo(width, y);
-      context.lineTo(boundary, y);
-      context.lineTo(Math.max(0, boundary - arrowHead), y + laneHeight / 2);
-      context.lineTo(boundary, y + laneHeight);
-      context.lineTo(width, y + laneHeight);
-    }
-    context.closePath();
-    context.fill();
-    context.globalAlpha = 0.48;
-    context.fillStyle = theme.palette.edge;
-    context.fillRect(
-      playerLane ? 0 : boundary,
-      snap(y + 1),
-      playerLane ? boundary : width - boundary,
-      1
-    );
-    context.globalAlpha = 1;
-  }
+  paintCapitalCasinoPlate(context, image);
+  paintCapitalPressureLight(context, width, height, scene.ownershipPercent,
+    theme.palette.player, theme.palette.enemy);
 }
 
 const buildColumnLayout = (
@@ -712,7 +665,7 @@ export const paintBattleCapitalCanvas = (
   {
     devicePixelRatio,
     frameRate = 30,
-    backgroundImage: _backgroundImage = null,
+    backgroundImage = null,
     sprites = null,
     cssSize = null,
   }: Pick<BattleCapitalCanvasProps, 'devicePixelRatio' | 'frameRate'> & {
@@ -741,6 +694,9 @@ export const paintBattleCapitalCanvas = (
   });
   if (!context) return null;
   const theme = sprites?.theme ?? DEFAULT_BATTLE_VISUAL_THEME;
+  const backdrop = backgroundImage?.complete && backgroundImage.naturalWidth > 0
+    ? backgroundImage : selectCapitalCasinoImage(sprites?.backgrounds, width, height);
+  const backdropKey = backdrop?.currentSrc || backdrop?.src || 'casino-pending';
   const resourceKey = `${frameRate}:${backingWidth}:${backingHeight}:${width}:${height}:${themeCacheKey(theme)}`;
   let bitmapEntry = bitmapCaches.get(canvas);
   if (sprites && (!bitmapEntry || bitmapEntry.key !== resourceKey ||
@@ -826,16 +782,15 @@ export const paintBattleCapitalCanvas = (
     staticCanvasCache.set(canvas, cached);
   }
 
-  // Ownership moves independently from the coin presentation. Repaint its
-  // inexpensive arrow bands directly, then composite the transparent settled
-  // pile cache so a 10Hz gauge update cannot rebuild thousands of coin seams.
-  const paintKey=`${staticKey}:${scene.ownershipPercent}`;
+  // Ownership moves independently from the coin presentation. Reuse the
+  // casino plate and redraw its light ribbons, then composite the pile cache.
+  const paintKey=`${staticKey}:${scene.ownershipPercent}:${backdropKey}`;
   if (cached?.paintKey === paintKey) {
     cached.skippedPaints++;
   } else {
     context.setTransform(backingWidth / width, 0, 0, backingHeight / height, 0, 0);
     context.imageSmoothingEnabled = false;
-    drawPixelArrowBands(context, width, height, scene, theme);
+    drawCasinoBattlefield(context, width, height, scene, theme, backdrop);
     if (cached) {
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.drawImage(cached.canvas, 0, 0);
@@ -889,7 +844,7 @@ export const disposeBattleCapitalGpuCanvas = (canvas: HTMLCanvasElement) => {
 export const paintBattleCapitalGpuCanvas = (
   canvas: HTMLCanvasElement,
   scene: BattleCapitalCanvasScene,
-  {devicePixelRatio, frameRate = 30, sprites = null, cssSize = null}:
+  {devicePixelRatio, frameRate = 30, sprites = null, cssSize = null, backgroundImage = null}:
     Parameters<typeof paintBattleCapitalCanvas>[2] = {},
 ): BattleCapitalCanvasMetrics | null => {
   if (!sprites) return null;
@@ -900,6 +855,9 @@ export const paintBattleCapitalGpuCanvas = (
   const backingWidth = Math.max(1, Math.round(width * dpr));
   const backingHeight = Math.max(1, Math.round(height * dpr));
   const theme = sprites.theme ?? DEFAULT_BATTLE_VISUAL_THEME;
+  const backdrop = backgroundImage?.complete && backgroundImage.naturalWidth > 0
+    ? backgroundImage : selectCapitalCasinoImage(sprites.backgrounds, width, height);
+  const backdropKey = backdrop?.currentSrc || backdrop?.src || 'casino-pending';
   const key = `${backingWidth}:${backingHeight}:${width}:${height}:${frameRate}:${themeCacheKey(theme)}`;
   let entry = gpuCapitalEntries.get(canvas);
   if (entry?.batch.gl.isContextLost()) return null;
@@ -934,11 +892,11 @@ export const paintBattleCapitalGpuCanvas = (
   };
   const playerScroll = scrollFor(scene.player, entry.player);
   const enemyScroll = scrollFor(scene.enemy, entry.enemy);
-  const paintKey = `${getStaticSceneKey(scene, sprites)}:${playerScroll}:${enemyScroll}:${scene.ownershipPercent}`;
+  const paintKey = `${getStaticSceneKey(scene, sprites)}:${playerScroll}:${enemyScroll}:${scene.ownershipPercent}:${backdropKey}`;
   let drawCalls = 0;
   if (entry.paintKey !== paintKey) {
-    if (!entry.batch.begin(width, height, `${key}:${scene.ownershipPercent}`,
-      context => drawPixelArrowBands(context, width, height, scene, theme))) return null;
+    if (!entry.batch.begin(width, height, `${key}:${scene.ownershipPercent}:${backdropKey}`,
+      context => drawCasinoBattlefield(context, width, height, scene, theme, backdrop))) return null;
     const paintSide = (side: NormalizedCapitalSide, geometry: ReturnType<typeof buildColumnLayout>, offset: number) => {
       const context = entry!.batch.context;
       context.save(); context.translate(0, offset);
@@ -1043,24 +1001,30 @@ export const BattleCapitalCanvas = ({
     let disposed = false;
     const coin = new Image();
     const pedestal = new Image();
+    const wide = new Image();
+    const portrait = new Image();
     coin.decoding = 'async';
     pedestal.decoding = 'async';
+    wide.decoding = 'async'; portrait.decoding = 'async';
     const finish = () => {
       if (disposed || !coin.complete || !pedestal.complete) return;
       if (coin.naturalWidth <= 0 || pedestal.naturalWidth <= 0) return;
-      spritesRef.current = { coin, pedestal, theme };
+      spritesRef.current = { coin, pedestal, theme, backgrounds: {wide, portrait} };
       if (canvasRef.current) staticCanvasCache.delete(canvasRef.current);
       repaintRef.current(projectCurrent());
     };
     coin.addEventListener('load', finish);
     pedestal.addEventListener('load', finish);
+    wide.addEventListener('load', finish); portrait.addEventListener('load', finish);
     coin.src = theme.coin.url;
     pedestal.src = theme.pedestal.url;
+    wide.src = casinoWideUrl; portrait.src = casinoPortraitUrl;
     finish();
     return () => {
       disposed = true;
       coin.removeEventListener('load', finish);
       pedestal.removeEventListener('load', finish);
+      wide.removeEventListener('load', finish); portrait.removeEventListener('load', finish);
     };
   }, [themeKey,projectCurrent]);
 
@@ -1158,6 +1122,7 @@ export const BattleCapitalCanvas = ({
   }, [repaint,projectCurrent]);
 
   return (
+    <>
     <canvas
       key={renderer}
       ref={canvasRef}
@@ -1165,6 +1130,11 @@ export const BattleCapitalCanvas = ({
       style={style}
       aria-hidden="true"
     />
+    <span className="battle-capital-atmosphere" data-flow={pressureDirection === 'even' ? 'still' : 'active'} aria-hidden="true">
+      <span className="capital-current capital-current--player" style={{width: `${clamp(ownershipPercent, 0, 100)}%`}}><i /></span>
+      <span className="capital-current capital-current--enemy" style={{width: `${100 - clamp(ownershipPercent, 0, 100)}%`}}><i /></span>
+    </span>
+    </>
   );
 };
 

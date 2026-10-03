@@ -1,0 +1,57 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "name": "portrait",
+      "renderer": "webgl2",
+      "overflow": false,
+      "field": {
+        "w": 377.78125,
+        "h": 365.140625
+      },
+      "currents": 2,
+      "medalPixels": [
+        567,
+        548
+      ]
+    },
+    {
+      "name": "wide",
+      "renderer": "webgl2",
+      "overflow": false,
+      "field": {
+        "w": 1190,
+        "h": 351.59375
+      },
+      "currents": 2,
+      "medalPixels": [
+        1785,
+        527
+      ]
+    },
+    {
+      "name": "landscape",
+      "renderer": "webgl2",
+      "overflow": false,
+      "field": {
+        "w": 824.40625,
+        "h": 158.390625
+      },
+      "currents": 2,
+      "medalPixels": [
+        1031,
+        198
+      ]
+    }
+  ],
+  "reducedMotion": [
+    {
+      "animation": "none",
+      "opacity": "0"
+    },
+    {
+      "animation": "none",
+      "opacity": "0"
+    }
+  ]
+}

@@ -65,8 +65,8 @@ assert.equal(theme.pedestal.frontSplit, BATTLE_CAPITAL_SFC_PEDESTAL_FRONT_SPLIT)
 assert.deepEqual(BATTLE_CAPITAL_CANVAS_ROW_COUNTS, [4, 5, 5, 4]);
 assert.equal(BATTLE_CAPITAL_CANVAS_ROW_COUNTS.reduce((sum, n) => sum + n, 0), 18);
 assert.deepEqual(theme.palette, {
-  background: '#b6ad91', stripeA: '#91ad91', stripeB: '#c4a4a1',
-  player: '#a91e2f', enemy: '#244f83', edge: '#f2e5b7', impact: '#f2e5b7',
+  background: '#08261e', stripeA: '#12372d', stripeB: '#173229',
+  player: '#59d8ff', enemy: '#ff7185', edge: '#f2e5b7', impact: '#f2e5b7',
 });
 
 const pedestal = theme.pedestal;
@@ -148,7 +148,7 @@ assert.equal(getBattleVisualThemeCacheKey({
 const changedThemes: BattleVisualTheme[] = [
   original, swapped,
   { ...theme, id: 'another-pack' },
-  { ...theme, version: 2 }, // Same URL, different image bytes/content revision.
+  { ...theme, version: theme.version + 1 }, // Same URL, different image bytes/content revision.
   { ...theme, coin: { ...theme.coin, url: '/coin-revision-2.png' } },
   { ...theme, pedestal: { ...theme.pedestal, url: '/pedestal-revision-2.png' } },
   // Different source slicing with the same 2372/631 assembled geometry.
@@ -262,4 +262,4 @@ expectInvalid({ ...theme, rights: { commercialReady: false, reason: ' ' } }, 'ri
 assert.throws(() => createBattleVisualTheme({ ...assetUrls, coin: '' }), TypeError);
 assert.throws(() => createBattleVisualTheme(assetUrls, { ...originalMetadata, version: NaN }), TypeError);
 
-console.log(`Battle visual theme checks passed: 18 anchors, 14 slices, fixed aspects, original palette, cache invalidation, ${rejectedCases} rejected inputs; commercialReady=false.`);
+console.log(`Battle visual theme checks passed: 18 anchors, 14 slices, fixed aspects, casino palette, cache invalidation, ${rejectedCases} rejected inputs; commercialReady=false.`);

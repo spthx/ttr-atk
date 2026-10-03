@@ -4364,10 +4364,22 @@
   }
 }
 
-/* The opaque SFC-style canvas owns the field. A flat fallback prevents a flash
- * before first paint without decoding a hidden full-screen image. */
+/* The renderer owns the restored casino table; keep image-loading fallback dark. */
 .buyout-screen .integrated-battlefield {
   background: #03100c;
+}
+
+@media (min-width: 1000px) and (min-height: 700px) {
+  .buyout-screen .integrated-battlefield--canvas2d {
+    flex-basis: clamp(21rem, 44dvh, 28rem) !important;
+    max-height: 28rem;
+  }
+}
+
+.buyout-screen .integrated-battlefield--canvas2d .ownership-capital-readout > strong {
+  -webkit-text-stroke: .045em #050910;
+  paint-order: stroke fill;
+  text-shadow: 0 .08em .22em rgba(0, 0, 0, .94);
 }
 
 .buyout-screen .integrated-battlefield .battlefield-pressure-lane {

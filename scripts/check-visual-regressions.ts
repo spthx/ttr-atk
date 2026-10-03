@@ -1194,7 +1194,7 @@ assert.doesNotMatch(
 );
 assert.match(
   battleCapitalCanvas,
-  /const staticCanvasCache = new WeakMap[\s\S]*getStaticSceneKey[\s\S]*getContext\('2d', \{ alpha: true \}\)[\s\S]*drawPixelArrowBands\(context,[\s\S]{0,220}context\.drawImage\(cached\.canvas, 0, 0\)/,
+  /const staticCanvasCache = new WeakMap[\s\S]*getStaticSceneKey[\s\S]*getContext\('2d', \{ alpha: true \}\)[\s\S]*drawCasinoBattlefield\(context,[\s\S]{0,220}context\.drawImage\(cached\.canvas, 0, 0\)/,
   'settled scenes must retain their transparent cache for ownership-only updates'
 );
 assert.doesNotMatch(
@@ -1214,9 +1214,13 @@ assert.match(
 );
 assert.doesNotMatch(
   battleCapitalCanvas,
-  /casinoWideUrl|casinoMobileUrl|bankGeometry|bankTransferPages - 1|pileGlow|drawOverflowHoard/,
-  'the field must not restore the legacy bank renderer, casino scenery, glow or loose coins'
+  /bankGeometry|bankTransferPages - 1|pileGlow|drawOverflowHoard/,
+  'the field must not restore the legacy bank renderer or loose-coin overflow'
 );
+assert.match(battleCapitalCanvas, /casinoWideUrl[\s\S]*casinoPortraitUrl[\s\S]*paintCapitalCasinoPlate/,
+  'the requested casino backdrop must be connected to the shared painter');
+assert.match(battleCapitalCanvas, /scene\.ownershipPercent}:\$\{backdropKey\}/,
+  'background readiness must invalidate the output, without resetting the coin timeline');
 assert.match(
   battleCapitalCanvas,
   /target\.translate\(0,offset\);[\s\S]{0,500}drawCapitalSideBase[\s\S]{0,200}drawCapitalSideIncoming[\s\S]{0,200}drawCapitalSidePedestalFront/,
