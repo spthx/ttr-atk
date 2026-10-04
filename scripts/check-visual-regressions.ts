@@ -1267,7 +1267,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /let paintedThisTick = false;[\s\S]{0,260}paintedThisTick = true;[\s\S]{0,260}else if \(!paintedThisTick\) repaint\(projected\);/,
+  /let paintedThisTick = false;[\s\S]{0,260}paintedThisTick = true;[\s\S]{0,340}else if \(!paintedThisTick\) repaint\(projected\);/,
   'the completed 165ms wave must not repaint its final frame twice'
 );
 

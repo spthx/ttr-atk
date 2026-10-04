@@ -150,7 +150,7 @@ const EMPTY_INFLUENCE = { owned: 0, total: 0, label: '未進出', playerBonus: 0
 const HIGH_END_INFLUENCE = { ...EMPTY_INFLUENCE, label: '高難度記録戦では無効' };
 const TRAINING_INFLUENCE = { ...EMPTY_INFLUENCE, label: '木人訓練では無効' };
 
-const loadBattleModal = () => import('./components/BattleModal');
+const loadBattleModal = () => import('./components/TradeBattleEntry');
 const BattleModal = memo(lazy(() =>
   loadBattleModal().then((module) => ({ default: module.BattleModal }))
 ));

@@ -272,7 +272,7 @@ import '../battle-capital-layer.css';
 import '../karma-battle.css';
 import '../battle-focused.css';
 
-interface BattleModalProps {
+export interface BattleModalProps {
   targetProperty: Property;
   companyName: string;
   totalFunds: number;

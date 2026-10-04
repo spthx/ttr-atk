@@ -54,6 +54,8 @@ export interface BattleCapitalCanvasPreviewFrame
   packetSeed?: number;
   beatDurationMs?: number;
   presentationSpeed?: 1 | 2;
+  /** Absolute timeline owner supplies progress without restarting per beat. */
+  packetProgress?: number;
   strongBeat?: boolean;
 }
 
@@ -83,6 +85,7 @@ export interface BattleCapitalCanvasProps {
 }
 
 interface NormalizedCapitalFrame {
+  controlledProgress: boolean;
   visibleUnits: number;
   columnHeights: number[];
   settledAfterColumnHeights: number[];
@@ -267,6 +270,7 @@ const normalizeSide = (
     ),
     impact: state.impact === true,
     frame: {
+      controlledProgress: preview?.packetProgress !== undefined,
       visibleUnits,
       columnHeights,
       settledAfterColumnHeights,
@@ -297,7 +301,7 @@ const normalizeSide = (
         finiteNonNegative(preview?.presentationSerial ?? 0)
       ),
       packetSeed: Math.round(finiteNonNegative(preview?.packetSeed ?? 0)),
-      packetProgress: activeColumnIndices.length > 0 ? 0 : 1,
+      packetProgress: preview?.packetProgress ?? (activeColumnIndices.length > 0 ? 0 : 1),
       beatDurationMs: Math.max(1, preview?.beatDurationMs ?? 165),
       presentationSpeed: (state.presentationSpeed??preview?.presentationSpeed) === 2 ? 2 : 1,
       strongBeat: preview?.strongBeat === true,
@@ -351,6 +355,7 @@ export const projectCapitalSceneAtTime = (
   reducedMotion: boolean
 ): BattleCapitalCanvasScene => {
   const projectSide = (side: NormalizedCapitalSide): NormalizedCapitalSide => {
+    if(side.frame.controlledProgress) return side;
     const clock=clocks[side.side];
     const elapsed=clock.key === getCapitalPacketAnimationKey(side)
       ? (clock.elapsedMs??0)+(now-clock.startedAt)*(clock.speed??1)
@@ -1076,7 +1081,7 @@ export const BattleCapitalCanvas = ({
         paintedThisTick = true;
       }
       const active = (['player', 'enemy'] as const).some(
-        (side) => projected[side].frame.packetProgress < 1
+        (side) => !projected[side].frame.controlledProgress && projected[side].frame.packetProgress < 1
       );
       if (active) animationFrame = window.requestAnimationFrame(tick);
       else if (!paintedThisTick) repaint(projected);
