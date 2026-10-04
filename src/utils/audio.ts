@@ -16,6 +16,7 @@ type CapitalRapidFireSession = {
   source: AudioBufferSourceNode | null;
   master: GainNode | null;
   panner: StereoPannerNode | null;
+  speed: 1 | 2;
 };
 
 class SoundEffects {
@@ -519,6 +520,7 @@ class SoundEffects {
         : null;
     source.buffer = this.getCapitalRapidFireLoopBuffer(ctx, tickBuffer);
     source.loop = true;
+    source.playbackRate.setValueAtTime(session.speed,now);
     source.loopStart = 0;
     source.loopEnd = source.buffer.duration;
     master.gain.setValueAtTime(0.0001, now);
@@ -553,6 +555,7 @@ class SoundEffects {
       source: null,
       master: null,
       panner: null,
+      speed: 1,
     };
     this.capitalRapidFireSessions[side] = session;
     const pendingBuffer = this.getDecodedAudioBuffer(
@@ -595,13 +598,28 @@ class SoundEffects {
     }
   }
 
+  setCapitalStackSpeed(side: CapitalRapidFireSide, speed: 1 | 2) {
+    const session=this.capitalRapidFireSessions[side];
+    if(!session || session.speed===speed) return;
+    const previous=session.speed;
+    session.speed=speed;
+    if(this.ctx) session.source?.playbackRate.setValueAtTime(speed,this.ctx.currentTime);
+    if(session.stopTimer!==null && session.stopAtMs!==null){
+      window.clearTimeout(session.stopTimer);
+      const remaining=Math.max(0,session.stopAtMs-performance.now())*previous/speed;
+      session.stopAtMs=performance.now()+remaining;
+      session.stopTimer=window.setTimeout(()=>this.stopCapitalStackStream(side),remaining);
+    }
+  }
+
   /** Keep the approved rapid-fire click locked to the visible pour window. */
   playCapitalStackStep(
     side: CapitalRapidFireSide,
     index: number,
     total: number,
     _includeFinalWeight = true,
-    frameDurationMs = 96
+    frameDurationMs = 96,
+    speed: 1 | 2 = 1
   ) {
     if (!this.enabled) return;
     const resolvedTotal = Math.max(1, Math.floor(total));
@@ -614,6 +632,7 @@ class SoundEffects {
       session = this.beginCapitalRapidFire(side) ?? undefined;
     }
     if (!session) return;
+    this.setCapitalStackSpeed(side,speed);
     if (resolvedIndex === resolvedTotal - 1) {
       const stopDelayMs = Math.max(1, Math.round(frameDurationMs));
       session.stopAtMs = performance.now() + stopDelayMs;

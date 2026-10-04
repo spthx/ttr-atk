@@ -21,7 +21,7 @@ import { getCapitalSpriteRaster, getCapitalSpriteRasterBytes, releaseCapitalSpri
 import { paintCapitalCasinoPlate, paintCapitalPressureLight, selectCapitalCasinoImage, type CapitalCasinoImages } from '../utils/capitalCasinoBackdrop';
 import { drawCachedCapitalStack, type CapitalStackPaintResources, type CapitalSpriteContext } from '../utils/capitalCachedStack';
 import { resolveCapitalViewportScroll } from '../utils/capitalViewportScroll';
-import { resolveCapitalBurstPackets, resolveCapitalRollProgress, resolveCapitalRollStep } from '../utils/capitalRollMotion';
+import { resolveCapitalBurstPackets, resolveCapitalRollProgress, resolveCapitalRollTrajectory } from '../utils/capitalRollMotion';
 import { createBattleVisualTheme, getBattleVisualThemeCacheKey, validateBattleVisualTheme, type BattleVisualTheme } from '../data/battleVisualTheme';
 import {
   BATTLE_CAPITAL_CANVAS_ROW_COUNTS,
@@ -53,10 +53,12 @@ export interface BattleCapitalCanvasPreviewFrame
   presentedCapital?: number;
   packetSeed?: number;
   beatDurationMs?: number;
+  presentationSpeed?: 1 | 2;
   strongBeat?: boolean;
 }
 
 export interface BattleCapitalCanvasSideState {
+  presentationSpeed?: 1 | 2;
   amount: number;
   marketPrice: number;
   capitalRatio?: number;
@@ -99,6 +101,7 @@ interface NormalizedCapitalFrame {
   packetSeed: number;
   packetProgress: number;
   beatDurationMs: number;
+  presentationSpeed: 1 | 2;
   strongBeat: boolean;
   rackDepth: number;
   stackDepth: number;
@@ -151,6 +154,8 @@ export interface BattleCapitalCanvasCssSize {
 interface CapitalPacketClock {
   key: string;
   startedAt: number;
+  elapsedMs?: number;
+  speed?: 1 | 2;
 }
 
 interface CoinColumnLayout {
@@ -294,6 +299,7 @@ const normalizeSide = (
       packetSeed: Math.round(finiteNonNegative(preview?.packetSeed ?? 0)),
       packetProgress: activeColumnIndices.length > 0 ? 0 : 1,
       beatDurationMs: Math.max(1, preview?.beatDurationMs ?? 165),
+      presentationSpeed: (state.presentationSpeed??preview?.presentationSpeed) === 2 ? 2 : 1,
       strongBeat: preview?.strongBeat === true,
       rackDepth: 0,
       stackDepth: 0,
@@ -346,7 +352,9 @@ export const projectCapitalSceneAtTime = (
 ): BattleCapitalCanvasScene => {
   const projectSide = (side: NormalizedCapitalSide): NormalizedCapitalSide => {
     const clock=clocks[side.side];
-    const elapsed=clock.key === getCapitalPacketAnimationKey(side) ? now-clock.startedAt : 0;
+    const elapsed=clock.key === getCapitalPacketAnimationKey(side)
+      ? (clock.elapsedMs??0)+(now-clock.startedAt)*(clock.speed??1)
+      : 0;
     return {...side,frame:{...side.frame,
       incomingLaneTimings:reducedMotion ? undefined : side.frame.incomingLaneTimings,
       packetProgress:side.frame.activeColumnIndices.length === 0 || reducedMotion
@@ -615,9 +623,8 @@ const drawCapitalSideIncoming = (
       -geometry.coinHeight - scrollOffset,
       landingBaseY - height * 0.22 - bundleLayers * geometry.layerStep
     );
-    // The SFC animation exposes three coarse positions at 30fps rather than a
-    // smooth physics arc. Keep the final sample exact so rolls merge cleanly.
-    const steppedProgress = resolveCapitalRollStep(rawProgress,column.index,
+    // Sample the same continuous fall for small rolls and heavy packets.
+    const steppedProgress = resolveCapitalRollTrajectory(rawProgress,column.index,
       side.frame.packetSeed,Boolean(side.frame.incomingLaneTimings));
     const packetBaseY =
       startBaseY + (landingBaseY - startBaseY) * steppedProgress;
@@ -661,9 +668,10 @@ const getStaticSceneKey = (
       const before=side.frame.columnHeights[column]??0;
       const after=side.frame.settledAfterColumnHeights[column]??before;
       const lane=side.frame.incomingLaneTimings?.find(item=>item.columnIndex===column);
-      if(!lane?.replenishLayers && resolveCapitalBurstPackets(after-before,p,lane?.durationMs??side.frame.beatDurationMs))
-        return Math.round(p*(lane?.durationMs??side.frame.beatDurationMs));
-      return p<=0?-1:p>=1?4:resolveCapitalRollStep(p,column,side.frame.packetSeed,Boolean(side.frame.incomingLaneTimings));
+      const flightMs=lane?.durationMs??side.frame.beatDurationMs;
+      if(!lane?.replenishLayers && resolveCapitalBurstPackets(after-before,p,flightMs))
+        return Math.round(p*flightMs);
+      return p<=0?-1:p>=1?4:Math.round(p*flightMs);
     })),
   });
 
@@ -976,9 +984,9 @@ export const BattleCapitalCanvas = ({
   const spritesRef = useRef<BattleCapitalCanvasSprites | null>(null);
   const themeKey = useMemo(()=>getBattleVisualThemeCacheKey(theme),[theme]);
   const playerScene=useMemo(()=>normalizeSide('player',player),
-    [player.amount,player.marketPrice,player.capitalRatio,player.impact,player.previewFrame]);
+    [player.amount,player.marketPrice,player.capitalRatio,player.impact,player.previewFrame,player.presentationSpeed]);
   const enemyScene=useMemo(()=>normalizeSide('enemy',enemy),
-    [enemy.amount,enemy.marketPrice,enemy.capitalRatio,enemy.impact,enemy.previewFrame]);
+    [enemy.amount,enemy.marketPrice,enemy.capitalRatio,enemy.impact,enemy.previewFrame,enemy.presentationSpeed]);
   const scene=useMemo<BattleCapitalCanvasScene>(()=>({
     player:playerScene,enemy:enemyScene,ownershipPercent:clamp(ownershipPercent,0,100),
     pressureDirection,windSide,difficulty,compact,
@@ -1093,9 +1101,17 @@ export const BattleCapitalCanvas = ({
   useEffect(()=>{
     const now=performance.now();
     for (const side of ['player','enemy'] as const) {
-      const key=getCapitalPacketAnimationKey(sceneRef.current[side]);
-      if(packetClockRef.current[side].key!==key)
-        packetClockRef.current[side]={key,startedAt:now};
+      const normalized=sceneRef.current[side];
+      const key=getCapitalPacketAnimationKey(normalized);
+      const speed=normalized.frame.presentationSpeed??1;
+      const clock=packetClockRef.current[side];
+      if(clock.key!==key)
+        packetClockRef.current[side]={key,startedAt:now,elapsedMs:0,speed};
+      else if((clock.speed??1)!==speed){
+        clock.elapsedMs=(clock.elapsedMs??0)+(now-clock.startedAt)*(clock.speed??1);
+        clock.startedAt=now;
+        clock.speed=speed;
+      }
     }
     wakeRendererRef.current();
   },[sceneKey]);

@@ -87,7 +87,7 @@ assert.equal(resolveCapitalCommandRechargeScale([null,undefined]),1);
 assert.equal(resolveCapitalCommandRechargeScale([{commandRechargeScale:.25},null,undefined]),.25);
 assert.equal(resolveCapitalCommandRechargeScale([{commandRechargeScale:2},{commandRechargeScale:.25}]),2);
 assert.match(readFileSync(new URL('../src/components/BattleModal.tsx',import.meta.url),'utf8'),
- /capitalPresentationCommandRechargeScale = resolveCapitalCommandRechargeScale\(\[\s*capitalPreviewStage,\s*playerCapitalPilePreviewStage,\s*enemyCapitalPilePreviewStage,/,
+ /capitalPresentationCommandRechargeScale = resolveCapitalCommandRechargeScale\(\[[\s\S]{0,800}capitalPresentationSpeed\.player[\s\S]{0,800}capitalPresentationSpeed\.enemy/,
  'the tested scale selector must be wired to the live command recovery clock');
 
 // Closed-form column allocation must exactly preserve the old one-unit walk.

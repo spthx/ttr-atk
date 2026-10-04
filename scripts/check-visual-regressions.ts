@@ -1237,8 +1237,8 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /resolveCapitalRollStep\(rawProgress,column\.index,[\s\S]{0,160}side\.frame\.packetSeed/,
-  'falling rolls must use the shared stepped-position resolver'
+  /resolveCapitalRollTrajectory\(rawProgress,column\.index,[\s\S]{0,160}side\.frame\.packetSeed/,
+  'small falling rolls must use the continuous shared trajectory'
 );
 assert.match(
   battleCapitalCanvasLayout,
@@ -2972,7 +2972,7 @@ assert.match(
 );
 assert.match(
   battleCapitalCanvas,
-  /resolveCapitalRollStep\([\s\S]{0,260}startBaseY \+ \(landingBaseY - startBaseY\) \* steppedProgress/,
+  /resolveCapitalRollTrajectory\([\s\S]{0,260}startBaseY \+ \(landingBaseY - startBaseY\) \* steppedProgress/,
   'the Canvas renderer must apply the shared stepped packet position to vertical travel'
 );
 assert.match(

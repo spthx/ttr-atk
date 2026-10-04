@@ -1,5 +1,3 @@
-import { resolveBattleCapitalSfcPacketSteppedProgress } from './battleCapitalCanvasLayout';
-
 export const resolveCapitalRollProgress = (
   frame: {
     packetProgress: number;
@@ -15,12 +13,18 @@ export const resolveCapitalRollProgress = (
   return Math.min(1,Math.max(0,elapsed/flight.durationMs));
 };
 
-export const resolveCapitalRollStep = (progress: number, columnIndex: number, seed: number, authoredFlight: boolean) =>
-  // Authored flight offsets already stagger the pairs. Keep those offsets
-  // stable across beat boundaries instead of adding a second seed delay.
-  resolveBattleCapitalSfcPacketSteppedProgress({
-    rawProgress:progress,columnIndex:authoredFlight?0:columnIndex,packetSeed:authoredFlight?0:seed,
-  });
+export const resolveCapitalRollTrajectory = (
+  progress: number,
+  columnIndex: number,
+  seed: number,
+  authoredFlight: boolean
+) => {
+  const delay=authoredFlight?0:(((Math.round(columnIndex)+Math.round(seed))%3+3)%3)*0.08;
+  const laneProgress=Math.max(0,Math.min(1,(progress-delay)/Math.max(0.01,1-delay)));
+  // Constant acceleration makes even the first small rolls visibly travel
+  // between frames instead of snapping through three authored screen points.
+  return laneProgress*laneProgress;
+};
 
 /** Heavy authored rolls become a bounded succession of short cylinders.
  * This changes only presentation: the timeline still owns the exact ledger,

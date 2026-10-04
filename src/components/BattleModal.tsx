@@ -30,6 +30,7 @@ import {
   formatCurrency,
 } from '../utils/formatter';
 import { soundFx } from '../utils/audio';
+import { createCapitalPresentationScheduler } from '../utils/capitalPresentationScheduler';
 import { calculateAllianceSupport, isPublicPatronage } from '../utils/alliance';
 import {
   FANKIT_ART,
@@ -269,6 +270,7 @@ import '../battle-wind-onboarding.css';
 import '../battle-integrated-field.css';
 import '../battle-capital-layer.css';
 import '../karma-battle.css';
+import '../battle-focused.css';
 
 interface BattleModalProps {
   targetProperty: Property;
@@ -1130,6 +1132,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     useState<CapitalPilePresentationFrame | null>(null);
   const [enemyCapitalPilePreviewStage, setEnemyCapitalPilePreviewStage] =
     useState<CapitalPilePresentationFrame | null>(null);
+  const [capitalPresentationSpeed, setCapitalPresentationSpeed] = useState<Record<CapitalPileSide,1|2>>({player:1,enemy:1});
   const [playerCapitalRackFloorDepth, setPlayerCapitalRackFloorDepth] =
     useState(0);
   const [enemyCapitalRackFloorDepth, setEnemyCapitalRackFloorDepth] =
@@ -1288,6 +1291,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     player: false,
     enemy: false,
   });
+  const capitalPresentationSpeedRef=useRef<Record<CapitalPileSide,1|2>>({player:1,enemy:1});
+  const capitalPresentationSchedulersRef=useRef<Partial<Record<CapitalPileSide,ReturnType<typeof createCapitalPresentationScheduler>>>>({});
   const terminalCapitalHandoffRef = useRef<(() => void) | null>(null);
   const terminalCapitalRefreshRecoveryRef = useRef<(() => void) | null>(null);
   const impactStopTimerRef = useRef<number | null>(null);
@@ -1681,9 +1686,11 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         ? [side]
         : ['player', 'enemy'];
       sides.forEach((targetSide) => {
-        soundFx.stopCapitalStackStream(
-          targetSide === 'player' ? 'player' : 'opponent'
-        );
+        soundFx.stopCapitalStackStream(targetSide === 'player' ? 'player' : 'opponent');
+        capitalPresentationSchedulersRef.current[targetSide]?.clear();
+        delete capitalPresentationSchedulersRef.current[targetSide];
+        capitalPresentationSpeedRef.current[targetSide]=1;
+        setCapitalPresentationSpeed(current=>({...current,[targetSide]:1}));
         capitalPilePreviewSerialRef.current[targetSide] += 1;
         capitalPilePreviewTimersRef.current[targetSide].forEach((timer) =>
           window.clearTimeout(timer)
@@ -1712,6 +1719,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       source?: CapitalStackSource
     ) => {
       clearCapitalPilePreview(side);
+      const scheduler=createCapitalPresentationScheduler();
+      capitalPresentationSchedulersRef.current[side]=scheduler;
       const serial = capitalPilePreviewSerialRef.current[side];
       capitalPilePreviewActiveRef.current[side] = true;
       simulationPausedRef.current = true;
@@ -1772,7 +1781,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         audibleFrames.map((frame, index) => [frame.packetSeed, index])
       );
       const schedule = (callback: () => void, delayMs: number) => {
-        const timer = window.setTimeout(() => {
+        scheduler.schedule(() => {
           if (
             capitalPilePreviewSerialRef.current[side] !== serial ||
             endedRef.current
@@ -1782,10 +1791,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           capitalPilePreviewTimersRef.current[side] = [];
           callback();
         }, delayMs);
-        capitalPilePreviewTimersRef.current[side] = [timer];
+        capitalPilePreviewTimersRef.current[side] = scheduler.timerId===null?[]:[scheduler.timerId];
       };
       const complete = () => {
         capitalPilePreviewActiveRef.current[side] = false;
+        scheduler.clear();
+        delete capitalPresentationSchedulersRef.current[side];
+        capitalPresentationSpeedRef.current[side]=1;
+        setCapitalPresentationSpeed(current=>({...current,[side]:1}));
+        soundFx.stopCapitalStackStream(side==='player'?'player':'opponent');
         setPreviewStage(null);
         onComplete?.();
         releaseTerminalAfterCapital();
@@ -1834,7 +1848,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             audibleIndex,
             audibleFrames.length,
             includeFinalWeight,
-            frame.durationMs
+            frame.durationMs / scheduler.speed,
+            scheduler.speed
           );
         }
         if (isFinalFrame) {
@@ -1854,6 +1869,10 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   );
 
   const clearCapitalCommitTimers = useCallback(() => {
+    capitalPresentationSchedulersRef.current.player?.clear();
+    delete capitalPresentationSchedulersRef.current.player;
+    capitalPresentationSpeedRef.current.player=1;
+    setCapitalPresentationSpeed(current=>({...current,player:1}));
     capitalCommitSerialRef.current += 1;
     capitalCommitTimersRef.current.forEach((timer) =>
       window.clearTimeout(timer)
@@ -2704,14 +2723,27 @@ export const BattleModal: React.FC<BattleModalProps> = ({
     enemyCapitalPilePreviewStage !== null;
   const capitalPresentationActive =
     capitalCommit !== null || capitalPilePresentationLocked;
+  const accelerateCapitalPresentation = () => {
+    for(const side of ['player','enemy'] as const){
+      const scheduler=capitalPresentationSchedulersRef.current[side];
+      if(!scheduler || (!capitalPilePreviewActiveRef.current[side] && !(side==='player' && capitalCommitActiveRef.current))) continue;
+      scheduler.setSpeed(2);
+      capitalPresentationSpeedRef.current[side]=2;
+      const timers=scheduler.timerId===null?[]:[scheduler.timerId];
+      if(side==='player' && capitalCommitActiveRef.current) capitalCommitTimersRef.current=timers;
+      else capitalPilePreviewTimersRef.current[side]=timers;
+      soundFx.setCapitalStackSpeed(side==='player'?'player':'opponent',2);
+    }
+    setCapitalPresentationSpeed({...capitalPresentationSpeedRef.current});
+  };
   const capitalPresentationAllowsCommandRecharge =
     capitalPreviewStage?.commandRecharge !== 'pause' &&
     playerCapitalPilePreviewStage?.commandRecharge !== 'pause' &&
     enemyCapitalPilePreviewStage?.commandRecharge !== 'pause';
   const capitalPresentationCommandRechargeScale = resolveCapitalCommandRechargeScale([
-    capitalPreviewStage,
-    playerCapitalPilePreviewStage,
-    enemyCapitalPilePreviewStage,
+    capitalPreviewStage && {...capitalPreviewStage,commandRechargeScale:(capitalPreviewStage.commandRechargeScale??1)*capitalPresentationSpeed.player},
+    playerCapitalPilePreviewStage && {...playerCapitalPilePreviewStage,commandRechargeScale:(playerCapitalPilePreviewStage.commandRechargeScale??1)*capitalPresentationSpeed.player},
+    enemyCapitalPilePreviewStage && {...enemyCapitalPilePreviewStage,commandRechargeScale:(enemyCapitalPilePreviewStage.commandRechargeScale??1)*capitalPresentationSpeed.enemy},
   ]);
   const presentationLocked =
     !!battleAnnouncement ||
@@ -6746,6 +6778,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
   ) => {
     clearCapitalPilePreview('player');
     clearCapitalCommitTimers();
+    const scheduler=createCapitalPresentationScheduler();
+    capitalPresentationSchedulersRef.current.player=scheduler;
     simulationPausedRef.current = true;
     const serial = capitalCommitSerialRef.current;
     const timing = getCapitalCommitTiming(snapshot.level, snapshot.compact);
@@ -6806,7 +6840,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
       `${formatCurrency(snapshot.amount)}の投資資金を整えています……`
     );
     const schedule = (callback: () => void, delayMs: number) => {
-      const timer = window.setTimeout(() => {
+      scheduler.schedule(() => {
         if (
           capitalCommitSerialRef.current !== serial ||
           endedRef.current
@@ -6816,10 +6850,15 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         capitalCommitTimersRef.current = [];
         callback();
       }, delayMs);
-      capitalCommitTimersRef.current = [timer];
+      capitalCommitTimersRef.current = scheduler.timerId===null?[]:[scheduler.timerId];
     };
     const complete = () => {
       capitalCommitActiveRef.current = false;
+      scheduler.clear();
+      delete capitalPresentationSchedulersRef.current.player;
+      capitalPresentationSpeedRef.current.player=1;
+      setCapitalPresentationSpeed(current=>({...current,player:1}));
+      soundFx.stopCapitalStackStream('player');
       setCapitalCommit((current) =>
         current?.serial === serial ? null : current
       );
@@ -6888,7 +6927,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           audibleIndex,
           audibleFrames.length,
           true,
-          frame.durationMs
+          frame.durationMs / scheduler.speed,
+          scheduler.speed
         );
       }
       if (isFinalFrame) {
@@ -8818,7 +8858,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
         <section
           className={`battle-stage integrated-battlefield integrated-battlefield--canvas2d integrated-battlefield--push-${battleDirection} integrated-battlefield--motion-${motion} ${conditionAnnouncement ? 'integrated-battlefield--condition-active' : ''} ${impactStop ? `integrated-battlefield--impact-${impactStop.phase} integrated-battlefield--impact-${impactStop.side} ${impactStop.heavy ? 'integrated-battlefield--impact-heavy' : ''}` : ''} ${capitalPresentationStage && activeCapitalTiming ? `integrated-battlefield--capital-commit integrated-battlefield--capital-${capitalPresentationStage} integrated-battlefield--capital-${activeCapitalTiming.tier}` : ''} ${skillCinematic ? `integrated-battlefield--skill-cinematic integrated-battlefield--skill-stage-${skillCinematic.stage} integrated-battlefield--skill-${skillCinematic.effectType.toLowerCase().replaceAll('_', '-')}` : ''} ${windVisible && eraWindActive ? 'integrated-battlefield--era-wind integrated-battlefield--era-wind-3' : ''} ${windVisible && windTelegraphVisible ? 'integrated-battlefield--wind-telegraph' : ''} ${decisiveBlow?.winner === 'player' && terminalUsesDirectFinisher ? 'integrated-battlefield--finisher-player integrated-battlefield--finisher-direct' : decisiveBlow?.winner === 'player' ? 'integrated-battlefield--finisher-collapse' : decisiveBlow?.winner === 'opponent' ? 'integrated-battlefield--finisher-enemy' : ''} ${decisiveBlow?.impacted ? 'integrated-battlefield--finisher-impact' : ''} ${terminalCinematicStage ? `integrated-battlefield--terminal-${terminalCinematicStage} integrated-battlefield--terminal-winner-${terminalRef.current?.winner ?? 'player'} ${terminalUsesSelfCollapse ? 'integrated-battlefield--terminal-self-collapse' : 'integrated-battlefield--terminal-direct'}` : ''} ${winner ? `integrated-battlefield--settled integrated-battlefield--settled-${winner} ${terminalUsesDirectFinisher ? 'integrated-battlefield--settled-direct' : 'integrated-battlefield--settled-collapse'}` : ''} ownership-board--wind-${windSide} ${usesSavageMechanics ? 'integrated-battlefield--savage' : ''} ${isPhantom ? 'integrated-battlefield--phantom' : ''} ${isUltimate ? 'integrated-battlefield--ultimate' : ''} ${isCruel ? 'integrated-battlefield--cruel' : ''} ${isKarma ? 'integrated-battlefield--karma' : ''} ${enemySupportUsed.has('omnicapitalization') ? 'integrated-battlefield--omnicapitalization' : ''}`}
           aria-label="所有率、両陣営、投入資金、行動予兆の統合商戦フィールド"
-          inert={backgroundInert && !conditionAnnouncement && !skillCinematic}
+          inert={backgroundInert && !conditionAnnouncement && !skillCinematic && !capitalPresentationActive}
           data-company-invested={companyInvested}
           data-capital-renderer="canvas2d"
           data-flow-direction={battleDirection}
@@ -8853,6 +8893,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             marketPrice: targetProperty.marketPrice,
             previewFrame:
               capitalPreviewStage ?? playerCapitalPilePreviewStage,
+            presentationSpeed: capitalPresentationSpeed.player,
             rackFloorDepth: playerCapitalRackFloorDepth,
             impact: playerCapitalMotion === 'player',
           }}
@@ -8860,6 +8901,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             amount: displayedEnemyInvested,
             marketPrice: targetProperty.marketPrice,
             previewFrame: enemyCapitalPilePreviewStage,
+            presentationSpeed: capitalPresentationSpeed.enemy,
             rackFloorDepth: enemyCapitalRackFloorDepth,
             impact: motion === 'enemy' || motion === 'rebel',
           }}
@@ -8882,6 +8924,13 @@ export const BattleModal: React.FC<BattleModalProps> = ({
           compact={isHighEndRaid}
           frameRate={battleFrameRate}
         />
+        {capitalPresentationActive && !showHelp && !showLog && !battleAnnouncement && !skillCinematic && !winner && (
+          <button type="button" className="capital-speed-control"
+            onClick={accelerateCapitalPresentation}
+            aria-label="積み上げ演出を2倍速にする">
+            <span>{capitalPresentationSpeed.player===2 || capitalPresentationSpeed.enemy===2 ? '積み上げ ×2' : 'タップで積み上げ ×2'}</span>
+          </button>
+        )}
         {skillCinematic && (
           <>
             <span
@@ -9627,7 +9676,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             </button>
           )}
 
-          {primarySkill && (
+          {primarySkill && battleSkillPool.length > 1 && (
             <button
               type="button"
               className="battle-action-strip__action battle-action-strip__action--skill-select"
@@ -9646,7 +9695,7 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             >
               <RefreshCw />
               <span>
-                <b>{battleSkillPool.length > 1 ? '① アビリティ切替' : '① 選択中'}</b>
+                <b>技を選ぶ</b>
                 <small>
                   <MarqueeText
                     text={`${usingSkillFallback ? '今回だけ：' : '選択中：'}${primarySkill.name}`}
@@ -9678,8 +9727,8 @@ export const BattleModal: React.FC<BattleModalProps> = ({
             >
               {primarySkill.effectType === 'LIVING_DEAD' ? <ShieldAlert /> : <Zap />}
               <span>
-                <b>② アビリティ発動</b>
-                <small><MarqueeText text={primarySkill.name} /></small>
+                <b><MarqueeText text={primarySkill.name} /></b>
+                <small>{getQuickSkillSummary(primarySkill,isTraining)}</small>
               </span>
               <em>{displayedPrimarySkillStateText}</em>
             </button>

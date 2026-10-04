@@ -22,7 +22,7 @@
     "check:capital-rendering": "tsx scripts/check-capital-rendering.ts",
     "check:visual-theme": "tsx scripts/check-battle-visual-theme.ts",
     "check:capital-contact": "tsx scripts/check-capital-contact.ts",
-    "check:roll-stream": "tsx scripts/check-capital-roll-stream.ts",
+    "check:roll-stream": "tsx scripts/check-capital-roll-stream.ts && tsx scripts/check-capital-speed.ts",
     "check:app-performance": "tsx scripts/check-app-performance.ts"
   },
   "dependencies": {

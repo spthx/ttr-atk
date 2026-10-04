@@ -198,6 +198,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
   );
 
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
+  const [showFutureCities,setShowFutureCities]=useState(false);
 
   const resetFilters = () => {
     setSelectedIndustry('ALL');
@@ -236,7 +237,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
           />
           <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/85 to-slate-950/25" />
           <div className="relative z-10 flex min-h-0 max-w-2xl flex-1 flex-col justify-center px-5 pb-2 pt-5 sm:min-h-36 sm:py-5">
-            <p className={`text-[10px] font-black tracking-[0.28em] ${campaignMode === 'savage' ? 'text-rose-300' : 'text-amber-300'}`}>{campaignMode === 'savage' ? 'SAVAGE TRADE RAID' : 'GRAND TRADE CAMPAIGN'}</p>
             <h2 className="mt-1 text-2xl font-black text-white drop-shadow-lg">{campaignMode === 'savage' ? '挑戦する零式商戦を選ぶ' : '次に攻める都市を選ぶ'}</h2>
             <p className="mt-1 text-xs text-slate-200">{campaignMode === 'savage' ? '各都市の通常商戦を再構成した3編×1～4層、全12章の高難度交易レイドです。' : '都市を選ぶと、交渉できる事業・契約だけを表示します。'}</p>
           </div>
@@ -265,6 +265,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             {communityProgress.map((community, index) => {
               const unlocked = unlockedCommunityIds.has(community.id);
+              if(!unlocked && !showFutureCities) return null;
               const prerequisite = COMMUNITY_CAMPAIGN_ORDER[index - 1];
               const remainingTargets = getCampaignProperties(
                 properties,
@@ -326,6 +327,12 @@ export const MarketView: React.FC<MarketViewProps> = ({
               );
             })}
           </div>
+          {communityProgress.some(city=>!unlockedCommunityIds.has(city.id)) && (
+            <button type="button" className="mt-3 min-h-11 text-sm text-slate-300 underline underline-offset-4"
+              aria-expanded={showFutureCities} onClick={()=>setShowFutureCities(value=>!value)}>
+              {showFutureCities?'先の交易路を閉じる':`この先の交易路を見る（${communityProgress.filter(city=>!unlockedCommunityIds.has(city.id)).length}都市）`}
+            </button>
+          )}
         </section>
       </div>
     );
@@ -357,7 +364,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
       {/* Insufficient Funds Warning Banner */}
       {noticeMessage && (
-        <div role="alert" aria-live="assertive" className="bg-rose-950/90 border border-rose-500 text-rose-200 px-4 py-2.5 rounded-lg text-xs font-bold flex items-center justify-between shadow-lg animate-bounce">
+        <div role="alert" aria-live="assertive" className="bg-rose-950/90 border border-rose-500 text-rose-200 px-4 py-2.5 rounded-lg text-xs font-bold flex items-center justify-between shadow-lg">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{noticeMessage}</span>
