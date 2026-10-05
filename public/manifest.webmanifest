@@ -7,8 +7,8 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#071a2a",
+  "background_color": "#eee7d7",
+  "theme_color": "#492d47",
   "icons": [
     {
       "src": "./ff14-fankit/app-icons/tataru-192.png",

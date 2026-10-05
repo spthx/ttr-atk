@@ -14,6 +14,7 @@
     "build": "npm run build:game && vinext build",
     "start": "vinext start",
     "lint": "tsc --noEmit",
+    "check:renewal": "tsx scripts/check-renewal.ts && tsx scripts/check-renewal-audit.ts && tsx scripts/check-renewal-boundaries.ts",
     "check:balance": "tsx scripts/check-balance.ts && tsx scripts/check-trade-negotiation.ts",
     "check:progression": "tsx scripts/check-progression-navigation.ts",
     "check:readiness": "tsx scripts/check-readiness-mechanics.ts",

@@ -3,7 +3,7 @@ export const metadata = {
   description: "ロマンシング サ・ガ3のトレードゲームをFF14の世界観で再現した非公式ファンゲーム。",
 };
 
-const EMBEDDED_GAME_VERSION = "sfc-trade-fidelity-v1";
+const EMBEDDED_GAME_VERSION = "renewal-2026-10-06";
 
 export default function Home() {
   return (
