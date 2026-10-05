@@ -15,7 +15,7 @@ function Preparation({company,commit}:{company:Company;commit:(c:Company)=>boole
 }
 
 function Battle({engine,onFinish}:{engine:TradeEngine;onFinish:(allocation:0|.5|1)=>boolean}){
-  const [,refresh]=useState(0);const [panel,setPanel]=useState<'cash'|'sources'|'skills'|null>(null);const [fast,setFast]=useState(false);const speed=useRef<1|2>(1);const [allocation,setAllocation]=useState<0|.5|1>(.5);const [saveError,setSaveError]=useState(false);
+  const [,refresh]=useState(0);const [panel,setPanel]=useState<'cash'|'sources'|'skills'>('cash');const [fast,setFast]=useState(false);const speed=useRef<1|2>(1);const [allocation,setAllocation]=useState<0|.5|1>(.5);const [saveError,setSaveError]=useState(false);
   const root=useRef<HTMLDivElement>(null);const view=engine.encounter;
   useEffect(()=>{
     let raf=0,last=performance.now(),paint=last;root.current?.focus();
@@ -30,11 +30,11 @@ function Battle({engine,onFinish}:{engine:TradeEngine;onFinish:(allocation:0|.5|
     }raf=requestAnimationFrame(tick);};raf=requestAnimationFrame(tick);
     return()=>{cancelAnimationFrame(raf);renewalAudio.stop();document.removeEventListener('visibilitychange',visibility);};
   },[engine]);
-  const act=(action:Action)=>{renewalAudio.unlock();if(engine.act(action)){setPanel(null);refresh(n=>n+1);}};
+  const act=(action:Action)=>{renewalAudio.unlock();if(engine.act(action))refresh(n=>n+1);};
   const won=engine.winner==='player';const settled=!!engine.winner&&!engine.motion;
   const sources=ownedBusinesses(engine.company);const equipped=skills.filter(s=>engine.company.equipped.includes(s.id)&&![engine.company.opening,engine.company.critical].includes(s.id));
   const synergy=availableSynergies(engine.company).find(g=>g.id===engine.company.synergy)??availableSynergies(engine.company).at(-1);
-  return <div className="r-battle" role="dialog" aria-modal="true" aria-label={`${view.name}との商戦`} ref={root} tabIndex={-1} onKeyDown={e=>{if(e.key==='Escape'){setPanel(null);e.preventDefault();}if(e.key==='Tab'){const buttons=Array.from(root.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')??[]);const first=buttons[0],last=buttons.at(-1);if(e.shiftKey&&(document.activeElement===first||document.activeElement===root.current)){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}}}>
+  return <div className="r-battle" role="dialog" aria-modal="true" aria-label={`${view.name}との商戦`} ref={root} tabIndex={-1} onKeyDown={e=>{if(e.key==='Escape'){setPanel('cash');e.preventDefault();}if(e.key==='Tab'){const buttons=Array.from(root.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')??[]);const first=buttons[0],last=buttons.at(-1);if(e.shiftKey&&(document.activeElement===first||document.activeElement===root.current)){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}}}>
     <header className="r-battle-title"><div><span>{view.mode==='normal'?view.city:`${view.mode==='savage'?`零式 ${view.series}編 ${view.layer}層`:view.mode==='ultimate'?'絶商戦':view.mode==='cruel'?'酷商戦':view.mode==='karma'?'業商戦':'幻・商戦'}`}</span><h1>{view.name}</h1></div>{!settled&&<button className="r-quiet" onClick={()=>engine.surrender()}>撤退</button>}</header>
     <section className="r-arena">
       <CoinStage engine={engine}/>
@@ -52,20 +52,20 @@ function Battle({engine,onFinish}:{engine:TradeEngine;onFinish:(allocation:0|.5|
       {won&&!engine.record&&sources.length>0&&<div className="r-allocation" aria-label="利益の配分">{([0,.5,1] as const).map((v,i)=><button key={v} aria-pressed={allocation===v} onClick={()=>setAllocation(v)}>{['商会に残す','半分を分ける','全額を分ける'][i]}</button>)}</div>}
       {saveError&&<p role="alert">保存できませんでした。データを確定せずに保持しています。</p>}
       <button className="r-primary" onClick={()=>{if(!onFinish(allocation))setSaveError(true);}}>商会へ戻る <ArrowUpRight size={18}/></button>
-    </section>:<>
+    </section>:<div className="r-action-dock">
       <nav className="r-commands" aria-label="商戦の行動">
-        <button className="r-primary" disabled={!engine.ready} aria-expanded={panel==='cash'} onClick={()=>setPanel(panel==='cash'?null:'cash')}><HandCoins/><span>自社資金<small>手元 {amount(engine.cash)}</small></span></button>
-        {sources.length>0&&<button disabled={!engine.ready} aria-expanded={panel==='sources'} onClick={()=>setPanel(panel==='sources'?null:'sources')}><Users/><span>資金を集める<small>人脈 {engine.supportLimit-engine.supportUses}回</small></span></button>}
-        <button disabled={!engine.ready} aria-expanded={panel==='skills'} onClick={()=>setPanel(panel==='skills'?null:'skills')}><Sparkles/><span>かけひき<small>{engine.cooldown>0?'準備中':'技・連携・限界突破'}</small></span></button>
+        <button aria-pressed={panel==='cash'} onClick={()=>setPanel('cash')}><HandCoins/><span>自社資金<small>手元 {amount(engine.cash)}</small></span></button>
+        {sources.length>0&&<button aria-pressed={panel==='sources'} onClick={()=>setPanel('sources')}><Users/><span>資金を集める<small>人脈 {engine.supportLimit-engine.supportUses}回</small></span></button>}
+        <button aria-pressed={panel==='skills'} onClick={()=>setPanel('skills')}><Sparkles/><span>かけひき<small>{engine.cooldown>0?'準備中':'技・連携・限界突破'}</small></span></button>
       </nav>
-      {panel&&<section className="r-action-sheet" aria-label="行動を選ぶ"><header><h2>{panel==='cash'?'いくら積むでっす？':panel==='sources'?'仲間の力を借りるでっす。':'勝負どころを見極めるでっす。'}</h2><button className="r-icon" onClick={()=>setPanel(null)} aria-label="選択を閉じる"><X/></button></header>
+      <section key={panel} className="r-action-sheet" aria-label="行動を選ぶ">
         {panel==='cash'?<div className="r-offers">{[.02,.05,.1,.2,.35].map((ratio,i)=><button key={ratio} disabled={engine.cash<Math.round(view.price*ratio)||!engine.ready} onClick={()=>act({kind:'cash',ratio})}><b>{['小口','控えめ','標準','大口','全力'][i]}</b><span>{amount(view.price*ratio)} ギル</span></button>)}</div>:
         panel==='sources'?<div className="r-source-list">{sources.length>6?<button disabled={!engine.ready||engine.supportUses>=engine.supportLimit} onClick={()=>act({kind:'network'})}><b>有力な人脈へ一斉要請</b><span>{amount(engine.supportAmount(engine.strongest()))} ギル</span></button>:sources.map(p=><button key={p.id} disabled={!engine.ready||engine.supportUses>=engine.supportLimit} onClick={()=>act({kind:'network',id:p.id})}><img src={getFankitCommerceIcon(p.name)} alt=""/><b>{p.name}</b><span>{amount(engine.supportAmount(p.id))} ギル</span></button>)}
           {activeGroups(engine.company).map(g=><button key={g.id} disabled={!engine.ready||engine.usedGroups.has(g.id)} onClick={()=>act({kind:'group',id:g.id})}><b>{g.name}</b><span>交易網をまとめる</span></button>)}
           {engine.company.patron&&<button disabled={!engine.ready||engine.allianceUsed} onClick={()=>act({kind:'alliance'})}><b>{patrons.find(p=>p.allyId===engine.company.patron)?.allyName}</b><span>後援 {amount(view.price*.75)} ギル／一度</span></button>}
         </div>:<div className="r-source-list">{equipped.map(s=><button key={s.id} disabled={!engine.ready||engine.usedSkills.has(s.id)} onClick={()=>act({kind:'skill',id:s.id})}><b>{s.name}</b><span>{s.effectType==='FEINT'?'10秒、敵の押し込みを軽減':s.effectType==='COVER'?'有限の強い防御':s.effectType==='BARRIER'?'障壁を張り、割れたら反撃':s.effectType==='CAPITAL_BOOST'?'資金をぶんどり即投入':s.effectType==='LIVING_DEAD'?'致死に耐えて回復を狙う':'行動の準備を加速'}</span></button>)}{synergy&&<button disabled={!engine.ready||engine.usedGroups.has(synergy.id)} onClick={()=>act({kind:'group',id:synergy.id})}><b>{synergy.name}</b><span>事業連携の力で攻勢を強める</span></button>}{engine.lbTier>0&&<button disabled={!engine.ready||engine.lb<100||view.mode==='ultimate'&&engine.lbUses>=1} onClick={()=>act({kind:'limit'})}><b>LIMIT BREAK {Math.floor(engine.lb/100)}</b><span>{Math.floor(engine.lb)} / {engine.lbTier*100}</span></button>}</div>}
-      </section>}
-    </>}
+      </section>
+    </div>}
   </div>;
 }
 
